@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+ // import our event bus
 import {
   Modal,
   View,
@@ -10,20 +11,22 @@ import {
   Alert,
   Image,
 } from 'react-native';
-import { X, Printer, DollarSign } from 'lucide-react-native';
+import { X, Printer, PhilippinePeso } from 'lucide-react-native';
 import type { CartItem } from '@/types';
 import { useTheme } from '@/contexts/ThemeContext'
 import { TransactionService } from '@/services/orderService';
+
+
 interface ReceiptModalProps {
   visible: boolean;
   items: CartItem[];
   onClose: () => void;
   onPrintReceipt: (receiptData: any) => void;
+  onOrderPlaced?: () => void; // ✅ New prop
 }
 
-export function ReceiptModal({ visible, items, onClose, onPrintReceipt }: ReceiptModalProps) {
+export function ReceiptModal({ visible, items, onClose, onPrintReceipt, onOrderPlaced }: ReceiptModalProps) {
   const { colors } = useTheme()
-  
   const [cashReceived, setCashReceived] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
@@ -39,11 +42,12 @@ export function ReceiptModal({ visible, items, onClose, onPrintReceipt }: Receip
     }
 
     setIsProcessing(true);
-    const order = await TransactionService.createOrder(
+    await TransactionService.createOrder(
       items,
       'cash', // payment method
       cashAmount // cash received
     );
+    onOrderPlaced?.();
 
     const receiptData = {
       store: {
@@ -167,7 +171,7 @@ export function ReceiptModal({ visible, items, onClose, onPrintReceipt }: Receip
             <View style={[styles.section, styles.paymentSection]}>
               <Text style={[styles.sectionTitle, { color: colors.text}]}>Payment</Text>
               <View style={[styles.cashInputContainer, {backgroundColor: colors.background, borderColor: colors.border}]}>
-                <DollarSign size={20} color="#6B7280" />
+                <PhilippinePeso size={20} color="#6B7280" />
                 <TextInput
                   style={[styles.cashInput, { color: colors.text}]}
                   placeholder="Enter cash received"
