@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { PrinterService } from "@/services/printerService"
  // import our event bus
 import {
   Modal,
@@ -12,7 +13,7 @@ import {
   Image,
 } from 'react-native';
 import { X, Printer, PhilippinePeso } from 'lucide-react-native';
-import type { CartItem } from '@/types';
+import type { CartItem, Receipt } from '@/types';
 import { useTheme } from '@/contexts/ThemeContext'
 import { TransactionService } from '@/services/orderService';
 
@@ -49,8 +50,9 @@ export function ReceiptModal({ visible, items, onClose, onPrintReceipt, onOrderP
     );
     onOrderPlaced?.();
 
-    const receiptData = {
+    const receiptData: Receipt = {
       store: {
+        id: 1,
         name: 'POSVINE Pro',
         logo: 'https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop',
         address: '123 Tech Street, Digital City, DC 12345',
@@ -86,12 +88,15 @@ export function ReceiptModal({ visible, items, onClose, onPrintReceipt, onOrderP
     // Simulate printing delay
     setTimeout(() => {
       setIsProcessing(false);
-      onPrintReceipt(receiptData);
+      console.log("Prepare printing")
+      //PrinterService.printTestReceipt()
+      PrinterService.printOrderReceipt(receiptData)
       Alert.alert(
         'Receipt Printed',
         'Transaction completed successfully!',
         [{ text: 'OK', onPress: onClose }]
       );
+      handleClose()
     }, 2000);
   };
 

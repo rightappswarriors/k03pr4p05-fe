@@ -16,6 +16,7 @@ import { ShoppingCart } from 'lucide-react-native';
 import type { Item, Category } from '@/types';
 import { useTheme } from '@/contexts/ThemeContext'
 
+
 interface ItemBrowserProps {
   items: Item[];
   categories: Category[];
@@ -52,6 +53,7 @@ export function ItemBrowser({
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const searchInputRef = useRef<any>(null);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false)
 
   const screenWidth = Dimensions.get('window').width;
   // padding + viewToggle + gap + cartButton
@@ -59,7 +61,15 @@ export function ItemBrowser({
   const unfocusedWidth = screenWidth * 0.55;
 
   const searchWidth = useRef(new Animated.Value(unfocusedWidth)).current;
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState<string | null>(selectedCategory);
+  const [dropdownItems, setDropdownItems] = useState(
+    categories.map(c => ({ label: c.name, value: c.id })) // 👈 transform categories
+  );
 
+  useEffect(() => {
+    setDropdownItems(categories.map(c => ({ label: c.name, value: c.id })));
+  }, [categories]);
   useEffect(() => {
     if (!isDesktop) {
       Animated.timing(searchWidth, {
@@ -119,13 +129,15 @@ export function ItemBrowser({
           onSearchChange('');
           onCategorySelect(null);
         }}
+        onToggleDropdown={setIsDropdownOpen}
       />
       <ItemGrid
         items={items}
+        isDropdownOpen={isDropdownOpen}
         loading={loading}
         viewMode={viewMode}
         onAddToCart={onAddToCart}
-      />
+      /> 
     </View>
   );
 }

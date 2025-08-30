@@ -1,17 +1,16 @@
-import React, { useState, useRef, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Dimensions } from 'react-native';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, PanResponder, Animated, Dimensions, Pressable, Modal, ScrollView } from 'react-native';
 import { ChevronDown, ChevronUp, Filter, X } from 'lucide-react-native';
 import { Category } from '@/types';
 import Fuse from 'fuse.js';
 import { useTheme } from '@/contexts/ThemeContext';
-
 interface CategoryDropdownProps {
-
   categories: Category[];
   selectedCategory: string | null;
   searchQuery: string;
   onCategorySelect: (categoryId: string | null) => void;
   onClearSearch: () => void;
+  onToggleDropdown: any;
 }
 
 export function CategoryDropdown({
@@ -20,29 +19,47 @@ export function CategoryDropdown({
   searchQuery,
   onCategorySelect,
   onClearSearch,
+  onToggleDropdown,
 }: CategoryDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const animatedHeight = useRef(new Animated.Value(0)).current;
   const screenHeight = Dimensions.get('window').height;
   const dropdownHeight = screenHeight * 0.5;
-  const fuse = new Fuse(categories, {
-    keys: ['name'],
-    threshold: 0.4, // Allows for typos
-    includeScore: true,
-  });
-  const { colors } = useTheme()
-  // Don't show badges if search is not focused
+
+  const { colors } = useTheme();
   const [sortType, setSortType] = useState<'alphabetical' | 'brand' | 'color'>('alphabetical');
 
-  // Determine which categories to show
-  let categoriesToShow: Category[] = [];
+  useEffect(() => {
+    onToggleDropdown(isOpen);
+  }, [isOpen]);
 
-  if (searchQuery.trim() === '') {
-    categoriesToShow = categories;
-  } else {
+  // Handle animation when dropdown state changes
+  useEffect(() => {
+    Animated.timing(animatedHeight, {
+      toValue: isOpen ? dropdownHeight : 0,
+      duration: 300,
+      useNativeDriver: false,
+    }).start();
+  }, [isOpen]);
+
+  const toggleDropdown = () => {
+    setIsOpen(!isOpen);
+  };
+
+  const fuse = useMemo(() => new Fuse(categories, {
+    keys: ['name'],
+    threshold: 0.4,
+    includeScore: true,
+  }), [categories]);
+
+  const categoriesToShow = useMemo(() => {
+    if (searchQuery.trim() === '') {
+      return categories;
+    }
     const results = fuse.search(searchQuery);
-    categoriesToShow = results.map(result => result.item);
-  }
+    return results.map(result => result.item);
+  }, [categories, searchQuery, fuse]);
+
   const sortedCategories = useMemo(() => {
     const list = [...categoriesToShow];
     if (sortType === 'alphabetical') {
@@ -54,153 +71,115 @@ export function CategoryDropdown({
     }
     return list;
   }, [categoriesToShow, sortType]);
-  // Don't render if no categories to show
-  if (categoriesToShow.length === 0) {
-    return null;
-  }
-  const selected = () => {
-    if (selectedCategory) {
-      const selectedCategoryData = categories.find(c => c.id === selectedCategory);
-      return (
-        <View style={[styles.container, { flex: 1, backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View
-            style={[styles.scrollContent,]}
-          >
-            <View style={[styles.selectedBadge, { backgroundColor: colors.background }]}>
-              <Text style={[styles.selectedBadgeText, { color: colors.textSecondary }]}
-                numberOfLines={1}
-                ellipsizeMode="tail">
-                {selectedCategoryData?.name}
-                {searchQuery && ` > ${searchQuery}`}
-              </Text>
-              <TouchableOpacity onPress={onClearSearch} style={styles.clearButton}>
-                <X size={14} color="#3B82F6" />
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      );
-    }
-  }
 
-  function groupCategories(
-    categories: Category[],
-    sortType: 'alphabetical' | 'brand' | 'color'
-  ): Record<string, Category[]> {
+  const groupCategories = (list: Category[], type: 'alphabetical' | 'brand' | 'color') => {
     const grouped: Record<string, Category[]> = {};
-
-    for (const cat of categories) {
+    for (const cat of list) {
       let key = '';
-
-      if (sortType === 'alphabetical') {
+      if (type === 'alphabetical') {
         key = cat.name.charAt(0).toUpperCase();
-      } else if (sortType === 'brand') {
+      } else if (type === 'brand') {
         key = cat.brand?.trim() || 'Unbranded';
-      } else if (sortType === 'color') {
+      } else if (type === 'color') {
         key = cat.color || 'No Color';
       }
-
       if (!grouped[key]) {
         grouped[key] = [];
       }
-
       grouped[key].push(cat);
     }
-
-    return Object.fromEntries(
-      Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b))
-    );
-  }
-
-  const toggleDropdown = () => {
-    const toValue = isOpen ? 0 : dropdownHeight;
-
-    Animated.timing(animatedHeight, {
-      toValue,
-      duration: 300,
-      useNativeDriver: false,
-    }).start();
-
-    setIsOpen(!isOpen);
+    return Object.fromEntries(Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)));
   };
 
+  const selectedBadge = () => {
+    if (selectedCategory) {
+      const selectedCategoryData = categories.find(c => c.id === selectedCategory);
+      return (
+        <View style={[styles.selectedBadge, { backgroundColor: colors.background }]}>
+          <Text
+            style={[styles.selectedBadgeText, { color: colors.textSecondary }]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
+            {selectedCategoryData?.name}
+            {searchQuery && ` > ${searchQuery}`}
+          </Text>
+          <TouchableOpacity onPress={onClearSearch} style={styles.clearButton}>
+            <X size={14} color="#3B82F6" />
+          </TouchableOpacity>
+        </View>
+      );
+    }
+  };
+
+  if (categoriesToShow.length === 0 && searchQuery.trim() !== '') {
+    // Return something for no search results if needed, or null.
+  }
 
   return (
-    <View style={[styles.container]}>
-      <TouchableOpacity style={[styles.filterInput, , { backgroundColor: colors.card, borderColor: colors.card }]} onPress={toggleDropdown}>
+    <View style={[styles.container,]} pointerEvents="auto">
+      <TouchableOpacity
+        style={[styles.filterInput, { backgroundColor: colors.card, borderColor: colors.card }]}
+        onPress={toggleDropdown}
+      >
         <Filter size={16} color="#2563EB" />
-        {selectedCategory ? selected() :
-          <Text style={[styles.filterInputText, { color: colors.textSecondary }]}>
-            {selectedCategory ? selectedCategory : 'Select Category'}
-          </Text>}
-        {isOpen ? (
-          <ChevronUp size={16} color="#2563EB" />
+        {selectedCategory ? (
+          selectedBadge()
         ) : (
-          <ChevronDown size={16} color="#2563EB" />
+          <Text style={[styles.filterInputText, { color: colors.textSecondary }]}>
+            {'Select Category'}
+          </Text>
         )}
+        {isOpen ? <ChevronUp size={16} color="#2563EB" /> : <ChevronDown size={16} color="#2563EB" />}
       </TouchableOpacity>
 
-      <Animated.View
-        style={[
-          styles.dropdown, { borderColor: colors.border},
-          {
-            height: animatedHeight,
-            opacity: animatedHeight.interpolate({
-              inputRange: [0, dropdownHeight],
-              outputRange: [0, 1],
-            }),
-          }
-        ]}
-        pointerEvents={isOpen ? 'auto' : 'none'}
-      >
-        <View style={[styles.dropdownContent, , { backgroundColor: colors.background, }]}>
+      {isOpen && (
+        <View
+          style={[
+            styles.dropdown,
+            { maxHeight: dropdownHeight - 25 },
+            { borderColor: colors.border}
+          ]}
+        >
           {/* Tabs */}
           <View style={[styles.tabContainer, { borderColor: colors.border, backgroundColor: colors.background }]}>
             {['alphabetical', 'brand', 'color'].map(type => (
               <TouchableOpacity
                 key={type}
-                style={[
-                  styles.tab,
-                  sortType === type && styles.activeTab
-                ]}
+                style={[styles.tab, sortType === type && styles.activeTab]}
                 onPress={() => setSortType(type as any)}
               >
-                <Text style={[
-                  styles.tabText,
-                  sortType === type && styles.activeTabText
-                ]}>
+                <Text style={[styles.tabText, sortType === type && styles.activeTabText]}>
                   {type === 'alphabetical' ? 'A-Z' : type.charAt(0).toUpperCase() + type.slice(1)}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          {/* Categories */}
+          {/* Scrollable Categories */}
           <ScrollView
-            style={[styles.categoriesContainer, {borderColor: colors.background}]}
-            showsVerticalScrollIndicator={false}
-            nestedScrollEnabled={true}
+            style={{ maxHeight: dropdownHeight - 50 }} // leave space for tabs
+            contentContainerStyle={{ padding: 16 }}
+            showsVerticalScrollIndicator={true}
+            keyboardShouldPersistTaps="handled"
           >
             {Object.entries(groupCategories(sortedCategories, sortType)).map(([group, items]) => (
               <View key={group} style={styles.letterSection}>
                 <Text style={[styles.letterHeader, { color: colors.text }]}>{group}</Text>
                 <View style={styles.categoryRow}>
-                  {items.map((category) => (
+                  {items.map(category => (
                     <TouchableOpacity
                       key={category.id}
-                      onPress={() => {
-                        onCategorySelect(category.id);
-                      }}
+                      onPress={() => onCategorySelect(category.id)}
                       style={[
                         styles.categoryButton,
-
-                        { backgroundColor: category.color ? `${category.color}20` : '#F3F4F6', borderColor: colors.border },
+                        {
+                          backgroundColor: category.color ? `${category.color}20` : '#F3F4F6',
+                          borderColor: colors.border,
+                        },
                       ]}
                     >
-                      <Text style={[
-                        styles.categoryButtonText,
-                        { color: category.color || '#374151' }
-                      ]}>
+                      <Text style={[styles.categoryButtonText, { color: category.color || '#374151' }]}>
                         {category.name}
                       </Text>
                     </TouchableOpacity>
@@ -210,7 +189,8 @@ export function CategoryDropdown({
             ))}
           </ScrollView>
         </View>
-      </Animated.View>
+
+      )}
     </View>
   );
 }
@@ -218,15 +198,12 @@ export function CategoryDropdown({
 const styles = StyleSheet.create({
   container: {
     position: 'relative',
-    zIndex: 1000,
-
   },
   scrollContent: {
     paddingRight: 16,
     gap: 8,
   },
   selectedBadge: {
-    flex: 1,
     flexDirection: 'row',
     overflow: 'hidden',
     alignItems: 'center',
@@ -235,14 +212,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     gap: 6,
-    alignSelf: 'flex-start', // key line to size badge only as needed
+    alignSelf: 'flex-start',
     maxWidth: '100%',
-    flexShrink: 1
+    flexShrink: 1,
   },
   selectedBadgeText: {
     fontSize: 14,
     fontWeight: '500',
-
   },
   clearButton: {
     paddingLeft: 2,
@@ -250,7 +226,6 @@ const styles = StyleSheet.create({
   filterButton: {
     flexDirection: 'row',
     alignItems: 'center',
-
     borderWidth: 1,
     borderRadius: 8,
     padding: 12,
@@ -272,23 +247,26 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   dropdown: {
-    position: 'absolute',
+    position: "absolute",
     top: '100%',
     left: 0,
     right: 0,
     borderWidth: 1,
+    maxHeight: 450,
     borderTopWidth: 0,
-    borderBottomLeftRadius: 8,
-    borderBottomRightRadius: 8,
+    borderBottomLeftRadius: 10,
+    borderBottomRightRadius: 10,
+    backgroundColor: 'white',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 5,
-    overflow: 'hidden',
+    zIndex: 100, // ✅ ensure on top of ItemGrid
+    //overflow: 'hidden',
   },
   dropdownContent: {
-    flex: 1,
+    zIndex: 10000
   },
   tabContainer: {
     flexDirection: 'row',
@@ -312,8 +290,9 @@ const styles = StyleSheet.create({
     color: 'white',
   },
   categoriesContainer: {
-    flex: 1,
+    flexGrow: 0,
     padding: 16,
+    zIndex: 20000, // ✅ ensure on top of ItemGrid
   },
   letterSection: {
     marginBottom: 16,

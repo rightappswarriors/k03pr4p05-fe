@@ -2,8 +2,8 @@ export interface Item {
   id: string;
   name: string;
   price: number;
-  image: string;
-  categoryId: string;
+  image?: string;
+  categoryId?: string;
   barcode?: string;
   description?: string;
   brand?: string; // ✅ already added
@@ -46,6 +46,40 @@ export interface Store {
   isActive: boolean;
   createdAt: string;
 }
+export interface Receipt {
+  store: {
+    id: number
+    name: string
+    logo?: string
+    address: string
+    phone: string
+    tin?: string
+    businessType?: string
+    VATExempSales? : number
+    VATableSales?: number
+    VATZeroSale?: number
+    VAT? : number
+  }
+  transaction: {
+    id: string
+    date: string
+    timestamp: string
+    cashier: string
+    //cashierId: number
+  }
+  items: Item[]
+  totals: {
+    tax: number
+    subtotal: number
+    total: number
+    cashReceived: number
+    change: number
+  }
+  payment: {
+    status: string
+    method: string
+  }
+}
 export interface Transaction {
   id: string;
   storeId: string;
@@ -62,6 +96,7 @@ export interface Transaction {
   createdAt: string;
   syncedAt?: string;
   retryCount: number;
+  user: User
 }
 
 export interface AuthState {
@@ -69,9 +104,9 @@ export interface AuthState {
   isLoading: boolean;
   isAuthenticated: boolean;
   deviceBound?: boolean;
-  accessToken: null;
-  refreshToken: null;
-  authenticated: null;
+  accessToken?: null | string;
+  refreshToken?: null | string;
+  wifiAuthorized: boolean;
 }
 export interface SyncLog {
   id: string;

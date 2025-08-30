@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "rai-pos",
-    "slug": "rai-pos",
-    "version": "1.0.1",
+    "name": "POS Vine",
+    "slug": "pos-vine",
+    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "myapp",
@@ -26,13 +26,18 @@
       "typedRoutes": true
     },
     "extra": {
+      "AUTH_TOKEN_KEY": "auth_token",
+      "USER_DATA_KEY": "user_data",
+      "BIOMETRIC_ENABLED_KEY": "biometric_enable",
+      "REFRESH_TOKEN_KEY": "refreshToken",
       "router": {},
       "eas": {
-        "projectId": "57b65443-fd8c-4981-a77f-b4c6f0fc8bee"
+        "projectId": "94c779c4-51cb-49b6-a9c5-5ae7fa3ec0b3"
       }
     },
     "android": {
       "package": "com.rusiana.raipos"
-    }
+    },
+    "owner": "rusiana"
   }
 }

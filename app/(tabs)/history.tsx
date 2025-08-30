@@ -83,7 +83,6 @@ export default function HistoryScreen() {
           <Text style={[styles.statLabel, { color: colors.textSecondary}]}>Failed</Text>
         </View>
       </View>
-
       <OrderHistory refreshTrigger={refreshTrigger} />
     </SafeAreaView>
   );

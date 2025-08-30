@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { User } from '@/types';
 import { Platform } from 'react-native';
 import http from './httpServices';
+import Constants from 'expo-constants';
 
 import axios from 'axios';
 import { mockUsers } from '@/data/mockData';
@@ -14,11 +15,15 @@ interface LoginResponse {
   //refreshToken: string;
 }
 // Tokens
-export const AUTH_TOKEN_KEY = 'auth_token';
-export const USER_DATA_KEY = 'user_data';
-export const BIOMETRIC_ENABLED_KEY = 'biometric_enable';
-export const REFRESH_TOKEN_KEY = 'refreshToken';
+export const AUTH_TOKEN_KEY = Constants.expoConfig?.extra?.AUTH_TOKEN_KEY ?? "auth_token";
+export const USER_DATA_KEY = Constants.expoConfig?.extra?.USER_DATA_KEY ?? "user_data";
+export const BIOMETRIC_ENABLED_KEY = Constants.expoConfig?.extra?.BIOMETRIC_ENABLED_KEY ?? "biometric_enabled";
+export const REFRESH_TOKEN_KEY = Constants.expoConfig?.extra?.REFRESH_TOKEN_KEY ?? "refresh_token";
 
+console.log(AUTH_TOKEN_KEY)
+console.log(USER_DATA_KEY)
+console.log(USER_DATA_KEY)
+console.log(USER_DATA_KEY)
 // Platform-specific storage for auth tokens
 export const secureStorage = {
   async setItemAsync(key: string, value: string): Promise<void> {

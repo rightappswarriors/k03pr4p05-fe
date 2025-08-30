@@ -13,7 +13,7 @@ import { Plus } from 'lucide-react-native';
 import { SkeletonLoader } from './SkeletonLoader';
 import { QuantityModal } from './QuantityModal';
 import type { Item } from '@/types';
-import { useTheme} from '@/contexts/ThemeContext'
+import { useTheme } from '@/contexts/ThemeContext'
 const { width: screenWidth } = Dimensions.get('window');
 import { useResponsive } from '@/hooks/useResponsive'
 interface ItemGridProps {
@@ -21,18 +21,19 @@ interface ItemGridProps {
   loading: boolean;
   viewMode: 'grid' | 'list';
   onAddToCart: (item: Item, quantity: number) => void;
+  isDropdownOpen: boolean
 }
 
-export function ItemGrid({ items, loading, viewMode, onAddToCart }: ItemGridProps) {
+export function ItemGrid({ items, loading, viewMode, onAddToCart, isDropdownOpen }: ItemGridProps) {
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const { isDesktop } = useResponsive()
-  const { colors} = useTheme()
+  const { colors } = useTheme()
   console.log('ITEMS: ', items)
   items.forEach(item => {
-    
+
     console.log(item.name)
-    
+
   });
   const getNumColumns = () => {
     const availableWidth = screenWidth; // Full width
@@ -58,12 +59,12 @@ export function ItemGrid({ items, loading, viewMode, onAddToCart }: ItemGridProp
 
   if (loading) {
     return (
-      <ScrollView style={[styles.container, {backgroundColor:colors.background}]} 
-      contentContainerStyle={[
-        styles.loadingContainer,
-        isDesktop && styles.desktopLoadingContainer, // typo: destop → desktop
-      ]}
-      
+      <ScrollView style={[styles.container, { backgroundColor: colors.background }]}
+        contentContainerStyle={[
+          styles.loadingContainer,
+          isDesktop && styles.desktopLoadingContainer, // typo: destop → desktop
+        ]}
+
       >
         {Array.from({ length: 12 }).map((_, index) => (
           <SkeletonLoader key={index} viewMode={viewMode} />
@@ -73,27 +74,27 @@ export function ItemGrid({ items, loading, viewMode, onAddToCart }: ItemGridProp
   }
 
   const renderItem = ({ item }: { item: Item }) => (
-  
+
     <TouchableOpacity
-    activeOpacity={0.7}
+      activeOpacity={0.7}
       onPress={() => handleItemPress(item)}
       style={[
         styles.itemCard,
         viewMode === 'list' && styles.listItemCard,
-        { backgroundColor: colors.card}
+        { backgroundColor: colors.card }
       ]}
     >
-      { viewMode === 'grid' && (
+      {viewMode === 'grid' && (
         <Image source={{ uri: item.image }} style={[
-        styles.itemImage,
-        
-      ]}/>)
+          styles.itemImage,
+
+        ]} />)
       }
       <View style={[
         styles.itemInfo,
         viewMode === 'list' && styles.listItemInfo,
       ]}>
-        <Text style={[styles.itemName, { color: colors.text}]} numberOfLines={viewMode === 'list' ? 1 : 2}>
+        <Text style={[styles.itemName, { color: colors.text }]} numberOfLines={viewMode === 'list' ? 1 : 2}>
           {item.name}
         </Text>
         <Text style={styles.itemPrice}>₱{item.price}</Text>
@@ -116,17 +117,20 @@ export function ItemGrid({ items, loading, viewMode, onAddToCart }: ItemGridProp
   );
 
   return (
-    <View style={[styles.container, {backgroundColor: colors.background}]}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}
+      pointerEvents={isDropdownOpen ? "none" : "auto"}  // ✅ not className trick
+    >
       <FlatList
         data={items}
         renderItem={renderItem}
         numColumns={numColumns}
+        nestedScrollEnabled={true}
         key={`${viewMode}-${numColumns}`}
         contentContainerStyle={styles.gridContainer}
         showsVerticalScrollIndicator={false}
         columnWrapperStyle={viewMode === 'grid' && numColumns > 1 ? styles.row : undefined}
       />
-      
+
       <QuantityModal
         visible={modalVisible}
         item={selectedItem}
@@ -143,7 +147,7 @@ export function ItemGrid({ items, loading, viewMode, onAddToCart }: ItemGridProp
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    
+
   },
   loadingContainer: {
     flexDirection: 'row',

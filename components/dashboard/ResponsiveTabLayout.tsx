@@ -1,4 +1,4 @@
-import { ShoppingCart, History, Settings } from 'lucide-react-native'
+import { ShoppingCart, History,Printer, Settings } from 'lucide-react-native'
 import React from 'react'
 import { StyleSheet, useWindowDimensions, Text, TouchableOpacity, View } from 'react-native'
 import { useTheme } from '@/contexts/ThemeContext'
@@ -11,6 +11,7 @@ interface ResponsiveTabLayoutProps {
 const TABS = [
      { name: 'index', title: 'POS', icon: ShoppingCart },
      { name: 'history', title: 'Orders', icon: History },
+     { name: 'printer', title: 'Printer', icon: Printer },
      { name: 'settings', title: 'Settings', icon: Settings },
 ]
 
@@ -114,11 +115,10 @@ const styles = StyleSheet.create({
           flexDirection: 'row',
           backgroundColor: 'white',
           borderTopWidth: 1,
-          height: 100
+          paddingVertical: 15 
      },
      bottomTab: {
           flex: 1,
-          paddingBottom: 40,
           alignItems: 'center',
           justifyContent: 'center',
           gap: 4

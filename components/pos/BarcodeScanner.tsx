@@ -74,12 +74,12 @@ export function BarcodeScanner({ visible, items, onClose, onItemFound }: Barcode
     await playBeep();
 
     // Find item by barcode
-    const foundItem = items.find(item => item.item.barcode === data);
+    const foundItem = items.find(item => item.barcode === data);
     
     if (foundItem) {
       Alert.alert(
         'Item Found!',
-        `${foundItem.item.name}\nPrice: $${foundItem.item.price.toFixed(2)}`,
+        `${foundItem.name}\nPrice: $${foundItem.price.toFixed(2)}`,
         [
           {
             text: 'Add to Cart',
