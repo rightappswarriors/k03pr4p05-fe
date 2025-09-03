@@ -9,7 +9,20 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "This app uses Bluetooth to connect to printers."
+      }
+    },
+    "android": {
+      "package": "com.rusiana.raipos",
+      "permissions": [
+        "BLUETOOTH",
+        "BLUETOOTH_ADMIN",
+        "BLUETOOTH_CONNECT",
+        "BLUETOOTH_SCAN",
+        "ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -19,8 +32,28 @@
     "plugins": [
       "expo-router",
       "expo-font",
+      "./app.plugin.js",
       "expo-web-browser",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "react-native-permissions",
+        {
+          "iosPermissions": ["BluetoothPeripheral", "Bluetooth"],
+          "androidPermissions": [
+            "android.permission.BLUETOOTH_CONNECT",
+            "android.permission.BLUETOOTH_SCAN",
+            "android.permission.ACCESS_FINE_LOCATION"
+          ]
+        }
+      ],
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": true,
+          "modes": ["central"],
+          "bluetoothAlwaysPermission": "Allow $(PRODUCT_NAME) to connect to Bluetooth devices"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
@@ -35,9 +68,7 @@
         "projectId": "94c779c4-51cb-49b6-a9c5-5ae7fa3ec0b3"
       }
     },
-    "android": {
-      "package": "com.rusiana.raipos"
-    },
+
     "owner": "rusiana"
   }
 }
