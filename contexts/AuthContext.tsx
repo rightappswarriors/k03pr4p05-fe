@@ -33,7 +33,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setLoading(true)
       const user = await AuthService.getCurrentUser();
-      console.log('user CheckAuth:', user)
       setAuthState({
         user,
         isLoading: false,

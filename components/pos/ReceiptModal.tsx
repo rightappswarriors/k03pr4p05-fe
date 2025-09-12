@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { PrinterService } from "@/services/printerService"
- // import our event bus
+// import our event bus
 import {
   Modal,
   View,
@@ -11,26 +11,31 @@ import {
   ScrollView,
   Alert,
   Image,
+  Platform
 } from 'react-native';
 import { X, Printer, PhilippinePeso } from 'lucide-react-native';
 import type { CartItem, Receipt } from '@/types';
 import { useTheme } from '@/contexts/ThemeContext'
 import { TransactionService } from '@/services/orderService';
-
+import { usePOS} from '@/contexts/POSContext'
 
 interface ReceiptModalProps {
   visible: boolean;
-  items: CartItem[];
   onClose: () => void;
   onPrintReceipt: (receiptData: any) => void;
   onOrderPlaced?: () => void; // ✅ New prop
 }
 
-export function ReceiptModal({ visible, items, onClose, onPrintReceipt, onOrderPlaced }: ReceiptModalProps) {
+export function ReceiptModal({ visible, onClose, onPrintReceipt, onOrderPlaced }: ReceiptModalProps) {
+  
+  const { 
+    cartItems: items,
+    clearCart
+   } =usePOS() 
   const { colors } = useTheme()
   const [cashReceived, setCashReceived] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  const subtotal = items.reduce((sum, item) => sum + (item.price * item?.quantity), 0);
   const tax = subtotal * 0.08; // 8% tax
   const total = subtotal + tax;
   const cashAmount = parseFloat(cashReceived) || 0;
@@ -88,14 +93,17 @@ export function ReceiptModal({ visible, items, onClose, onPrintReceipt, onOrderP
     // Simulate printing delay
     setTimeout(() => {
       setIsProcessing(false);
-      console.log("Prepare printing")
       //PrinterService.printTestReceipt()
       PrinterService.printOrderReceipt(receiptData)
+      if (Platform.OS === 'web') {
+        alert('Transaction completed successfully!')
+      }
       Alert.alert(
         'Receipt Printed',
         'Transaction completed successfully!',
         [{ text: 'OK', onPress: onClose }]
       );
+      clearCart()
       handleClose()
     }, 2000);
   };
@@ -113,17 +121,17 @@ export function ReceiptModal({ visible, items, onClose, onPrintReceipt, onOrderP
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.overlay}>
-        <View style={[styles.modal, { backgroundColor: colors.card}]}>
+        <View style={[styles.modal, { backgroundColor: colors.card }]}>
           {/* Header */}
-          <View style={[styles.header,  { borderColor: colors.border}]}>
+          <View style={[styles.header, { borderColor: colors.border }]}>
             <View style={styles.headerLeft}>
               <Image
                 source={{ uri: 'https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop' }}
                 style={styles.logo}
               />
               <View>
-                <Text style={[styles.storeName, { color: colors.text}]}>TechStore Pro</Text>
-                <Text style={[styles.receiptTitle, { color: colors.textSecondary}]}>Receipt Summary</Text>
+                <Text style={[styles.storeName, { color: colors.text }]}>TechStore Pro</Text>
+                <Text style={[styles.receiptTitle, { color: colors.textSecondary }]}>Receipt Summary</Text>
               </View>
             </View>
             <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
@@ -132,83 +140,83 @@ export function ReceiptModal({ visible, items, onClose, onPrintReceipt, onOrderP
           </View>
 
           {/* Receipt Content */}
-          <ScrollView style={[styles.content, { borderColor: colors.border}]} showsVerticalScrollIndicator={false}>
+          <ScrollView style={[styles.content, { borderColor: colors.border }]} showsVerticalScrollIndicator={false}>
             <View style={[styles.section]}>
-              <Text style={[styles.sectionTitle, { color: colors.text}]}>Items Purchased</Text>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Items Purchased</Text>
               {items.map((data) => (
                 <View key={data.id} style={styles.itemRow}>
                   <View style={styles.itemInfo}>
-                    <Text style={[styles.itemName, { color: colors.text}]}>{data.name}</Text>
-                    <Text style={[styles.itemDetails, { color: colors.textSecondary}]}>
+                    <Text style={[styles.itemName, { color: colors.text }]}>{data.name}</Text>
+                    <Text style={[styles.itemDetails, { color: colors.textSecondary }]}>
                       {data.quantity} × ₱{data.price.toFixed(2)}
                     </Text>
                   </View>
-                  <Text style={[styles.itemTotal, { color: colors.text}]}>
-                  ₱{(data.price * data.quantity).toFixed(2)}
+                  <Text style={[styles.itemTotal, { color: colors.text }]}>
+                    ₱{(data.price * data.quantity).toFixed(2)}
                   </Text>
                 </View>
               ))}
             </View>
 
-            <View style={[styles.divider, {backgroundColor: colors.border}]} />
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
-            <View style={[styles.section, {borderColor: colors.border}]}>
+            <View style={[styles.section, { borderColor: colors.border }]}>
               <View style={styles.totalRow}>
-                <Text style={[styles.totalLabel, { color: colors.textSecondary}]}>Subtotal:</Text>
-                <Text style={[styles.totalValue, { color: colors.text}]}>₱{subtotal.toFixed(2)}</Text>
+                <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>Subtotal:</Text>
+                <Text style={[styles.totalValue, { color: colors.text }]}>₱{subtotal.toFixed(2)}</Text>
               </View>
               <View style={styles.totalRow}>
-                <Text style={[styles.totalLabel, { color: colors.textSecondary}]}>Tax (8%):</Text>
-                <Text style={[styles.totalValue, { color: colors.text}]}>₱{tax.toFixed(2)}</Text>
+                <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>Tax (8%):</Text>
+                <Text style={[styles.totalValue, { color: colors.text }]}>₱{tax.toFixed(2)}</Text>
               </View>
-              <View style={[styles.totalRow, styles.grandTotalRow, { borderColor: colors.border}]}>
-                <Text style={[styles.grandTotalLabel, { color: colors.text}]}>Total:</Text>
-                <Text style={[styles.grandTotalValue, { color: colors.text}]}>₱{total.toFixed(2)}</Text>
+              <View style={[styles.totalRow, styles.grandTotalRow, { borderColor: colors.border }]}>
+                <Text style={[styles.grandTotalLabel, { color: colors.text }]}>Total:</Text>
+                <Text style={[styles.grandTotalValue, { color: colors.text }]}>₱{total.toFixed(2)}</Text>
               </View>
             </View>
 
-            
+
           </ScrollView>
 
           {/* Footer */}
-          <View style={[styles.divider, {backgroundColor: colors.border}]} />
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
-            <View style={[styles.section, styles.paymentSection]}>
-              <Text style={[styles.sectionTitle, { color: colors.text}]}>Payment</Text>
-              <View style={[styles.cashInputContainer, {backgroundColor: colors.background, borderColor: colors.border}]}>
-                <PhilippinePeso size={20} color="#6B7280" />
-                <TextInput
-                  style={[styles.cashInput, { color: colors.text}]}
-                  placeholder="Enter cash received"
-                  placeholderTextColor="#9CA3AF"
-                  value={cashReceived}
-                  onChangeText={setCashReceived}
-                  keyboardType="numeric"
-                  selectTextOnFocus
-                />
-              </View>
-              
-              {cashAmount > 0 && (
-                <View style={[styles.changeSection, {backgroundColor: colors.background}]}>
-                  <View style={styles.totalRow}>
-                    <Text style={[styles.totalLabel, { color: colors.text}]}>Cash Received:</Text>
-                    <Text style={[styles.totalValue, { color: colors.text}]}>₱{cashAmount.toFixed(2)}</Text>
-                  </View>
-                  <View style={[styles.totalRow, styles.changeRow,  { borderColor: colors.border}]}>
-                    <Text style={[styles.changeLabel, { color: colors.text}]}>Change:</Text>
-                    <Text style={[
-                      styles.changeValue,
-                      { color: change >= 0 ? '#10B981' : '#EF4444' }
-                    ]}>
-                      {change < 0?'Insuficient Cash':`${Math.abs(change).toFixed(2)}`}
-                    </Text>
-                  </View>
-                </View>
-              )}
+          <View style={[styles.section, styles.paymentSection]}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Payment</Text>
+            <View style={[styles.cashInputContainer, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <PhilippinePeso size={20} color="#6B7280" />
+              <TextInput
+                style={[styles.cashInput, { color: colors.text }]}
+                placeholder="Enter cash received"
+                placeholderTextColor="#9CA3AF"
+                value={cashReceived}
+                onChangeText={setCashReceived}
+                keyboardType="numeric"
+                selectTextOnFocus
+              />
             </View>
-          <View style={[styles.footer, {borderColor: colors.border}]}>
-            <TouchableOpacity onPress={handleClose} style={[styles.cancelButton, { backgroundColor: colors.background}]}>
-              <Text style={[styles.cancelButtonText, { color: colors.textSecondary}]}>Cancel</Text>
+
+            {cashAmount > 0 && (
+              <View style={[styles.changeSection, { backgroundColor: colors.background }]}>
+                <View style={styles.totalRow}>
+                  <Text style={[styles.totalLabel, { color: colors.text }]}>Cash Received:</Text>
+                  <Text style={[styles.totalValue, { color: colors.text }]}>₱{cashAmount.toFixed(2)}</Text>
+                </View>
+                <View style={[styles.totalRow, styles.changeRow, { borderColor: colors.border }]}>
+                  <Text style={[styles.changeLabel, { color: colors.text }]}>Change:</Text>
+                  <Text style={[
+                    styles.changeValue,
+                    { color: change >= 0 ? '#10B981' : '#EF4444' }
+                  ]}>
+                    {change < 0 ? 'Insuficient Cash' : `${Math.abs(change).toFixed(2)}`}
+                  </Text>
+                </View>
+              </View>
+            )}
+          </View>
+          <View style={[styles.footer, { borderColor: colors.border }]}>
+            <TouchableOpacity onPress={handleClose} style={[styles.cancelButton, { backgroundColor: colors.background }]}>
+              <Text style={[styles.cancelButtonText, { color: colors.textSecondary }]}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handlePrintReceipt}
@@ -291,7 +299,7 @@ const styles = StyleSheet.create({
     padding: 20,
 
   },
-  
+
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600',

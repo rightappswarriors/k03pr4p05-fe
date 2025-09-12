@@ -1,26 +1,30 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, PanResponder, Animated, Dimensions, Pressable, Modal, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity
+  , Animated, Dimensions, ScrollView } from 'react-native';
 import { ChevronDown, ChevronUp, Filter, X } from 'lucide-react-native';
 import { Category } from '@/types';
 import Fuse from 'fuse.js';
+import { useResponsive } from "@/hooks/useResponsive"
 import { useTheme } from '@/contexts/ThemeContext';
+import { usePOS } from "@/contexts/POSContext"
 interface CategoryDropdownProps {
-  categories: Category[];
-  selectedCategory: string | null;
-  searchQuery: string;
   onCategorySelect: (categoryId: string | null) => void;
   onClearSearch: () => void;
   onToggleDropdown: any;
 }
 
+
 export function CategoryDropdown({
-  categories,
-  selectedCategory,
-  searchQuery,
-  onCategorySelect,
   onClearSearch,
-  onToggleDropdown,
+  onCategorySelect,
+  onToggleDropdown
 }: CategoryDropdownProps) {
+  const { 
+    categories,
+    selectedCategory,
+    searchQuery,
+  } = usePOS()
+  const { isDesktop} = useResponsive()
   const [isOpen, setIsOpen] = useState(false);
   const animatedHeight = useRef(new Animated.Value(0)).current;
   const screenHeight = Dimensions.get('window').height;
@@ -115,9 +119,9 @@ export function CategoryDropdown({
   if (categoriesToShow.length === 0 && searchQuery.trim() !== '') {
     // Return something for no search results if needed, or null.
   }
-
+  
   return (
-    <View style={[styles.container,]} pointerEvents="auto">
+    <View style={[styles.container, isDesktop && { zIndex: 1000} ]} pointerEvents="auto">
       <TouchableOpacity
         style={[styles.filterInput, { backgroundColor: colors.card, borderColor: colors.card }]}
         onPress={toggleDropdown}
@@ -198,12 +202,14 @@ export function CategoryDropdown({
 const styles = StyleSheet.create({
   container: {
     position: 'relative',
+    
   },
   scrollContent: {
     paddingRight: 16,
     gap: 8,
   },
   selectedBadge: {
+    flex: 1,
     flexDirection: 'row',
     overflow: 'hidden',
     alignItems: 'center',
@@ -262,7 +268,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 5,
-    zIndex: 100, // ✅ ensure on top of ItemGrid
+    zIndex: 500, // ✅ ensure on top of ItemGrid
     //overflow: 'hidden',
   },
   dropdownContent: {

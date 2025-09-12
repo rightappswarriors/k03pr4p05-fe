@@ -71,7 +71,6 @@ export default function LoginScreenDefault({ user, onRemoveUser, isDesktop }: Pr
                          text: 'Yes',
                          onPress: async () => {
                               try {
-                                   console.log('removeUser')
                                    await removeUser()
                                    onRemoveUser()
                               } catch (error) {

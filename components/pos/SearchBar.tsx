@@ -4,6 +4,8 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
+  TouchableWithoutFeedback,
+  Keyboard,
 } from 'react-native';
 import { Search, ScanLine } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext'
@@ -37,11 +39,12 @@ export const SearchBar = forwardRef<TextInput, SearchBarProps>(({
   const { isTablet, isDesktop } = useResponsive()
 
   return (
-    <View style={[styles.container, styles.searchContainer,{borderColor: colors.border, backgroundColor: colors.background}]}>
+
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}><View style={[styles.container, styles.searchContainer, { borderColor: colors.border, backgroundColor: colors.background }]}>
       <Search size={20} color="#6B7280" style={styles.searchIcon} />
       <TextInput
         ref={ref}
-        style={[styles.input, , isDesktop && {outline: 'none'}, , isTablet && {outline: 'none'}, { color: colors.text}]}
+        style={[styles.input, , isDesktop && { outline: 'none' }, , isTablet && { outline: 'none' }, { color: colors.text }]}
         placeholder="Search..."
         placeholderTextColor="#9CA3AF"
         value={value}
@@ -51,10 +54,12 @@ export const SearchBar = forwardRef<TextInput, SearchBarProps>(({
         autoCapitalize="none"
         autoCorrect={false}
       />
-      <TouchableOpacity onPress={onScanPress} style={[styles.scanButton, {backgroundColor: colors.surface}]}>
+      <TouchableOpacity onPress={onScanPress} style={[styles.scanButton, { backgroundColor: colors.surface }]}>
         <ScanLine size={20} color="#3B82F6" />
       </TouchableOpacity>
     </View>
+    </TouchableWithoutFeedback>
+
   );
 });
 
@@ -64,7 +69,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    
+
   },
   searchContainer: {
     flex: 1,
@@ -83,7 +88,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     color: '#1F2937',
-    
+
   },
   scanButton: {
     width: 40,

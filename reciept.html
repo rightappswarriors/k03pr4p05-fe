@@ -6,20 +6,20 @@
       font-size: 12px;
       margin: 0;
       padding: 10px;
-      width: 200px;
+      width: 58mm;
     }
-    .center {
-      text-align: center;
-    }
-    .bold {
-      font-weight: bold;
-    }
-    .line {
-      border-bottom: 1px dashed #000;
-      margin: 5px 0;
-    }
+    .item { font-size: 8; }
+    .center { text-align: center; }
+    .left { text-align: left; }
+    .right { text-align: right; }
+    .bold { font-weight: bold; }
+    .line { border-bottom: 1px dashed #000; margin: 5px 0; }
+    table { width: 100%; border-collapse: collapse; }
+    td { padding: 2px 0; }
+    
   </style>
 </head>
+
 <body>
   <div class="center bold">RECEIPT</div>
   <div class="line"></div>
@@ -36,11 +36,12 @@
     <style>
       body {
         font-family: 'Courier New', monospace;
-        font-size: 12px;
+        font-size: 11px;
         margin: 0;
         padding: 10px;
         width: 200px;
       }
+      .item { font-size: 11px }
       .center {
         text-align: center;
       }
@@ -69,79 +70,107 @@
   <body>
     <div class="center bold">RECEIPT</div>
     <div class="line"></div>
-    <div class="center">Store POS System</div>
-    <div class="line"></div>
-    <div>Order: #36575419</div>
-    <div>Date: 8/29/2025</div>
-    <div>Time: 11:02:55 AM</div>
-    <div>Cashier: Rusiana Emmanuel</div>
+    <div class="center">POS Vine Mart</div>
+    <div class="center">123 Main St, Cebu City</div>
+    <div class="center">Tin: 123-456-789</div>
+    <div class="center">Vat Registered</div>
+    <div class="center">PTU#: PTU-987654</div>
+    <div class="center">BIR Accredation No: SASP-12345</div>
+  
+    <table>
+      <tr>  
+        <td>Terminal ID: POS-000123</td>
+        <td class="right">SN: 000123</td>
+      </tr>
+      <tr>  
+        <td>Order number: 0005121</td>
+        <td class="right">Date: 09/04/2025</td>
+      </tr>
+      <tr>  
+        <td></td>
+        <td class="right">Time: 02:32:15 PM</td>
+      </tr>
+    </table>
+  
     <div class="line"></div>
     <div class="center">You just bought</div>
     <div class="line"></div>
     <table>
       <tr>
-        <td>Wireless Bluetooth</td>
-        <td>1x</td>
-        <td>₱400.99</td>
+        <th>Item</th>
+        <th>Qty * Price</th>
+        <th>Amount</th>
+      </tr>
+      <tr>
+        <td class="item">Coke Mismo</td>
+        <td class="item">2 x 25.00</td>
+        <td class="item">₱50.00</td>
+      </tr>
+      <tr>
+        <td class="item">Piattos</td>
+        <td class="item">1 x 18.50</td>
+        <td class="item">₱18.50</td>
+      </tr>
+      <tr>
+        <td class="item">Lucky Me Pancit</td>
+        <td class="item">3 x 15.00</td>
+        <td class="item">₱45.00</td>
       </tr>
     </table>
+  
     <div class="line"></div>
     <table>
       <tr>
         <td>Subtotal:</td>
-        <td class="right">₱400.99</td>
+        <td class="right">₱113.50</td>
       </tr>
-      <tr class="bold">
-        <td>Total:</td>
-        <td class="right">₱410.99</td>
-      </tr>
-      <tr class="bold">
-        <td>Change:</td>
-        <td class="right">₱410.99</td>
+      <tr>
+        <td>SENIOR Discount 20%:</td>
+        <td class="right">₱22.70</td>
       </tr>
     </table>
+  
     <div class="line"></div>
     <table>
       <tr>
-        <td>VAT Exempt Sales:</td>
-        <td class="right">₱400.99</td>
+        <td>VAT Sales:</td>
+        <td class="right">₱900.00</td>
       </tr>
-      <tr class="bold">
-        <td>VATable Sales:</td>
-        <td class="right">₱410.99</td>
+      <tr>
+        <td>Vat (12%):</td>
+        <td class="right">₱900.00</td>
       </tr>
-      <tr class="bold">
+      <tr>
+        <td>VAT Zero Rated:</td>
+        <td class="right">₱0.00</td>
+      </tr>
+      <tr>
         <td>VAT (12%):</td>
-        <td class="right">₱410.99</td>
+        <td class="right">₱108.00</td>
       </tr>
       <tr class="bold">
-        <td>VAT (12%):</td>
-        <td class="right">₱410.99</td>
+        <td>CASH PAYED:</td>
+        <td class="right">₱200.00</td>
+      </tr>
+      <tr class="bold">
+        <td>TOTAL AMOUNT DUE:</td>
+        <td class="right">₱90.80</td>
       </tr>
     </table>
-    <div class="left">Transaction #:</div>
+  
+    <div class="left">Transaction #0005121</div>
     <div class="line"></div>
     <table>
-     <tr>
-       <td>SOLD TO:</td>
-       <td class="right">₱400.99</td>
-     </tr>
-     <tr class="bold">
-       <td>ADDRESS:</td>
-       <td class="right">₱410.99</td>
-     </tr>
-     <tr class="bold">
-       <td>Business Type:</td>
-       <td class="right">₱410.99</td>
-     </tr>
-     <tr class="bold">
-       <td>Signature:</td>
-       <td class="right">₱410.99</td>
-     </tr>
-   </table>
+      <tr class="bold">
+        <td>Change:</td>
+        <td class="right">₱109.20</td>
+      </tr>
+    </table>
+  
     <div class="line"></div>
-    <div class="center">Payment: Cash</div>
-    <div class="line"></div>
+    <div>Cashier: Cashier001</div>
+    <div>POS VERSION: Right Apps POSVine 1.0.0</div>
+    <div>THIS RECEIPT IS GENERATED BY:<br>BIR-ACCREDITED POS SYSTEM</div>
     <div class="center">Thank you for your business!</div>
   </body>
 </html>

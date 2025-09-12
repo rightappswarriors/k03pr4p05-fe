@@ -14,7 +14,6 @@ export function useTransactionSync({
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     loadOrders();
-    console.log('Refresh')
     // Listen for new orders and synced orders
     eventBus.on('orderCreated', loadOrders);
     eventBus.on('orderSynced', loadOrders);

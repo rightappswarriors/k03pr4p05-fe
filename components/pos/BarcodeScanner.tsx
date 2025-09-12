@@ -13,25 +13,26 @@ import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import { Audio } from 'expo-av';
 import { X, Flashlight, FlashlightOff } from 'lucide-react-native';
 import type { Item } from '@/types';
-
+import { usePOS } from '@/contexts/POSContext'
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 interface BarcodeScannerProps {
-  visible: boolean;
-  items: Item[];
   onClose: () => void;
-  onItemFound: (item: Item) => void;
 }
 
-export function BarcodeScanner({ visible, items, onClose, onItemFound }: BarcodeScannerProps) {
+export function BarcodeScanner({ onClose}: BarcodeScannerProps) {
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<CameraType>('back');
   const [flashEnabled, setFlashEnabled] = useState(false);
   const [scanned, setScanned] = useState(false);
   const [sound, setSound] = useState<Audio.Sound | null>(null);
   const scanTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
+  const { 
+    scannerVisible: visible,
+    items,
+    handleItemFound,
+  } = usePOS()
   useEffect(() => {
     loadBeepSound();
     return () => {
@@ -52,8 +53,9 @@ export function BarcodeScanner({ visible, items, onClose, onItemFound }: Barcode
         { shouldPlay: false }
       );
       setSound(beepSound);
-    } catch (error) {
-      console.log('Error loading beep sound:', error);
+    } catch (error:any) {
+      console.error('Error loading beep sound:', error);
+      throw new Error(error)
     }
   };
 
@@ -84,7 +86,7 @@ export function BarcodeScanner({ visible, items, onClose, onItemFound }: Barcode
           {
             text: 'Add to Cart',
             onPress: () => {
-              onItemFound(foundItem);
+              handleItemFound(foundItem);
               onClose();
             },
           },

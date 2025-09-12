@@ -29,12 +29,7 @@ export function ItemGrid({ items, loading, viewMode, onAddToCart, isDropdownOpen
   const [modalVisible, setModalVisible] = useState(false);
   const { isDesktop } = useResponsive()
   const { colors } = useTheme()
-  console.log('ITEMS: ', items)
-  items.forEach(item => {
 
-    console.log(item.name)
-
-  });
   const getNumColumns = () => {
     const availableWidth = screenWidth; // Full width
     if (availableWidth >= 1200) return 4;

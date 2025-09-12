@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
 import { RefreshCw } from 'lucide-react-native';
 import { OrderHistory } from '@/components/OrderHistoryItem';
 import { MockSyncService } from '@/services/mockSyncService';
@@ -8,7 +10,7 @@ import { useTheme } from '@/contexts/ThemeContext'
 import eventBus from '@/utils/eventBus';
 import { useResponsive } from '@/hooks/useResponsive'
 import { responsive } from '@/styles/desktopAndTablet';
-export default function HistoryScreen() {
+export default React.memo(function HistoryScreen() {
   const { colors } = useTheme()
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -22,8 +24,6 @@ export default function HistoryScreen() {
   useEffect(() => {
     // Initial load
     loadOrderStats();
-    console.log('Loading stats')
-
     const events = ['orderCreated', 'orderSynced', 'transactionCleared']
     const unsubscribe = () => {
       events.forEach(event => eventBus.off(event, loadOrderStats))
@@ -44,7 +44,7 @@ export default function HistoryScreen() {
     try {
       await MockSyncService.forceSyncNow();
       setRefreshTrigger(prev => prev + 1);
-      console.log('syncing')
+    
     } catch (error) {
       console.error('Refresh failed:', error);
     } finally {
@@ -53,7 +53,8 @@ export default function HistoryScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background, borderColor: colors.border}]}>
+    <SafeAreaView edges={['top']} 
+    style={[styles.container, { backgroundColor: colors.background, borderColor: colors.border}]}>
       <View style={[styles.header, {backgroundColor: colors.card}]}>
         <Text style={[styles.title, { color: colors.text}]}>Order History</Text>
         <TouchableOpacity 
@@ -86,7 +87,7 @@ export default function HistoryScreen() {
       <OrderHistory refreshTrigger={refreshTrigger} />
     </SafeAreaView>
   );
-}
+})
 
 const styles = StyleSheet.create({
   container: {

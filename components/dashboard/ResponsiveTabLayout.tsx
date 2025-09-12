@@ -1,11 +1,10 @@
-import { ShoppingCart, History,Printer, Settings } from 'lucide-react-native'
-import React from 'react'
+import { ShoppingCart, History, Printer, Settings } from 'lucide-react-native'
+import React, {useState, useEffect} from 'react'
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { StyleSheet, useWindowDimensions, Text, TouchableOpacity, View } from 'react-native'
 import { useTheme } from '@/contexts/ThemeContext'
 interface ResponsiveTabLayoutProps {
      children: React.ReactNode
-     currentRoute: string
-     onRouteChange: (route: string) => void
 }
 
 const TABS = [
@@ -14,15 +13,35 @@ const TABS = [
      { name: 'printer', title: 'Printer', icon: Printer },
      { name: 'settings', title: 'Settings', icon: Settings },
 ]
+import { useResponsive } from '@/hooks/useResponsive'
+import MainScreen from '@/app/(tabs)';
+import HistoryScreen from '@/app/(tabs)/history';
+import PrinterScreen from '@/app/(tabs)/printer';
+import SettingsScreen from '@/app/(tabs)/settings';
+export default function ResponsiveTab() {
+     const { isDesktop } = useResponsive()
+     const [currentRoute, setCurrentRoute] = useState('index')
 
-export default function ResponsiveTab({ children, currentRoute, onRouteChange }: ResponsiveTabLayoutProps) {
-     const { width } = useWindowDimensions()
-     const isNotMobile = width >= 768
+     const renderCurrentScreen = () => {
+          switch (currentRoute) {
+               case 'index':
+                    return <MainScreen />
+               case 'history':
+                    return <HistoryScreen />
+               case 'printer':
+                    return <PrinterScreen />
+               case 'settings':
+                    return <SettingsScreen />
+               default:
+                    return null
+          }
+     }
+
      const { colors } = useTheme()
-     if (isNotMobile) {
+     if (isDesktop) {
           return (
-               <View style={[styles.desktopContainer, {backgroundColor: colors.background}]}>
-                    <View style={[styles.sidebar, { borderColor: colors.border}]}>
+               <View style={[styles.desktopContainer, { backgroundColor: colors.background }]}>
+                    <SafeAreaView edges={['bottom']} style={[styles.sidebar, { borderColor: colors.border }]}>
                          {TABS.map((tab) => {
                               const IconComponent = tab.icon
                               const isActive = currentRoute === tab.name
@@ -30,7 +49,7 @@ export default function ResponsiveTab({ children, currentRoute, onRouteChange }:
                               return (
                                    <TouchableOpacity key={tab.name}
                                         style={[styles.sidebarTab, isActive && styles.sidebarTabActive]}
-                                        onPress={()=> onRouteChange(tab.name)}
+                                        onPress={() => setCurrentRoute(tab.name)}
                                    >
                                         <IconComponent
                                              size={20}
@@ -41,41 +60,13 @@ export default function ResponsiveTab({ children, currentRoute, onRouteChange }:
                                    </TouchableOpacity>
                               )
                          })}
-                    </View>
+                    </SafeAreaView>
                     <View style={styles.desktopContent}>
-                         {children}
+                         {renderCurrentScreen()}
                     </View>
                </View>
           )
      }
-     return (
-          <View style={styles.mobileContainer}>
-               <View style={styles.mobileContent}>
-                    {children}
-               </View>
-               <View style={[styles.bottomBar, {borderColor: colors.border, backgroundColor: colors.background}]}>
-                    {TABS.map((tab) => {
-                         const IconComponent = tab.icon
-                         const isActive = currentRoute === tab.name
-                         return (
-                              <TouchableOpacity
-                                   key={tab.name}
-                                   style={styles.bottomTab}
-                                   onPress={()=> onRouteChange(tab.name)}
-                              >
-                                   <IconComponent
-                                        size={20}
-                                        color={isActive ? '#2563EB' : colors.textSecondary}
-                                   />
-                                   <Text style={[styles.bottomTabText, {color: colors.textSecondary}, isActive && styles.bottomTabTextActive]}>
-                                        {tab.title}
-                                   </Text>
-                              </TouchableOpacity>
-                         )
-                    })}
-               </View>
-          </View>
-     )
 }
 
 const styles = StyleSheet.create({
@@ -105,17 +96,11 @@ const styles = StyleSheet.create({
      desktopContent: {
           flex: 1
      },
-     mobileContainer: {
-          flex: 1
-     },
-     mobileContent: {
-          flex: 1
-     },
      bottomBar: {
           flexDirection: 'row',
           backgroundColor: 'white',
           borderTopWidth: 1,
-          paddingVertical: 15 
+          paddingVertical: 15
      },
      bottomTab: {
           flex: 1,

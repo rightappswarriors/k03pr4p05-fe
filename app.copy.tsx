@@ -93,7 +93,6 @@ const App = () => {
       );
     }
 
-    console.log(pairedDevices.length);
     if (pairedDevices.length < 1) {
       scan();
       console.log("scanning...");

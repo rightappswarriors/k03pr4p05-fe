@@ -48,6 +48,7 @@ export interface Store {
   createdAt: string;
 }
 export interface Receipt {
+  user?: User
   store: {
     id: number
     name: string
@@ -55,10 +56,13 @@ export interface Receipt {
     address: string
     phone: string
     tin?: string
+    ptu?: string
+    bir?: string
     businessType?: string
     VATExempSales? : number
     VATableSales?: number
     VATZeroSale?: number
+    VatPercent?: number
     VAT? : number
   }
   transaction: {
@@ -75,6 +79,9 @@ export interface Receipt {
     total: number
     cashReceived: number
     change: number
+    discountType?: 'senior'|'promo' 
+    discountPercent?: number
+    discountTotal?: number
   }
   payment: {
     status: string

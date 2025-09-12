@@ -15,40 +15,35 @@ import { ViewToggle } from './ViewToggle';
 import { ShoppingCart } from 'lucide-react-native';
 import type { Item, Category } from '@/types';
 import { useTheme } from '@/contexts/ThemeContext'
-
+import { usePOS } from '@/contexts/POSContext'
+import { useResponsive } from '@/hooks/useResponsive';
 
 interface ItemBrowserProps {
-  items: Item[];
-  categories: Category[];
-  loading: boolean;
-  searchQuery: string;
-  selectedCategory: string | null;
-  onSearchChange: (query: string) => void;
-  onCategorySelect: (categoryId: string | null) => void;
-  onAddToCart: (item: Item, quantity: number) => void;
-  cartItemsCount: number;
-  onToggleCart: () => void;
-  onScanPress: () => void;
+  cartItemsCount: number
   style?: any;
   isDesktop?: boolean
+  onToggleCart: () => void
 }
 
 
 export function ItemBrowser({
-  items,
-  categories,
-  loading,
-  searchQuery,
-  selectedCategory,
-  onSearchChange,
-  onCategorySelect,
-  onAddToCart,
-  cartItemsCount,
-  onToggleCart,
-  onScanPress,
   style,
-  isDesktop,
+  cartItemsCount,
+  onToggleCart
 }: ItemBrowserProps) {
+  const {
+    filteredItems: items,
+    categories,
+    loading,
+    searchQuery,
+    selectedCategory,
+    setSearchQuery: onSearchChange,
+    setSelectedCategory: onCategorySelect,
+    addToCart: onAddToCart,
+    cartItems,
+    handleScanPress: onScanPress
+  } = usePOS()
+  const { isDesktop} = useResponsive()
   const { colors } = useTheme()
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -61,8 +56,6 @@ export function ItemBrowser({
   const unfocusedWidth = screenWidth * 0.55;
 
   const searchWidth = useRef(new Animated.Value(unfocusedWidth)).current;
-  const [open, setOpen] = useState(false);
-  const [value, setValue] = useState<string | null>(selectedCategory);
   const [dropdownItems, setDropdownItems] = useState(
     categories.map(c => ({ label: c.name, value: c.id })) // 👈 transform categories
   );
@@ -121,9 +114,6 @@ export function ItemBrowser({
         </View>
       </View>
       <CategoryDropdown
-        categories={categories}
-        selectedCategory={selectedCategory}
-        searchQuery={searchQuery}
         onCategorySelect={onCategorySelect}
         onClearSearch={() => {
           onSearchChange('');
@@ -137,7 +127,7 @@ export function ItemBrowser({
         loading={loading}
         viewMode={viewMode}
         onAddToCart={onAddToCart}
-      /> 
+      />
     </View>
   );
 }

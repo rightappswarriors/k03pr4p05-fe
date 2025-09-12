@@ -1,97 +1,77 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Alert, TextInput } from 'react-native';
-import { Printer, Bluetooth, Usb, Settings, CircleCheck as CheckCircle, Circle as XCircle, Wifi, Globe, Cloud } from 'lucide-react-native';
-import { PrinterService } from '@/services/printerService';
-import { useResponsive } from '@/hooks/useResponsive'
-import { useBluetooth } from "@/services/bluetoothService"
-export default function PrinterScreen() {
-  const { 
-    devices,
-    connectedDevice,
-    requestPermissions,
-    scanForBTDevices,
-    connectToDevice,
+import React, { useState } from 'react';
+import {
+  View,
+  StyleSheet,
+  Text,
+  ScrollView,
+  SafeAreaView,
+  TouchableOpacity,
+  Alert,
+  Platform
+} from 'react-native';
 
-  } = useBluetooth();
+import { useBluetooth } from "@/hooks/useBluetooth"
+
+import { Printer, Bluetooth, Usb, Settings, CircleCheck as CheckCircle, Circle as XCircle, Wifi, Globe, Cloud } from 'lucide-react-native';
+import { useTheme } from '@/contexts/ThemeContext'
+import { useResponsive } from '@/hooks/useResponsive';
+export default React.memo(function PrinterScreen() {
+  const {
+    colors
+  } = useTheme()
+  //if (Platform.OS === 'android') {
+    const {
+      devices,
+      printReceipt,
+      connectedDevice,
+      connectToPrinter,
+      scanForDevices } = useBluetooth()
+  //}
+  // Network connection inputs
+  const [networkPrinters, setNetworkPrinters] = useState<any[]>([]);
+
   const { isMobile } = useResponsive()
+  const [availableDevices, setAvailableDevices] = useState<any[]>([]);
   const [printerStatus, setPrinterStatus] = useState<'disconnected' | 'connected' | 'connecting'>('disconnected');
   const [connectionType, setConnectionType] = useState<'bluetooth' | 'usb' | 'ethernet' | 'wifi' | 'cloud' | null>(null);
-  const [availableDevices, setAvailableDevices] = useState<any[]>([]);
-  const [networkPrinters, setNetworkPrinters] = useState<any[]>([]);
-  const [cloudPrinters, setCloudPrinters] = useState<any[]>([]);
-  const [isScanning, setIsScanning] = useState(false);
   const [activeTab, setActiveTab] = useState<'bluetooth' | 'usb' | 'ethernet' | 'wifi' | 'cloud'>('bluetooth');
+  const [isScanning, setIsScanning] = useState(false);
 
-  // Network connection inputs
-  const [ipAddress, setIpAddress] = useState('192.168.1.100');
-  const [port, setPort] = useState('9100');
-  const [printerName, setPrinterName] = useState('Network Printer');
-
-  // Cloud connection inputs
-  const [cloudApiKey, setCloudApiKey] = useState('');
-  useEffect(() => {
-    PrinterService.initListeners();
-    PrinterService.subscribe('found', (rsp: any) => {
-      console.log('Found printer:', rsp);
-    });
-  }, []);
-  const [selectedCloudPrinter, setSelectedCloudPrinter] = useState<string>('');
-
-  useEffect(() => {
-    loadPrinterStatus();
-  }, []);
-
-  const loadPrinterStatus = async () => {
-    const status = await PrinterService.getPrinterStatus();
-    setPrinterStatus(status.isConnected ? 'connected' : 'disconnected');
-    setConnectionType(status.connectionType);
-  };
-
-  const scanForDevices = async (type: typeof activeTab) => {
+  const scanForDevicesList = async (type: typeof activeTab) => {
     setIsScanning(true);
     try {
       switch (type) {
         case 'bluetooth':
           try {
-            await scanForBTDevices()
+            scanForDevices()
             setAvailableDevices([connectedDevice, devices]);
           } catch (error: any) {
             console.error("Error: ", error)
             Alert.alert('Bluetooth Error', error.message);
             setAvailableDevices([]);
+          } finally {
+            setIsScanning(false)
           }
           break;
         case 'usb':
           try {
-            const usbDevices = await PrinterService.scanUSBDevices();
-            setAvailableDevices(usbDevices);
+            //const usbDevices = await PrinterService.scanUSBDevices();
+            //setAvailableDevices(usbDevices);
           } catch (error: any) {
             Alert.alert('USB Error', error.message);
             setAvailableDevices([]);
           }
           break;
-        case 'ethernet':
         case 'wifi':
           try {
-            const netDevices = type === 'wifi'
-              ? await PrinterService.scanWiFiPrinters()
-              : await PrinterService.scanNetworkPrinters();
-            setNetworkPrinters(netDevices);
+            //const netDevices = 
+            //const netDevices = type === 'wifi'
+            //? await PrinterService.scanWiFiPrinters()
+            //: await PrinterService.scanNetworkPrinters();
+            //setNetworkPrinters(netDevices);
           } catch (error: any) {
             Alert.alert('Network Error', error.message);
-            setNetworkPrinters([]);
-          }
-          break;
-        case 'cloud':
-          if (!cloudApiKey) {
-            Alert.alert('Error', 'Please enter your Cloud API key first');
-            return;
-          }
-          try {
-
-          } catch (error: any) {
-            Alert.alert('Cloud Error', error.message);
-            setCloudPrinters([]);
+            //setNetworkPrinters([]);
           }
           break;
       }
@@ -101,82 +81,6 @@ export default function PrinterScreen() {
       setIsScanning(false);
     }
   };
-
-  const connectToPrinter = async (deviceId: string, type: typeof activeTab, options?: any) => {
-    setPrinterStatus('connecting');
-    try {
-      const success = await PrinterService.connectToPrinter(deviceId, type, options);
-      if (success) {
-        setPrinterStatus('connected');
-        setConnectionType(type);
-        Alert.alert('Success', `${type.charAt(0).toUpperCase() + type.slice(1)} printer connected successfully`);
-      } else {
-        setPrinterStatus('disconnected');
-        Alert.alert('Error', 'Failed to connect to printer');
-      }
-    } catch (error: any) {
-      setPrinterStatus('disconnected');
-      Alert.alert('Connection Error', error.message || 'Connection failed');
-    }
-  };
-
-  const connectNetworkPrinter = async (printer: any) => {
-    await connectToPrinter(printer.id, activeTab, {
-      ipAddress: printer.ipAddress,
-      port: printer.port,
-      name: printer.name,
-    });
-  };
-
-  const connectManualNetwork = async () => {
-    if (!ipAddress || !port) {
-      Alert.alert('Error', 'Please enter IP address and port');
-      return;
-    }
-
-    await connectToPrinter(`manual_${ipAddress}:${port}`, activeTab, {
-      ipAddress,
-      port: parseInt(port),
-      name: printerName,
-    });
-  };
-
-  const connectCloudPrinter = async (printerId: string, printerName: string) => {
-    if (!cloudApiKey) {
-      Alert.alert('Error', 'Please enter your Cloud API key');
-      return;
-    }
-
-    await connectToPrinter(printerId, 'cloud', {
-      name: printerName,
-      apiKey: cloudApiKey,
-    });
-  };
-
-  const disconnectPrinter = async () => {
-    try {
-      await PrinterService.disconnectPrinter();
-      setPrinterStatus('disconnected');
-      setConnectionType(null);
-      Alert.alert('Success', 'Printer disconnected');
-    } catch (error) {
-      Alert.alert('Error', 'Failed to disconnect printer');
-    }
-  };
-
-  const testPrint = async () => {
-    try {
-      const success = await PrinterService.printTestReceipt();
-      if (success) {
-        Alert.alert('Success', 'Test receipt printed successfully');
-      } else {
-        Alert.alert('Error', 'Failed to print test receipt');
-      }
-    } catch (error: any) {
-      Alert.alert('Print Error', error.message || 'Print test failed');
-    }
-  };
-
   const getStatusIcon = () => {
     switch (printerStatus) {
       case 'connected':
@@ -223,25 +127,25 @@ export default function PrinterScreen() {
         Connect to a Bluetooth-enabled receipt printer
       </Text>
       <TouchableOpacity
-        style={styles.scanButton}
-        onPress={() => scanForDevices('bluetooth')}
-        disabled={isScanning}
+        style={[styles.scanButton, isScanning && { backgroundColor: colors.textSecondary }]}
+        onPress={() => scanForDevicesList('bluetooth')}
+        disabled={isScanning === true}
       >
         <Text style={styles.scanButtonText}>
           {isScanning ? 'Scanning...' : 'Scan for Bluetooth Devices'}
         </Text>
       </TouchableOpacity>
 
-      {availableDevices.length > 0 && (
+      {devices.length > 0 && (
         <View style={styles.devicesList}>
           <Text style={styles.devicesTitle}>Available Devices:</Text>
-          {availableDevices.map((device, index) => (
+          {devices.map((device, index) => (
             <TouchableOpacity
               key={index}
               style={styles.deviceItem}
-              onPress={() => connectToPrinter(device.id, 'bluetooth', { name: device.name })}
+              onPress={() => connectToPrinter(device.address)}
             >
-              <Text style={styles.deviceName}>{device.name}</Text>
+              <Text style={styles.deviceName}>{device.name ? device.name : 'Unnamed device'}</Text>
               <Text style={styles.deviceId}>{device.address || device.id}</Text>
             </TouchableOpacity>
           ))}
@@ -257,7 +161,7 @@ export default function PrinterScreen() {
       </Text>
       <TouchableOpacity
         style={styles.scanButton}
-        onPress={() => scanForDevices('usb')}
+        onPress={() => scanForDevicesList('usb')}
         disabled={isScanning}
       >
         <Text style={styles.scanButtonText}>
@@ -272,7 +176,7 @@ export default function PrinterScreen() {
             <TouchableOpacity
               key={index}
               style={styles.deviceItem}
-              onPress={() => connectToPrinter(device.id, 'usb', { name: device.name })}
+            //onPress={() => connectToPrinter(device.id, 'usb', { name: device.name })}
             >
               <Text style={styles.deviceName}>{device.name}</Text>
               <Text style={styles.deviceId}>{device.id}</Text>
@@ -282,75 +186,6 @@ export default function PrinterScreen() {
       )}
     </View>
   );
-
-  const renderNetworkContent = () => (
-    <View style={styles.connectionContent}>
-      <Text style={styles.connectionDescription}>
-        Connect to network printer via IP address (LAN/Ethernet)
-      </Text>
-
-      {/* Manual IP Entry */}
-      <View style={styles.manualEntry}>
-        <Text style={styles.inputLabel}>IP Address:</Text>
-        <TextInput
-          style={styles.textInput}
-          value={ipAddress}
-          onChangeText={setIpAddress}
-          placeholder="192.168.1.100"
-          keyboardType="numeric"
-        />
-
-        <Text style={styles.inputLabel}>Port:</Text>
-        <TextInput
-          style={styles.textInput}
-          value={port}
-          onChangeText={setPort}
-          placeholder="9100"
-          keyboardType="numeric"
-        />
-
-        <Text style={styles.inputLabel}>Printer Name:</Text>
-        <TextInput
-          style={styles.textInput}
-          value={printerName}
-          onChangeText={setPrinterName}
-          placeholder="Network Printer"
-        />
-
-        <TouchableOpacity style={styles.connectButton} onPress={connectManualNetwork}>
-          <Text style={styles.connectButtonText}>Connect</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Auto-discovered printers */}
-      <TouchableOpacity
-        style={styles.scanButton}
-        onPress={() => scanForDevices('ethernet')}
-        disabled={isScanning}
-      >
-        <Text style={styles.scanButtonText}>
-          {isScanning ? 'Scanning Network...' : 'Auto-Discover Network Printers'}
-        </Text>
-      </TouchableOpacity>
-
-      {networkPrinters.length > 0 && (
-        <View style={styles.devicesList}>
-          <Text style={styles.devicesTitle}>Discovered Printers:</Text>
-          {networkPrinters.map((printer, index) => (
-            <TouchableOpacity
-              key={index}
-              style={styles.deviceItem}
-              onPress={() => connectNetworkPrinter(printer)}
-            >
-              <Text style={styles.deviceName}>{printer.name}</Text>
-              <Text style={styles.deviceId}>{printer.ipAddress}:{printer.port}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
-    </View>
-  );
-
   const renderWiFiContent = () => (
     <View style={styles.connectionContent}>
       <Text style={styles.connectionDescription}>
@@ -359,7 +194,7 @@ export default function PrinterScreen() {
 
       <TouchableOpacity
         style={styles.scanButton}
-        onPress={() => scanForDevices('wifi')}
+        onPress={() => scanForDevicesList('wifi')}
         disabled={isScanning}
       >
         <Text style={styles.scanButtonText}>
@@ -374,11 +209,11 @@ export default function PrinterScreen() {
             <TouchableOpacity
               key={index}
               style={styles.deviceItem}
-              onPress={() => connectToPrinter(printer.id, 'wifi', {
-                ipAddress: printer.ipAddress,
-                port: printer.port,
-                name: printer.name,
-              })}
+            //onPress={() => connectToPrinter(printer.id, 'wifi', {
+            //  ipAddress: printer.ipAddress,
+            //  port: printer.port,
+            //  name: printer.name,
+            //})}
             >
               <Text style={styles.deviceName}>{printer.name}</Text>
               <Text style={styles.deviceId}>{printer.ipAddress}</Text>
@@ -388,58 +223,6 @@ export default function PrinterScreen() {
       )}
     </View>
   );
-
-  const renderCloudContent = () => (
-    <View style={styles.connectionContent}>
-      <Text style={styles.connectionDescription}>
-        Connect to cloud-enabled printers (Epson ePOS SDK)
-      </Text>
-
-      <View style={styles.manualEntry}>
-        <Text style={styles.inputLabel}>Cloud API Key:</Text>
-        <TextInput
-          style={styles.textInput}
-          value={cloudApiKey}
-          onChangeText={setCloudApiKey}
-          placeholder="Enter your Epson ePOS API key"
-          secureTextEntry
-        />
-
-        <TouchableOpacity
-          style={styles.scanButton}
-          onPress={() => scanForDevices('cloud')}
-          disabled={isScanning || !cloudApiKey}
-        >
-          <Text style={styles.scanButtonText}>
-            {isScanning ? 'Loading...' : 'Load Cloud Printers'}
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {cloudPrinters.length > 0 && (
-        <View style={styles.devicesList}>
-          <Text style={styles.devicesTitle}>Available Cloud Printers:</Text>
-          {cloudPrinters.map((printer, index) => (
-            <TouchableOpacity
-              key={index}
-              style={[
-                styles.deviceItem,
-                printer.status === 'offline' && styles.offlineDevice
-              ]}
-              onPress={() => printer.status === 'online' && connectCloudPrinter(printer.id, printer.name)}
-              disabled={printer.status === 'offline'}
-            >
-              <Text style={styles.deviceName}>{printer.name}</Text>
-              <Text style={[styles.deviceId, { color: printer.status === 'online' ? '#059669' : '#DC2626' }]}>
-                {printer.model} • {printer.status}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
-    </View>
-  );
-
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -460,10 +243,10 @@ export default function PrinterScreen() {
 
           {printerStatus === 'connected' && (
             <View style={styles.connectedActions}>
-              <TouchableOpacity style={styles.testButton} onPress={testPrint}>
+              <TouchableOpacity style={styles.testButton} onPress={printReceipt}>
                 <Text style={styles.testButtonText}>Print Test Receipt</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.disconnectButton} onPress={disconnectPrinter}>
+              <TouchableOpacity style={styles.disconnectButton}>
                 <Text style={styles.disconnectButtonText}>Disconnect</Text>
               </TouchableOpacity>
             </View>
@@ -480,18 +263,14 @@ export default function PrinterScreen() {
               <View style={styles.connectionTabs}>
                 {renderConnectionTab('bluetooth', Bluetooth, 'Bluetooth')}
                 {renderConnectionTab('usb', Usb, 'USB')}
-                {renderConnectionTab('ethernet', Globe, 'Ethernet')}
                 {renderConnectionTab('wifi', Wifi, 'WiFi')}
-                {renderConnectionTab('cloud', Cloud, 'Cloud')}
               </View>
 
               {/* Connection Content */}
               <View style={styles.connectionCard}>
                 {activeTab === 'bluetooth' && renderBluetoothContent()}
                 {activeTab === 'usb' && renderUSBContent()}
-                {activeTab === 'ethernet' && renderNetworkContent()}
                 {activeTab === 'wifi' && renderWiFiContent()}
-                {activeTab === 'cloud' && renderCloudContent()}
               </View>
             </View>
           </>
@@ -521,7 +300,7 @@ export default function PrinterScreen() {
       </ScrollView>
     </SafeAreaView>
   );
-}
+})
 
 const styles = StyleSheet.create({
   container: {
@@ -763,3 +542,4 @@ const styles = StyleSheet.create({
     paddingLeft: 8,
   },
 });
+

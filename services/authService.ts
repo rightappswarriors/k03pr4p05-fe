@@ -20,10 +20,6 @@ export const USER_DATA_KEY = Constants.expoConfig?.extra?.USER_DATA_KEY ?? "user
 export const BIOMETRIC_ENABLED_KEY = Constants.expoConfig?.extra?.BIOMETRIC_ENABLED_KEY ?? "biometric_enabled";
 export const REFRESH_TOKEN_KEY = Constants.expoConfig?.extra?.REFRESH_TOKEN_KEY ?? "refresh_token";
 
-console.log(AUTH_TOKEN_KEY)
-console.log(USER_DATA_KEY)
-console.log(USER_DATA_KEY)
-console.log(USER_DATA_KEY)
 // Platform-specific storage for auth tokens
 export const secureStorage = {
   async setItemAsync(key: string, value: string): Promise<void> {
@@ -70,7 +66,7 @@ export class AuthService {
   static async getTokens() {
     // ✅ Corrected: Use the correct keys for each token.
     const accessToken = await secureStorage.getItemAsync(AUTH_TOKEN_KEY);
-    console.log(accessToken)
+
     
     const refreshToken = await secureStorage.getItemAsync(REFRESH_TOKEN_KEY);
     return { accessToken, refreshToken };

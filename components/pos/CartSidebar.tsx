@@ -13,38 +13,34 @@ import {
 } from 'react-native';
 import { Trash2, ShoppingCart, CreditCard, X } from 'lucide-react-native';
 import { ReceiptModal } from './ReceiptModal';
-import type { CartItem } from '@/types';
 import { useTheme } from '@/contexts/ThemeContext'
 import { useTransactionSync } from '@/hooks/useTransactionSync';
 import { useResponsive } from '@/hooks/useResponsive';
+import { usePOS } from '@/contexts/POSContext'
+
 const { width: screenWidth } = Dimensions.get('window');
-const DESKTOP_BREAKPOINT = 1024;
+
 
 interface CartSidebarProps {
-  items: CartItem[];
-  isOpen: boolean;
-
-  onUpdateQuantity: (id: string, quantity: number) => void;
-  onRemoveItem: (id: string) => void;
-  onClearCart: () => void;
   onClose: () => void;
 
-  isDesktop?: boolean;
   screenWidth?: number;
 }
 
 export function CartSidebar({
-  items,
-  isOpen,
 
-  onUpdateQuantity,
-  onRemoveItem,
-  onClearCart,
   onClose,
-
-  isDesktop = false,
   screenWidth: currentScreenWidth = screenWidth,
 }: CartSidebarProps) {
+
+  const {
+    cartItems: items,
+    sidebarOpen: isOpen,
+    updateQuantity,
+    removeFromCart,
+    clearCart: onClearCart,
+  } = usePOS()
+  const { isDesktop } = useResponsive()
   const SIDEBAR_WIDTH = isDesktop
     ? currentScreenWidth * 0.3  // 30% on desktop
     : currentScreenWidth * 0.8; // 80% on mobile
@@ -53,7 +49,7 @@ export function CartSidebar({
   const overlayOpacity = useRef(new Animated.Value(isOpen ? 1 : 0)).current;
   const [receiptModalVisible, setReceiptModalVisible] = React.useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-  const { transactions, loading } = useTransactionSync({ refreshTrigger });
+  useTransactionSync({ refreshTrigger });
 
   useEffect(() => {
     let toValue: number;
@@ -163,26 +159,26 @@ export function CartSidebar({
                 <Image source={{ uri: data.image }} style={styles.itemImage} />
                 <View style={styles.itemDetails}>
                   <Text style={[styles.itemName, { color: colors.text }]} numberOfLines={2}>{data.name}</Text>
-                  <Text style={[styles.itemPrice, { color: colors.text }]}>${data.price.toFixed(2)}</Text>
+                  <Text style={[styles.itemPrice, { color: colors.text }]}>₱{data.price.toFixed(2)}</Text>
                   <View style={styles.quantityContainer}>
                     <TouchableOpacity
-                      onPress={() => onUpdateQuantity(data.id, data.quantity - 1)}
+                      onPress={() => updateQuantity(data.id, data.quantity - 1)}
                       style={[styles.quantityButton, { backgroundColor: colors.card }]}
                     >
                       <Text style={[styles.quantityButtonText, { color: colors.textSecondary }]}>-</Text>
                     </TouchableOpacity>
                     <TextInput
-                      style={[styles.quantityInput, { backgroundColor: colors.card, borderColor: colors.border, color: colors.textSecondary }, isDesktop && {outline: 'none'}, , isTablet && {outline: 'none'}]}
+                      style={[styles.quantityInput, { backgroundColor: colors.card, borderColor: colors.border, color: colors.textSecondary }, isDesktop && { outline: 'none' }, , isTablet && { outline: 'none' }]}
                       value={data.quantity.toString()}
                       onChangeText={(text) => {
                         const num = parseInt(text) || 0;
-                        onUpdateQuantity(data.id, num);
+                        updateQuantity(data.id, num);
                       }}
                       keyboardType="numeric"
                       selectTextOnFocus
                     />
                     <TouchableOpacity
-                      onPress={() => onUpdateQuantity(data.id, data.quantity + 1)}
+                      onPress={() => updateQuantity(data.id, data.quantity + 1)}
                       style={[styles.quantityButton, { backgroundColor: colors.card }]}
                     >
                       <Text style={[styles.quantityButtonText, { color: colors.textSecondary }]}>+</Text>
@@ -190,9 +186,9 @@ export function CartSidebar({
                   </View>
                 </View>
                 <View style={styles.itemRight}>
-                  <Text style={[styles.subtotal, { color: colors.text }]}>${(data.price * data.quantity).toFixed(2)}</Text>
+                  <Text style={[styles.subtotal, { color: colors.text }]}>₱{(data.price * data.quantity).toFixed(2)}</Text>
                   <TouchableOpacity
-                    onPress={() => onRemoveItem(data.id)}
+                    onPress={() => removeFromCart(data.id)}
                     style={styles.removeButton}
                   >
                     <Trash2 size={16} color="#EF4444" />
@@ -234,7 +230,6 @@ export function CartSidebar({
 
       <ReceiptModal
         visible={receiptModalVisible}
-        items={items}
         onClose={() => setReceiptModalVisible(false)}
         onPrintReceipt={handlePrintReceipt}
         onOrderPlaced={() => setRefreshTrigger(prev => prev + 1)} // ✅ Triggers reload

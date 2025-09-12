@@ -4,12 +4,13 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
+  
   Switch,
   Alert,
   Image,
   Platform,
 } from 'react-native';
+import { SafeAreaView} from 'react-native-safe-area-context'
 import {
   User,
   Shield,
@@ -35,7 +36,7 @@ import eventBus from '@/utils/eventBus';
 import { responsive } from '@/styles/desktopAndTablet'
 
 
-export default function SettingsScreen() {
+export default React.memo(function SettingsScreen() {
   const { user, logout, setBiometricEnabled, isBiometricSupported, isBiometricEnabled } = useAuth();
   const { theme, toggleTheme, colors } = useTheme()
   const [biometricSupported, setBiometricSupported] = useState(false);
@@ -114,7 +115,7 @@ export default function SettingsScreen() {
     );
   };
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} >
+    <SafeAreaView edges={['top']} style={[styles.container, { backgroundColor: colors.background }]} >
       <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
         <Text style={[styles.headerTitle, { color: colors.text }]}>Settings</Text>
         <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>Powered by Right Apps</Text>
@@ -279,4 +280,4 @@ export default function SettingsScreen() {
       </ScrollView>
     </SafeAreaView>
   );
-}
+})
