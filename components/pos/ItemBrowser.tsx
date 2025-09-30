@@ -36,14 +36,12 @@ export function ItemBrowser({
     categories,
     loading,
     searchQuery,
-    selectedCategory,
     setSearchQuery: onSearchChange,
     setSelectedCategory: onCategorySelect,
     addToCart: onAddToCart,
-    cartItems,
     handleScanPress: onScanPress
   } = usePOS()
-  const { isDesktop} = useResponsive()
+  const { isDesktop, isMobile} = useResponsive()
   const { colors } = useTheme()
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -101,7 +99,7 @@ export function ItemBrowser({
             viewMode={viewMode}
             onToggle={() => setViewMode(prev => prev === 'grid' ? 'list' : 'grid')}
           />
-          <TouchableOpacity onPress={onToggleCart} style={[styles.cartButton, { backgroundColor: colors.background }]}>
+          <TouchableOpacity disabled={!isMobile} onPress={onToggleCart} style={[styles.cartButton, { backgroundColor: colors.background }]}>
             <ShoppingCart size={20} color="#3B82F6" />
             {cartItemsCount > 0 && (
               <View style={styles.cartBadge}>

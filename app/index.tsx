@@ -23,6 +23,7 @@ export default function SplashScreen() {
      }, [isLoading, isAuthenticated, user])
 
      return (
+          
           <View style={[styles.container, { backgroundColor: colors.background}]}>
                <View style={styles.content}>
                     <Image source={{ uri: 'https://images.pexels.com/photos/30403369/pexels-photo-30403369.jpeg?auto=compress&cs=tinysrgb&w=200&h=200&fit=crop' }}

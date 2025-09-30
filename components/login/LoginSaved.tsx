@@ -23,14 +23,14 @@ interface Props {
      isDesktop?: boolean
 }
 export default function LoginScreenDefault({ user, onRemoveUser, isDesktop }: Props) {
-     const { colors} = useTheme()
+     const { colors } = useTheme()
      const [email, setEmail] = useState('')
      const [password, setPassword] = useState('')
      const [showPassword, setShowPassword] = useState(false)
      const { isLoading, setLoading } = useLoading()
      const [biometricSupported, setBiometricSupported] = useState(false)
      const [biometricEnabled, setBiometricEnabledState] = useState(false)
-     
+
      const { login, loginWithBiometric, removeUser, isBiometricSupported, isBiometricEnabled } = useAuth()
      const { isTablet } = useResponsive()
      useEffect(() => {
@@ -56,11 +56,11 @@ export default function LoginScreenDefault({ user, onRemoveUser, isDesktop }: Pr
                     try {
                          await removeUser()
                          onRemoveUser()
-                    } catch(error) {
+                    } catch (error) {
                          console.error('Failed to remove user', error);
                     }
                }
-           }
+          }
           else {
                Alert.alert('Remove Saved Acount',
                     'Are you sure you want to remove this user?',
@@ -84,7 +84,7 @@ export default function LoginScreenDefault({ user, onRemoveUser, isDesktop }: Pr
      }
      const handleLogin = async () => {
           if (!email.trim() || !password.trim()) {
-               if(isDesktop){
+               if (isDesktop) {
                     window.alert('Error Please enter both email and password')
                }
                else Alert.alert('Error', 'Please enter both email and password')
@@ -95,7 +95,7 @@ export default function LoginScreenDefault({ user, onRemoveUser, isDesktop }: Pr
                await login(email, password)
                router.replace('/(tabs)');
           } catch (error) {
-               if(isDesktop){
+               if (isDesktop) {
                     window.alert('Login Failed',)
                }
                else Alert.alert('Login Failed', (error as Error).message)
@@ -112,7 +112,7 @@ export default function LoginScreenDefault({ user, onRemoveUser, isDesktop }: Pr
      }
 
      return (
-          <SafeAreaView style={[styles.container, { backgroundColor: colors.background}]}>
+          <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
                <View style={styles.content}>
                     <View style={styles.header}>
                          <Image source={{
@@ -120,15 +120,15 @@ export default function LoginScreenDefault({ user, onRemoveUser, isDesktop }: Pr
                                    'https://static.vecteezy.com/system/resources/previews/002/534/006/original/social-media-chatting-online-blank-profile-picture-head-and-body-icon-people-standing-icon-grey-background-free-vector.jpg?auto=compress&cs=tinysrgb&w=200&h=200&fit=crop'
                          }}
                               style={styles.logo} />
-                         <Text style={[styles.title, { color: colors.text}]}>Welcome back</Text>
-                         <Text style={[styles.name, { color: colors.textSecondary}]}>{user.name}</Text>
+                         <Text style={[styles.title, { color: colors.text }]}>Welcome back</Text>
+                         <Text style={[styles.name, { color: colors.textSecondary }]}>{user.name}</Text>
                     </View>
 
                     <View style={[styles.form, isDesktop && responsive.desktopPadding, isTablet && responsive.tabletPadding]}>
                          <View style={styles.inputContainer}>
-                              <View style={[styles.passwordContainer, { backgroundColor: colors.card, borderColor: colors.border}]}>
+                              <View style={[styles.passwordContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
                                    <TextInput
-                                        style={[styles.passwordInput, {color: colors.text, borderWidth: 0, }, isDesktop && {outline: 'none'}, , isTablet && {outline: 'none'}]}
+                                        style={[styles.passwordInput, { color: colors.text, borderWidth: 0, }, isDesktop && { outline: 'none' }, isTablet && { outline: 'none' }]}
                                         placeholder='Enter your password'
                                         placeholderTextColor="#9CA3AF"
                                         value={password}
@@ -137,7 +137,7 @@ export default function LoginScreenDefault({ user, onRemoveUser, isDesktop }: Pr
                                         secureTextEntry={!showPassword}
                                         autoCapitalize='none'
                                         autoCorrect={false}
-                                        underlineColorAndroid={isDesktop && isTablet ? "transparent": ""}
+                                        underlineColorAndroid={isDesktop && isTablet ? "transparent" : ""}
                                    />
                                    <TouchableOpacity style={styles.eyeButton}
                                         onPress={() => setShowPassword(!showPassword)}>
@@ -167,10 +167,10 @@ export default function LoginScreenDefault({ user, onRemoveUser, isDesktop }: Pr
 
                     </View>
                     <View style={styles.demoSection}>
-                         <Text style={[styles.demoTitle, { color: colors.textSecondary}]}>Not you?</Text>
+                         <Text style={[styles.demoTitle, { color: colors.textSecondary }]}>Not you?</Text>
                          <View style={styles.demoButtons}>
-                              <TouchableOpacity onPress={() => handleRemoveUser()} style={[styles.demoButton, { backgroundColor: colors.card}]}>
-                                   <Text style={[styles.demoButtonText, { color: colors.text}]}>
+                              <TouchableOpacity onPress={() => handleRemoveUser()} style={[styles.demoButton, { backgroundColor: colors.card }]}>
+                                   <Text style={[styles.demoButtonText, { color: colors.text }]}>
                                         Log in with a different account.
                                    </Text>
                               </TouchableOpacity>

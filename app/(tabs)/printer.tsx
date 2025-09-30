@@ -7,12 +7,11 @@ import {
   SafeAreaView,
   TouchableOpacity,
   Alert,
-  Platform
 } from 'react-native';
 
 import { useBluetooth } from "@/hooks/useBluetooth"
 
-import { Printer, Bluetooth, Usb, Settings, CircleCheck as CheckCircle, Circle as XCircle, Wifi, Globe, Cloud } from 'lucide-react-native';
+import { Printer, Bluetooth, Usb, Settings, CircleCheck as CheckCircle, Circle as XCircle, Wifi, } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext'
 import { useResponsive } from '@/hooks/useResponsive';
 export default React.memo(function PrinterScreen() {

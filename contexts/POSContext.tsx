@@ -9,7 +9,6 @@ const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 const DESKTOP_BREAKPOINT = 1024;
 
 import { AUTH_TOKEN_KEY, API_BASE_URL, secureStorage } from '@/services/authService'
-import { useStore } from '@/contexts/StoreContext';
 import { mockCategories, mockItems } from '@/data/mockData';
 import { useAuth } from './AuthContext';
 import http from '@/services/httpServices';
@@ -194,6 +193,6 @@ export const CartProvider = ({ children }: CartProviderProps) => {
 
 export const usePOS = () => {
   const context = useContext(POSContext)
-  if (!context) throw new Error("useCart must be within CartProvider")
+  if (!context) throw new Error("usePOS must be used within CartProvider")
   return context
 };

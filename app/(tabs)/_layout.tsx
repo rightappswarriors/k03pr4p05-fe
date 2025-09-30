@@ -8,9 +8,11 @@ import HistoryScreen from './history'
 import SettingsScreen from './settings';
 import ResponsiveTab from '@/components/dashboard/ResponsiveTabLayout';
 import PrinterScreen from './printer';
+import { useTheme } from '@/contexts/ThemeContext'
 import { useResponsive } from '@/hooks/useResponsive'
 import { Printer, Settings, ShoppingCart, History } from 'lucide-react-native';
 export default function TabLayout() {
+  const { colors } = useTheme()
   const { isDesktop, isMobile } = useResponsive()
   useEffect(() => {
     MockSyncService.startBackgroundSync();
@@ -40,11 +42,23 @@ export default function TabLayout() {
   }
   if (!isMobile) {
     return (
-      <ResponsiveTab/>
+      <ResponsiveTab />
     );
   } else {
     return (
-      <Tabs screenOptions={{ headerShown: false }}>
+      <Tabs screenOptions={{
+        headerShown: false,
+
+        tabBarActiveTintColor: colors.primary,  // active icon & label color
+        tabBarInactiveTintColor: colors.text,   // inactive icon & label color
+        tabBarStyle: {
+          backgroundColor: colors.background,       // tab bar background
+          borderColor: colors.card,           // border color
+          borderTopWidth: 1,                        // border thickness
+          elevation: 0,                             // remove shadow on Android
+          shadowOpacity: 0,                         // remove shadow on iOS
+        },
+      }}>
         <Tabs.Screen
           name="index"
           options={{ tabBarIcon: ({ color }) => <ShoppingCart size={20} color={color} />, title: 'POS' }}

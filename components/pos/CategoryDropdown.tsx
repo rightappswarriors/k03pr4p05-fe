@@ -115,9 +115,12 @@ export function CategoryDropdown({
       );
     }
   };
-
   if (categoriesToShow.length === 0 && searchQuery.trim() !== '') {
-    // Return something for no search results if needed, or null.
+    return (
+      <View style={{ padding: 16 }}>
+        <Text>No results</Text>
+      </View>
+    );
   }
   
   return (

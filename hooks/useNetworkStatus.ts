@@ -1,43 +1,27 @@
-import { useState, useEffect } from 'react';
-import * as Network from 'expo-network';
+import * as Network from "expo-network";
+import { useEffect, useState } from "react";
 
-export function useNetworkStatus() {
-  const [isOnline, setIsOnline] = useState(true);
-  const [isChecking, setIsChecking] = useState(true);
+export default function useNetworkStatus() {
+  const [isConnected, setIsConnected] = useState<boolean>(true);
 
   useEffect(() => {
-    let intervalId: number;
+    // Subscribe to network state changes
+    const subscription = Network.addNetworkStateListener((state) => {
+      const connected =
+        !!state.isConnected && !!state.isInternetReachable;
+      setIsConnected(connected);
+    });
 
-    const checkNetworkStatus = async () => {
-      try {
-        const networkState = await Network.getNetworkStateAsync();
-        const isConnected = networkState.isConnected ?? false;
-        const isReachable = networkState.isInternetReachable ?? false;
+    // Initial check (in case subscription doesn’t fire immediately)
+    (async () => {
+      const state = await Network.getNetworkStateAsync();
+      const connected =
+        !!state.isConnected && !!state.isInternetReachable;
+      setIsConnected(connected);
+    })();
 
-        const online = isConnected && isReachable;
-
-        setIsOnline(online);
-      } catch (error: any) {
-        console.error('Network check failed:', error);
-        setIsOnline(false);
-        throw new Error("Error uppon checking network:", error)
-      } finally {
-        setIsChecking(false);
-      }
-    };
-
-    // Initial check
-    checkNetworkStatus();
-
-    // Set up periodic checks
-    intervalId = setInterval(checkNetworkStatus, 5000);
-
-    return () => {
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
-    };
+    return () => subscription.remove();
   }, []);
 
-  return { isOnline, isChecking };
+  return isConnected;
 }

@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { Trash2, ShoppingCart, CreditCard, X } from 'lucide-react-native';
 import { ReceiptModal } from './ReceiptModal';
+import { ReceiptModalBigScreen} from './ReceiptModalBigScreen'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useTransactionSync } from '@/hooks/useTransactionSync';
 import { useResponsive } from '@/hooks/useResponsive';
@@ -28,7 +29,6 @@ interface CartSidebarProps {
 }
 
 export function CartSidebar({
-
   onClose,
   screenWidth: currentScreenWidth = screenWidth,
 }: CartSidebarProps) {
@@ -40,7 +40,7 @@ export function CartSidebar({
     removeFromCart,
     clearCart: onClearCart,
   } = usePOS()
-  const { isDesktop } = useResponsive()
+  const { isDesktop, isMobile } = useResponsive()
   const SIDEBAR_WIDTH = isDesktop
     ? currentScreenWidth * 0.3  // 30% on desktop
     : currentScreenWidth * 0.8; // 80% on mobile
@@ -113,7 +113,6 @@ export function CartSidebar({
           />
         </Animated.View>
       )}
-
       {/* Sidebar */}
       <Animated.View
         style={[
@@ -125,7 +124,6 @@ export function CartSidebar({
             }],
           },
         ]}
-
       >
         {/* Header */}
         <View style={[styles.header, { backgroundColor: colors.surface, borderColor: colors.border }]} >
@@ -142,9 +140,7 @@ export function CartSidebar({
             {/* Brand Name */}
             <Text style={[styles.companyName, { color: colors.text }]}>POS Vine</Text>
           </View>
-
         </View>
-
         {/* Cart Items */}
         <ScrollView style={[styles.itemsList, { backgroundColor: colors.background, borderBottomColor: colors.border }]} showsVerticalScrollIndicator={false}>
           {items.length === 0 ? (
@@ -168,7 +164,7 @@ export function CartSidebar({
                       <Text style={[styles.quantityButtonText, { color: colors.textSecondary }]}>-</Text>
                     </TouchableOpacity>
                     <TextInput
-                      style={[styles.quantityInput, { backgroundColor: colors.card, borderColor: colors.border, color: colors.textSecondary }, isDesktop && { outline: 'none' }, , isTablet && { outline: 'none' }]}
+                      style={[styles.quantityInput, { backgroundColor: colors.card, borderColor: colors.border, color: colors.textSecondary }, isDesktop && { outline: 'none' }, isTablet && { outline: 'none' }]}
                       value={data.quantity.toString()}
                       onChangeText={(text) => {
                         const num = parseInt(text) || 0;
@@ -198,7 +194,6 @@ export function CartSidebar({
             ))
           )}
         </ScrollView>
-
         {/* Footer */}
         <View style={[styles.footer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={styles.totalContainer}>
@@ -228,12 +223,21 @@ export function CartSidebar({
         </View>
       </Animated.View>
 
-      <ReceiptModal
-        visible={receiptModalVisible}
-        onClose={() => setReceiptModalVisible(false)}
-        onPrintReceipt={handlePrintReceipt}
-        onOrderPlaced={() => setRefreshTrigger(prev => prev + 1)} // ✅ Triggers reload
-      />
+      {isMobile ? (
+        <ReceiptModal
+          visible={receiptModalVisible}
+          onClose={() => setReceiptModalVisible(false)}
+          onPrintReceipt={handlePrintReceipt}
+          onOrderPlaced={() => setRefreshTrigger(prev => prev + 1)} // ✅ Triggers reload
+        />) : (
+        <ReceiptModalBigScreen
+          visible={receiptModalVisible}
+          onClose={() => setReceiptModalVisible(false)}
+          onPrintReceipt={handlePrintReceipt}
+          onOrderPlaced={() => setRefreshTrigger(prev => prev + 1)} // ✅ Triggers reload
+        />
+        )
+      }
     </>
   );
 }

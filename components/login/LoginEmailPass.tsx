@@ -120,22 +120,6 @@ export default function LoginScreenDefault({ isDesktop }: Props) {
                                         <Text style={styles.loginButtonText}>Sign In</Text>
                               }</TouchableOpacity>
                     </View>
-                    {/** <View style={styles.demoSection}>
-                         <Text style={[styles.demoTitle, { color: colors.textSecondary}]}>Demo Accounts</Text>
-                         <View style={styles.demoButtons}>
-                              <TouchableOpacity onPress={() => fillDemoCredentials('owner')} style={[styles.demoButton, {backgroundColor: colors.card}]}>
-                                   <Text style={[styles.demoButtonText, { color: colors.text}]}>
-                                        Owner Demo
-                                   </Text>
-                              </TouchableOpacity>
-                              <TouchableOpacity style={[styles.demoButton, {backgroundColor: colors.card}]} onPress={() => fillDemoCredentials('cashier')}>
-                                   <Text style={[styles.demoButtonText, { color: colors.text}]}>
-                                        Cashier Demo
-                                   </Text>
-                              </TouchableOpacity>
-                         </View>
-                    </View>
-                    */}
                </View>
           </SafeAreaView>
      )

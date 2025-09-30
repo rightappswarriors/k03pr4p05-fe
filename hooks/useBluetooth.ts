@@ -289,10 +289,6 @@ export function useBluetooth() {
       await BluetoothEscposPrinter.printerAlign(
         BluetoothEscposPrinter.ALIGN.RIGHT
       );
-      await BluetoothEscposPrinter.printText(
-        `${receipt.store.VATableSales}\n`,
-        {}
-      );
       
       // Vat (12%): ######
       await BluetoothEscposPrinter.printerAlign(
@@ -306,7 +302,7 @@ export function useBluetooth() {
         BluetoothEscposPrinter.ALIGN.RIGHT
       );
       await BluetoothEscposPrinter.printText(
-        `${receipt.store.VATExempSales}\n`,
+        `${receipt.totals.vatAmount}\n`,
         {}
       );
       // Cash Payed

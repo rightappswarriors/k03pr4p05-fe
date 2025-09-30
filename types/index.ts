@@ -8,9 +8,9 @@ export interface Item {
   barcode?: string;
   description?: string;
   brand?: string; // ✅ already added
+  vatable: boolean,
   color?: string; // ✅ add this if you want to sort/filter by item color
 }
-
 export interface CartItem extends Item {
   quantity: number;
 }
@@ -31,6 +31,11 @@ export interface User {
   profilePhoto?: string;
 }
 
+
+export type EWalletMethod = "PH_GCASH" | "PH_PAYMAYA";
+// You can also refine your PaymentMethod to include E-Wallet details
+export type PaymentMethod = 'cash' | 'e-wallet' | 'card';
+
 export interface Store {
   id: string;
   branchId: string;
@@ -43,28 +48,40 @@ export interface Store {
   serviceCharge: number;
   outletType: 'retail' | 'wholesale' | 'service';
   assignedStaff?: string;
+  isVatRegistered: boolean,
+  VatPercent: number
+  VATZeroSale: number
   ownerId: string;
   isActive: boolean;
   createdAt: string;
+  tin: string,
+  ptu: string,
+  bir: string,
+  discountOption: Record<DiscountType, number>;
+}
+export interface DiscountOptions {
+  type: DiscountType;
+  promoPercent?: number; // only used if type === "Promo"
+}
+
+export type DiscountType = 'SENIOR' | 'PWD' | 'PROMO' | "NONE";
+
+// Define the type of methods the parent can call
+export type PaymentBottomSheetRef = {
+  open: () => void;
+  close: () => void;
+};
+
+export interface CalculationResult {
+  subtotal: number; // in pesos
+  discount: number; // in pesos
+  vatAmount: number; // in pesos
+  total: number; // in pesos
+  discountRate: any
 }
 export interface Receipt {
   user?: User
-  store: {
-    id: number
-    name: string
-    logo?: string
-    address: string
-    phone: string
-    tin?: string
-    ptu?: string
-    bir?: string
-    businessType?: string
-    VATExempSales? : number
-    VATableSales?: number
-    VATZeroSale?: number
-    VatPercent?: number
-    VAT? : number
-  }
+  store: Store,
   transaction: {
     id: string
     date: string
@@ -74,12 +91,12 @@ export interface Receipt {
   }
   items: Item[]
   totals: {
-    tax: number
+    vatAmount: number
     subtotal: number
     total: number
     cashReceived: number
     change: number
-    discountType?: 'senior'|'promo' 
+    discountType?: 'SENIOR'|'PROMO' | "PWD" 
     discountPercent?: number
     discountTotal?: number
   }

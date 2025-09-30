@@ -1,5 +1,6 @@
-import React, { useRef, useEffect, useState } from 'react';
-import { Checkbox } from 'react-native-paper';
+import React, { useEffect, useState } from 'react';
+import { Checkbox, RadioButton } from 'react-native-paper';
+import { PrinterService } from "@/services/printerService"
 // import our event bus
 import {
   Modal,
@@ -9,21 +10,18 @@ import {
   TextInput,
   StyleSheet,
   ScrollView,
+  Alert,
   Image,
+  Platform
 } from 'react-native';
-import { PaymentBottomSheetRef } from "@/types"
-import { X, Printer, PhilippinePeso, CreditCard } from 'lucide-react-native';
-import type { DiscountType } from '@/types';
+import { X, Printer, PhilippinePeso } from 'lucide-react-native';
+import type { DiscountType, Receipt } from '@/types';
 import { useTheme } from '@/contexts/ThemeContext'
-import { usePOS } from '@/contexts/POSContext';
+import { TransactionService } from '@/services/orderService';
+import { usePOS } from '@/contexts/POSContext'
 import { calculateTotal } from '@/hooks/calculateTotal'
 import { storeData } from '@/data/mockData';
-import DiscountModal from './DiscountModal';
-import PaymentBottomSheet from '@/components/pos/paymentMethod/PaymentBottomSheet';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-
-import { ReceiptService } from '@/services/paymentService';
-import useNetworkStatus from '@/hooks/useNetworkStatus';
+import { DiscountRadio } from './DiscountRadio';
 interface ReceiptModalProps {
   visible: boolean;
   onClose: () => void;
@@ -32,29 +30,17 @@ interface ReceiptModalProps {
 }
 
 
-export function ReceiptModal({ visible, onClose, onOrderPlaced }: ReceiptModalProps) {
-  const paymentSheetRef = useRef<PaymentBottomSheetRef>(null);
-  const isConnected = useNetworkStatus();
-
-  <TouchableOpacity
-    disabled={!isConnected} // disable button if offline
-    onPress={() => paymentSheetRef.current?.open()}
-  >
-    <Text>
-      {isConnected ? "Payment Method" : "Offline: Payment Disabled"}
-    </Text>
-  </TouchableOpacity>
+export function ReceiptModalBigScreen({ visible, onClose, onOrderPlaced }: ReceiptModalProps) {
 
   const {
     cartItems: items,
     clearCart
   } = usePOS()
-  const { colors, theme } = useTheme()
+  const { colors } = useTheme()
   const [cashReceived, setCashReceived] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [discountOption, setDiscountOption] = useState<DiscountType>('NONE')
   const [isDiscounted, setIsDiscounted] = useState(false)
-  const [isVisible, setIsVisible] = useState(false)
   useEffect(() => {
     if (!isDiscounted) {
       setDiscountOption('NONE')
@@ -66,25 +52,71 @@ export function ReceiptModal({ visible, onClose, onOrderPlaced }: ReceiptModalPr
     vatAmount,
     discount,
     discountRate
-  } = calculateTotal(items, storeData, { type: discountOption })
+  } = calculateTotal(items, storeData, { type: isDiscounted ? discountOption : 'NONE' })
 
   const cashAmount = parseFloat(cashReceived) || 0;
   const change = cashAmount - total;
-  const handlePrintReceipt = () => {
+
+  const handlePrintReceipt = async () => {
+    if (cashAmount < total) {
+      Alert.alert('Insufficient Cash', 'Cash received is less than the total amount.');
+      return;
+    }
+
     setIsProcessing(true);
-    ReceiptService.processAndPrintReceipt({
+    await TransactionService.createOrder(
       items,
-      cashReceived: parseFloat(cashReceived) || 0,
-      paymentMethod: "cash",
-      discountOption,
-      onSuccess: () => {
-        setIsProcessing(false);
-        onOrderPlaced?.();
-        clearCart();
-        handleClose();
+      'cash', // payment method
+      cashAmount // cash received
+    );
+    onOrderPlaced?.();
+
+    const receiptData: Receipt = {
+      store: storeData,
+      transaction: {
+        id: `TXN-${Date.now()}`,
+        date: new Date().toISOString(),
+        timestamp: new Date().toLocaleString(),
+        cashier: 'POS System',
       },
-      onFail: () => setIsProcessing(false),
-    });
+      items: items.map(data => ({
+        id: data.id,
+        name: data.name,
+        price: data.price,
+        vatable: data.vatable,
+        quantity: data.quantity,
+        subtotal: data.price * data.quantity,
+        barcode: data.barcode,
+      })),
+      totals: {
+        subtotal: parseFloat(subtotal.toFixed(2)),
+        vatAmount: parseFloat(vatAmount.toFixed(2)),
+        total: parseFloat(total.toFixed(2)),
+        cashReceived: parseFloat(cashAmount.toFixed(2)),
+        change: parseFloat(change.toFixed(2)),
+      },
+      payment: {
+        method: 'Cash',
+        status: 'Completed',
+      },
+    };
+
+    // Simulate printing delay
+    setTimeout(() => {
+      setIsProcessing(false);
+      //PrinterService.printTestReceipt()
+      PrinterService.printOrderReceipt(receiptData)
+      if (Platform.OS === 'web') {
+        alert('Transaction completed successfully!')
+      }
+      Alert.alert(
+        'Receipt Printed',
+        'Transaction completed successfully!',
+        [{ text: 'OK', onPress: onClose }]
+      );
+      clearCart()
+      handleClose()
+    }, 2000);
   };
 
   const resetForm = () => {
@@ -97,128 +129,111 @@ export function ReceiptModal({ visible, onClose, onOrderPlaced }: ReceiptModalPr
     onClose();
   };
 
-
   return (
-    <>
-      <Modal visible={visible} animationType="slide" transparent
-        onRequestClose={() => {  // Android back button
-          onClose();
-        }}
-      >
-        <GestureHandlerRootView style={styles.modalContainer}>
-          <View style={styles.overlay}>
-            <TouchableOpacity
-              style={StyleSheet.absoluteFillObject}
-              activeOpacity={1}
-              onPress={() => {   // tap outside to close
-                onClose();
-              }}
-            />
-            <View style={[styles.modal, { backgroundColor: colors.card }]}>
-              {/* Header */}
-              <View style={[styles.header, { borderColor: colors.border }]}>
-                <View style={styles.headerLeft}>
-                  <Image
-                    source={{ uri: 'https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop' }}
-                    style={styles.logo}
-                  />
-                  <View>
-                    <Text style={[styles.storeName, { color: colors.text }]}>TechStore Pro</Text>
-                    <Text style={[styles.receiptTitle, { color: colors.textSecondary }]}>Receipt Summary {storeData.isVatRegistered ? 'Vat-Registered' : 'Non-Vat'}</Text>
-                  </View>
-                </View>
-                <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
-                  <X size={24} color={colors.textSecondary} />
-                </TouchableOpacity>
-              </View>
 
-              {/* Receipt Content */}
-              <ScrollView style={[styles.content, { borderColor: colors.border }]}>
-                <Text style={[styles.sectionTitle, { color: colors.text }]}>Items Purchased</Text>
-                {items.map((data) => (
-                  <View key={data.id} style={styles.itemRow}>
-                    <View style={styles.itemInfo}>
-                      <Text style={[styles.itemName, { color: colors.text }]}>{data.name}</Text>
-                      <Text style={[styles.itemDetails, { color: colors.textSecondary }]}>
-                        {data.quantity} × ₱{data.price.toFixed(2)}
-                      </Text>
-                    </View>
-                    <Text style={[styles.itemTotal, { color: colors.text }]}>
-                      ₱{(data.price * data.quantity).toFixed(2)}
+    <Modal visible={visible} animationType="slide" transparent
+      onRequestClose={() => {  // Android back button
+        onClose();
+      }}
+    >
+      <View style={styles.overlay}>
+        <TouchableOpacity
+          style={StyleSheet.absoluteFillObject}
+          activeOpacity={1}
+          onPress={() => {   // tap outside to close
+            onClose();
+          }}
+        />
+        <View style={[styles.modal, { backgroundColor: colors.card }]}>
+          {/* Header */}
+          <View style={[styles.header, { borderColor: colors.border }]}>
+            <View style={styles.headerLeft}>
+              <Image
+                source={{ uri: 'https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop' }}
+                style={styles.logo}
+              />
+              <View>
+                <Text style={[styles.storeName, { color: colors.text }]}>TechStore Pro</Text>
+                <Text style={[styles.receiptTitle, { color: colors.textSecondary }]}>Receipt Summary {storeData.isVatRegistered ? 'Vat-Registered' : 'Non-Vat'}</Text>
+              </View>
+            </View>
+            <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
+              <X size={24} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+          <View className='flex flex-row'>
+            {/* Receipt Content */}
+            <ScrollView style={[styles.content, { borderColor: colors.border }]}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Items Purchased</Text>
+              {items.map((data) => (
+                <View key={data.id} style={styles.itemRow}>
+                  <View style={styles.itemInfo}>
+                    <Text style={[styles.itemName, { color: colors.text }]}>{data.name}</Text>
+                    <Text style={[styles.itemDetails, { color: colors.textSecondary }]}>
+                      {data.quantity} × ₱{data.price.toFixed(2)}
                     </Text>
                   </View>
-                ))}
-                <View style={[styles.divider, { backgroundColor: colors.border }]} />
-              </ScrollView>
-
-              {/* Footer */}
-              <View style={[styles.divider, { backgroundColor: colors.border }]} />
-
-              <View style={[styles.section, styles.paymentSection]}>
-                <View style={[styles.section, { borderColor: colors.border }]}>
-                  <View style={styles.totalRow}>
-                    <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>Subtotal:</Text>
-                    <Text style={[styles.totalValue, { color: colors.text }]}>₱{subtotal.toFixed(2)}</Text>
-                  </View>
-                  {storeData.isVatRegistered && (discountOption === 'PROMO' || discountOption === "NONE") &&
-                    (
-                      <>
-                        <View style={styles.totalRow}>
-                          <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>VAT Amount({storeData.VatPercent * 100}%):</Text>
-                          <Text style={[styles.totalValue, { color: colors.text }]}>₱{vatAmount.toFixed(2)}</Text>
-                        </View>
-                      </>
-                    )
-                  }
-                  {isDiscounted &&
-                    <View style={styles.totalRow}>
-                      <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>Discount {discountOption} ({discountRate * 100}%):</Text>
-                      <Text style={[styles.totalValue, { color: colors.text }]}>₱{discount.toFixed(2)}</Text>
-                    </View>
-                  }
-                  <View style={[styles.totalRow, styles.grandTotalRow, { borderColor: colors.border }]}>
-                    <Text style={[styles.grandTotalLabel, { color: colors.text }]}>Total (VAT Included):</Text>
-                    <Text style={[styles.grandTotalValue, { color: colors.text }]}>₱{total.toFixed(2)}</Text>
-                  </View>
+                  <Text style={[styles.itemTotal, { color: colors.text }]}>
+                    ₱{(data.price * data.quantity).toFixed(2)}
+                  </Text>
                 </View>
-                <View className="flex flex-col align-center justify-between">
-                  <Text style={[styles.sectionTitle, { color: colors.text }]}>Payment</Text>
-                  <View className="flex flex-row justify-between align-center">
+              ))}
+              <View style={[styles.divider, { backgroundColor: colors.border }]} />
+            </ScrollView>
+
+            {/* Right: Payment sections */}
+            <View className="flex flex-1">
+              <View style={{ flex: 1, flexDirection: 'column', justifyContent: 'space-between' }}>
+                <View style={[styles.section, styles.paymentSection]} >
+                  {/* Subtotal */}
+                  <View style={[styles.section, { borderColor: colors.border }]}>
+                    <View style={styles.totalRow}>
+                      <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>Subtotal:</Text>
+                      <Text style={[styles.totalValue, { color: colors.text }]}>₱{subtotal.toFixed(2)}</Text>
+                    </View>
+                    {storeData.isVatRegistered && (discountOption === 'PROMO' || discountOption === "NONE") &&
+                      (
+                        <>
+                          <View style={styles.totalRow}>
+                            <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>VAT Amount({storeData.VatPercent * 100}%):</Text>
+                            <Text style={[styles.totalValue, { color: colors.text }]}>₱{vatAmount.toFixed(2)}</Text>
+                          </View>
+                        </>
+                      )
+                    }
+                    {isDiscounted &&
+                      <View style={styles.totalRow}>
+                        <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>Discount {discountOption} ({discountRate * 100}%):</Text>
+                        <Text style={[styles.totalValue, { color: colors.text }]}>₱{discount.toFixed(2)}</Text>
+                      </View>
+                    }
+                    <View style={[styles.totalRow, styles.grandTotalRow, { borderColor: colors.border }]}>
+                      <Text style={[styles.grandTotalLabel, { color: colors.text }]}>Total (VAT Included):</Text>
+                      <Text style={[styles.grandTotalValue, { color: colors.text }]}>₱{total.toFixed(2)}</Text>
+                    </View>
+                  </View>
+                  <View className="flex flex-row items-center justify-between">
+                    <Text style={[styles.sectionTitle, { color: colors.text }]}>Payment</Text>
+                  </View>
+
+                  <View>
                     <View style={{ flexDirection: "row", alignItems: "center" }}>
                       <Checkbox
-                        theme={{dark: theme === "dark"}}
-                        color={colors.primary}
                         status={isDiscounted ? "checked" : "unchecked"}
-                        onPress={() => {
-                          if (!isDiscounted) {
-                            setIsDiscounted(!isDiscounted);
-                          }
-                          setIsVisible(!isVisible)
-                        }}
+                        onPress={() => setIsDiscounted(!isDiscounted)}
                       />
-                      <Text style={{ color: colors.text}}>Apply Discount</Text>
+                      <Text>Apply Discount</Text>
                     </View>
-                    <View style={{ flexDirection: "row", alignItems: "center" }}>
-                      <TouchableOpacity
-                        className="flex-row justitfy-center align-center gap-1"
-                        
-                        disabled={!isConnected} // 👈 disable touch if offline
-                        onPress={() => paymentSheetRef.current?.open()} // 👈 open bottom sheet
-                      >
-                        <Text style={[{ color: colors.text}, !isConnected ? {color: colors.warning} : {color: colors.primary}]}>
-                          {isConnected ? "Payment Method" : "Offline"}
-                        </Text>
-                        <CreditCard size={24} color={ !isConnected ? colors.warning : colors.primary} />
-                      </TouchableOpacity>
-                    </View>
-                    <DiscountModal
-                      isVisible={isVisible}
-                      onClose={() => setIsVisible(false)}
-                      setIsDiscounted={() => setIsDiscounted(false)}
-                      isDiscounted={isDiscounted}
-                      discountOption={discountOption}
-                      setDiscountOption={setDiscountOption}
-                    />
+                    <RadioButton.Group
+                      onValueChange={(value) => setDiscountOption(value as DiscountType)}
+                      value={isDiscounted ? discountOption : "NONE"}
+                    >
+                      <View className="flex flex-row justify-evenly">
+                        <DiscountRadio label="Promo" value="PROMO" disabled={!isDiscounted} />
+                        <DiscountRadio label="Senior" value="SENIOR" disabled={!isDiscounted} />
+                        <DiscountRadio label="PWD" value="PWD" disabled={!isDiscounted} />
+                      </View>
+                    </RadioButton.Group>
                   </View>
                 </View>
                 <View style={[styles.cashInputContainer, { backgroundColor: colors.background, borderColor: colors.border }]}>
@@ -233,7 +248,6 @@ export function ReceiptModal({ visible, onClose, onOrderPlaced }: ReceiptModalPr
                     selectTextOnFocus
                   />
                 </View>
-
                 {cashAmount > 0 && (
                   <View style={[styles.changeSection, { backgroundColor: colors.background }]}>
                     <View style={styles.totalRow}>
@@ -272,21 +286,13 @@ export function ReceiptModal({ visible, onClose, onOrderPlaced }: ReceiptModalPr
               </View>
             </View>
           </View>
-
-          <PaymentBottomSheet ref={paymentSheetRef} />
-        </GestureHandlerRootView>
-      </Modal>
-    </>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  modalContainer: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)', // This makes the background dark and transparent
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -298,8 +304,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderRadius: 16,
     width: '100%',
-    maxWidth: 500,
-    height: '90%',
+    maxWidth: 1000,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
@@ -419,7 +424,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    paddingHorizontal: 12,
+    paddingHorizontal: 20,
     height: 48,
     marginBottom: 16,
   },
@@ -453,6 +458,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingHorizontal: 20,
     paddingVertical: 5,
+    marginTop: 'auto',
     gap: 12,
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',

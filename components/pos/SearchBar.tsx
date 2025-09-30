@@ -25,7 +25,7 @@ export const SearchBar = forwardRef<TextInput, SearchBarProps>(({
   onFocus,
   onBlur,
 }, ref) => {
-  const [isFocused, setIsFocused] = useState(false);
+  const [, setIsFocused] = useState(false);
   const { colors } = useTheme()
   const handleFocus = () => {
     setIsFocused(true);
