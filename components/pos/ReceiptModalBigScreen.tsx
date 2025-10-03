@@ -20,7 +20,7 @@ import { useTheme } from '@/contexts/ThemeContext'
 import { TransactionService } from '@/services/orderService';
 import { usePOS } from '@/contexts/POSContext'
 import { calculateTotal } from '@/hooks/calculateTotal'
-import { storeData } from '@/data/mockData';
+import { outletData } from '@/data/mockData';
 import { DiscountRadio } from './DiscountRadio';
 interface ReceiptModalProps {
   visible: boolean;
@@ -52,7 +52,7 @@ export function ReceiptModalBigScreen({ visible, onClose, onOrderPlaced }: Recei
     vatAmount,
     discount,
     discountRate
-  } = calculateTotal(items, storeData, { type: isDiscounted ? discountOption : 'NONE' })
+  } = calculateTotal(items, outletData, { type: isDiscounted ? discountOption : 'NONE' })
 
   const cashAmount = parseFloat(cashReceived) || 0;
   const change = cashAmount - total;
@@ -72,7 +72,7 @@ export function ReceiptModalBigScreen({ visible, onClose, onOrderPlaced }: Recei
     onOrderPlaced?.();
 
     const receiptData: Receipt = {
-      store: storeData,
+      outlet: outletData,
       transaction: {
         id: `TXN-${Date.now()}`,
         date: new Date().toISOString(),
@@ -153,8 +153,8 @@ export function ReceiptModalBigScreen({ visible, onClose, onOrderPlaced }: Recei
                 style={styles.logo}
               />
               <View>
-                <Text style={[styles.storeName, { color: colors.text }]}>TechStore Pro</Text>
-                <Text style={[styles.receiptTitle, { color: colors.textSecondary }]}>Receipt Summary {storeData.isVatRegistered ? 'Vat-Registered' : 'Non-Vat'}</Text>
+                <Text style={[styles.outletName, { color: colors.text }]}>TechStore Pro</Text>
+                <Text style={[styles.receiptTitle, { color: colors.textSecondary }]}>Receipt Summary {outletData.isVatRegistered ? 'Vat-Registered' : 'Non-Vat'}</Text>
               </View>
             </View>
             <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
@@ -191,11 +191,11 @@ export function ReceiptModalBigScreen({ visible, onClose, onOrderPlaced }: Recei
                       <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>Subtotal:</Text>
                       <Text style={[styles.totalValue, { color: colors.text }]}>₱{subtotal.toFixed(2)}</Text>
                     </View>
-                    {storeData.isVatRegistered && (discountOption === 'PROMO' || discountOption === "NONE") &&
+                    {outletData.isVatRegistered && (discountOption === 'PROMO' || discountOption === "NONE") &&
                       (
                         <>
                           <View style={styles.totalRow}>
-                            <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>VAT Amount({storeData.VatPercent * 100}%):</Text>
+                            <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>VAT Amount({outletData.VatPercent * 100}%):</Text>
                             <Text style={[styles.totalValue, { color: colors.text }]}>₱{vatAmount.toFixed(2)}</Text>
                           </View>
                         </>
@@ -329,7 +329,7 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 25,
   },
-  storeName: {
+  outletName: {
     fontSize: 18,
     fontWeight: '700',
     color: '#1F2937',

@@ -4,7 +4,7 @@ import { DeviceService } from './deviceService';
 import { AuthService } from './authService';
 import { Transaction, CartItem } from '@/types';
 import eventBus from '@/utils/eventBus'
-
+import { usePOS } from "@/contexts/POSContext"
 export class TransactionService {
   // Create Order
   static async createOrder(
@@ -14,6 +14,7 @@ export class TransactionService {
   
   ): Promise<Transaction> {
     const user = await AuthService.getCurrentUser();
+    const { outlet } = usePOS() 
     const deviceId = await DeviceService.getDeviceId();
     //console.log(user)
     //if (!user || !user.assignedStoreId) {
@@ -28,9 +29,9 @@ export class TransactionService {
   
     const order: Transaction = {
       id: uuid.v4() as string,
-      storeId: user.assignedStoreId,
+      outletId: outlet?.id,
       deviceId,
-      cashierId: user.id,
+      cashierId: user?.id,
       items,
       cashReceived: Math.round(cashReceived * 100) / 100,
       change: Math.round(change * 100) / 100,

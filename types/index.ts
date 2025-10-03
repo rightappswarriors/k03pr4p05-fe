@@ -1,14 +1,14 @@
 export interface Item {
-  quantity?: number;
   id: string;
   name: string;
   price: number;
   image?: string;
   categoryId?: string;
+  category?: object;
   barcode?: string;
   description?: string;
   brand?: string; // ✅ already added
-  vatable: boolean,
+  vatable?: boolean,
   color?: string; // ✅ add this if you want to sort/filter by item color
 }
 export interface CartItem extends Item {
@@ -25,8 +25,8 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  role: 'owner' | 'cashier' | 'staff';
-  assignedStoreId?: string; // For cashiers
+  role: 'OWNER' | 'CASHIER' | 'STAFF' | 'MANAGER';
+  assignedOutletId?: string; // For cashiers
   createdAt: string;
   profilePhoto?: string;
 }
@@ -36,28 +36,26 @@ export type EWalletMethod = "PH_GCASH" | "PH_PAYMAYA";
 // You can also refine your PaymentMethod to include E-Wallet details
 export type PaymentMethod = 'cash' | 'e-wallet' | 'card';
 
-export interface Store {
+export interface Outlet {
   id: string;
   branchId: string;
   name: string;
   address: string;
   phone?: string;
   code: string;
-  nextTransactionNumber: number;
   governmentTax: number;
   serviceCharge: number;
-  outletType: 'retail' | 'wholesale' | 'service';
+  outletType?: 'retail' | 'wholesale' | 'service';
   assignedStaff?: string;
-  isVatRegistered: boolean,
-  VatPercent: number
-  VATZeroSale: number
-  ownerId: string;
-  isActive: boolean;
-  createdAt: string;
-  tin: string,
-  ptu: string,
-  bir: string,
-  discountOption: Record<DiscountType, number>;
+  isVatRegistered?: boolean,
+  VatPercent?: number
+  VATZeroSale?: number
+  ownerId?: string;
+  isActive?: boolean;
+  tin?: string,
+  ptu?: string,
+  bir?: string,
+  discountOption?: Record<DiscountType, number>;
 }
 export interface DiscountOptions {
   type: DiscountType;
@@ -81,12 +79,12 @@ export interface CalculationResult {
 }
 export interface Receipt {
   user?: User
-  store: Store,
+  outlet: Outlet,
   transaction: {
     id: string
     date: string
     timestamp: string
-    cashier: string
+    cashier?: string
     //cashierId: number
   }
   items: Item[]
@@ -107,8 +105,8 @@ export interface Receipt {
 }
 export interface Transaction {
   id: string;
-  storeId: string;
-  cashierId: string;
+  outletId?: string;
+  cashierId?: string;
   deviceId: string;
   items: CartItem[];
   total: number;
@@ -128,14 +126,14 @@ export interface AuthState {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  deviceBound?: boolean;
+  //deviceBound?: boolean;
   accessToken?: null | string;
   refreshToken?: null | string;
-  wifiAuthorized: boolean;
+  //wifiAuthorized: boolean;
 }
 export interface SyncLog {
   id: string;
-  storeId: string;
+  outletId: string;
   deviceId: string;
   deviceInfo: DeviceInfo;
   ordersCount: number;

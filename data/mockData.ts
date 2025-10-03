@@ -1,4 +1,4 @@
-import type { Item, Category, Store } from '@/types';
+import type { Item, Category, Outlet } from '@/types';
 import type { User, Transaction } from '@/types';
 
 export const mockCategories: Category[] = [
@@ -253,7 +253,7 @@ export const mockTransactions: Transaction[] = [
   },
 ];
 
-export const storeData: Store = {
+export const outletData: Outlet = {
   id: "1",
   branchId: "1",
   name: "POSVINE Pro",

@@ -23,11 +23,14 @@ export default function LoginScreenDefault({ isDesktop }: Props) {
      const [email, setEmail] = useState('')
      const [password, setPassword] = useState('')
      const [showPassword, setShowPassword] = useState(false)
-     const { isLoading, setLoading} = useLoading()
+     const [isLoading, setLoading] = useState(false)
      const { colors } = useTheme()
      const { login, } = useAuth()
-     const { isTablet} = useResponsive()
+     const { isTablet } = useResponsive()
 
+     useEffect(() => {
+          console.log("isLoading changed:", isLoading);
+     }, [isLoading]);
      const handleLogin = async () => {
           if (!email.trim() || !password.trim()) {
                Alert.alert('Error', 'Please enter both email and password')

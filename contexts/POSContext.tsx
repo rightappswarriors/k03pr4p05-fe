@@ -1,6 +1,6 @@
 
-import { CartItem, Category, Item } from '@/types';
-
+import { CartItem, Category, Item, Outlet } from '@/types';
+import { AuthService } from '@/services/authService'
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Dimensions } from 'react-native';
@@ -8,12 +8,18 @@ const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 // Breakpoints for responsive design
 const DESKTOP_BREAKPOINT = 1024;
 
-import { AUTH_TOKEN_KEY, API_BASE_URL, secureStorage } from '@/services/authService'
+import { //AUTH_TOKEN_KEY, API_BASE_URL, secureStorage, 
+  getGraphQLClient
+} from '@/utils/constants'
 import { mockCategories, mockItems } from '@/data/mockData';
+import { gql } from 'graphql-request'
 import { useAuth } from './AuthContext';
 import http from '@/services/httpServices';
+import { formatGraphQLError } from '@/utils/errorFormatter';
+
 
 interface POSContextType {
+  outlet: Outlet | undefined;
   setItems: (items: Item[]) => void;
   setCategories: (categories: Category[]) => void;
   filteredItems: Item[];
@@ -43,43 +49,125 @@ interface CartProviderProps {
   children: ReactNode;  // 👈 tells TS this component accepts any valid React children
 }
 export const CartProvider = ({ children }: CartProviderProps) => {
-  const [items, setItems] = useState<Item[]>([]);
-     const [categories, setCategories] = useState<Category[]>([])
-     const { isAuthenticated } = useAuth()
-     useEffect(() => {
-          setTimeout(() => {
-               setItems(mockItems);
-               setCategories(mockCategories);
-               setLoading(false);
-             }, 1500);
-          // Simulate API loading
-          //if (isAuthenticated) {
-          //     fetchStoreItems();
-          //} else {
-          //     setItems([])
-          //}
-     }, [isAuthenticated]);
-     const fetchStoreItems = async () => {
+  const [storedItems, setItems] = useState<Item[]>([]);
+  const [outlet, setOutlet] = useState<Outlet>()
+  const [categories, setCategories] = useState<Category[]>([])
+  const { isAuthenticated, user } = useAuth()
+  useEffect(() => {
+    console.log('Getting items')
+    const getItems = async () => {
+      console.log("User role:", user?.role)
+      if (user?.role === "CASHIER" || user?.role === "MANAGER" || user?.role === "STAFF") {
+        const GETOUTLETITEM_MUTATION = gql`
+          query GetOutletItems {
+  getOutletItems {
+    id
+    name
+    address
+    code
+    governmentTax
+    serviceCharge
+    phone
+    outletType
+    items {
+      id
+      price
+      item {
+        name
+        image
+        description
+        barcode
+        brand
+        categoryId
+        color {
+          name
+          id
+        }
+      }
+    }
+    }
+  }
+        `
+        try {
+          const { accessToken } = await AuthService.getTokens()
+          const client = await getGraphQLClient()
+          const response = (await client.request(GETOUTLETITEM_MUTATION, {},
+            {
+              Authorization: `Bearer ${accessToken}`
+            }
+          )) as any
+          console.log("Success getting responses:\n", response.getOutletItems)
+          const { id, branchId, items, name, phone, code, isActive, address, governmentTax, serviceCharge } = response.getOutletItems
+          setOutlet({
+            id: id,
+            name: name,
+            phone: phone,
+            branchId: branchId,
+            governmentTax: governmentTax,
+            serviceCharge: serviceCharge,
+            code: code,
+            address: address,
+            isActive: isActive,
+          })
+          console.log("Items:", items)
+          setItems(
+            items.map((itemField: any) => ({
+              id: itemField.id.toString(),
+              name: itemField.item.name,
+              price: itemField.price,
+              image: itemField.item.image,
+              categoryId: itemField.item.categoryId?.toString(),
+              barcode: itemField.item.barcode,
+              description: itemField.item.description,
+              brand: itemField.item.brand,
+              vatable: itemField.item.vatable,
+              // If color is an array, you can join into a string or adjust type
+              color: Array.isArray(itemField.item.color)
+                ? itemField.item.color.map((c: any) => c.name).join(", ")
+                : itemField.item.color,
+            }))
+          );
+        } catch (error) {
+          console.error("Error getting Outlet items:", error)
+          throw new Error("Error getting Outlet items");
+        }
+      } else {
 
-          try {
-               const response = await http.get('/stores/')
+      }
+    }
+    getItems()
+    
+    console.log("ITEMS SET:", storedItems)
+    //
+    //setTimeout(() => {
+    //  setItems(mockItems);
+    //  setCategories(mockCategories);
+    //  setLoading(false);
+    //}, 1500);
 
-               const data = response.data;
-               console.log(data)
-               console.log('Data inventories', data.inventory.items)
-               setItems(data.inventory.items);
 
-               // Assuming the API returns both items and categories
-          } catch (error) {
-               console.error('Store Item retrieval error:', error);
-          } finally {
-               setLoading(false); // Stop loading regardless of success or failure
-          }
-     };
-     
+  }, [isAuthenticated]);
+  const fetchStoreItems = async () => {
+
+    try {
+      const response = await http.get('/stores/')
+
+      const data = response.data;
+      console.log(data)
+      console.log('Data inventories', data.inventory.items)
+      setItems(data.inventory.items);
+
+      // Assuming the API returns both items and categories
+    } catch (error) {
+      console.error('Store Item retrieval error:', error);
+    } finally {
+      setLoading(false); // Stop loading regardless of success or failure
+    }
+  };
+
 
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
-  
+
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(
     screenWidth >= DESKTOP_BREAKPOINT
@@ -141,7 +229,7 @@ export const CartProvider = ({ children }: CartProviderProps) => {
     setCartItems([]);
   };
 
-  const filteredItems = items.filter((item) => {
+  const filteredItems = storedItems.filter((item) => {
     const normalizedSearch = searchQuery.trim().toLowerCase();
 
     const matchesSearch =
@@ -165,6 +253,7 @@ export const CartProvider = ({ children }: CartProviderProps) => {
   };
   return (
     <POSContext.Provider value={{
+      outlet,
       setItems,
       setCategories,
       filteredItems,
@@ -185,7 +274,7 @@ export const CartProvider = ({ children }: CartProviderProps) => {
       screenDimensions,
       categories,
       loading,
-      items,
+      items: storedItems,
       setScannerVisible,
     }}>{children}</POSContext.Provider>)
 }

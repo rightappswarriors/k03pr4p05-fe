@@ -17,7 +17,7 @@ import type { DiscountType } from '@/types';
 import { useTheme } from '@/contexts/ThemeContext'
 import { usePOS } from '@/contexts/POSContext';
 import { calculateTotal } from '@/hooks/calculateTotal'
-import { storeData } from '@/data/mockData';
+import { outletData } from '@/data/mockData';
 import DiscountModal from './DiscountModal';
 import PaymentBottomSheet from '@/components/pos/paymentMethod/PaymentBottomSheet';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -66,7 +66,7 @@ export function ReceiptModal({ visible, onClose, onOrderPlaced }: ReceiptModalPr
     vatAmount,
     discount,
     discountRate
-  } = calculateTotal(items, storeData, { type: discountOption })
+  } = calculateTotal(items, outletData, { type: discountOption })
 
   const cashAmount = parseFloat(cashReceived) || 0;
   const change = cashAmount - total;
@@ -123,8 +123,8 @@ export function ReceiptModal({ visible, onClose, onOrderPlaced }: ReceiptModalPr
                     style={styles.logo}
                   />
                   <View>
-                    <Text style={[styles.storeName, { color: colors.text }]}>TechStore Pro</Text>
-                    <Text style={[styles.receiptTitle, { color: colors.textSecondary }]}>Receipt Summary {storeData.isVatRegistered ? 'Vat-Registered' : 'Non-Vat'}</Text>
+                    <Text style={[styles.outletName, { color: colors.text }]}>TechStore Pro</Text>
+                    <Text style={[styles.receiptTitle, { color: colors.textSecondary }]}>Receipt Summary {outletData.isVatRegistered ? 'Vat-Registered' : 'Non-Vat'}</Text>
                   </View>
                 </View>
                 <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
@@ -150,7 +150,6 @@ export function ReceiptModal({ visible, onClose, onOrderPlaced }: ReceiptModalPr
                 ))}
                 <View style={[styles.divider, { backgroundColor: colors.border }]} />
               </ScrollView>
-
               {/* Footer */}
               <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
@@ -160,11 +159,11 @@ export function ReceiptModal({ visible, onClose, onOrderPlaced }: ReceiptModalPr
                     <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>Subtotal:</Text>
                     <Text style={[styles.totalValue, { color: colors.text }]}>₱{subtotal.toFixed(2)}</Text>
                   </View>
-                  {storeData.isVatRegistered && (discountOption === 'PROMO' || discountOption === "NONE") &&
+                  {outletData.isVatRegistered && (discountOption === 'PROMO' || discountOption === "NONE") &&
                     (
                       <>
                         <View style={styles.totalRow}>
-                          <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>VAT Amount({storeData.VatPercent * 100}%):</Text>
+                          <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>VAT Amount({outletData.VatPercent * 100}%):</Text>
                           <Text style={[styles.totalValue, { color: colors.text }]}>₱{vatAmount.toFixed(2)}</Text>
                         </View>
                       </>
@@ -324,7 +323,7 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 25,
   },
-  storeName: {
+  outletName: {
     fontSize: 18,
     fontWeight: '700',
     color: '#1F2937',

@@ -22,7 +22,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isAuthenticated: false,
     accessToken: null,
     refreshToken: null,
-    authenticated: null,
   });
 
   useEffect(() => {
@@ -32,7 +31,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const checkAuthStatus = async () => {
     try {
       setLoading(true)
-      const user = await AuthService.getCurrentUser();
+      const user = await AuthService.fetchCurrentUser();
       setAuthState({
         user,
         isLoading: false,
@@ -52,7 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (email: string, password: string) => {
     try {
       setLoading(true);
-      const { user } = await AuthService.login(email, password);
+      const user  = await AuthService.login(email, password);
   
       setAuthState({
         user,

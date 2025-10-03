@@ -63,6 +63,7 @@
       "USER_DATA_KEY": "user_data",
       "BIOMETRIC_ENABLED_KEY": "biometric_enable",
       "REFRESH_TOKEN_KEY": "refreshToken",
+      "API_BASE_URL": "http://localhost:4000",
       "router": {},
       "eas": {
         "projectId": "94c779c4-51cb-49b6-a9c5-5ae7fa3ec0b3"

@@ -3,22 +3,27 @@ import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { User } from '@/types';
 import { Platform } from 'react-native';
-import http from './httpServices';
 import Constants from 'expo-constants';
-
-import axios from 'axios';
-import { mockUsers } from '@/data/mockData';
+import { getGraphQLClient } from '@/utils/constants';
+import { gql } from 'graphql-request';
+interface AuthPayload {
+  user: User;
+  token: string;
+  refresh_token: string;
+}
 
 interface LoginResponse {
-  user: User;
-  //accessToken: string;
-  //refreshToken: string;
+  login: AuthPayload;
 }
 // Tokens
-export const AUTH_TOKEN_KEY = Constants.expoConfig?.extra?.AUTH_TOKEN_KEY ?? "auth_token";
-export const USER_DATA_KEY = Constants.expoConfig?.extra?.USER_DATA_KEY ?? "user_data";
-export const BIOMETRIC_ENABLED_KEY = Constants.expoConfig?.extra?.BIOMETRIC_ENABLED_KEY ?? "biometric_enabled";
-export const REFRESH_TOKEN_KEY = Constants.expoConfig?.extra?.REFRESH_TOKEN_KEY ?? "refresh_token";
+export const AUTH_TOKEN_KEY =
+  Constants.expoConfig?.extra?.AUTH_TOKEN_KEY ?? 'auth_token';
+export const USER_DATA_KEY =
+  Constants.expoConfig?.extra?.USER_DATA_KEY ?? 'user_data';
+export const BIOMETRIC_ENABLED_KEY =
+  Constants.expoConfig?.extra?.BIOMETRIC_ENABLED_KEY ?? 'biometric_enabled';
+export const REFRESH_TOKEN_KEY =
+  Constants.expoConfig?.extra?.REFRESH_TOKEN_KEY ?? 'refresh_token';
 
 // Platform-specific storage for auth tokens
 export const secureStorage = {
@@ -46,17 +51,6 @@ export const secureStorage = {
     }
   },
 };
-let API_BASE_URL = '';
-
-if (Platform.OS === 'web') {
-  API_BASE_URL = 'http://localhost:3000/api'; // works in browser
-} else if (Platform.OS === 'android') {
-  API_BASE_URL = 'http://10.0.2.2:3000/api'; // Android emulator
-} else {
-  API_BASE_URL = 'http://192.168.1.100:3000/api'; // iOS simulator or real device (replace with your LAN IP)
-}
-
-export { API_BASE_URL };
 
 export class AuthService {
   /**
@@ -67,7 +61,6 @@ export class AuthService {
     // ✅ Corrected: Use the correct keys for each token.
     const accessToken = await secureStorage.getItemAsync(AUTH_TOKEN_KEY);
 
-    
     const refreshToken = await secureStorage.getItemAsync(REFRESH_TOKEN_KEY);
     return { accessToken, refreshToken };
   }
@@ -85,34 +78,40 @@ export class AuthService {
    * @returns {Promise<User>}
    */
   static async login(email: string, password: string): Promise<User> {
-    // Simulate API call delay
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    const LOGIN_MUTATION = gql`
+      mutation Login($email: String!, $password: String!) {
+        login(email: $email, password: $password) {
+          user {
+            id
+            email
+            username
+            role
+            fullname
+          }
+          token
+          refresh_token
+        }
+      }
+    `;
 
-    // Mock authentication - in production, should be real API call
-    console.log('// Mock authentication')
-    const user = mockUsers.find((u) => u.email === email);
-    console.log('Login is user Found?', user)
-    if (!user) {
-      throw new Error('Invalid Email or Password');
-    }
+    try {
+      const client = await getGraphQLClient();
 
-    // Mock password validation (in production, this would be handled by backend)
-    const validPasswords: Record<string, string> = {
-      'owner@techstore.com': 'owner123',
-      'cashier1@techstore.com': 'cashier123',
-      'cashier2@techstore.com': 'cashier123',
-    };
+      const response = (await client.request(LOGIN_MUTATION, {
+        email,
+        password,
+      })) as LoginResponse;
 
-    if (validPasswords[email] !== password) {
+      const { user, token, refresh_token } = response.login;
+
+      await secureStorage.setItemAsync(AUTH_TOKEN_KEY, token);
+      await secureStorage.setItemAsync(REFRESH_TOKEN_KEY, refresh_token),
+        await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
+      return user;
+    } catch (error) {
+      // console.error('GraphQL login error:', error);
       throw new Error('Invalid email or password');
     }
-
-    // Store auth token and user data
-    const token = `token_${user.id}_${Date.now()}`;
-    await secureStorage.setItemAsync(AUTH_TOKEN_KEY, token);
-    await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
-
-    return user;
   }
 
   /**
@@ -122,15 +121,28 @@ export class AuthService {
    * @returns {Promise<string>}
    */
   static async refreshAccessToken(refreshToken: string): Promise<string> {
+    const REFRESH_MUTATION = gql`
+      mutation RefreshToken($refresh_token: String!) {
+        refreshToken(refresh_token: $refresh_token) {
+          user {
+            id
+          }
+          token
+          refresh_token
+        }
+      }
+    `;
     try {
-      const response = await axios.post(`${API_BASE_URL}/users/refresh`, {
-        refreshToken,
-      });
+      const client = await getGraphQLClient();
 
-      const accessToken: string = response.data.accessToken;
-      return accessToken;
+      const response = (await client.request(REFRESH_MUTATION, {
+        refresh_token: refreshToken,
+      })) as any;
+      const { token } = response.refreshToken;
+      await secureStorage.setItemAsync(AUTH_TOKEN_KEY, token);
+      return token;
     } catch (error) {
-      console.error('Refresh token error:', error);
+      console.error('GraphQL refresh error:', error);
       await this.removeUser();
       throw error;
     }
@@ -147,6 +159,38 @@ export class AuthService {
     // await AsyncStorage.removeItem(BIOMETRIC_ENABLED_KEY);
   }
 
+  //! Fetch user from backend
+  static async fetchCurrentUser(): Promise<User | null> {
+    try {
+      // get token  data after login
+
+      const client = await getGraphQLClient();
+      const { accessToken } = await this.getTokens();
+      if (!accessToken) return null;
+      const ME_QUERY = gql`
+        query ME {
+          ME {
+            id
+            username
+            email
+            profilePhoto
+            fullname
+            role
+          }
+        }
+      `;
+      const response = (await client.request(
+        ME_QUERY,
+        {},
+        { Authorization: `Bearer ${accessToken}` }
+      )) as any;
+      return response.ME;
+    } catch (error) {
+      console.error('Error fetching current user:', error);
+      return null;
+    }
+  }
+
   static async getCurrentUser(): Promise<User | null> {
     try {
       // get token  data after login
@@ -160,7 +204,7 @@ export class AuthService {
 
       return JSON.parse(userData);
     } catch (error) {
-      console.error('Error geeting current user:', error);
+      console.error('Error geting current user:', error);
       return null;
     }
   }

@@ -244,7 +244,7 @@ export default React.memo(function SettingsScreen() {
               <SettingItem
                 icon={<Store size={20} color="#EF4444" />}
                 title={"Store Management"}
-                subtitle={"Manage your stores and locations"}
+                subtitle={"Manage your outlet and locations"}
                 onPress={() => Alert.alert('Coming Soon', 'Store management will be available soon')}
               />
               <SettingItem
