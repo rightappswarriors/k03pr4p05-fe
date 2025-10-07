@@ -1,4 +1,4 @@
-import { Item, Receipt } from '@/types';
+import { Receipt } from '@/types';
 import Constants from 'expo-constants'
 import { useState, useEffect } from 'react';
 import { Alert, DeviceEventEmitter } from 'react-native';
@@ -47,7 +47,7 @@ export function useBluetooth() {
   const handleDevicePaired = (rsp: any) => {
     console.log('Device already paired:', rsp);
   };
-
+  
   useEffect(() => {
     const initBluetooth = async () => {
       try {
@@ -161,7 +161,7 @@ export function useBluetooth() {
         BluetoothEscposPrinter.ALIGN.LEFT
       );
       await BluetoothEscposPrinter.printText(
-        `PTU#: PTU-${receipt.store.ptu}\n`
+        `PTU#: PTU-${receipt.outlet.ptu}\n`
       );
       // BIR Accreditation No: SASP-#####
       await BluetoothEscposPrinter.printerAlign(

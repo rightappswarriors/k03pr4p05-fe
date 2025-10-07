@@ -38,7 +38,10 @@
       [
         "react-native-permissions",
         {
-          "iosPermissions": ["BluetoothPeripheral", "Bluetooth"],
+          "iosPermissions": [
+            "BluetoothPeripheral",
+            "Bluetooth"
+          ],
           "androidPermissions": [
             "android.permission.BLUETOOTH_CONNECT",
             "android.permission.BLUETOOTH_SCAN",
@@ -46,14 +49,7 @@
           ]
         }
       ],
-      [
-        "react-native-ble-plx",
-        {
-          "isBackgroundEnabled": true,
-          "modes": ["central"],
-          "bluetoothAlwaysPermission": "Allow $(PRODUCT_NAME) to connect to Bluetooth devices"
-        }
-      ]
+      "expo-build-properties"
     ],
     "experiments": {
       "typedRoutes": true
@@ -69,7 +65,6 @@
         "projectId": "94c779c4-51cb-49b6-a9c5-5ae7fa3ec0b3"
       }
     },
-
     "owner": "rusiana"
   }
 }

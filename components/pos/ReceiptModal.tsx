@@ -1,5 +1,4 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Checkbox } from 'react-native-paper';
 // import our event bus
 import {
   Modal,
@@ -11,6 +10,7 @@ import {
   ScrollView,
   Image,
 } from 'react-native';
+import { CustomCheckbox } from "@/components/pos/checkbox/CustomCheckbox"
 import { PaymentBottomSheetRef } from "@/types"
 import { X, Printer, PhilippinePeso, CreditCard } from 'lucide-react-native';
 import type { DiscountType } from '@/types';
@@ -21,7 +21,7 @@ import { outletData } from '@/data/mockData';
 import DiscountModal from './DiscountModal';
 import PaymentBottomSheet from '@/components/pos/paymentMethod/PaymentBottomSheet';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-
+import { useAuth} from "@/contexts/AuthContext"
 import { ReceiptService } from '@/services/paymentService';
 import useNetworkStatus from '@/hooks/useNetworkStatus';
 interface ReceiptModalProps {
@@ -47,9 +47,10 @@ export function ReceiptModal({ visible, onClose, onOrderPlaced }: ReceiptModalPr
 
   const {
     cartItems: items,
-    clearCart
+    clearCart,
+    outlet,
   } = usePOS()
-  const { colors, theme } = useTheme()
+  const { colors, } = useTheme()
   const [cashReceived, setCashReceived] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [discountOption, setDiscountOption] = useState<DiscountType>('NONE')
@@ -67,15 +68,18 @@ export function ReceiptModal({ visible, onClose, onOrderPlaced }: ReceiptModalPr
     discount,
     discountRate
   } = calculateTotal(items, outletData, { type: discountOption })
-
+  const { user} = useAuth()
   const cashAmount = parseFloat(cashReceived) || 0;
   const change = cashAmount - total;
+  if (!user || !outlet ) {
+    throw new Error("No user or outlet")
+  }
   const handlePrintReceipt = () => {
     setIsProcessing(true);
     ReceiptService.processAndPrintReceipt({
       items,
       cashReceived: parseFloat(cashReceived) || 0,
-      paymentMethod: "cash",
+      paymentMethod: "CASH",
       discountOption,
       onSuccess: () => {
         setIsProcessing(false);
@@ -84,6 +88,8 @@ export function ReceiptModal({ visible, onClose, onOrderPlaced }: ReceiptModalPr
         handleClose();
       },
       onFail: () => setIsProcessing(false),
+      outlet,
+      user
     });
   };
 
@@ -163,7 +169,7 @@ export function ReceiptModal({ visible, onClose, onOrderPlaced }: ReceiptModalPr
                     (
                       <>
                         <View style={styles.totalRow}>
-                          <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>VAT Amount({outletData.VatPercent * 100}%):</Text>
+                          <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>VAT Amount({outletData.VatPercent ? outletData.VatPercent * 100 : '0'}%):</Text>
                           <Text style={[styles.totalValue, { color: colors.text }]}>₱{vatAmount.toFixed(2)}</Text>
                         </View>
                       </>
@@ -184,37 +190,37 @@ export function ReceiptModal({ visible, onClose, onOrderPlaced }: ReceiptModalPr
                   <Text style={[styles.sectionTitle, { color: colors.text }]}>Payment</Text>
                   <View className="flex flex-row justify-between align-center">
                     <View style={{ flexDirection: "row", alignItems: "center" }}>
-                      <Checkbox
-                        theme={{dark: theme === "dark"}}
-                        color={colors.primary}
-                        status={isDiscounted ? "checked" : "unchecked"}
+                      <CustomCheckbox
+                        label="Apply Discount"
+                        checked={isDiscounted}
                         onPress={() => {
                           if (!isDiscounted) {
                             setIsDiscounted(!isDiscounted);
-                          }
-                          setIsVisible(!isVisible)
+                          } setIsVisible(!isVisible)
                         }}
+                        colors={colors}
                       />
-                      <Text style={{ color: colors.text}}>Apply Discount</Text>
+
+                      <Text style={{ color: colors.text }}>Apply Discount</Text>
                     </View>
                     <View style={{ flexDirection: "row", alignItems: "center" }}>
                       <TouchableOpacity
                         className="flex-row justitfy-center align-center gap-1"
-                        
+
                         disabled={!isConnected} // 👈 disable touch if offline
                         onPress={() => paymentSheetRef.current?.open()} // 👈 open bottom sheet
                       >
-                        <Text style={[{ color: colors.text}, !isConnected ? {color: colors.warning} : {color: colors.primary}]}>
+                        <Text style={[{ color: colors.text }, !isConnected ? { color: colors.warning } : { color: colors.primary }]}>
                           {isConnected ? "Payment Method" : "Offline"}
                         </Text>
-                        <CreditCard size={24} color={ !isConnected ? colors.warning : colors.primary} />
+                        <CreditCard size={24} color={!isConnected ? colors.warning : colors.primary} />
                       </TouchableOpacity>
                     </View>
                     <DiscountModal
                       isVisible={isVisible}
                       onClose={() => setIsVisible(false)}
-                      setIsDiscounted={() => setIsDiscounted(false)}
                       isDiscounted={isDiscounted}
+                      setIsDiscounted={() => setIsDiscounted(!isDiscounted)}
                       discountOption={discountOption}
                       setDiscountOption={setDiscountOption}
                     />

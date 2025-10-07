@@ -33,6 +33,7 @@ export function ItemBrowser({
 }: ItemBrowserProps) {
   const {
     filteredItems: items,
+    items: storedItems,
     categories,
     loading,
     searchQuery,
@@ -41,7 +42,7 @@ export function ItemBrowser({
     addToCart: onAddToCart,
     handleScanPress: onScanPress
   } = usePOS()
-  const { isDesktop, isMobile} = useResponsive()
+  const { isDesktop, isMobile } = useResponsive()
   const { colors } = useTheme()
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -57,6 +58,9 @@ export function ItemBrowser({
   const [dropdownItems, setDropdownItems] = useState(
     categories.map(c => ({ label: c.name, value: c.id })) // 👈 transform categories
   );
+  useEffect(() => {
+    console.warn("storedItems updated:", items)
+  }, [storedItems])
 
   useEffect(() => {
     setDropdownItems(categories.map(c => ({ label: c.name, value: c.id })));

@@ -9,7 +9,10 @@ export class StorageService {
     try {
       const existingOrders = await this.getOfflineOrders();
       const updatedOrders = [...existingOrders, order];
-      await AsyncStorage.setItem(TRANSACTION_KEY, JSON.stringify(updatedOrders));
+      await AsyncStorage.setItem(
+        TRANSACTION_KEY,
+        JSON.stringify(updatedOrders)
+      );
     } catch (error) {
       console.error('Failed to save order:', error);
       throw new Error('Failed to save order locally');
@@ -26,15 +29,32 @@ export class StorageService {
     }
   }
 
-  static async updateOrderStatus(orderId: string, status: Transaction['status'], syncedAt?: string): Promise<void> {
+  static async updateOrderStatus(
+    orderId: string,
+    status: Transaction['status'],
+    syncedAt?: string
+  ): Promise<void> {
     try {
       const orders = await this.getOfflineOrders();
-      const updatedOrders = orders.map(order => 
-        order.id === orderId 
-          ? { ...order, status, syncedAt: syncedAt || order.syncedAt }
-          : order
+      const updatedOrders = orders.map((order) => {
+        if (order.id === orderId) {
+          let newRetryCount = order.retryCount || 0;
+          if (status === 'FAILED') newRetryCount += 1;
+
+          return {
+            ...order,
+            status,
+            retryCount: newRetryCount,
+            syncedAt: syncedAt || order.syncedAt,
+          };
+        }
+        return order;
+      });
+
+      await AsyncStorage.setItem(
+        TRANSACTION_KEY,
+        JSON.stringify(updatedOrders)
       );
-      await AsyncStorage.setItem(TRANSACTION_KEY, JSON.stringify(updatedOrders));
     } catch (error) {
       console.error('Failed to update order status:', error);
     }
@@ -43,8 +63,11 @@ export class StorageService {
   static async removeOrder(orderId: string): Promise<void> {
     try {
       const orders = await this.getOfflineOrders();
-      const filteredOrders = orders.filter(order => order.id !== orderId);
-      await AsyncStorage.setItem(TRANSACTION_KEY, JSON.stringify(filteredOrders));
+      const filteredOrders = orders.filter((order) => order.id !== orderId);
+      await AsyncStorage.setItem(
+        TRANSACTION_KEY,
+        JSON.stringify(filteredOrders)
+      );
     } catch (error) {
       console.error('Failed to remove order:', error);
     }
@@ -52,7 +75,7 @@ export class StorageService {
 
   static async getPendingOrders(): Promise<Transaction[]> {
     const orders = await this.getOfflineOrders();
-    return orders.filter(order => order.status === 'pending');
+    return orders.filter((order) => order.status === 'PENDING');
   }
 
   static async saveSyncLog(log: SyncLog): Promise<void> {
@@ -77,9 +100,15 @@ export class StorageService {
 
   static async clearAllData(): Promise<void> {
     try {
-      const transactions = await this.getOfflineOrders()
-      const transactionsToKeep = transactions.filter(transaction => transaction.status === 'pending' || transaction.status === 'failed')
-      await AsyncStorage.setItem(TRANSACTION_KEY, JSON.stringify(transactionsToKeep));
+      const transactions = await this.getOfflineOrders();
+      const transactionsToKeep = transactions.filter(
+        (transaction) =>
+          transaction.status === 'PENDING' || transaction.status === 'FAILED'
+      );
+      await AsyncStorage.setItem(
+        TRANSACTION_KEY,
+        JSON.stringify(transactionsToKeep)
+      );
       await AsyncStorage.removeItem(SYNC_LOGS_KEY);
     } catch (error) {
       console.error('Failed to clear data:', error);

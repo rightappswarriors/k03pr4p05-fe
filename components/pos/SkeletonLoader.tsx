@@ -14,7 +14,7 @@ interface SkeletonLoaderProps {
 
 export function SkeletonLoader({ viewMode }: SkeletonLoaderProps) {
   const animatedValue = useRef(new Animated.Value(0)).current;
-  const { isDesktop} = useResponsive()
+  const { isDesktop } = useResponsive()
   const {colors} = useTheme()
   useEffect(() => {
     const animation = Animated.loop(

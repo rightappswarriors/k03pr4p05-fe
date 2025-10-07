@@ -191,18 +191,18 @@ Thank you for testing!
         <body id="receipt">
           <div class="center bold">RECEIPT</div>
           <div class="line"></div>
-          <div class="center">${receipt.outlet.name}</div>
-          <div class="center">${receipt.outlet.address}</div>
-          <div class="center">Tin: ${receipt.outlet.tin}</div>
+          <div class="center">${receipt.outlet?.name}</div>
+          <div class="center">${receipt.outlet?.address}</div>
+          <div class="center">Tin: ${receipt.outlet?.tin}</div>
           <div class="center">${
-            receipt.outlet.isVatRegistered ? 'VAT-Registered' : 'Non-VAT'
+            receipt.outlet?.isVatRegistered ? 'VAT-Registered' : 'Non-VAT'
           }</div>
-          <div class="center">PTU#: ${receipt.outlet.ptu}</div>
-          <div class="center">BIR Accredation No: ${receipt.outlet.bir}</div>
+          <div class="center">PTU#: ${receipt.outlet?.ptu}</div>
+          <div class="center">BIR Accredation No: ${receipt.outlet?.bir}</div>
           <table>
             <tr>  
-              <td style="font-size: 10px; font-family: 'Courier New', monospace;">Terminal ID: POS-${receipt.outlet.id}</td>
-              <td class="right" style="font-size: 10px; font-family: 'Courier New', monospace;">SN: ${receipt.outlet.id}</td>
+              <td style="font-size: 10px; font-family: 'Courier New', monospace;">Terminal ID: POS-${receipt.outlet?.id}</td>
+              <td class="right" style="font-size: 10px; font-family: 'Courier New', monospace;">SN: ${receipt.outlet?.id}</td>
             </tr>
             <tr>  
               <td>Order number: ${receipt.transaction.id}</td>
@@ -239,7 +239,7 @@ Thank you for testing!
               <td class="right">Php ${(receipt.totals.subtotal * 100)}</td>
             </tr>
             <tr>
-              <td>VAT (${receipt.outlet.VatPercent}%):</td>
+              <td>VAT (${receipt.outlet?.VatPercent}%):</td>
               <td class="right">Php ${
                 receipt.totals.vatAmount ? receipt.totals.vatAmount : 0
               }</td>
@@ -263,13 +263,13 @@ Thank you for testing!
             <!--<tr>
               <td>VAT ZeroSales:</td>
               <td class="right">Php ${
-                receipt.outlet.VATZeroSale ? receipt.outlet.VATZeroSale : 0
+                receipt.outlet?.VATZeroSale ? receipt.outlet.VATZeroSale : 0
               }</td>
             </tr>
             <tr>
               <td>VAT Zero Rated:</td>
               <td class="right">Php ${
-                receipt.outlet.VATZeroSale ? receipt.outlet.VATZeroSale : 0
+                receipt.outlet?.VATZeroSale ? receipt.outlet.VATZeroSale : 0
               }</td>
             </tr>-->
             <tr class="bold">

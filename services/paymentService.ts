@@ -1,31 +1,34 @@
 import { Alert, Platform } from 'react-native';
 import { PrinterService } from '@/services/printerService';
 import { TransactionService } from '@/services/orderService';
-import type { Receipt } from '@/types';
+import type { Outlet, Receipt, User } from '@/types';
 import { calculateTotal } from '@/hooks/calculateTotal';
-import { storeData } from '@/data/mockData';
 
 export class ReceiptService {
   static async processAndPrintReceipt({
     items,
-    paymentMethod = 'cash',
+    paymentMethod = 'CASH',
     cashReceived = 0,
     discountOption = 'NONE',
     onSuccess,
     onFail,
+    outlet,
+    user,
   }: {
     items: any[];
-    paymentMethod?: 'cash' | 'card' | 'digital';
+    paymentMethod?: 'CASH' | 'CARD' | 'DIGITAL';
     cashReceived?: number;
+    user: User,
+    outlet: Outlet
     discountOption?: string;
     onSuccess?: () => void;
     onFail?: () => void;
-  }) {
+ }) {
     try {
       const { total, subtotal, vatAmount, discount, discountRate } =
-        calculateTotal(items, storeData, { type: discountOption as any });
+        calculateTotal(items, outlet, { type: discountOption as any });
       // ✅ Only check when payment method is cash
-      if (paymentMethod === 'cash') {
+      if (paymentMethod === 'CASH') {
         if (!cashReceived || cashReceived < total) {
           Alert.alert(
             'Insufficient Cash',
@@ -36,12 +39,10 @@ export class ReceiptService {
         }
       }
 
-      await TransactionService.createOrder(items, paymentMethod, cashReceived);
-
       const change = cashReceived - total;
 
       const receiptData: Receipt = {
-        store: storeData,
+        outlet: outlet,
         transaction: {
           id: `TXN-${Date.now()}`,
           date: new Date().toISOString(),
@@ -62,14 +63,36 @@ export class ReceiptService {
           vatAmount: parseFloat(vatAmount.toFixed(2)),
           total: parseFloat(total.toFixed(2)),
           cashReceived:
-            paymentMethod === 'cash' ? parseFloat(cashReceived!.toFixed(2)) : 0,
-          change: paymentMethod === 'cash' ? parseFloat(change.toFixed(2)): 0,
+            paymentMethod === 'CASH' ? parseFloat(cashReceived!.toFixed(2)) : 0,
+          change: paymentMethod === 'CASH' ? parseFloat(change.toFixed(2)) : 0,
         },
         payment: {
           method: paymentMethod,
           status: 'Completed',
         },
       };
+
+      const outletId = Number(outlet?.id);
+      if (!outletId) {
+        console.error("No outlet id")
+        throw new Error("unable to get outlet id")
+      }
+      const userId = Number(user?.id)
+      if (!userId) {
+        console.error("No user id")
+        throw new Error("unable to get user id")
+      }
+      await TransactionService.createOrder(
+        items,
+        userId,
+        outletId, // 7th (optional)
+        paymentMethod, // 2nd
+        parseFloat(cashReceived.toFixed(2)), // 3rd
+        parseFloat(vatAmount.toFixed(2)), // 4th
+        parseFloat(total.toFixed(2)),
+        parseFloat(subtotal.toFixed(2)), // 5th (total)
+        parseFloat(change.toFixed(2)), // 6th
+      );
 
       // Simulate printing delay
       setTimeout(() => {

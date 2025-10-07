@@ -1,5 +1,6 @@
 import { Tabs } from 'expo-router';
 import React, { useEffect, useState } from 'react'
+import { Platform} from 'react-native'
 import { useAuth } from '@/contexts/AuthContext';
 import { router } from 'expo-router'
 import { MockSyncService } from '@/services/mockSyncService'
@@ -67,10 +68,15 @@ export default function TabLayout() {
           name="history"
           options={{ tabBarIcon: ({ color }) => <History size={20} color={color} />, title: 'Orders' }}
         />
-        <Tabs.Screen
-          name="printer"
-          options={{ tabBarIcon: ({ color }) => <Printer size={20} color={color} />, title: 'Printer' }}
-        />
+        {Platform.OS === "android" && (
+          <Tabs.Screen
+            name="printer"
+            options={{
+              tabBarIcon: ({ color }) => <Printer size={20} color={color} />,
+              title: "Printer",
+            }}
+          />
+        )}
         <Tabs.Screen
           name="settings"
           options={{ tabBarIcon: ({ color }) => <Settings size={20} color={color} />, title: 'Settings' }}

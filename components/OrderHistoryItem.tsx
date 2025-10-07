@@ -19,11 +19,11 @@ export function OrderHistory({ refreshTrigger }: TransactionHistoryProps) {
 
   const getStatusIcon = (status: Transaction['status']) => {
     switch (status) {
-      case 'synced':
+      case 'SYNCED':
         return <CheckCircle size={20} color="#059669" />;
-      case 'pending':
+      case 'PENDING':
         return <Clock size={20} color="#D97706" />;
-      case 'failed':
+      case 'FAILED':
         return <XCircle size={20} color="#DC2626" />;
       default:
         return null;
@@ -57,7 +57,7 @@ export function OrderHistory({ refreshTrigger }: TransactionHistoryProps) {
         ))}
       </View>
 
-      {order.status === 'failed' && (
+      {order.status === 'FAILED' && (
         <TouchableOpacity
           style={styles.retryButton}
           onPress={() => retryTransactions(order.id)}
@@ -71,11 +71,11 @@ export function OrderHistory({ refreshTrigger }: TransactionHistoryProps) {
 
   const getStatusColor = (status: Transaction['status']) => {
     switch (status) {
-      case 'synced':
+      case 'SYNCED':
         return '#059669';
-      case 'pending':
+      case 'PENDING':
         return '#D97706';
-      case 'failed':
+      case 'FAILED':
         return '#DC2626';
       default:
         return '#6B7280';

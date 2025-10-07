@@ -223,21 +223,12 @@ export function CartSidebar({
         </View>
       </Animated.View>
 
-      {isMobile ? (
         <ReceiptModal
           visible={receiptModalVisible}
           onClose={() => setReceiptModalVisible(false)}
           onPrintReceipt={handlePrintReceipt}
           onOrderPlaced={() => setRefreshTrigger(prev => prev + 1)} // ✅ Triggers reload
-        />) : (
-        <ReceiptModalBigScreen
-          visible={receiptModalVisible}
-          onClose={() => setReceiptModalVisible(false)}
-          onPrintReceipt={handlePrintReceipt}
-          onOrderPlaced={() => setRefreshTrigger(prev => prev + 1)} // ✅ Triggers reload
         />
-        )
-      }
     </>
   );
 }

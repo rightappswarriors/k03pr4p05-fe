@@ -79,7 +79,7 @@ export interface CalculationResult {
 }
 export interface Receipt {
   user?: User
-  outlet: Outlet,
+  outlet?: Outlet,
   transaction: {
     id: string
     date: string
@@ -104,22 +104,21 @@ export interface Receipt {
   }
 }
 export interface Transaction {
-  id: string;
-  outletId?: string;
-  cashierId?: string;
+  id: string,
+  outletId?: Number;
+  cashierId?: Number;
   deviceId: string;
   items: CartItem[];
   total: number;
-  tax: number;
+  vatAmount: number;
   subtotal: number;
   cashReceived: number;
   change: number;
-  paymentMethod: 'cash' | 'card' | 'digital';
-  status: 'pending' | 'synced' | 'failed';
+  paymentMethod: 'CASH' | 'CARD' | 'DIGITAL';
+  status: 'PENDING' | 'SYNCED'| 'FAILED' | 'PAYED'| 'CANCELED';
   createdAt: string;
   syncedAt?: string;
   retryCount: number;
-  user: User
 }
 
 export interface AuthState {
@@ -133,11 +132,11 @@ export interface AuthState {
 }
 export interface SyncLog {
   id: string;
-  outletId: string;
+  outletId?: Number;
   deviceId: string;
   deviceInfo: DeviceInfo;
   ordersCount: number;
-  status: 'success' | 'failed';
+  status: 'SYNCED' | 'FAILED';
   errorMessage?: string;
   timestamp: string;
   duration: number;

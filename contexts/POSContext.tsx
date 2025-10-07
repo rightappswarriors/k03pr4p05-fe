@@ -11,11 +11,8 @@ const DESKTOP_BREAKPOINT = 1024;
 import { //AUTH_TOKEN_KEY, API_BASE_URL, secureStorage, 
   getGraphQLClient
 } from '@/utils/constants'
-import { mockCategories, mockItems } from '@/data/mockData';
 import { gql } from 'graphql-request'
 import { useAuth } from './AuthContext';
-import http from '@/services/httpServices';
-import { formatGraphQLError } from '@/utils/errorFormatter';
 
 
 interface POSContextType {
@@ -53,6 +50,7 @@ export const CartProvider = ({ children }: CartProviderProps) => {
   const [outlet, setOutlet] = useState<Outlet>()
   const [categories, setCategories] = useState<Category[]>([])
   const { isAuthenticated, user } = useAuth()
+  const [loading, setLoading] = useState(true);
   useEffect(() => {
     console.log('Getting items')
     const getItems = async () => {
@@ -73,6 +71,7 @@ export const CartProvider = ({ children }: CartProviderProps) => {
       id
       price
       item {
+        id
         name
         image
         description
@@ -112,7 +111,7 @@ export const CartProvider = ({ children }: CartProviderProps) => {
           console.log("Items:", items)
           setItems(
             items.map((itemField: any) => ({
-              id: itemField.id.toString(),
+              id: itemField.item.id.toString(),
               name: itemField.item.name,
               price: itemField.price,
               image: itemField.item.image,
@@ -125,19 +124,22 @@ export const CartProvider = ({ children }: CartProviderProps) => {
               color: Array.isArray(itemField.item.color)
                 ? itemField.item.color.map((c: any) => c.name).join(", ")
                 : itemField.item.color,
-            }))
-          );
+            })));
+
+          console.log("ITEMS SET:", storedItems)
+          
         } catch (error) {
           console.error("Error getting Outlet items:", error)
           throw new Error("Error getting Outlet items");
+        } finally {
+          setLoading(false)
         }
       } else {
 
       }
     }
     getItems()
-    
-    console.log("ITEMS SET:", storedItems)
+
     //
     //setTimeout(() => {
     //  setItems(mockItems);
@@ -147,28 +149,10 @@ export const CartProvider = ({ children }: CartProviderProps) => {
 
 
   }, [isAuthenticated]);
-  const fetchStoreItems = async () => {
-
-    try {
-      const response = await http.get('/stores/')
-
-      const data = response.data;
-      console.log(data)
-      console.log('Data inventories', data.inventory.items)
-      setItems(data.inventory.items);
-
-      // Assuming the API returns both items and categories
-    } catch (error) {
-      console.error('Store Item retrieval error:', error);
-    } finally {
-      setLoading(false); // Stop loading regardless of success or failure
-    }
-  };
 
 
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
 
-  const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(
     screenWidth >= DESKTOP_BREAKPOINT
   );
