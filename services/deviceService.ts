@@ -9,13 +9,14 @@ const DEVICE_ID_KEY = 'device_id';
 export class DeviceService {
   private static deviceId: string | null = null;
 
+
   static async getDeviceId(): Promise<string> {
     if (this.deviceId) {
       return this.deviceId;
     }
 
     let storedDeviceId = await AsyncStorage.getItem(DEVICE_ID_KEY);
-    
+
     if (!storedDeviceId) {
       // Generate a unique device ID
       const timestamp = Date.now().toString();
@@ -30,7 +31,7 @@ export class DeviceService {
 
   static async getDeviceInfo(): Promise<DeviceInfo> {
     const deviceId = await this.getDeviceId();
-    
+
     return {
       deviceId,
       deviceName: Device.deviceName || 'Unknown Device',

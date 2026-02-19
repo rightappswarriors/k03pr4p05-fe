@@ -10,7 +10,6 @@ async function initAPIBaseUrl() {
   } else if (Platform.OS === 'android' || Platform.OS === 'ios') {
     try {
       const state = await NetInfo.fetch();
-
       // Check if a Wi-Fi connection exists and has an IP address
       if (state.isConnected && state.type === 'wifi' && state.details?.ipAddress) {
         const localIP = state.details.ipAddress;
@@ -19,8 +18,9 @@ async function initAPIBaseUrl() {
         // Replace this with your PC's IP on the same Wi-Fi (from ipconfig)
         // You can use a development-specific IP for this purpose.
         const serverIP = '192.168.254.123'; 
+        
 
-        API_BASE_URL = `http://${serverIP}:4000`;
+        API_BASE_URL = 'http://10.0.2.2:4000'; // Android emulator -> PC localhost
       } else {
         console.log('❌ Not connected to Wi-Fi with an IP address, or connection type is not Wi-Fi.');
         // Fallback for cases where NetInfo can't get the IP

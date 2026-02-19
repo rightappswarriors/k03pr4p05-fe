@@ -1,16 +1,19 @@
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { User } from '@/types';
+import type { AuthState, User } from '@/types';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { getGraphQLClient } from '@/utils/constants';
 import { gql } from 'graphql-request';
+import { DeviceService } from './deviceService';
 interface AuthPayload {
   user: User;
   token: string;
   refresh_token: string;
 }
+
+const DEVICE_BINDING_KEY = 'device_binding';
 
 interface LoginResponse {
   login: AuthPayload;
@@ -57,6 +60,7 @@ export class AuthService {
    * Helper function to retrieve all stored tokens.
    * @returns {Promise<{accessToken: string | null, refreshToken: string | null}>}
    */
+  static deviceBound: boolean = false;
   static async getTokens() {
     // ✅ Corrected: Use the correct keys for each token.
     const accessToken = await secureStorage.getItemAsync(AUTH_TOKEN_KEY);
@@ -267,4 +271,60 @@ export class AuthService {
       return null;
     }
   }
+  /**
+    
+    export interface AuthState {
+      user: User | null;
+      isLoading: boolean;
+      isAuthenticated: boolean;
+      deviceBound?: boolean;
+      accessToken?: null | string;
+      refreshToken?: null | string;
+      wifiAuthorized?: boolean;
+    }
+    */
+  static async initializeAuth(): Promise<AuthState> {
+    try {
+      const user = await this.getCurrentUser();
+      const { accessToken, refreshToken } = await this.getTokens();
+      if (!user || !accessToken) {
+        return {
+          user: null,
+          isLoading: false,
+          accessToken: null,
+          refreshToken: null,
+          isAuthenticated: false,
+        };
+      }
+      return {
+        user,
+        isLoading: false,
+        accessToken,
+        refreshToken,
+        isAuthenticated: !!accessToken && !!user,
+      };
+    } catch (error) {
+      console.error('Error initializing auth:', error);
+      return {
+        user: null,
+        isLoading: false,
+        accessToken: null,
+        refreshToken: null,
+        isAuthenticated: false,
+      };
+    }
+  }
+
+  static async bindDevice(storeId: string): Promise<boolean> {
+    try {
+      const deviceId = await DeviceService.getDeviceId();
+      await AsyncStorage.setItem(`${DEVICE_BINDING_KEY}_${storeId}`, deviceId);
+      this.deviceBound = true;
+      return true;
+    } catch (error) {
+      console.error('Device binding failed:', error);
+      return false;
+    }
+  }
+
 }

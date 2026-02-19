@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { MockAuthService } from '@/services/mockAuthService';
+import { AuthService } from '@/services/authService';
 import { AuthState } from '@/types';
-import { useWiFiAuth } from './useWifiAuth';
+
 
 export function useAuth() {
   const [authState, setAuthState] = useState<AuthState>({
@@ -21,7 +21,7 @@ export function useAuth() {
 
   const initializeAuth = async () => {
     try {
-      const state = await MockAuthService.initializeAuth();
+      const state = await AuthService.initializeAuth();
       setAuthState(state);
     } catch (error) {
       console.error('Auth initialization failed:', error);
@@ -32,9 +32,9 @@ export function useAuth() {
 
   const login = async (email: string, password: string) => {
     try {
-      const state = await MockAuthService.login(email, password);
-      setAuthState(state);
-      return state;
+      const user = await AuthService.login(email, password);
+      setAuthState(prev => ({ ...prev, user, isAuthenticated: true }));
+      return user;
     } catch (error) {
       console.error('Login failed:', error);
       throw error;
@@ -43,15 +43,15 @@ export function useAuth() {
 
   const logout = async () => {
     try {
-      await MockAuthService.logout();
+      await AuthService.logout();
       setAuthState({
-          user: null,
-          accessToken: null,
-          refreshToken: null,
-          isLoading: false,
-          isAuthenticated: false,
-          deviceBound: false,
-          wifiAuthorized: false,
+        user: null,
+        accessToken: null,
+        refreshToken: null,
+        isLoading: false,
+        isAuthenticated: false,
+        deviceBound: false,
+        wifiAuthorized: false,
       });
     } catch (error) {
       console.error('Logout failed:', error);
@@ -60,7 +60,7 @@ export function useAuth() {
 
   const bindDevice = async (storeId: string) => {
     try {
-      const success = await MockAuthService.bindDevice(storeId);
+      const success = await AuthService.bindDevice(storeId);
       if (success) {
         setAuthState(prev => ({ ...prev, deviceBound: true }));
       }

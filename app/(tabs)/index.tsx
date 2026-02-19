@@ -4,10 +4,12 @@ import { CartProvider } from "@/contexts/POSContext"
 import { Platform } from "react-native"
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { DisplayProvider } from '@/contexts/DisplayContext';
+import { useAuth } from '@/hooks/useAuth'
+import DashboardScreen from '@/components/ManagerDashboard'
 //import LoadingScreen from '@/components/dashboard/LoadingScreen'
 
 export default React.memo(function MainScreen() {
-
+  const { user, isLoading } = useAuth();
   // if (isLoading || !user) return <LoadingScreen title={user?.role === 'owner'?'Dasboard' : 'POS Screen'}/>;
   // user.role === 'owner' ? <DashboardScreen/> : 
   return (
@@ -16,7 +18,8 @@ export default React.memo(function MainScreen() {
       {Platform.OS !== "web" ? (
         <GestureHandlerRootView className="flex-1">
           <CartProvider>
-            <POSScreen />
+            {user?.role === 'MANAGER' || user?.role === "OWNER" ? <DashboardScreen />: <POSScreen /> }
+
           </CartProvider>
         </GestureHandlerRootView>
       ) : (

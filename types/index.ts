@@ -55,7 +55,7 @@ export interface Outlet {
   tin?: string,
   ptu?: string,
   bir?: string,
-  discountOption?: Record<DiscountType, number>;
+  discountOption: Record<DiscountType, number>;
 }
 export interface DiscountOptions {
   type: DiscountType;
@@ -125,10 +125,10 @@ export interface AuthState {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  //deviceBound?: boolean;
+  deviceBound?: boolean;
   accessToken?: null | string;
   refreshToken?: null | string;
-  //wifiAuthorized: boolean;
+  wifiAuthorized?: boolean;
 }
 export interface SyncLog {
   id: string;

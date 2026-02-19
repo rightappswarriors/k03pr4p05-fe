@@ -1,4 +1,4 @@
-import { CalculationResult, CartItem, DiscountOptions, DiscountType, Store } from '@/types';
+import { CalculationResult, CartItem, DiscountOptions, Outlet } from '@/types';
 
 
 
@@ -12,7 +12,7 @@ function fromCents(cents: number) {
 
 export function calculateTotal(
   items: CartItem[],
-  store: Store,
+  store: Outlet,
   discount: DiscountOptions,
 ): CalculationResult {
   const subtotalCents = items.reduce(

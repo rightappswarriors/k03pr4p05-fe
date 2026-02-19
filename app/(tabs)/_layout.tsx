@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router';
 import React, { useEffect, useState } from 'react'
-import { Platform} from 'react-native'
+import { Platform } from 'react-native'
 import { useAuth } from '@/contexts/AuthContext';
 import { router } from 'expo-router'
 import { MockSyncService } from '@/services/mockSyncService'
@@ -11,10 +11,12 @@ import ResponsiveTab from '@/components/dashboard/ResponsiveTabLayout';
 import PrinterScreen from './printer';
 import { useTheme } from '@/contexts/ThemeContext'
 import { useResponsive } from '@/hooks/useResponsive'
-import { Printer, Settings, ShoppingCart, History } from 'lucide-react-native';
+import { Printer, Settings, ShoppingCart, History, LayoutDashboard } from 'lucide-react-native';
+
 export default function TabLayout() {
   const { colors } = useTheme()
-  const { isDesktop, isMobile } = useResponsive()
+  const { user } = useAuth()
+  const { isMobile } = useResponsive()
   useEffect(() => {
     MockSyncService.startBackgroundSync();
   }, []);
@@ -60,10 +62,23 @@ export default function TabLayout() {
           shadowOpacity: 0,                         // remove shadow on iOS
         },
       }}>
+
+
+
         <Tabs.Screen
           name="index"
-          options={{ tabBarIcon: ({ color }) => <ShoppingCart size={20} color={color} />, title: 'POS' }}
+          options={{
+            title: user?.role === "MANAGER" || user?.role === "OWNER" ? "Dashboard" : "POS", // the screen title
+            tabBarIcon: ({ color }) =>
+              user?.role === "MANAGER" || user?.role === "OWNER" ? (
+                <LayoutDashboard size={20} color={color} />
+              ) : (
+
+                <ShoppingCart size={20} color={color} />
+              ),
+          }}
         />
+
         <Tabs.Screen
           name="history"
           options={{ tabBarIcon: ({ color }) => <History size={20} color={color} />, title: 'Orders' }}

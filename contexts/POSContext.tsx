@@ -58,34 +58,34 @@ export const CartProvider = ({ children }: CartProviderProps) => {
       if (user?.role === "CASHIER" || user?.role === "MANAGER" || user?.role === "STAFF") {
         const GETOUTLETITEM_MUTATION = gql`
           query GetOutletItems {
-  getOutletItems {
-    id
-    name
-    address
-    code
-    governmentTax
-    serviceCharge
-    phone
-    outletType
-    items {
-      id
-      price
-      item {
-        id
-        name
-        image
-        description
-        barcode
-        brand
-        categoryId
-        color {
-          name
-          id
-        }
-      }
-    }
-    }
-  }
+            getOutletItems {
+              id
+              name
+              address
+              code
+              governmentTax
+              serviceCharge
+              phone
+              outletType
+              items {
+                id
+                price
+                item {
+                  id
+                  name
+                  image
+                  description
+                  barcode
+                  brand
+                  categoryId
+                  color {
+                    name
+                    id
+                  }
+                }
+              }
+              }
+            }
         `
         try {
           const { accessToken } = await AuthService.getTokens()

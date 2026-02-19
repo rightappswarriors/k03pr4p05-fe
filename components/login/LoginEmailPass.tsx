@@ -42,8 +42,7 @@ export default function LoginScreenDefault({ isDesktop }: Props) {
                await login(email, password)
                router.replace('/(tabs)');
           } catch (error) {
-               console.error('Login failed:', error);
-
+              
                Alert.alert('Login Failed', (error as Error).message)
           } finally {
                setLoading(false)

@@ -1,5 +1,5 @@
 import { StorageService } from './storageService';
-import { ApiService } from './apiService';
+import { AuthService } from './authService';
 import { Transaction } from '@/types';
 
 export class SyncService {
@@ -62,7 +62,7 @@ export class SyncService {
         
         // Update synced orders
         for (const orderId of result.syncedOrderIds) {
-          await StorageService.updateOrderStatus(orderId, 'synced', new Date().toISOString());
+          await StorageService.updateOrderStatus(orderId, 'SYNCED', new Date().toISOString());
         }
 
         // Handle failed orders
@@ -73,9 +73,9 @@ export class SyncService {
         for (const failedOrder of failedOrders) {
           const newRetryCount = failedOrder.retryCount + 1;
           if (newRetryCount >= this.maxRetries) {
-            await StorageService.updateOrderStatus(failedOrder.id, 'failed');
+            await StorageService.updateOrderStatus(failedOrder.id, 'FAILED');
           } else {
-            await StorageService.updateOrderStatus(failedOrder.id, 'pending');
+            await StorageService.updateOrderStatus(failedOrder.id, 'PENDING');
             // Update retry count in storage
           }
         }
@@ -100,7 +100,7 @@ export class SyncService {
       const pendingOrders = await StorageService.getPendingOrders();
       for (const order of pendingOrders) {
         if (order.retryCount >= this.maxRetries) {
-          await StorageService.updateOrderStatus(order.id, 'failed');
+          await StorageService.updateOrderStatus(order.id, 'FAILED');
         }
       }
       this.syncRetryCount = 0;
