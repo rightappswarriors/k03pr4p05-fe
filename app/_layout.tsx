@@ -14,8 +14,12 @@ export default function RootLayout() {
     <ThemeProvider>
       <AuthProvider>
         <ProtectedRoute>
-            <Stack screenOptions={{ headerShown: false }}>
-            </Stack>
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="index" />
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="(admin)" />
+            <Stack.Screen name="+not-found" />
+          </Stack>
         </ProtectedRoute>
       </AuthProvider>
     </ThemeProvider>

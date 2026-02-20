@@ -27,8 +27,11 @@ export default function TabLayout() {
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
       router.replace('/login')
+    } else if (!isLoading && isAuthenticated && user?.role !== "CASHIER") {
+      router.replace('/(admin)')
     }
   }, [isAuthenticated])
+  
   const renderCurrentScreen = () => {
     switch (currentRoute) {
       case 'index':

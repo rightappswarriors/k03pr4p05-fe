@@ -9,13 +9,15 @@ import { useTheme } from '@/contexts/ThemeContext'
 export default function SplashScreen() {
      const { colors } = useTheme()
      const { user, isLoading, isAuthenticated } = useAuth()
-     const [ isDesktop, setIsDesktop] = useState(false)
+     const [isDesktop, setIsDesktop] = useState(false)
      useEffect(() => {
           if (Platform.OS === 'web') setIsDesktop(true)
           if (!isLoading) {
-               if (isAuthenticated && user) {
+               if (isAuthenticated && user?.role === "CASHIER") {
                     // Route based on the User role
                     router.replace('/(tabs)')
+               } else if (isAuthenticated && (user?.role === "OWNER" || user?.role === "MANAGER"  || user?.role === "ADMIN")) {
+                    router.replace("/(admin)")
                } else {
                     router.replace('/login')
                }
@@ -23,23 +25,23 @@ export default function SplashScreen() {
      }, [isLoading, isAuthenticated, user])
 
      return (
-          
-          <View style={[styles.container, { backgroundColor: colors.background}]}>
+
+          <View style={[styles.container, { backgroundColor: colors.background }]}>
                <View style={styles.content}>
                     <Image source={{ uri: 'https://images.pexels.com/photos/30403369/pexels-photo-30403369.jpeg?auto=compress&cs=tinysrgb&w=200&h=200&fit=crop' }}
                          style={styles.logo}
                     />
-                    <Text style={[styles.title, { color:colors.text}]}>Right Apps</Text>
-                    <Text style={[styles.subtitle, {color:colors.textSecondary}]}>POS Vine</Text>
+                    <Text style={[styles.title, { color: colors.text }]}>Right Apps</Text>
+                    <Text style={[styles.subtitle, { color: colors.textSecondary }]}>POS Vine</Text>
                     <View style={styles.loadingContainer}>
                          <ActivityIndicator size='large' color='#3B82F6' />
-                         <Text style={[styles.loadingText, {color:colors.textSecondary}]}> Loading...</Text>
+                         <Text style={[styles.loadingText, { color: colors.textSecondary }]}> Loading...</Text>
                     </View>
                </View>
           </View>
      )
 }
-
+ 
 const styles = StyleSheet.create({
      container: {
           flex: 1,

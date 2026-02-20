@@ -25,7 +25,7 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  role: 'OWNER' | 'CASHIER' | 'STAFF' | 'MANAGER';
+  role: 'OWNER' | 'CASHIER' | 'STAFF' | 'MANAGER' | 'ADMIN';
   assignedOutletId?: string; // For cashiers
   createdAt: string;
   profilePhoto?: string;
@@ -155,4 +155,129 @@ export interface OrderItem {
   price: number;
   quantity: number;
   category: string;
+}
+/// Defining Admin type mock
+
+export interface Order {
+  id: string;
+  storeId: string;
+  deviceId: string;
+  userId: string;
+  userEmail: string;
+  items: OrderItem[];
+  total: number;
+  tax: number;
+  subtotal: number;
+  paymentMethod: 'cash' | 'card' | 'digital';
+  status: 'pending' | 'synced' | 'failed';
+  createdAt: string;
+  syncedAt?: string;
+  retryCount: number;
+}
+
+
+export interface Store {
+  id: string;
+  name: string;
+  address: string;
+  wifiSSID: string;
+  boundDeviceId?: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+
+export interface DeviceInfo {
+  deviceId: string;
+  deviceName?: string;
+  platform: string;
+  osVersion?: string;
+  appVersion: string;
+}
+
+
+
+export interface Branch {
+  id: string;
+  name: string;
+  location: {
+    address: string;
+    coordinates?: {
+      lat: number;
+      lng: number;
+    };
+  };
+  outletIds: string[];
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface AdminOutlet {
+  id: string;
+  branchId: string;
+  name: string;
+  status: 'open' | 'closed' | 'maintenance';
+  assignedCashierIds: string[];
+  currentCashierId?: string;
+  location?: string;
+  deviceId?: string;
+  createdAt: string;
+}
+
+export interface Cashier {
+  id: string;
+  name: string;
+  email: string;
+  outletId?: string;
+  branchId: string;
+  shiftStartTime?: string;
+  isActive: boolean;
+  totalTransactionsToday: number;
+}
+
+
+export interface AdminTransaction {
+  id: string;
+  branchId: string;
+  outletId: string;
+  cashierId: string;
+  items: OrderItem[];
+  total: number;
+  tax: number;
+  subtotal: number;
+  paymentMethod: 'cash' | 'card' | 'digital';
+  status: 'completed' | 'pending' | 'cancelled';
+  createdAt: string;
+  completedAt?: string;
+}
+
+export interface BranchRevenue {
+  branchId: string;
+  totalRevenue: number;
+  transactionCount: number;
+  dateRange: {
+    start: string;
+    end: string;
+  };
+}
+
+export interface AdminOutlet {
+  id: string;
+  branchId: string;
+  name: string;
+  status: 'open' | 'closed' | 'maintenance';
+  assignedCashierIds: string[];
+  currentCashierId?: string;
+  location?: string;
+  deviceId?: string;
+  createdAt: string;
+}
+export interface OutletRevenue {
+  outletId: string;
+  totalRevenue: number;
+  transactionCount: number;
+  dateRange: {
+    start: string;
+    end: string;
+  };
 }
