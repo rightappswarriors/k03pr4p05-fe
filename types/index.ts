@@ -94,7 +94,7 @@ export interface Receipt {
     total: number
     cashReceived: number
     change: number
-    discountType?: 'SENIOR'|'PROMO' | "PWD" 
+    discountType?: 'SENIOR' | 'PROMO' | "PWD"
     discountPercent?: number
     discountTotal?: number
   }
@@ -115,7 +115,7 @@ export interface Transaction {
   cashReceived: number;
   change: number;
   paymentMethod: 'CASH' | 'CARD' | 'DIGITAL';
-  status: 'PENDING' | 'SYNCED'| 'FAILED' | 'PAYED'| 'CANCELED';
+  status: 'PENDING' | 'SYNCED' | 'FAILED' | 'PAYED' | 'CANCELED';
   createdAt: string;
   syncedAt?: string;
   retryCount: number;
@@ -200,16 +200,18 @@ export interface DeviceInfo {
 export interface Branch {
   id: string;
   name: string;
-  location: {
-    address: string;
-    coordinates?: {
-      lat: number;
-      lng: number;
-    };
-  };
   outletIds: string[];
+  address: string;
   isActive: boolean;
   createdAt: string;
+  location?: Location
+}
+
+export interface Location {
+  id: number
+  address: string
+  latitude?: number
+  longitude?: number
 }
 
 export interface AdminOutlet {
@@ -218,21 +220,27 @@ export interface AdminOutlet {
   name: string;
   status: 'open' | 'closed' | 'maintenance';
   assignedCashierIds: string[];
-  currentCashierId?: string;
+  currentCashiers: PresentCashier[];
   location?: string;
   deviceId?: string;
   createdAt: string;
+  outletType: string,
+  address: string
 }
 
+export interface PresentCashier {
+  isPresent: boolean,
+  id: string
+}
 export interface Cashier {
   id: string;
-  name: string;
+  fullname: string;
   email: string;
   outletId?: string;
-  branchId: string;
+  //branchId: string;
   shiftStartTime?: string;
   isActive: boolean;
-  totalTransactionsToday: number;
+  totalTransactionsToday?: number;
 }
 
 
@@ -261,17 +269,6 @@ export interface BranchRevenue {
   };
 }
 
-export interface AdminOutlet {
-  id: string;
-  branchId: string;
-  name: string;
-  status: 'open' | 'closed' | 'maintenance';
-  assignedCashierIds: string[];
-  currentCashierId?: string;
-  location?: string;
-  deviceId?: string;
-  createdAt: string;
-}
 export interface OutletRevenue {
   outletId: string;
   totalRevenue: number;

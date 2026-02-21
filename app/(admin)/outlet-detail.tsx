@@ -6,13 +6,13 @@ import { AdminService } from '@/services/adminService';
 import { AdminTransaction, Cashier } from '@/types';
 
 export default function OutletDetailScreen() {
-  const { outletId, outletName, branchName } = useLocalSearchParams<{ 
-    outletId: string; 
-    outletName: string; 
-    branchName: string; 
+  const { outletId, outletName, branchName } = useLocalSearchParams<{
+    outletId: string;
+    outletName: string;
+    branchName: string;
   }>();
-  
-  const [currentCashier, setCurrentCashier] = useState<Cashier | null>(null);
+
+  const [currentCashier, setCurrentCashier] = useState<Cashier[]>([]);
   const [recentTransactions, setRecentTransactions] = useState<AdminTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -26,7 +26,7 @@ export default function OutletDetailScreen() {
   const loadOutletDetails = async () => {
     try {
       setLoading(true);
-      
+
       const [cashier, transactions] = await Promise.all([
         AdminService.getCurrentCashier(outletId),
         AdminService.getRecentTransactions(outletId, 20)
@@ -49,20 +49,20 @@ export default function OutletDetailScreen() {
 
   const formatShiftDuration = (shiftStartTime?: string) => {
     if (!shiftStartTime) return 'N/A';
-    
+
     const start = new Date(shiftStartTime);
     const now = new Date();
     const diffMs = now.getTime() - start.getTime();
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-    
+
     return `${diffHours}h ${diffMinutes}m`;
   };
 
   const formatTransactionTime = (timestamp: string) => {
-    return new Date(timestamp).toLocaleTimeString([], { 
-      hour: '2-digit', 
-      minute: '2-digit' 
+    return new Date(timestamp).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit'
     });
   };
 
@@ -79,7 +79,7 @@ export default function OutletDetailScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => {router.back()}}>
+        <TouchableOpacity style={styles.backButton} onPress={() => { router.back() }}>
           <ArrowLeft size={24} color="#1F2937" />
         </TouchableOpacity>
         <View style={styles.headerInfo}>
@@ -88,7 +88,7 @@ export default function OutletDetailScreen() {
         </View>
       </View>
 
-      <ScrollView 
+      <ScrollView
         style={styles.content}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
@@ -97,46 +97,46 @@ export default function OutletDetailScreen() {
         {/* Cashier Information */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Current Cashier</Text>
-          
+
           {currentCashier ? (
             <View style={styles.cashierCard}>
               <View style={styles.cashierHeader}>
                 <View style={styles.cashierInfo}>
                   <View style={styles.cashierNameRow}>
                     <User size={20} color="#2563EB" />
-                    <Text style={styles.cashierName}>{currentCashier.name}</Text>
+                    <Text style={styles.cashierName}>{currentCashier[0].fullname}</Text>
                   </View>
-                  <Text style={styles.cashierEmail}>{currentCashier.email}</Text>
+                  <Text style={styles.cashierEmail}>{currentCashier[0].email}</Text>
                 </View>
                 <View style={styles.activeIndicator}>
                   <View style={styles.activeDot} />
                   <Text style={styles.activeText}>Active</Text>
                 </View>
               </View>
-              
+
               <View style={styles.cashierStats}>
                 <View style={styles.statItem}>
                   <Clock size={16} color="#D97706" />
                   <Text style={styles.statValue}>
-                    {formatShiftDuration(currentCashier.shiftStartTime)}
+                    {formatShiftDuration(currentCashier[0].shiftStartTime)}
                   </Text>
                   <Text style={styles.statLabel}>Shift Duration</Text>
                 </View>
-                
+
                 <View style={styles.statItem}>
                   <ShoppingCart size={16} color="#059669" />
                   <Text style={styles.statValue}>
-                    {currentCashier.totalTransactionsToday}
+                    {currentCashier[0].totalTransactionsToday}
                   </Text>
                   <Text style={styles.statLabel}>Transactions Today</Text>
                 </View>
               </View>
-              
-              {currentCashier.shiftStartTime && (
+
+              {currentCashier[0].shiftStartTime && (
                 <View style={styles.shiftInfo}>
                   <Calendar size={14} color="#6B7280" />
                   <Text style={styles.shiftText}>
-                    Shift started at {new Date(currentCashier.shiftStartTime).toLocaleTimeString()}
+                    Shift started at {new Date(currentCashier[0].shiftStartTime).toLocaleTimeString()}
                   </Text>
                 </View>
               )}
@@ -153,7 +153,7 @@ export default function OutletDetailScreen() {
         {/* Recent Transactions */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Recent Transactions</Text>
-          
+
           {recentTransactions.length > 0 ? (
             <View style={styles.transactionsList}>
               {recentTransactions.map((transaction) => (
@@ -166,7 +166,7 @@ export default function OutletDetailScreen() {
                       {formatTransactionTime(transaction.createdAt)}
                     </Text>
                   </View>
-                  
+
                   <View style={styles.transactionDetails}>
                     <View style={styles.transactionInfo}>
                       <Text style={styles.itemCount}>
@@ -180,7 +180,7 @@ export default function OutletDetailScreen() {
                       ${transaction.total.toFixed(2)}
                     </Text>
                   </View>
-                  
+
                   <View style={styles.transactionItems}>
                     {transaction.items.slice(0, 2).map((item, index) => (
                       <Text key={index} style={styles.itemText}>

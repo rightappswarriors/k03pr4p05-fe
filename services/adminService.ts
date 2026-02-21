@@ -4,173 +4,8 @@ import { getGraphQLClient } from '@/utils/constants';
 import { gql } from 'graphql-request';
 import { AuthService } from './authService';
 
-// Mock data for demonstration
-const MOCK_BRANCHES: Branch[] = [
-  {
-    id: '1',
-    name: 'Downtown Main',
-    location: {
-      address: '123 Main Street, Downtown',
-      coordinates: { lat: 40.7128, lng: -74.0060 }
-    },
-    outletIds: ['outlet_001', 'outlet_002', 'outlet_003'],
-    isActive: true,
-    createdAt: '2024-01-01T00:00:00Z'
-  },
-  {
-    id: '2',
-    name: 'Mall Plaza',
-    location: {
-      address: '456 Shopping Center, Mall Plaza',
-      coordinates: { lat: 40.7589, lng: -73.9851 }
-    },
-    outletIds: ['outlet_004', 'outlet_005'],
-    isActive: true,
-    createdAt: '2024-01-15T00:00:00Z'
-  },
-  {
-    id: '3',
-    name: 'Airport Terminal',
-    location: {
-      address: 'Terminal 1, International Airport',
-      coordinates: { lat: 40.6413, lng: -73.7781 }
-    },
-    outletIds: ['outlet_006'],
-    isActive: true,
-    createdAt: '2024-02-01T00:00:00Z'
-  }
-];
 
-const MOCK_OUTLETS: AdminOutlet[] = [
-  {
-    id: '1',
-    branchId: '1',
-    name: 'Main Counter',
-    status: 'open',
-    assignedCashierIds: ['cashier_001', 'cashier_002'],
-    currentCashierId: 'cashier_001',
-    location: 'Ground Floor - Front',
-    createdAt: '2024-01-01T00:00:00Z'
-  },
-  {
-    id: '2',
-    branchId: '2',
-    name: 'Express Lane',
-    status: 'open',
-    assignedCashierIds: ['cashier_003'],
-    currentCashierId: 'cashier_003',
-    location: 'Ground Floor - Side',
-    createdAt: '2024-01-01T00:00:00Z'
-  },
-  {
-    id: '3',
-    branchId: '1',
-    name: 'Customer Service',
-    status: 'closed',
-    assignedCashierIds: ['cashier_004'],
-    location: 'Ground Floor - Back',
-    createdAt: '2024-01-01T00:00:00Z'
-  },
-  {
-    id: '4',
-    branchId: '2',
-    name: 'Food Court Counter',
-    status: 'open',
-    assignedCashierIds: ['cashier_005'],
-    currentCashierId: 'cashier_005',
-    location: 'Level 2 - Food Court',
-    createdAt: '2024-01-15T00:00:00Z'
-  },
-  {
-    id: '5',
-    branchId: '2',
-    name: 'Main Entrance',
-    status: 'open',
-    assignedCashierIds: ['cashier_006'],
-    currentCashierId: 'cashier_006',
-    location: 'Level 1 - Main Entrance',
-    createdAt: '2024-01-15T00:00:00Z'
-  },
-  {
-    id: '2',
-    branchId: '3',
-    name: 'Departure Gate',
-    status: 'open',
-    assignedCashierIds: ['cashier_007'],
-    currentCashierId: 'cashier_007',
-    location: 'Terminal 1 - Gate A12',
-    createdAt: '2024-02-01T00:00:00Z'
-  }
-];
 
-const MOCK_CASHIERS: Cashier[] = [
-  {
-    id: '1',
-    name: 'Alice Johnson',
-    email: 'alice@store.com',
-    outletId: '3',
-    branchId: '2',
-    shiftStartTime: '2024-12-19T08:00:00Z',
-    isActive: true,
-    totalTransactionsToday: 45
-  },
-  {
-    id: '2',
-    name: 'Bob Smith',
-    email: 'bob@store.com',
-    branchId: '2',
-    isActive: false,
-    totalTransactionsToday: 0
-  },
-  {
-    id: '3',
-    name: 'Carol Davis',
-    email: 'carol@store.com',
-    outletId: '2',
-    branchId: '2',
-    shiftStartTime: '2024-12-19T09:00:00Z',
-    isActive: true,
-    totalTransactionsToday: 32
-  },
-  {
-    id: '4',
-    name: 'David Wilson',
-    email: 'david@store.com',
-    branchId: '1',
-    isActive: false,
-    totalTransactionsToday: 0
-  },
-  {
-    id: '5',
-    name: 'Eva Martinez',
-    email: 'eva@store.com',
-    outletId: '4',
-    branchId: '2',
-    shiftStartTime: '2024-12-19T10:00:00Z',
-    isActive: true,
-    totalTransactionsToday: 28
-  },
-  {
-    id: '6',
-    name: 'Frank Brown',
-    email: 'frank@store.com',
-    outletId: '5',
-    branchId: '2',
-    shiftStartTime: '2024-12-19T08:30:00Z',
-    isActive: true,
-    totalTransactionsToday: 38
-  },
-  {
-    id: '7',
-    name: 'Grace Lee',
-    email: 'grace@store.com',
-    outletId: '6',
-    branchId: '3',
-    shiftStartTime: '2024-12-19T06:00:00Z',
-    isActive: true,
-    totalTransactionsToday: 52
-  }
-];
 const MOCK_TRANSACTIONS: AdminTransaction[] = [
   // Branch 001 transactions
   {
@@ -255,16 +90,18 @@ export class AdminService {
         name
         address
         createdAt
+        isActive
         owner {
           id
           fullname
         }
         outlets {
-          name
+          id
         }
       }
     }
     `
+    let branches: Branch[]
     try {
       const { accessToken } = await AuthService.getTokens()
       const client = await getGraphQLClient()
@@ -272,12 +109,24 @@ export class AdminService {
         Authorization: `Bearer ${accessToken}`
       })) as any
       console.log("Success getting branches:\n", res.getOwnedBranches)
-
+      branches = res.getOwnedBranches.map((b: any) => {
+        return {
+          id: b.id,
+          name: b.name,
+          address: b.address,
+          outletIds: b.outlets.map((o: any) => {
+            return o.id
+          }) ?? [],
+          isActive: b.isActive,
+          createdAt: b.createdAt
+        }
+      }) ?? []
+      return branches
     } catch (error) {
       console.error("Failed to get branches:", error)
+      return []
     }
-    // In real implementation, filter branches based on admin access
-    return MOCK_BRANCHES.filter(branch => branch.isActive);
+
   }
 
   static async getBranchRevenue(branchId: string, startDate: string, endDate: string): Promise<BranchRevenue> {
@@ -298,6 +147,7 @@ export class AdminService {
         Authorization: `Bearer ${accessToken}`
       })) as any
       console.log("Success getting branch transactions:\n", res.getBranchTransactions)
+
 
     } catch (error) {
       console.error("Failed to get branch Revenue:", error)
@@ -321,13 +171,21 @@ export class AdminService {
 
   static async getOutletsByBranch(branchId: string): Promise<AdminOutlet[]> {
     const GET_BRANCHOUTLETS = gql`
-    query GetOutletsByBranch($branchId: ID!) {
-      getOutletsByBranch(branchId: $branchId) {
-        id
-        name
-        outletType
+      query GetOutletsByBranch($branchId: ID!) {
+        getOutletsByBranch(branchId: $branchId) {
+          id
+          name
+          outletType
+          address 
+          branchId
+          createdAt
+          status
+          staff {
+            id
+            isPresent
+          }
+        }
       }
-    }
   `
     try {
       const { accessToken } = await AuthService.getTokens()
@@ -336,11 +194,27 @@ export class AdminService {
         Authorization: `Bearer ${accessToken}`
       })) as any
       console.log("Success getting outlets:\n", res.getOutletsByBranch)
+      return res.getOutletsByBranch.map((o: any) => {
+        return {
+          id: o.id,
+          name: o.name,
+          status: o.status === null ? "open" : o.status,
+          outletType: o.outletType,
+          address: o.address,
+          createdAt: o.createdAt,
+          assignedCashierIds: o.staff.map((s: any) => s.id) ?? [],
+          currentCashiers: o.staff.filter((s: any) => s.isPresent === true).map((s: any) => {
+            return {
+              id: s.id,
+              isPresent: s.isPresent
+            }
+          })
+        }
+      }) as AdminOutlet[] ?? []
     } catch (error) {
       console.error("Failed to get outlets:", error)
+      return []
     }
-
-    return MOCK_OUTLETS.filter(outlet => outlet.branchId === branchId);
   }
 
   static async getOutletRevenue(outletId: string, startDate: string, endDate: string): Promise<OutletRevenue> {
@@ -401,13 +275,19 @@ export class AdminService {
 
   static async getCashiersByOutlet(outletId: string): Promise<Cashier[]> {
     const GET_OUTLETCASHIERS = gql`
-    query GetStaffByOutletId($outletId: ID!) {
-      getStaffByOutletId(outletId: $outletId) {
-        role
-        email
+   query GetOutletsByBranch($outletId: ID!) {
+    getStaffByOutletId(outletId: $outletId) {
+      user {
+        id
         fullname
+        username
+        email
       }
-    }`
+      id
+      outletId
+      isPresent
+    }
+  }`
     try {
       const { accessToken } = await AuthService.getTokens()
       const client = await getGraphQLClient()
@@ -415,25 +295,56 @@ export class AdminService {
         Authorization: `Bearer ${accessToken}`
       })) as any
       console.log("Success getting outlet cashiers:\n", res.getStaffByOutletId)
+      const staffs = res.getStaffByOutletId
+      return staffs.map((s: any) => {
+        return {
+          id: s.user.id,
+          fullname: s.user.fullname,
+          email: s.user.email,
+          outletId: s.outletId,
+          isActive: s.isActive
+        }
+      })
     } catch (error) {
       console.error("Failed to get outlet cashiers:", error)
+      return []
     }
-
-    const outlet = MOCK_OUTLETS.find(o => o.id === outletId);
-    if (!outlet) return [];
-
-    return MOCK_CASHIERS.filter(cashier =>
-      outlet.assignedCashierIds.includes(cashier.id)
-    );
   }
 
-  static async getCurrentCashier(outletId: string): Promise<Cashier | null> {
+  static async getCurrentCashier(outletId: string): Promise<Cashier[]> {
     await new Promise(resolve => setTimeout(resolve, 200));
 
-    const outlet = MOCK_OUTLETS.find(o => o.id === outletId);
-    if (!outlet?.currentCashierId) return null;
+    const GET_CURRENTCASHIER_QUERY = `
+  query GetPresentStaffs($outletId: ID!) {
+    getPresentStaffs(outletId: $outletId) {
+      user { id fullname role email }
+      outletId
+      id
+      isPresent
+    }
+  }`;
 
-    return MOCK_CASHIERS.find(c => c.id === outlet.currentCashierId) || null;
+    try {
+      const { accessToken } = await AuthService.getTokens();
+      const client = await getGraphQLClient();
+      const res = await client.request(GET_CURRENTCASHIER_QUERY, { outletId }, {
+        Authorization: `Bearer ${accessToken}`
+      }) as any;
+
+      const presentStaffs: Cashier[] = res.getPresentStaffs.map((ps: any) => ({
+        id: ps.user.id,
+        fullname: ps.user.fullname,
+        email: ps.user.email,
+        isActive: ps.isPresent,
+        outletId: ps.outletId
+      }));
+
+      return presentStaffs;
+
+    } catch (error) {
+      console.error("Failed to get outlet cashiers:", error);
+      return [];
+    }
   }
 
   static async getRecentTransactions(outletId: string, limit: number = 20): Promise<AdminTransaction[]> {
@@ -446,14 +357,89 @@ export class AdminService {
   }
 
   static async getBranchById(branchId: string): Promise<Branch | null> {
-    await new Promise(resolve => setTimeout(resolve, 200));
-
-    return MOCK_BRANCHES.find(branch => branch.id === branchId) || null;
+    const GETBRANCH_ID = `
+    query GetBranchById($getBranchByIdId: ID!) {
+      getBranchById(id: $getBranchByIdId) {
+        id
+        name
+        address
+        createdAt
+        isActive
+        outlets {
+          id
+        }
+        owner {
+          id
+        }
+      }
+    }`
+    try {
+      const { accessToken } = await AuthService.getTokens()
+      const client = await getGraphQLClient()
+      const res = (await client.request(GETBRANCH_ID, { getBranchByIdId: branchId }, {
+        Authorization: `Bearer ${accessToken}`
+      })) as any
+      console.log("Success getting branch by id:\n", res.getBranchById)
+      const branch = res.getBranchById
+      return {
+        id: branch.id,
+        name: branch.name,
+        address: branch.address,
+        location: branch.location ?? undefined,
+        isActive: branch.isActive,
+        outletIds: branch.outlets.map((o: any) => o.id) ?? [],
+        createdAt: branch.createdAt
+      }
+    } catch (error) {
+      console.error("Failed to get branch by id:", error)
+      return null
+    }
   }
 
   static async getOutletById(outletId: string): Promise<AdminOutlet | null> {
-    await new Promise(resolve => setTimeout(resolve, 200));
-
-    return MOCK_OUTLETS.find(outlet => outlet.id === outletId) || null;
+    const GETOUTLET_ID = `
+    query GetOutletsByBranch($branchId: ID!) {
+      getOutletsByBranch(branchId: $branchId) {
+        id
+        name
+        outletType
+        address 
+        branchId
+        createdAt
+        status
+        staff {
+          id
+          isPresent
+        }
+      }
+    }`
+    try {
+      const { accessToken } = await AuthService.getTokens()
+      const client = await getGraphQLClient()
+      const res = (await client.request(GETOUTLET_ID, { getOutletByIdId: outletId }, {
+        Authorization: `Bearer ${accessToken}`
+      })) as any
+      console.log("Success getting outlet by id:\n", res.getOutletById)
+      const o = res.getOutletById
+      return {
+        id: o.id,
+        name: o.name,
+        status: o.status === null ? "open" : o.status,
+        outletType: o.outletType,
+        branchId: o.branchId,
+        address: o.address,
+        createdAt: o.createdAt,
+        assignedCashierIds: o.staff.map((s: any) => s.id) ?? [],
+        currentCashiers: o.staffs.filter((s: any) => s.isPresent === true).map((s: any) => {
+          return {
+            id: s.id,
+            isPresent: s.isPresent
+          }
+        })
+      }
+    } catch (error) {
+      console.error("Failed to get outlet by id:", error)
+      return null
+    }
   }
 }

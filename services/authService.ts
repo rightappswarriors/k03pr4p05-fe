@@ -170,7 +170,7 @@ export class AuthService {
         Authorization: `Bearer ${accessToken}`
       })
     } catch (error) {
-      console.error("Logout error:", error)
+      console.error("Logout error in:", error)
     }
     await secureStorage.deleteItemAsync(AUTH_TOKEN_KEY);
     // await AsyncStorage.removeItem(BIOMETRIC_ENABLED_KEY);

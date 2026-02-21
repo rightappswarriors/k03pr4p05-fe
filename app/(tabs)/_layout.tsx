@@ -15,7 +15,7 @@ import { Printer, Settings, ShoppingCart, History, LayoutDashboard } from 'lucid
 
 export default function TabLayout() {
   const { colors } = useTheme()
-  const { user } = useAuth()
+
   const { isMobile } = useResponsive()
   useEffect(() => {
     MockSyncService.startBackgroundSync();
@@ -23,15 +23,15 @@ export default function TabLayout() {
 
   const [currentRoute, setCurrentRoute] = useState('index')
 
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
       router.replace('/login')
-    } else if (!isLoading && isAuthenticated && user?.role !== "CASHIER") {
+    } else if (!isLoading && isAuthenticated && user?.role !== "CASHIER" && user?.role !== "STAFF") {
       router.replace('/(admin)')
     }
   }, [isAuthenticated])
-  
+
   const renderCurrentScreen = () => {
     switch (currentRoute) {
       case 'index':

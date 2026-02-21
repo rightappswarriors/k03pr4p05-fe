@@ -1,8 +1,18 @@
-import { Tabs } from 'expo-router';
+import { useAuth } from '@/hooks/useAuth';
+import { router, Tabs } from 'expo-router';
 import { BarChart3, Store, Settings, Users } from 'lucide-react-native';
-import React from 'react';
+import React, { useEffect } from 'react';
 
 export default function AdminTabLayout() {
+
+  const { isAuthenticated, isLoading, user } = useAuth();
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      router.replace('/login')
+    } else if (!isLoading && isAuthenticated && (user?.role === "CASHIER" || user?.role === "STAFF")) {
+      router.replace('/(tabs)')
+    }
+  }, [isAuthenticated])
   return (
     <Tabs
       screenOptions={{

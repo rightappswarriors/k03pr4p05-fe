@@ -161,7 +161,7 @@ export default function OutletListScreen() {
 
               <View style={styles.outletFooter}>
                 <Text style={styles.cashierInfo}>
-                  {outlet.currentCashierId ? 'Cashier Active' : 'No Active Cashier'}
+                  {outlet.currentCashiers.length > 0 ? 'Cashier Active' : 'No Active Cashier'}
                 </Text>
                 <Text style={styles.viewDetails}>View Details →</Text>
               </View>

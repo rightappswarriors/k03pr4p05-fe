@@ -13,7 +13,7 @@ export default function SplashScreen() {
      useEffect(() => {
           if (Platform.OS === 'web') setIsDesktop(true)
           if (!isLoading) {
-               if (isAuthenticated && user?.role === "CASHIER") {
+               if (isAuthenticated && (user?.role === "CASHIER" || user?.role === "STAFF")) {
                     // Route based on the User role
                     router.replace('/(tabs)')
                } else if (isAuthenticated && (user?.role === "OWNER" || user?.role === "MANAGER"  || user?.role === "ADMIN")) {

@@ -138,7 +138,7 @@ export default function BranchOverviewScreen() {
                   <Text style={styles.branchName}>{branch.name}</Text>
                   <View style={styles.locationRow}>
                     <MapPin size={14} color="#6B7280" />
-                    <Text style={styles.branchLocation}>{branch.location.address}</Text>
+                    {/**<Text style={styles.branchLocation}>{branch.location.address}</Text> */}
                   </View>
                 </View>
                 <View style={styles.branchStats}>
