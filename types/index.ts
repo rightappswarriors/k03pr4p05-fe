@@ -38,13 +38,13 @@ export type PaymentMethod = 'cash' | 'e-wallet' | 'card';
 
 export interface Outlet {
   id: string;
-  branchId: string;
+  branchId?: string;
   name: string;
   address: string;
   phone?: string;
   code: string;
-  governmentTax: number;
-  serviceCharge: number;
+  governmentTax?: number;
+  serviceCharge?: number;
   outletType?: 'retail' | 'wholesale' | 'service';
   assignedStaff?: string;
   isVatRegistered?: boolean,
@@ -55,6 +55,7 @@ export interface Outlet {
   tin?: string,
   ptu?: string,
   bir?: string,
+  hasKey?: boolean
   discountOption: Record<DiscountType, number>;
 }
 export interface DiscountOptions {

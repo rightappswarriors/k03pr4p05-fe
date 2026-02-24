@@ -21,7 +21,7 @@ import { outletData } from '@/data/mockData';
 import DiscountModal from './DiscountModal';
 import PaymentBottomSheet from '@/components/pos/paymentMethod/PaymentBottomSheet';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { useAuth} from "@/contexts/AuthContext"
+import { useAuth } from "@/contexts/AuthContext"
 import { ReceiptService } from '@/services/paymentService';
 import useNetworkStatus from '@/hooks/useNetworkStatus';
 interface ReceiptModalProps {
@@ -68,10 +68,10 @@ export function ReceiptModal({ visible, onClose, onOrderPlaced }: ReceiptModalPr
     discount,
     discountRate
   } = calculateTotal(items, outletData, { type: discountOption })
-  const { user} = useAuth()
+  const { user } = useAuth()
   const cashAmount = parseFloat(cashReceived) || 0;
   const change = cashAmount - total;
-  if (!user || !outlet ) {
+  if (!user || !outlet) {
     throw new Error("No user or outlet")
   }
   const handlePrintReceipt = () => {
@@ -207,11 +207,11 @@ export function ReceiptModal({ visible, onClose, onOrderPlaced }: ReceiptModalPr
                       <TouchableOpacity
                         className="flex-row justitfy-center align-center gap-1"
 
-                        disabled={!isConnected} // 👈 disable touch if offline
+                        disabled={!isConnected || !outlet.hasKey} // 👈 disable touch if offline
                         onPress={() => paymentSheetRef.current?.open()} // 👈 open bottom sheet
                       >
-                        <Text style={[{ color: colors.text }, !isConnected ? { color: colors.warning } : { color: colors.primary }]}>
-                          {isConnected ? "Payment Method" : "Offline"}
+                        <Text style={[{ color: colors.text }, !isConnected && !outlet.hasKey ? { color: colors.warning } : { color: colors.primary }]}>
+                          {isConnected && outlet.hasKey ? "Payment Method" : !isConnected ? "Offline" : !outlet.hasKey ? "Unavailable" : "Offline"}
                         </Text>
                         <CreditCard size={24} color={!isConnected ? colors.warning : colors.primary} />
                       </TouchableOpacity>

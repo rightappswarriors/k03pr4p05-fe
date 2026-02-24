@@ -2,7 +2,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { AuthState, User } from '@/types';
-import { Platform } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { getGraphQLClient } from '@/utils/constants';
 import { gql } from 'graphql-request';
@@ -203,7 +203,7 @@ export class AuthService {
       )) as any;
       return response.ME;
     } catch (error) {
-      console.error('Error fetching current user:', error);
+      Alert.alert("Something went wrong", "Log in again.")
       return null;
     }
   }

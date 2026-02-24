@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RefreshCw } from 'lucide-react-native';
 import { OrderHistory } from '@/components/OrderHistoryItem';
-import { MockSyncService } from '@/services/mockSyncService';
+import { SyncService } from '@/services/syncService';
 import { TransactionService } from '@/services/orderService';
 import { useTheme } from '@/contexts/ThemeContext'
 import eventBus from '@/utils/eventBus';
@@ -44,7 +44,7 @@ export default React.memo(function HistoryScreen() {
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      await MockSyncService.forceSyncNow();
+      await SyncService.forceSyncNow();
       setRefreshTrigger(prev => prev + 1);
     
     } catch (error) {

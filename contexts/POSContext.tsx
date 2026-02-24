@@ -32,6 +32,7 @@ interface POSContextType {
   selectedCategory: string | null;
   addToCart: (item: Item, quantity?: number) => void;
   sidebarOpen: boolean;
+
   cartItems: CartItem[];
   scannerVisible: boolean;
   screenDimensions: { width: number; height: number };
@@ -66,6 +67,7 @@ export const CartProvider = ({ children }: CartProviderProps) => {
               governmentTax
               serviceCharge
               phone
+              hasKey
               outletType
               items {
                 id
@@ -96,7 +98,7 @@ export const CartProvider = ({ children }: CartProviderProps) => {
             }
           )) as any
           console.log("Success getting responses:\n", response.getOutletItems)
-          const { id, branchId, items, name, phone, code, isActive, address, governmentTax, serviceCharge } = response.getOutletItems
+          const { id, branchId, items, name, phone, code, isActive, address, governmentTax, hasKey, serviceCharge, discountOptions } = response.getOutletItems
           setOutlet({
             id: id,
             name: name,
@@ -104,9 +106,11 @@ export const CartProvider = ({ children }: CartProviderProps) => {
             branchId: branchId,
             governmentTax: governmentTax,
             serviceCharge: serviceCharge,
+            hasKey: hasKey,
             code: code,
             address: address,
             isActive: isActive,
+            discountOption: discountOptions
           })
           console.log("Items:", items)
           setItems(
@@ -127,7 +131,7 @@ export const CartProvider = ({ children }: CartProviderProps) => {
             })));
 
           console.log("ITEMS SET:", storedItems)
-          
+
         } catch (error) {
           console.error("Error getting Outlet items:", error)
           throw new Error("Error getting Outlet items");

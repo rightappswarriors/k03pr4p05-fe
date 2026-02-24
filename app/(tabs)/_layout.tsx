@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react'
 import { Platform } from 'react-native'
 import { useAuth } from '@/contexts/AuthContext';
 import { router } from 'expo-router'
-import { MockSyncService } from '@/services/mockSyncService'
+import { SyncService } from '@/services/syncService'
 import MainScreen from './index'
 import HistoryScreen from './history'
 import SettingsScreen from './settings';
@@ -18,7 +18,7 @@ export default function TabLayout() {
 
   const { isMobile } = useResponsive()
   useEffect(() => {
-    MockSyncService.startBackgroundSync();
+    SyncService.startBackgroundSync();
   }, []);
 
   const [currentRoute, setCurrentRoute] = useState('index')

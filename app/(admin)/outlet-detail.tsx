@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
-import { ArrowLeft, User, Clock, ShoppingCart, DollarSign, Calendar } from 'lucide-react-native';
+import { ArrowLeft, User, Clock, ShoppingCart, DollarSign, Calendar, Users } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { AdminService } from '@/services/adminService';
 import { AdminTransaction, Cashier } from '@/types';
@@ -12,11 +12,11 @@ export default function OutletDetailScreen() {
     branchName: string;
   }>();
 
-  const [currentCashier, setCurrentCashier] = useState<Cashier[]>([]);
+  const [currentCashiers, setCurrentCashiers] = useState<Cashier[]>([]);
   const [recentTransactions, setRecentTransactions] = useState<AdminTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-
+  const [showCashierModal, setShowCashierModal] = useState(false);
   useEffect(() => {
     if (outletId) {
       loadOutletDetails();
@@ -27,12 +27,12 @@ export default function OutletDetailScreen() {
     try {
       setLoading(true);
 
-      const [cashier, transactions] = await Promise.all([
-        AdminService.getCurrentCashier(outletId),
+      const [cashiers, transactions] = await Promise.all([
+        AdminService.getCurrentCashiers(outletId),
         AdminService.getRecentTransactions(outletId, 20)
       ]);
 
-      setCurrentCashier(cashier);
+      setCurrentCashiers(cashiers);
       setRecentTransactions(transactions);
     } catch (error) {
       console.error('Failed to load outlet details:', error);
@@ -96,51 +96,73 @@ export default function OutletDetailScreen() {
       >
         {/* Cashier Information */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Current Cashier</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Current Cashiers</Text>
+            {currentCashiers.length > 0 && (
+              <TouchableOpacity
+                style={styles.viewAllButton}
+                onPress={() => setShowCashierModal(true)}
+              >
+                <Users size={16} color="#2563EB" />
+                <Text style={styles.viewAllButtonText}>View All ({currentCashiers.length})</Text>
+              </TouchableOpacity>
+            )}
+          </View>
 
-          {currentCashier ? (
-            <View style={styles.cashierCard}>
-              <View style={styles.cashierHeader}>
-                <View style={styles.cashierInfo}>
-                  <View style={styles.cashierNameRow}>
-                    <User size={20} color="#2563EB" />
-                    <Text style={styles.cashierName}>{currentCashier[0].fullname}</Text>
+          {currentCashiers.length > 0 ? (
+            <>
+              {/* Show first cashier as preview */}
+              <View style={styles.cashierCard}>
+                <View style={styles.cashierHeader}>
+                  <View style={styles.cashierInfo}>
+                    <View style={styles.cashierNameRow}>
+                      <User size={20} color="#2563EB" />
+                      <Text style={styles.cashierName}>{currentCashiers[0].fullname}</Text>
+                    </View>
+                    <Text style={styles.cashierEmail}>{currentCashiers[0].email}</Text>
                   </View>
-                  <Text style={styles.cashierEmail}>{currentCashier[0].email}</Text>
+                  <View style={styles.activeIndicator}>
+                    <View style={styles.activeDot} />
+                    <Text style={styles.activeText}>Active</Text>
+                  </View>
                 </View>
-                <View style={styles.activeIndicator}>
-                  <View style={styles.activeDot} />
-                  <Text style={styles.activeText}>Active</Text>
+
+                <View style={styles.cashierStats}>
+                  <View style={styles.statItem}>
+                    <Clock size={16} color="#D97706" />
+                    <Text style={styles.statValue}>
+                      {formatShiftDuration(currentCashiers[0].shiftStartTime)}
+                    </Text>
+                    <Text style={styles.statLabel}>Shift Duration</Text>
+                  </View>
+
+                  <View style={styles.statItem}>
+                    <ShoppingCart size={16} color="#059669" />
+                    <Text style={styles.statValue}>
+                      {currentCashiers[0].totalTransactionsToday}
+                    </Text>
+                    <Text style={styles.statLabel}>Transactions Today</Text>
+                  </View>
                 </View>
+
+                {currentCashiers[0].shiftStartTime && (
+                  <View style={styles.shiftInfo}>
+                    <Calendar size={14} color="#6B7280" />
+                    <Text style={styles.shiftText}>
+                      Shift started at {new Date(currentCashiers[0].shiftStartTime).toLocaleTimeString()}
+                    </Text>
+                  </View>
+                )}
+
+                {currentCashiers.length > 1 && (
+                  <View style={styles.moreCashiers}>
+                    <Text style={styles.moreCashiersText}>
+                      +{currentCashiers.length - 1} more cashier{currentCashiers.length - 1 !== 1 ? 's' : ''} active
+                    </Text>
+                  </View>
+                )}
               </View>
-
-              <View style={styles.cashierStats}>
-                <View style={styles.statItem}>
-                  <Clock size={16} color="#D97706" />
-                  <Text style={styles.statValue}>
-                    {formatShiftDuration(currentCashier[0].shiftStartTime)}
-                  </Text>
-                  <Text style={styles.statLabel}>Shift Duration</Text>
-                </View>
-
-                <View style={styles.statItem}>
-                  <ShoppingCart size={16} color="#059669" />
-                  <Text style={styles.statValue}>
-                    {currentCashier[0].totalTransactionsToday}
-                  </Text>
-                  <Text style={styles.statLabel}>Transactions Today</Text>
-                </View>
-              </View>
-
-              {currentCashier[0].shiftStartTime && (
-                <View style={styles.shiftInfo}>
-                  <Calendar size={14} color="#6B7280" />
-                  <Text style={styles.shiftText}>
-                    Shift started at {new Date(currentCashier[0].shiftStartTime).toLocaleTimeString()}
-                  </Text>
-                </View>
-              )}
-            </View>
+            </>
           ) : (
             <View style={styles.noCashierCard}>
               <User size={48} color="#9CA3AF" />
@@ -265,6 +287,38 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1F2937',
     marginBottom: 12,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  viewAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EBF4FF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 6,
+  },
+  viewAllButtonText: {
+    fontSize: 14,
+    color: '#2563EB',
+    fontWeight: '500',
+  },
+  moreCashiers: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+    alignItems: 'center',
+  },
+  moreCashiersText: {
+    fontSize: 14,
+    color: '#2563EB',
+    fontWeight: '500',
   },
   cashierCard: {
     backgroundColor: 'white',

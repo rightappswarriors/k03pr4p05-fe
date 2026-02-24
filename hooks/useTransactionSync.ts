@@ -62,11 +62,11 @@ export function useTransactionSync({
 
   const getStatusText = (status: Transaction['status']) => {
     switch (status) {
-      case 'synced':
+      case 'SYNCED':
         return 'Synced';
-      case 'pending':
+      case 'PENDING':
         return 'Pending Sync';
-      case 'failed':
+      case 'FAILED':
         return 'Sync Failed';
       default:
         return status;

@@ -306,12 +306,12 @@ export class AdminService {
         }
       })
     } catch (error) {
-      console.error("Failed to get outlet cashiers:", error)
+      //console.error("Failed to get outlet cashiers:", error)
       return []
     }
   }
 
-  static async getCurrentCashier(outletId: string): Promise<Cashier[]> {
+  static async getCurrentCashiers(outletId: string): Promise<Cashier[] | []> {
     await new Promise(resolve => setTimeout(resolve, 200));
 
     const GET_CURRENTCASHIER_QUERY = `
