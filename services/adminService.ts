@@ -222,60 +222,56 @@ export class AdminService {
     }
   }
 
-  static async getOutletRevenue(outletId: string, startDate: string, endDate: string): Promise<OutletRevenue> {
-    await new Promise(resolve => setTimeout(resolve, 300));
+  static async getOutletRevenue(outletId: string, startDate: Date, endDate: Date): Promise<OutletRevenue> {
     const GET_OUTLETREVENUE = gql`
-    query GetOutletTransactions($outletId: ID!) {
-      getOutletTransactions(outletId: $outletId) {
+    query GetOutletTransactions($outletId: ID!, $startDate: DateTime, $endDate: DateTime) {
+      getOutletTransactions(outletId: $outletId, startDate: $startDate, endDate: $endDate) {
         id
-        cashierId
         total
-        subtotal
-        cashReceived
-        paymentMethod
         status
         createdAt
-        items {
-          item {
-            name
-            InventoryItems {
-              price
-            }
-          }
-          quantity
-        }
-        cashier {
-          id
-          fullname
-          email
-        }
       }
-    }`
+    }
+  `
     try {
       const { accessToken } = await AuthService.getTokens()
       const client = await getGraphQLClient()
-      const res = (await client.request(GET_OUTLETREVENUE, { outletId }, {
+      const res = (await client.request(GET_OUTLETREVENUE, {
+        outletId,
+        startDate,  // ✅ pass Date objects — DateTime scalar handles it
+        endDate
+      }, {
         Authorization: `Bearer ${accessToken}`
       })) as any
-      console.log("Success getting outlet transactions:\n", res.getOutletTransactions)
+
+      const transactions = res.getOutletTransactions
+
+      // ✅ compute total from real data
+      const totalRevenue = transactions.reduce(
+        (sum: number, txn: any) => sum + txn.total, 0
+      )
+      console.log("Success getting outlet Revenue:", totalRevenue)
+      return {
+        outletId,
+        totalRevenue,
+        transactionCount: transactions.length,
+        dateRange: {
+          start: startDate.toISOString(),
+          end: endDate.toISOString()
+        }
+      }
     } catch (error) {
       console.error("Failed to get outlet Revenue:", error)
+      return {
+        outletId,
+        totalRevenue: 0,
+        transactionCount: 0,
+        dateRange: {
+          start: startDate.toISOString(),
+          end: endDate.toISOString()
+        }
+      }
     }
-    const outletTransactions = MOCK_TRANSACTIONS.filter(
-      txn => txn.outletId === outletId &&
-        txn.status === 'completed' &&
-        txn.createdAt >= startDate &&
-        txn.createdAt <= endDate
-    );
-
-    const totalRevenue = outletTransactions.reduce((sum, txn) => sum + txn.total, 0);
-
-    return {
-      outletId,
-      totalRevenue,
-      transactionCount: outletTransactions.length,
-      dateRange: { start: startDate, end: endDate }
-    };
   }
 
   static async getCashiersByOutlet(outletId: string): Promise<Cashier[]> {

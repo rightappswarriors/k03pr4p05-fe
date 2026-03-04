@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
-import { ArrowLeft, User, Clock, ShoppingCart, DollarSign, Calendar, Users } from 'lucide-react-native';
+import { ArrowLeft, User, Clock, ShoppingCart, Calendar, Users } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { AdminService } from '@/services/adminService';
 import { AdminTransaction, Cashier } from '@/types';

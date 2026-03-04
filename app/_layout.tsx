@@ -9,11 +9,12 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 //import FloatingBadge from '@/components/FloatingBadge'
 export default function RootLayout() {
   useFrameworkReady();
-
+  console.log("✅ Layout rendering")
   return (
     <ThemeProvider>
       <AuthProvider>
         <ProtectedRoute>
+          
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="index" />
             <Stack.Screen name="(tabs)" />

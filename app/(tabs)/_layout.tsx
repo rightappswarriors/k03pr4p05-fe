@@ -12,6 +12,7 @@ import PrinterScreen from './printer';
 import { useTheme } from '@/contexts/ThemeContext'
 import { useResponsive } from '@/hooks/useResponsive'
 import { Printer, Settings, ShoppingCart, History, LayoutDashboard } from 'lucide-react-native';
+import { CartProvider } from '@/contexts/POSContext';
 
 export default function TabLayout() {
   const { colors } = useTheme()
@@ -52,6 +53,7 @@ export default function TabLayout() {
     );
   } else {
     return (
+      <CartProvider>
       <Tabs screenOptions={{
         headerShown: false,
 
@@ -100,6 +102,7 @@ export default function TabLayout() {
           options={{ tabBarIcon: ({ color }) => <Settings size={20} color={color} />, title: 'Settings' }}
         />
       </Tabs>
+      </CartProvider>
     )
   }
 }

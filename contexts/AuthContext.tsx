@@ -96,7 +96,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAuthenticated: false,
       });
     } catch (error) {
-      console.error('Logout error:', error);
     } finally {
       setLoading(false)
     }

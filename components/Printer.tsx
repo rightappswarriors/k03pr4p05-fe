@@ -19,12 +19,12 @@ export default React.memo(function PrinterScreen() {
     colors
   } = useTheme()
   //if (Platform.OS === 'android') {
-    const {
-      devices,
-      printReceipt,
-      connectedDevice,
-      connectToPrinter,
-      scanForDevices } = useBluetooth()
+  const {
+    devices,
+    printReceipt,
+    connectedDevice,
+    connectToPrinter,
+    scanForDevices } = useBluetooth()
   //}
   // Network connection inputs
   const [networkPrinters, setNetworkPrinters] = useState<any[]>([]);
@@ -242,7 +242,7 @@ export default React.memo(function PrinterScreen() {
 
           {printerStatus === 'connected' && (
             <View style={styles.connectedActions}>
-              <TouchableOpacity style={styles.testButton} onPress={()=>printReceipt}>
+              <TouchableOpacity style={styles.testButton} onPress={() => printReceipt}>
                 <Text style={styles.testButtonText}>Print Test Receipt</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.disconnectButton}>
@@ -261,15 +261,13 @@ export default React.memo(function PrinterScreen() {
               {/* Connection Tabs */}
               <View style={styles.connectionTabs}>
                 {renderConnectionTab('bluetooth', Bluetooth, 'Bluetooth')}
-                {renderConnectionTab('usb', Usb, 'USB')}
-                {renderConnectionTab('wifi', Wifi, 'WiFi')}
+                {/**{renderConnectionTab('usb', Usb, 'USB')}
+                {renderConnectionTab('wifi', Wifi, 'WiFi')} **/}
               </View>
 
               {/* Connection Content */}
               <View style={styles.connectionCard}>
                 {activeTab === 'bluetooth' && renderBluetoothContent()}
-                {activeTab === 'usb' && renderUSBContent()}
-                {activeTab === 'wifi' && renderWiFiContent()}
               </View>
             </View>
           </>
@@ -282,7 +280,7 @@ export default React.memo(function PrinterScreen() {
             <Text style={styles.infoCategory}>Bluetooth:</Text>
             <Text style={styles.infoItem}>• Star TSP143III, Epson TM series, Zebra ZD series</Text>
             <Text style={styles.infoItem}>• ESC/POS compatible thermal printers</Text>
-
+            {/**
             <Text style={styles.infoCategory}>Network (Ethernet/WiFi):</Text>
             <Text style={styles.infoItem}>• IP-enabled printers on port 9100 (RAW)</Text>
             <Text style={styles.infoItem}>• Brother, Canon, HP network printers</Text>
@@ -293,7 +291,7 @@ export default React.memo(function PrinterScreen() {
 
             <Text style={styles.infoCategory}>General:</Text>
             <Text style={styles.infoItem}>• 58mm or 80mm paper width supported</Text>
-            <Text style={styles.infoItem}>• Auto-cut feature recommended</Text>
+            <Text style={styles.infoItem}>• Auto-cut feature recommended</Text> */}
           </View>
         </View>
       </ScrollView>

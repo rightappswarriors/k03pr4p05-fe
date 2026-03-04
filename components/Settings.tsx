@@ -34,7 +34,6 @@ import { StorageService } from '@/services/storageService';
 import { useTransactionSync } from '@/hooks/useTransactionSync';
 import eventBus from '@/utils/eventBus';
 import { responsive } from '@/styles/desktopAndTablet'
-import { usePOS } from '@/contexts/POSContext';
 
 
 export default React.memo(function SettingsScreen({ outletId }: { outletId?: number | null }) {
@@ -43,7 +42,6 @@ export default React.memo(function SettingsScreen({ outletId }: { outletId?: num
   const { theme, toggleTheme, colors } = useTheme()
   const [biometricSupported, setBiometricSupported] = useState(false);
   const [biometricEnabled, setBiometricEnabledState] = useState(false);
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const {
     setTransactions,
   } = useTransactionSync({ refreshTrigger: 1 })
@@ -142,24 +140,7 @@ export default React.memo(function SettingsScreen({ outletId }: { outletId?: num
           </View>
         </View>
 
-        {/* Account Settings */}
-        <View style={styles.section} >
-          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Account</Text>
-          <View style={[styles.settingsGroup, { backgroundColor: colors.card }]} >
-            <SettingItem
-              icon={<User size={20} color="#3B82F6" />}
-              title="Profile Information"
-              subtitle="Update your personal details"
-              onPress={() => Alert.alert('Coming Soon', 'Profile editing will be available soon')}
-            />
-            <SettingItem
-              icon={<Shield size={20} color="#10B981" />}
-              title="Change Password"
-              subtitle="Update your account password"
-              onPress={() => Alert.alert('Coming Soon', 'Password change will be available soon')}
-            />
-          </View>
-        </View>
+ 
         {/* Security Settings */}
         {biometricSupported && (
 
@@ -206,20 +187,7 @@ export default React.memo(function SettingsScreen({ outletId }: { outletId?: num
                 />
               }
             />
-            <SettingItem
-              icon={<Bell size={20} color="#F59E0B" />}
-              title={"Notifications"}
-              subtitle={"Manage notification preferences"}
-              showChevron={false}
-              rightComponent={
-                <Switch
-                  value={notificationsEnabled}
-                  onValueChange={setNotificationsEnabled}
-                  trackColor={{ false: '#E5E7EB', true: '#3B82F6' }}
-                  thumbColor={notificationsEnabled ? '#FFFFFF' : '#9CA3AF'}
-                />
-              }
-            />
+            
             <SettingItem
               icon={<Smartphone size={20} color="#6B7280" />}
               title={"App Version"}

@@ -17,15 +17,12 @@ export default React.memo(function MainScreen() {
     <DisplayProvider>
       {Platform.OS !== "web" ? (
         <GestureHandlerRootView className="flex-1">
-          <CartProvider>
-            {user?.role === 'MANAGER' || user?.role === "OWNER" ? <DashboardScreen />: <POSScreen /> }
 
-          </CartProvider>
+          {user?.role === 'MANAGER' || user?.role === "OWNER" ? <DashboardScreen /> : <POSScreen />}
+
         </GestureHandlerRootView>
       ) : (
-        <CartProvider>
-          <POSScreen />
-        </CartProvider>
+        <POSScreen />
       )}
 
     </DisplayProvider>

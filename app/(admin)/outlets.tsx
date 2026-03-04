@@ -1,9 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
-import { ArrowLeft, MapPin, DollarSign, Users, Circle } from 'lucide-react-native';
+import { ArrowLeft, MapPin, PhilippinePeso, Users, Circle } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { AdminService } from '@/services/adminService';
 import { AdminOutlet, OutletRevenue } from '@/types';
+import { DateRangeFilter, getDateRange } from '@/utils/dateHelpers';
+import DateRangePickerModal from '@/components/DateRangePickerModal';
+const FILTERS: DateRangeFilter[] = ['today', 'this_week', 'this_month', 'custom']
 
 export default function OutletListScreen() {
   const { branchId, branchName } = useLocalSearchParams<{ branchId: string; branchName: string }>();
@@ -11,25 +14,23 @@ export default function OutletListScreen() {
   const [outletRevenues, setOutletRevenues] = useState<Record<string, OutletRevenue>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [selectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [activeFilter, setActiveFilter] = useState<DateRangeFilter>('today')
+  const [showDatePicker, setShowDatePicker] = useState(false)
+  const [customStart, setCustomStart] = useState<Date | undefined>(undefined)  // ✅ explicit undefined
+  const [customEnd, setCustomEnd] = useState<Date | undefined>(undefined)      // ✅ explicit undefined
+  
 
-  useEffect(() => {
-    if (branchId) {
-      loadOutlets();
-    }
-  }, [branchId]);
-
-  const loadOutlets = async () => {
+  const loadOutlets = useCallback(async () => {
+    console.log('🔄 loadOutlets called with:', activeFilter, customStart, customEnd) // ✅ add this
     try {
       setLoading(true);
+      const { startDate, endDate } = getDateRange(activeFilter, customStart, customEnd) // ✅ compute once outside map
+      console.log('📅 Date range:', startDate, endDate) // ✅ and this
       const outletData = await AdminService.getOutletsByBranch(branchId);
       setOutlets(outletData);
 
-      // Load revenue for each outlet
       const revenuePromises = outletData.map(async (outlet) => {
-        const startDate = `${selectedDate}T00:00:00Z`;
-        const endDate = `${selectedDate}T23:59:59Z`;
-        const revenue = await AdminService.getOutletRevenue(outlet.id, startDate, endDate);
+        const revenue = await AdminService.getOutletRevenue(outlet.id, startDate, endDate); // ✅ reuse same dates
         return { outletId: outlet.id, revenue };
       });
 
@@ -45,8 +46,12 @@ export default function OutletListScreen() {
     } finally {
       setLoading(false);
     }
-  };
-
+  }, [branchId, activeFilter, customStart, customEnd])
+  useEffect(() => {
+    if (branchId) {
+      loadOutlets();
+    }
+  }, [loadOutlets]);
   const handleRefresh = async () => {
     setRefreshing(true);
     await loadOutlets();
@@ -60,6 +65,11 @@ export default function OutletListScreen() {
     });
   };
 
+  const handleCustomRange = (start: Date, end: Date) => {
+    setCustomStart(start)
+    setCustomEnd(end)
+    setActiveFilter('custom')
+  }
   const getStatusColor = (status: AdminOutlet['status']) => {
     switch (status) {
       case 'open':
@@ -99,7 +109,33 @@ export default function OutletListScreen() {
         </View>
       </View>
 
-      <ScrollView 
+      <View style={styles.filterContainer}>
+        {FILTERS.map((filter) => {
+          const { label } = getDateRange(filter, customStart, customEnd)
+          const isActive = activeFilter === filter
+          return (
+            <TouchableOpacity
+              key={filter}
+              style={[styles.filterTab, isActive && styles.filterTabActive]}
+              onPress={() => filter === 'custom' ? setShowDatePicker(true) : setActiveFilter(filter)}
+            >
+              <Text style={[styles.filterTabText, isActive && styles.filterTabTextActive]}>
+                {label}
+              </Text>
+            </TouchableOpacity>
+          )
+        })}
+      </View>
+
+      {/* Modal */}
+      <DateRangePickerModal
+        visible={showDatePicker}
+        onClose={() => setShowDatePicker(false)}
+        onApply={handleCustomRange}
+        initialStart={customStart}
+        initialEnd={customEnd}
+      />
+      <ScrollView
         style={styles.outletList}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
@@ -108,10 +144,10 @@ export default function OutletListScreen() {
         <Text style={styles.sectionTitle}>
           {outlets.length} Outlet{outlets.length !== 1 ? 's' : ''}
         </Text>
-        
+
         {outlets.map((outlet) => {
           const revenue = outletRevenues[outlet.id];
-          
+
           return (
             <TouchableOpacity
               key={outlet.id}
@@ -128,11 +164,11 @@ export default function OutletListScreen() {
                     </View>
                   )}
                 </View>
-                
+
                 <View style={styles.statusContainer}>
-                  <Circle 
-                    size={12} 
-                    color={getStatusColor(outlet.status)} 
+                  <Circle
+                    size={12}
+                    color={getStatusColor(outlet.status)}
                     fill={getStatusColor(outlet.status)}
                   />
                   <Text style={[styles.statusText, { color: getStatusColor(outlet.status) }]}>
@@ -143,13 +179,13 @@ export default function OutletListScreen() {
 
               <View style={styles.outletStats}>
                 <View style={styles.statItem}>
-                  <DollarSign size={16} color="#059669" />
+                  <PhilippinePeso size={16} color="#059669" />
                   <Text style={styles.statValue}>
                     ${revenue?.totalRevenue.toFixed(2) || '0.00'}
                   </Text>
                   <Text style={styles.statLabel}>Today's Revenue</Text>
                 </View>
-                
+
                 <View style={styles.statItem}>
                   <Users size={16} color="#2563EB" />
                   <Text style={styles.statValue}>
@@ -195,6 +231,33 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
     gap: 16,
+  },
+
+  filterContainer: {
+    flexDirection: 'row',
+    marginHorizontal: 20,
+    marginTop: 16,
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 4,
+    gap: 4,
+  },
+  filterTab: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  filterTabActive: {
+    backgroundColor: '#2563EB',
+  },
+  filterTabText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  filterTabTextActive: {
+    color: 'white',
   },
   backButton: {
     width: 40,

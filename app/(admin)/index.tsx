@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
-import { MapPin, DollarSign, TrendingUp, LogOut, Calendar } from 'lucide-react-native';
+import { MapPin, TrendingUp, LogOut, PhilippinePeso } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 import { AdminService } from '@/services/adminService';
@@ -132,7 +132,7 @@ export default function BranchOverviewScreen() {
       {/* Summary Cards */}
       <View style={styles.summaryContainer}>
         <View style={styles.summaryCard}>
-          <DollarSign size={24} color="#059669" />
+          <PhilippinePeso size={24} color="#059669" />
           <Text style={styles.summaryValue}>${getTotalRevenue().toFixed(2)}</Text>
           <Text style={styles.summaryLabel}>Total Revenue</Text>
         </View>
