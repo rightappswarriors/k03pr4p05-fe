@@ -6,8 +6,8 @@ import { useLoading } from '@/contexts/LoadingContext'
 interface AuthContextType extends AuthState {
   login: (email: string, password: string) => Promise<void>;
   loginWithBiometric: () => Promise<void>;
-  logout: () => Promise<void>;
-  removeUser: () => Promise<void>; 
+  logout: (outletId: number) => Promise<void>;  // ✅ add outletId here
+  removeUser: () => Promise<void>;
   setBiometricEnabled: (enabled: boolean) => Promise<void>;
   isBiometricSupported: () => Promise<boolean>;
   isBiometricEnabled: () => Promise<boolean>;
@@ -51,8 +51,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (email: string, password: string) => {
     try {
       setLoading(true);
-      const user  = await AuthService.login(email, password);
-  
+      const user = await AuthService.login(email, password);
+
       setAuthState({
         user,
         isLoading: false,
@@ -86,10 +86,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const logout = async () => {
+  const logout = async (outletId: number) => {
     try {
       setLoading(true)
-      await AuthService.logout();
+      await AuthService.logout(outletId);
       setAuthState({
         user: null,
         isLoading: false,

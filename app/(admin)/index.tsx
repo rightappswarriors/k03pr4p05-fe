@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { MapPin, DollarSign, TrendingUp, LogOut, Calendar } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 import { AdminService } from '@/services/adminService';
 import { Branch, BranchRevenue } from '@/types';
+import { DateRangeFilter, getDateRange } from '@/utils/dateHelpers';
+import DateRangePickerModal from '@/components/DateRangePickerModal'
 
 export default function BranchOverviewScreen() {
   const { user, logout } = useAuth();
@@ -12,24 +14,22 @@ export default function BranchOverviewScreen() {
   const [branchRevenues, setBranchRevenues] = useState<Record<string, BranchRevenue>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [activeFilter, setActiveFilter] = useState<DateRangeFilter>('today')
+  const [showDatePicker, setShowDatePicker] = useState(false)
+  const [customStart, setCustomStart] = useState<Date | undefined>(undefined)  // ✅ explicit undefined
+  const [customEnd, setCustomEnd] = useState<Date | undefined>(undefined)      // ✅ explicit undefined
 
-  useEffect(() => {
-    loadBranches();
-  }, [selectedDate]);
+  const FILTERS: DateRangeFilter[] = ['today', 'this_week', 'this_month', 'custom']
 
-  const loadBranches = async () => {
-    //if (!user?.id) return;
-
+  // ✅ useCallback so loadBranches is stable and captures latest state
+  const loadBranches = useCallback(async () => {
     try {
       setLoading(true);
+      const { startDate, endDate } = getDateRange(activeFilter, customStart, customEnd)
       const branchData = await AdminService.getBranches();
       setBranches(branchData);
 
-      // Load revenue for each branch
       const revenuePromises = branchData.map(async (branch) => {
-        const startDate = `${selectedDate}T00:00:00Z`;
-        const endDate = `${selectedDate}T23:59:59Z`;
         const revenue = await AdminService.getBranchRevenue(branch.id, startDate, endDate);
         return { branchId: branch.id, revenue };
       });
@@ -46,7 +46,18 @@ export default function BranchOverviewScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeFilter, customStart, customEnd])  // ✅ dependencies here instead of useEffect
+
+  // ✅ useEffect just calls it — no deps needed since loadBranches already has them
+  useEffect(() => {
+    loadBranches();
+  }, [loadBranches])
+
+  const handleCustomRange = (start: Date, end: Date) => {
+    setCustomStart(start)
+    setCustomEnd(end)
+    setActiveFilter('custom')
+  }
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -91,11 +102,32 @@ export default function BranchOverviewScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Date Selector */}
-      <View style={styles.dateSelector}>
-        <Calendar size={20} color="#2563EB" />
-        <Text style={styles.dateText}>Revenue for: {new Date(selectedDate).toLocaleDateString()}</Text>
+      <View style={styles.filterContainer}>
+        {FILTERS.map((filter) => {
+          const { label } = getDateRange(filter, customStart, customEnd)
+          const isActive = activeFilter === filter
+          return (
+            <TouchableOpacity
+              key={filter}
+              style={[styles.filterTab, isActive && styles.filterTabActive]}
+              onPress={() => filter === 'custom' ? setShowDatePicker(true) : setActiveFilter(filter)}
+            >
+              <Text style={[styles.filterTabText, isActive && styles.filterTabTextActive]}>
+                {label}
+              </Text>
+            </TouchableOpacity>
+          )
+        })}
       </View>
+
+      {/* Modal */}
+      <DateRangePickerModal
+        visible={showDatePicker}
+        onClose={() => setShowDatePicker(false)}
+        onApply={handleCustomRange}
+        initialStart={customStart}
+        initialEnd={customEnd}
+      />
 
       {/* Summary Cards */}
       <View style={styles.summaryContainer}>
@@ -116,17 +148,17 @@ export default function BranchOverviewScreen() {
         </View>
       </View>
 
-      <ScrollView 
+      <ScrollView
         style={styles.branchList}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
         }
       >
         <Text style={styles.sectionTitle}>Branches</Text>
-        
+
         {branches.map((branch) => {
           const revenue = branchRevenues[branch.id];
-          
+
           return (
             <TouchableOpacity
               key={branch.id}
@@ -150,7 +182,7 @@ export default function BranchOverviewScreen() {
                   </Text>
                 </View>
               </View>
-              
+
               <View style={styles.branchFooter}>
                 <Text style={styles.outletCount}>
                   {branch.outletIds.length} outlet{branch.outletIds.length !== 1 ? 's' : ''}
@@ -206,20 +238,31 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  dateSelector: {
+  filterContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    backgroundColor: 'white',
     marginHorizontal: 20,
     marginTop: 16,
+    backgroundColor: 'white',
     borderRadius: 12,
-    gap: 8,
+    padding: 4,
+    gap: 4,
   },
-  dateText: {
-    fontSize: 16,
+  filterTab: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  filterTabActive: {
+    backgroundColor: '#2563EB',
+  },
+  filterTabText: {
+    fontSize: 13,
     fontWeight: '500',
-    color: '#1F2937',
+    color: '#6B7280',
+  },
+  filterTabTextActive: {
+    color: 'white',
   },
   summaryContainer: {
     flexDirection: 'row',

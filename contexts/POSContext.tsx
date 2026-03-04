@@ -53,9 +53,8 @@ export const CartProvider = ({ children }: CartProviderProps) => {
   const { isAuthenticated, user } = useAuth()
   const [loading, setLoading] = useState(true);
   useEffect(() => {
-    console.log('Getting items')
+    
     const getItems = async () => {
-      console.log("User role:", user?.role)
       if (user?.role === "CASHIER" || user?.role === "MANAGER" || user?.role === "STAFF") {
         const GETOUTLETITEM_MUTATION = gql`
           query GetOutletItems {
@@ -97,7 +96,6 @@ export const CartProvider = ({ children }: CartProviderProps) => {
               Authorization: `Bearer ${accessToken}`
             }
           )) as any
-          console.log("Success getting responses:\n", response.getOutletItems)
           const { id, branchId, items, name, phone, code, isActive, address, governmentTax, hasKey, serviceCharge, discountOptions } = response.getOutletItems
           setOutlet({
             id: id,

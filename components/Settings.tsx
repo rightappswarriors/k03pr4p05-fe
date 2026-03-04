@@ -34,9 +34,11 @@ import { StorageService } from '@/services/storageService';
 import { useTransactionSync } from '@/hooks/useTransactionSync';
 import eventBus from '@/utils/eventBus';
 import { responsive } from '@/styles/desktopAndTablet'
+import { usePOS } from '@/contexts/POSContext';
 
 
-export default React.memo(function SettingsScreen() {
+export default React.memo(function SettingsScreen({ outletId }: { outletId?: number | null }) {
+
   const { user, logout, setBiometricEnabled, isBiometricSupported, isBiometricEnabled } = useAuth();
   const { theme, toggleTheme, colors } = useTheme()
   const [biometricSupported, setBiometricSupported] = useState(false);
@@ -74,7 +76,7 @@ export default React.memo(function SettingsScreen() {
       const confirmed = window.confirm('Are you sure you want to logout?')
       if (confirmed) {
         try {
-          await logout()
+          await logout(Number(outletId))
         } catch (error) {
           console.error('Logout Failed')
         }
@@ -88,7 +90,7 @@ export default React.memo(function SettingsScreen() {
           {
             text: 'Logout',
             style: 'destructive',
-            onPress: logout
+            onPress: () => logout(Number(outletId))
           }
         ]
       );

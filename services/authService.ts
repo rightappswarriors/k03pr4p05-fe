@@ -158,19 +158,21 @@ export class AuthService {
     await secureStorage.deleteItemAsync(REFRESH_TOKEN_KEY);
     await AsyncStorage.removeItem(BIOMETRIC_ENABLED_KEY);
   } // Delete the token
-  static async logout(): Promise<void> {
-    const LOGOUT_MUTATION = gql`
-    mutation Mutation {
-      StaffLogout
-    }`
-    const { accessToken } = await this.getTokens()
-    const client = await getGraphQLClient()
-    try {
-      await client.request(LOGOUT_MUTATION, {}, {
-        Authorization: `Bearer ${accessToken}`
-      })
-    } catch (error) {
-      console.error("Logout error in:", error)
+  static async logout(outletId?: number): Promise<void> {
+    if (outletId) {
+      const LOGOUT_MUTATION = gql`
+      mutation Mutation($outletId: ID!) {
+        StaffLogout(outletId: $outletId) 
+      }`
+      const { accessToken } = await this.getTokens()
+      const client = await getGraphQLClient()
+      try {
+        await client.request(LOGOUT_MUTATION, { outletId }, {
+          Authorization: `Bearer ${accessToken}`
+        })
+      } catch (error) {
+        console.error("Logout error in:", error)
+      }
     }
     await secureStorage.deleteItemAsync(AUTH_TOKEN_KEY);
     // await AsyncStorage.removeItem(BIOMETRIC_ENABLED_KEY);

@@ -129,46 +129,51 @@ export class AdminService {
 
   }
 
-  static async getBranchRevenue(branchId: string, startDate: string, endDate: string): Promise<BranchRevenue> {
+  static async getBranchRevenue(branchId: string, startDate: Date, endDate: Date): Promise<BranchRevenue> {
     const GET_BRANCHREVENUE = gql`
-    query GetBranchTransactions($getBranchTransactionsId: ID!) {
-      getBranchTransactions(id: $getBranchTransactionsId) {
-        id,
-        total,
-        createdAt,
+    query GetBranchTransactions($getBranchTransactionsId: ID!, $startDate: DateTime, $endDate: DateTime) {
+      getBranchTransactions(id: $getBranchTransactionsId, startDate: $startDate, endDate: $endDate) {
+        id
+        total
+        createdAt
         status
       }
     }
-    `
+  `
     try {
       const { accessToken } = await AuthService.getTokens()
       const client = await getGraphQLClient()
-      const res = (await client.request(GET_BRANCHREVENUE, { getBranchTransactionsId: branchId }, {
+      const res = (await client.request(GET_BRANCHREVENUE, {
+        getBranchTransactionsId: branchId,
+        startDate,   // ✅ Date object — your DateTime scalar handles serialization
+        endDate
+      }, {
         Authorization: `Bearer ${accessToken}`
       })) as any
-      console.log("Success getting branch transactions:\n", res.getBranchTransactions)
 
+      const transactions = res.getBranchTransactions
+      const totalRevenue = transactions.reduce((sum: number, txn: any) => sum + txn.total, 0)
 
+      return {
+        branchId,
+        totalRevenue,
+        transactionCount: transactions.length,
+        dateRange: {
+          start: startDate.toISOString(),   // ✅ convert to string only for the return type
+          end: endDate.toISOString()
+        }
+      }
     } catch (error) {
       console.error("Failed to get branch Revenue:", error)
+      // ✅ return empty result on failure instead of falling through to mock data
+      return {
+        branchId,
+        totalRevenue: 0,
+        transactionCount: 0,
+        dateRange: { start: startDate.toISOString(), end: endDate.toISOString() }
+      }
     }
-    const branchTransactions = MOCK_TRANSACTIONS.filter(
-      txn => txn.branchId === branchId &&
-        txn.status === 'completed' &&
-        txn.createdAt >= startDate &&
-        txn.createdAt <= endDate
-    );
-
-    const totalRevenue = branchTransactions.reduce((sum, txn) => sum + txn.total, 0);
-
-    return {
-      branchId,
-      totalRevenue,
-      transactionCount: branchTransactions.length,
-      dateRange: { start: startDate, end: endDate }
-    };
   }
-
   static async getOutletsByBranch(branchId: string): Promise<AdminOutlet[]> {
     const GET_BRANCHOUTLETS = gql`
       query GetOutletsByBranch($branchId: ID!) {
