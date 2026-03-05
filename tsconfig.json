@@ -4,15 +4,19 @@
     "jsx": "react",
     "strict": true,
     "paths": {
-      "@/*": ["./*"]
+      "@/*": [
+        "./*"
+      ]
     }
   },
   "include": [
     "**/*.ts",
     "types/**/*.d.ts",
     "**/*.tsx",
+    "nativewind-env.d.ts",
+    "components/pos/CategoryDropdowntsx",
+    "app.config.js",
     ".expo/types/**/*.ts",
-    "expo-env.d.ts",
-    "nativewind-env.d.ts"
-, "components/pos/CategoryDropdowntsx"  ]
+    "expo-env.d.ts"
+  ]
 }

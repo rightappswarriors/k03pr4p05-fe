@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "POS Vine",
-    "slug": "pos-vine",
+    "slug": "posvinedev",
     "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -62,9 +62,9 @@
       "API_BASE_URL": "http://localhost:4000",
       "router": {},
       "eas": {
-        "projectId": "94c779c4-51cb-49b6-a9c5-5ae7fa3ec0b3"
+        "projectId": "69b194da-322c-4d6e-8ae4-d5cc7b1cb583"
       }
     },
-    "owner": "rusiana"
+    "owner": "rai-app"
   }
 }

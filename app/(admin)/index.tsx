@@ -7,6 +7,7 @@ import { AdminService } from '@/services/adminService';
 import { Branch, BranchRevenue } from '@/types';
 import { DateRangeFilter, getDateRange } from '@/utils/dateHelpers';
 import DateRangePickerModal from '@/components/DateRangePickerModal'
+import { useWebSocket } from '@/contexts/WSContext';
 
 export default function BranchOverviewScreen() {
   const { user, logout } = useAuth();
@@ -18,8 +19,38 @@ export default function BranchOverviewScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [customStart, setCustomStart] = useState<Date | undefined>(undefined)  // ✅ explicit undefined
   const [customEnd, setCustomEnd] = useState<Date | undefined>(undefined)      // ✅ explicit undefined
-
   const FILTERS: DateRangeFilter[] = ['today', 'this_week', 'this_month', 'custom']
+
+  const socket = useWebSocket();
+
+  useEffect(() => {
+      console.log("Test Websocket");
+
+    if (!socket) return;
+    
+      console.log("Test Websocket found");
+    socket.onmessage = async (event) => {
+      const data = JSON.parse(event.data);
+      if (process.env.NODE_ENV === "development") {
+        console.log("Websocket response", data);
+      }
+      socket.onmessage = async (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.type === "NEW_TRANSACTION") {
+          const { branchId, total } = data.payload;
+
+          setBranchRevenues(prev => ({
+            ...prev,
+            [branchId]: {
+              ...prev[branchId],
+              revenue: (prev[branchId]?.totalRevenue || 0) + total,
+            },
+          }));
+        }
+      };
+    };
+  }, [socket]);
 
   // ✅ useCallback so loadBranches is stable and captures latest state
   const loadBranches = useCallback(async () => {

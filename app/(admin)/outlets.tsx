@@ -6,6 +6,7 @@ import { AdminService } from '@/services/adminService';
 import { AdminOutlet, OutletRevenue } from '@/types';
 import { DateRangeFilter, getDateRange } from '@/utils/dateHelpers';
 import DateRangePickerModal from '@/components/DateRangePickerModal';
+import { useWebSocket } from '@/contexts/WSContext';
 const FILTERS: DateRangeFilter[] = ['today', 'this_week', 'this_month', 'custom']
 
 export default function OutletListScreen() {
@@ -18,7 +19,36 @@ export default function OutletListScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [customStart, setCustomStart] = useState<Date | undefined>(undefined)  // ✅ explicit undefined
   const [customEnd, setCustomEnd] = useState<Date | undefined>(undefined)      // ✅ explicit undefined
-  
+
+  const socket = useWebSocket();
+
+  useEffect(() => {
+
+
+    if (!socket) return;
+
+    socket.onmessage = async (event) => {
+      const data = JSON.parse(event.data);
+      if (process.env.NODE_ENV === "development") {
+        console.log("Websocket response", data);
+      }
+      socket.onmessage = async (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.type === "NEW_TRANSACTION") {
+          const { outletId, total } = data.payload;
+
+          setOutletRevenues(prev => ({
+            ...prev,
+            [outletId]: {
+              ...prev[outletId],
+              revenue: (prev[outletId]?.totalRevenue || 0) + total,
+            },
+          }));
+        }
+      };
+    };
+  }, [socket]);
 
   const loadOutlets = useCallback(async () => {
     console.log('🔄 loadOutlets called with:', activeFilter, customStart, customEnd) // ✅ add this

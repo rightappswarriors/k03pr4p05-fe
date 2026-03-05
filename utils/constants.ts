@@ -3,33 +3,36 @@ import { Platform } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 
 let API_BASE_URL: string | undefined;
+let clientInstance: GraphQLClient | undefined;
 
 async function initAPIBaseUrl() {
+  // ✅ Production build — use real deployed API, skip all network detection
+  if (!__DEV__) {
+    API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
+    return API_BASE_URL;
+  }
+
+  // ✅ Dev — web browser
   if (Platform.OS === 'web') {
-    API_BASE_URL = 'http://localhost:4000'; // Browser testing
-  } else if (Platform.OS === 'android' || Platform.OS === 'ios') {
+    API_BASE_URL = process.env.EXPO_PUBLIC_API_URL_WEB;
+    return API_BASE_URL;
+  }
+
+  // ✅ Dev — Android/iOS physical device or emulator
+  if (Platform.OS === 'android' || Platform.OS === 'ios') {
     try {
       const state = await NetInfo.fetch();
-      // Check if a Wi-Fi connection exists and has an IP address
-      if (state.isConnected && state.type === 'wifi' && state.details?.ipAddress) {
-        const localIP = state.details.ipAddress;
-        console.log('📡 Device local IP (from NetInfo):', localIP);
+      //const isWifi = state.isConnected && state.type === 'wifi' && state.details?.ipAddress;
 
-        // Replace this with your PC's IP on the same Wi-Fi (from ipconfig)
-        // You can use a development-specific IP for this purpose.
-        const serverIP = '192.168.254.123'; 
-        
 
-        API_BASE_URL = 'http://10.0.2.2:4000'; // Android emulator -> PC localhost
-      } else {
-        console.log('❌ Not connected to Wi-Fi with an IP address, or connection type is not Wi-Fi.');
-        // Fallback for cases where NetInfo can't get the IP
-        // Consider having a production API endpoint or a hardcoded default
-        API_BASE_URL = `http://192.168.1.10:4000`;
-      }
+      // No Wi-Fi → likely an emulator
+      console.log('🖥️ No Wi-Fi, assuming emulator');
+      API_BASE_URL = process.env.EXPO_PUBLIC_API_URL_ANDROID_EMULATOR;
+
     } catch (error) {
       console.error('Error getting network info:', error);
-      API_BASE_URL = `http://192.168.1.10:4000`; // Fallback on error
+      // Safe fallback during dev
+      API_BASE_URL = process.env.EXPO_PUBLIC_API_URL_ANDROID_EMULATOR;
     }
   }
 
@@ -37,8 +40,10 @@ async function initAPIBaseUrl() {
   return API_BASE_URL;
 }
 
-// Initialize before using GraphQLClient
-export async function getGraphQLClient() {
+export async function getGraphQLClient(): Promise<GraphQLClient> {
+  // ✅ Reuse existing client instance
+  if (clientInstance) return clientInstance;
+
   if (!API_BASE_URL) {
     await initAPIBaseUrl();
   }
@@ -47,5 +52,6 @@ export async function getGraphQLClient() {
     throw new Error('❌ Could not determine API_BASE_URL');
   }
 
-  return new GraphQLClient(`${API_BASE_URL}/graphql`);
+  clientInstance = new GraphQLClient(`${API_BASE_URL}/graphql`);
+  return clientInstance;
 }
