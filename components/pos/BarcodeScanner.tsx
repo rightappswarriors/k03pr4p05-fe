@@ -54,7 +54,7 @@ export function BarcodeScanner({ onClose}: BarcodeScannerProps) {
       );
       setSound(beepSound);
     } catch (error:any) {
-      console.error('Error loading beep sound:', error);
+      //console.error('Error loading beep sound:', error);
       throw new Error(error)
     }
   };
@@ -65,7 +65,7 @@ export function BarcodeScanner({ onClose}: BarcodeScannerProps) {
         await sound.replayAsync();
       }
     } catch (error) {
-      console.log('Error playing beep:', error);
+      //console.log('Error playing beep:', error);
     }
   };
 

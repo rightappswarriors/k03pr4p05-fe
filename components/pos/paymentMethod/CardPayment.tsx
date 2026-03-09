@@ -37,7 +37,7 @@ export default function CardPayment() {
     Alert.alert('Processing', 'Manually processing card payment. (In production, use secure tokenization!)');
     // In a real app: Tokenize card data and send the token to your backend
     // Your backend then uses the token to charge the card via your payment gateway
-    console.log({ cardNumber, expiryDate, cvv, cardHolderName });
+    //console.log({ cardNumber, expiryDate, cvv, cardHolderName });
   };
   const { colors} = useTheme()
 

@@ -26,11 +26,11 @@ async function initAPIBaseUrl() {
 
 
       // No Wi-Fi → likely an emulator
-      console.log('🖥️ No Wi-Fi, assuming emulator');
+     // console.log('🖥️ No Wi-Fi, assuming emulator');
       API_BASE_URL = process.env.EXPO_PUBLIC_API_URL_ANDROID_EMULATOR;
 
     } catch (error) {
-      console.error('Error getting network info:', error);
+      //console.error('Error getting network info:', error);
       // Safe fallback during dev
       API_BASE_URL = process.env.EXPO_PUBLIC_API_URL_ANDROID_EMULATOR;
     }

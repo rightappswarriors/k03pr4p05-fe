@@ -113,7 +113,7 @@ export class AuthService {
         await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
       return user;
     } catch (error) {
-      // console.error('GraphQL login error:', error);
+      //console.error('GraphQL login error:', error);
       throw new Error('Invalid email or password');
     }
   }
@@ -146,7 +146,7 @@ export class AuthService {
       await secureStorage.setItemAsync(AUTH_TOKEN_KEY, token);
       return token;
     } catch (error) {
-      console.error('GraphQL refresh error:', error);
+      //console.error('GraphQL refresh error:', error);
       await this.removeUser();
       throw error;
     }
@@ -171,7 +171,7 @@ export class AuthService {
           Authorization: `Bearer ${accessToken}`
         })
       } catch (error) {
-        console.error("Logout error in:", error)
+        //console.error("Logout error in:", error)
       }
     }
     await secureStorage.deleteItemAsync(AUTH_TOKEN_KEY);
@@ -223,7 +223,7 @@ export class AuthService {
 
       return JSON.parse(userData);
     } catch (error) {
-      console.error('Error geting current user:', error);
+      //console.error('Error geting current user:', error);
       return null;
     }
   }
@@ -256,7 +256,7 @@ export class AuthService {
 
       return result.success;
     } catch (error) {
-      console.error('Biometric authentication error:', error);
+      //console.error('Biometric authentication error:', error);
       return false;
     }
   }
@@ -276,13 +276,13 @@ export class AuthService {
       if (!userData) return null;
 
       const user: User = JSON.parse(userData);
-      console.log('USER LOGGED IN:', user);
+      //console.log('USER LOGGED IN:', user);
       const token = `token_${user.id}_${Date.now}`;
       await SecureStore.setItemAsync(AUTH_TOKEN_KEY, token);
 
       return await this.getCurrentUser();
     } catch (error) {
-      console.error('Auto login failed', error);
+      //console.error('Auto login failed', error);
       return null;
     }
   }
@@ -319,7 +319,7 @@ export class AuthService {
         isAuthenticated: !!accessToken && !!user,
       };
     } catch (error) {
-      console.error('Error initializing auth:', error);
+      //console.error('Error initializing auth:', error);
       return {
         user: null,
         isLoading: false,
@@ -337,7 +337,7 @@ export class AuthService {
       this.deviceBound = true;
       return true;
     } catch (error) {
-      console.error('Device binding failed:', error);
+      //console.error('Device binding failed:', error);
       return false;
     }
   }

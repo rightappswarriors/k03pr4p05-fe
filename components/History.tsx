@@ -48,7 +48,7 @@ export default React.memo(function HistoryScreen() {
       setRefreshTrigger(prev => prev + 1);
     
     } catch (error) {
-      console.error('Refresh failed:', error);
+      //console.error('Refresh failed:', error);
     } finally {
       setIsRefreshing(false);
     }

@@ -45,7 +45,7 @@ export default React.memo(function PrinterScreen() {
             scanForDevices()
             setAvailableDevices([connectedDevice, devices]);
           } catch (error: any) {
-            console.error("Error: ", error)
+            //console.error("Error: ", error)
             Alert.alert('Bluetooth Error', error.message);
             setAvailableDevices([]);
           } finally {

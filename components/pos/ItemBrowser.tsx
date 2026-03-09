@@ -58,9 +58,9 @@ export function ItemBrowser({
   const [dropdownItems, setDropdownItems] = useState(
     categories.map(c => ({ label: c.name, value: c.id })) // 👈 transform categories
   );
-  useEffect(() => {
-    console.warn("storedItems updated:", items)
-  }, [storedItems])
+  //useEffect(() => {
+    //console.warn("storedItems updated:", items)
+  //}, [storedItems])
 
   useEffect(() => {
     setDropdownItems(categories.map(c => ({ label: c.name, value: c.id })));

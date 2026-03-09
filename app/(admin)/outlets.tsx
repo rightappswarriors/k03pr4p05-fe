@@ -30,7 +30,7 @@ export default function OutletListScreen() {
     socket.onmessage = async (event) => {
       const data = JSON.parse(event.data);
       if (process.env.NODE_ENV === "development") {
-        console.log("Websocket response", data);
+        //console.log("Websocket response", data);
       }
       socket.onmessage = async (event) => {
         const data = JSON.parse(event.data);
@@ -51,11 +51,11 @@ export default function OutletListScreen() {
   }, [socket]);
 
   const loadOutlets = useCallback(async () => {
-    console.log('🔄 loadOutlets called with:', activeFilter, customStart, customEnd) // ✅ add this
+    //console.log('🔄 loadOutlets called with:', activeFilter, customStart, customEnd) // ✅ add this
     try {
       setLoading(true);
       const { startDate, endDate } = getDateRange(activeFilter, customStart, customEnd) // ✅ compute once outside map
-      console.log('📅 Date range:', startDate, endDate) // ✅ and this
+      //console.log('📅 Date range:', startDate, endDate) // ✅ and this
       const outletData = await AdminService.getOutletsByBranch(branchId);
       setOutlets(outletData);
 
@@ -72,7 +72,7 @@ export default function OutletListScreen() {
 
       setOutletRevenues(revenueMap);
     } catch (error) {
-      console.error('Failed to load outlets:', error);
+      //console.error('Failed to load outlets:', error);
     } finally {
       setLoading(false);
     }

@@ -29,7 +29,7 @@ export default function LoginScreenDefault({ isDesktop }: Props) {
      const { isTablet } = useResponsive()
 
      useEffect(() => {
-          console.log("isLoading changed:", isLoading);
+          //console.log("isLoading changed:", isLoading);
      }, [isLoading]);
      const handleLogin = async () => {
           if (!email.trim() || !password.trim()) {

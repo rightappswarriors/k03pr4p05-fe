@@ -32,7 +32,6 @@ export default function Login() {
         setUser(null)
       }
     } catch (error) {
-      console.error('Failed to check saved user:', error)
     } finally {
       setLoading(false)
       setIsInitializing(false) // Prevents flicker

@@ -45,8 +45,6 @@ export default function LoginScreenDefault({ user, onRemoveUser, isDesktop }: Pr
           const enabled = await isBiometricEnabled()
           setBiometricSupported(supported)
           setBiometricEnabledState(enabled)
-          if (supported && enabled) console.log('I will check if Biometric is enable localy in your phone if enabled and supported', true)
-          else console.log('Biometrics is not supported or enabled, to enable set up your biometrics in your phone')
      }
      const handleRemoveUser = async () => {
 
@@ -57,7 +55,8 @@ export default function LoginScreenDefault({ user, onRemoveUser, isDesktop }: Pr
                          await removeUser()
                          onRemoveUser()
                     } catch (error) {
-                         console.error('Failed to remove user', error);
+                         //console.error('Failed to remove user', error);
+                         Alert.alert('Error', 'Failed to log out user. Please try again.');
                     }
                }
           }
@@ -74,7 +73,8 @@ export default function LoginScreenDefault({ user, onRemoveUser, isDesktop }: Pr
                                    await removeUser()
                                    onRemoveUser()
                               } catch (error) {
-                                   console.error('Failed to remove user', error)
+                                   //console.error('Failed to remove user', error)
+                                   Alert.alert('Error', 'Failed to remove user. Please try again.');
                               }
                          }
                     }

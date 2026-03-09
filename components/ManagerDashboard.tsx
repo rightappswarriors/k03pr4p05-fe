@@ -25,7 +25,7 @@ export default function DashboardScreen() {
             setDeviceInfo(info);
             setSyncLogs(logs.slice(0, 10)); // Show last 10 sync attempts
         } catch (error) {
-            console.error('Failed to load dashboard data:', error);
+            //console.error('Failed to load dashboard data:', error);
         } finally {
             setIsLoading(false);
         }

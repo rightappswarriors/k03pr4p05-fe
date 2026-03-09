@@ -24,15 +24,15 @@ export default function BranchOverviewScreen() {
   const socket = useWebSocket();
 
   useEffect(() => {
-      console.log("Test Websocket");
+    //console.log("Test Websocket");
 
     if (!socket) return;
-    
-      console.log("Test Websocket found");
+
+    //console.log("Test Websocket found");
     socket.onmessage = async (event) => {
       const data = JSON.parse(event.data);
       if (process.env.NODE_ENV === "development") {
-        console.log("Websocket response", data);
+        //console.log("Websocket response", data);
       }
       socket.onmessage = async (event) => {
         const data = JSON.parse(event.data);
@@ -73,7 +73,7 @@ export default function BranchOverviewScreen() {
 
       setBranchRevenues(revenueMap);
     } catch (error) {
-      console.error('Failed to load branches:', error);
+      //console.error('Failed to load branches:', error);
     } finally {
       setLoading(false);
     }

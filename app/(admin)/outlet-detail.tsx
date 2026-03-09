@@ -35,7 +35,7 @@ export default function OutletDetailScreen() {
       setCurrentCashiers(cashiers);
       setRecentTransactions(transactions);
     } catch (error) {
-      console.error('Failed to load outlet details:', error);
+      //console.error('Failed to load outlet details:', error);
     } finally {
       setLoading(false);
     }

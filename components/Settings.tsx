@@ -76,7 +76,7 @@ export default React.memo(function SettingsScreen({ outletId }: { outletId?: num
         try {
           await logout(Number(outletId))
         } catch (error) {
-          console.error('Logout Failed')
+          //console.error('Logout Failed')
         }
       }
     } else {

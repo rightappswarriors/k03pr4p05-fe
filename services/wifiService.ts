@@ -24,7 +24,7 @@ export class WiFiService {
       // For mobile platforms, get actual WiFi info
       return this.getMobileWiFiInfo(networkState);
     } catch (error) {
-      console.error('Failed to get WiFi info:', error);
+      //console.error('Failed to get WiFi info:', error);
       return {
         ssid: null,
         isConnected: false,
@@ -54,7 +54,7 @@ export class WiFiService {
         // For demo purposes, we'll simulate this
         ssid = 'StoreWiFi_001';
       } catch (error) {
-        console.warn('Could not get WiFi SSID:', error);
+        //console.warn('Could not get WiFi SSID:', error);
       }
     }
 

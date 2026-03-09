@@ -74,12 +74,12 @@ export class ReceiptService {
 
       const outletId = Number(outlet?.id);
       if (!outletId) {
-        console.error("No outlet id")
+        //console.error("No outlet id")
         throw new Error("unable to get outlet id")
       }
       const userId = Number(user?.id)
       if (!userId) {
-        console.error("No user id")
+        //console.error("No user id")
         throw new Error("unable to get user id")
       }
       await TransactionService.createOrder(
@@ -107,7 +107,7 @@ export class ReceiptService {
         ]);
       }, 2000);
     } catch (error) {
-      console.error('Error printing receipt:', error);
+      //console.error('Error printing receipt:', error);
       Alert.alert('Error', 'Failed to process the receipt.');
       onFail?.();
     }

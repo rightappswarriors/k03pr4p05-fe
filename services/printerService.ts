@@ -54,13 +54,13 @@ export class PrinterService {
     //  return false;
     //}
     try {
-      console.log('generating receipt HTML: ');
+      //console.log('generating receipt HTML: ');
       const receiptHTML = this.generateOrderReceiptHtml(receipt);
 
-      console.log('seindin print job:');
+     //console.log('seindin print job:');
       return await this.sendPrintJob(receiptHTML, false);
     } catch (error: any) {
-      console.error('Failed to print order receipt:', error);
+      //console.error('Failed to print order receipt:', error);
       throw new Error(`Receipt printing failed: ${error.message}`);
     }
   }
@@ -72,7 +72,7 @@ export class PrinterService {
     try {
       const htmlContent = await this.convertContentToHtml(content);
       if (Platform.OS === 'web') {
-        console.log(Platform.OS);
+        //console.log(Platform.OS);
         const printWindow = window.open('', '_blank', 'width=500,height=800');
         if (printWindow) {
           printWindow.document.write(content);
@@ -94,7 +94,7 @@ export class PrinterService {
 
       return false;
     } catch (error) {
-      console.error('Print job failed:', error);
+      //console.error('Print job failed:', error);
       throw error;
     }
   }

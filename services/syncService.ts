@@ -25,13 +25,13 @@ export class SyncService {
     setInterval(async () => {
       const pendingNow = await StorageService.getPendingOrders();
       if (!pendingNow || pendingNow.length === 0) {
-        console.log('No pending orders - waiting for new ones');
+        //console.log('No pending orders - waiting for new ones');
         return; // don't stop, just skip this cycle
       }
 
       if (!this.syncInProgress) {
         await this.attemptSync();
-        console.log('Syncing Pending Order');
+        //console.log('Syncing Pending Order');
         eventBus.emit('orderSynced');
       }
     }, 120000);
@@ -52,7 +52,7 @@ export class SyncService {
       );
 
       if (toSync.length === 0) {
-        console.log('No pending or failed orders to sync');
+        //console.log('No pending or failed orders to sync');
         this.syncInProgress = false;
         return;
       }
@@ -61,7 +61,7 @@ export class SyncService {
       await this.syncOrders(toSync);
       this.syncRetryCount = 0;
     } catch (error) {
-      console.error('Sync failed:', error);
+      //console.error('Sync failed:', error);
       await this.handleSyncFailure();
     } finally {
       this.syncInProgress = false;
@@ -116,9 +116,9 @@ export class SyncService {
 
       for (const order of orders) {
         try {
-          order.items.map((item)=> (
-            console.log("ItemId:",item.id)
-          ))
+          //order.items.map((item)=> (
+            //console.log("ItemId:",item.id)
+          //))
           const response = (await client.request(
             NEWTRANSACTION_MUTATION,
             {
@@ -154,15 +154,15 @@ export class SyncService {
         } catch (error: any) {
           // ✅ Handle HTTP 400 or GraphQL validation errors
           if (error.response?.status === 400) {
-            console.error(
-              `⚠️ GraphQL validation error (400) for order ${order.id}:`,
-              error.response?.errors ?? error.message
-            );
+            //console.error(
+            //  `⚠️ GraphQL validation error (400) for order ${order.id}:`,
+            //  error.response?.errors ?? error.message
+            //);
           } else {
-            console.error(
-              `❌ Unexpected sync error for order ${order.id}:`,
-              error
-            );
+            //console.error(
+            //  `❌ Unexpected sync error for order ${order.id}:`,
+            //  error
+            //);
           }
 
           failedOrderIds.push(order.id);
@@ -177,7 +177,7 @@ export class SyncService {
         }
       }
     } catch (error) {
-      console.error('❌ Error seding data transactions to server:', error);
+      //console.error('❌ Error seding data transactions to server:', error);
       throw new Error('Error seding data transactions to server');
     }
     // Create sync log
@@ -236,10 +236,10 @@ export class SyncService {
     try {
       await this.attemptSync();
       eventBus.emit('orderSynced');
-      console.log('OrderSyncing');
+      //console.log('OrderSyncing');
       return true;
     } catch (error) {
-      console.error('Force sync failed:', error);
+      //console.error('Force sync failed:', error);
       return false;
     }
   }

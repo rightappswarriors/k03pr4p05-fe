@@ -14,7 +14,7 @@ export class StorageService {
         JSON.stringify(updatedOrders)
       );
     } catch (error) {
-      console.error('Failed to save order:', error);
+      //console.error('Failed to save order:', error);
       throw new Error('Failed to save order locally');
     }
   }
@@ -24,7 +24,8 @@ export class StorageService {
       const transactionJson = await AsyncStorage.getItem(TRANSACTION_KEY);
       return transactionJson ? JSON.parse(transactionJson) : [];
     } catch (error) {
-      console.error('Failed to get offline orders:', error);
+      //console.error('Failed to get offline orders:', error);
+      throw new Error('Failed to get offline orders.')
       return [];
     }
   }
@@ -56,7 +57,8 @@ export class StorageService {
         JSON.stringify(updatedOrders)
       );
     } catch (error) {
-      console.error('Failed to update order status:', error);
+      //console.error('Failed to update order status:', error);
+      throw new Error('Failed to update order status')
     }
   }
 
@@ -69,7 +71,7 @@ export class StorageService {
         JSON.stringify(filteredOrders)
       );
     } catch (error) {
-      console.error('Failed to remove order:', error);
+      //console.error('Failed to remove order:', error);
     }
   }
 
@@ -84,7 +86,8 @@ export class StorageService {
       const updatedLogs = [log, ...existingLogs].slice(0, 100); // Keep last 100 logs
       await AsyncStorage.setItem(SYNC_LOGS_KEY, JSON.stringify(updatedLogs));
     } catch (error) {
-      console.error('Failed to save sync log:', error);
+      //console.error('Failed to save sync log:', error);
+      throw new Error('Failed to save sync log:')
     }
   }
 
@@ -93,7 +96,7 @@ export class StorageService {
       const logsJson = await AsyncStorage.getItem(SYNC_LOGS_KEY);
       return logsJson ? JSON.parse(logsJson) : [];
     } catch (error) {
-      console.error('Failed to get sync logs:', error);
+      //console.error('Failed to get sync logs:', error);
       return [];
     }
   }
@@ -111,7 +114,7 @@ export class StorageService {
       );
       await AsyncStorage.removeItem(SYNC_LOGS_KEY);
     } catch (error) {
-      console.error('Failed to clear data:', error);
+      //console.error('Failed to clear data:', error);
     }
   }
 }
