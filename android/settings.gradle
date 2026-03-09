@@ -37,3 +37,6 @@ expoAutolinking.useExpoVersionCatalog()
 
 include ':app'
 includeBuild(expoAutolinking.reactNativeGradlePlugin)
+
+// At the bottom of android/settings.gradle, add:
+exclude ':react-native-worklets'
