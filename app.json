@@ -49,7 +49,9 @@
           ]
         }
       ],
-      "expo-build-properties"
+      "expo-build-properties",
+      "expo-audio",
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true
