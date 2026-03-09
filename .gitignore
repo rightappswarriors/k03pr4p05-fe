@@ -19,6 +19,12 @@ android/
 # metro
 .metro-health-check*
 
+/android/
+/ios/
+
+# Hidden config folders
+/.android/
+
 # debug
 npm-debug.*
 yarn-debug.*
