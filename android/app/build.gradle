@@ -119,6 +119,7 @@ android {
     packagingOptions {
         jniLibs {
             useLegacyPackaging (findProperty('expo.useLegacyPackaging')?.toBoolean() ?: false)
+            pickFirsts += ['**/libreanimated.so', '**/libworklets.so']  // ← add this
         }
     }
     androidResources {
@@ -143,6 +144,11 @@ android {
         options.each {
             android.packagingOptions[prop] += it
         }
+    }
+}
+configurations.all {
+    resolutionStrategy {
+        force 'com.facebook.react:react-android:+'
     }
 }
 
