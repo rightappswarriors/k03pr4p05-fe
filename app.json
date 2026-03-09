@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "POS Vine",
-    "slug": "posvinedev",
+    "name": "POS Vine-2",
+    "slug": "pos-vine-mman",
     "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -21,7 +21,9 @@
         "BLUETOOTH_ADMIN",
         "BLUETOOTH_CONNECT",
         "BLUETOOTH_SCAN",
-        "ACCESS_FINE_LOCATION"
+        "ACCESS_FINE_LOCATION",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ]
     },
     "web": {
@@ -64,9 +66,9 @@
       "API_BASE_URL": "http://localhost:4000",
       "router": {},
       "eas": {
-        "projectId": "69b194da-322c-4d6e-8ae4-d5cc7b1cb583"
+        "projectId": "de692183-0733-4faa-812c-e994f6995fe1"
       }
     },
-    "owner": "rai-app"
+    "owner": "nuelgrace"
   }
 }
