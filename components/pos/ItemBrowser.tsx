@@ -104,10 +104,10 @@ export function ItemBrowser({
             onToggle={() => setViewMode(prev => prev === 'grid' ? 'list' : 'grid')}
           />
           <TouchableOpacity disabled={!isMobile} onPress={onToggleCart} style={[styles.cartButton, { backgroundColor: colors.background }]}>
-            <ShoppingCart size={20} color="#3B82F6" />
+            <ShoppingCart size={20} color={colors.accent} />
             {cartItemsCount > 0 && (
-              <View style={styles.cartBadge}>
-                <Text style={styles.cartBadgeText}>
+              <View style={[styles.cartBadge]}>
+                <Text style={[styles.cartBadgeText, { color: colors.text}]}>
                   {cartItemsCount > 99 ? '99+' : cartItemsCount}
                 </Text>
               </View>
@@ -172,7 +172,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   cartBadgeText: {
-    color: 'white',
     fontSize: 12,
     fontWeight: '700',
   },

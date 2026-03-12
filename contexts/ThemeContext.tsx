@@ -1,91 +1,96 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useColorScheme } from 'react-native';
 
 export type Theme = 'light' | 'dark';
 
 interface ThemeContextType {
   theme: Theme;
   toggleTheme: () => void;
-  colors: {
-    background: string;
-    surface: string;
-    primary: string;
-    text: string;
-    textSecondary: string;
-    border: string;
-    card: string;
-    success: string;
-    warning: string;
-    error: string;
-  };
+  colors: typeof lightColors;
 }
 
+// ── Right Apps Inc. Brand Palette ──────────────────────────────
 const lightColors = {
-  background: '#F9FAFB',
+  background: '#F5F7FA', // soft off-white
   surface: '#FFFFFF',
-  primary: '#3B82F6',
-  text: '#1F2937',
-  textSecondary: '#6B7280',
-  border: '#E5E7EB',
+  primary: '#1B3A6B', // navy blue (logo)
+  primaryLight: '#2A5298', // lighter navy for hover/press states
+  accent: '#E87722', // orange (logo)
+  accentLight: '#F4A44E', // lighter orange for hover/press states
+  text: '#1B3A6B', // navy for headings
+  textSecondary: '#5A6A85', // muted navy-grey
+  border: '#D6DCE8', // light navy-tint border
   card: '#FFFFFF',
   success: '#10B981',
-  warning: '#F59E0B',
+  warning: '#E87722', // reuse brand orange for warnings
   error: '#EF4444',
 };
 
 const darkColors = {
-  background: '#111827',
-  surface: '#1F2937',
-  primary: '#60A5FA',
-  text: '#D1D5DB',
-  textSecondary: '#9CA3AF',
-  border: '#374151',
-  card: '#1F2937',
+  background: '#0D1B2E', // deep navy (darker than logo navy)
+  surface: '#1B3A6B', // navy (logo) as surface
+  primary: '#E87722', // orange becomes primary CTA in dark mode
+  primaryLight: '#F4A44E',
+  accent: '#F4A44E', // lighter orange as accent
+  accentLight: '#F9C07E',
+  text: '#F0F4FF', // near-white with navy tint
+  textSecondary: '#A8B8D8', // muted cool grey-blue
+  border: '#2A4A7F', // mid-navy border
+  card: '#162D52', // slightly lighter than background
   success: '#34D399',
   warning: '#FBBF24',
   error: '#F87171',
 };
-const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-const THEME_STORAGE_KEY = 'app_theme';
+// ── Context ─────────────────────────────────────────────────────
+const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
+const THEME_KEY = 'rightapps_theme';
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>('light');
+  const systemScheme = useColorScheme(); // 'light' | 'dark' | null
 
+  // ① Initialize from system scheme immediately — no async flash
+  const [theme, setTheme] = useState<Theme>(
+    systemScheme === 'dark' ? 'dark' : 'light',
+  );
+  const saveQueued = useRef(false);
+
+  // ② Hydrate from storage once on mount (overrides system default if user saved a preference)
   useEffect(() => {
-    loadTheme();
+    AsyncStorage.getItem(THEME_KEY).then((saved) => {
+      if (saved === 'light' || saved === 'dark') setTheme(saved);
+    });
   }, []);
 
-  const loadTheme = async () => {
-    try {
-      const savedTheme = await AsyncStorage.getItem(THEME_STORAGE_KEY);
-      if (savedTheme === 'light' || savedTheme === 'dark') {
-        setTheme(savedTheme);
+  // ③ toggleTheme: update state instantly, save to storage in background
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => {
+      const next: Theme = prev === 'light' ? 'dark' : 'light';
+
+      // Fire-and-forget — don't await so UI is never blocked
+      if (!saveQueued.current) {
+        saveQueued.current = true;
+        AsyncStorage.setItem(THEME_KEY, next).finally(() => {
+          saveQueued.current = false;
+        });
       }
-    } catch (error) {
-      console.error('Error loading theme:', error);
-    }
-  };
-  const toggleTheme = async () => {
-    try {
-      const newTheme: Theme = theme === 'light' ? 'dark' : 'light';
-      setTheme(newTheme);
-      await AsyncStorage.setItem(THEME_STORAGE_KEY, newTheme);
-    } catch (error) {
-      console.error('Error saving theme:', error);
-    }
-  };
+
+      return next;
+    });
+  }, []);
 
   const colors = theme === 'light' ? lightColors : darkColors;
 
   return (
-    <ThemeContext.Provider
-      value={{
-        theme,
-        toggleTheme,
-        colors,
-      }}
-    >
+    <ThemeContext.Provider value={{ theme, toggleTheme, colors }}>
       {children}
     </ThemeContext.Provider>
   );
@@ -93,8 +98,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
 export function useTheme() {
   const context = useContext(ThemeContext);
-  if (context === undefined) {
-    throw new Error('UseTheme must be within a ThemeProvider');
-  }
+  if (!context) throw new Error('useTheme must be used within a ThemeProvider');
   return context;
 }

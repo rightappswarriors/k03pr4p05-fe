@@ -198,7 +198,7 @@ export function CartSidebar({
         <View style={[styles.footer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={styles.totalContainer}>
             <Text style={[styles.totalLabel, { color: colors.text }]}>Total</Text>
-            <Text style={styles.totalAmount}>₱ {total.toFixed(2)}</Text>
+            <Text style={[styles.totalAmount, { color: colors.accent}]}>₱ {total.toFixed(2)}</Text>
           </View>
           <View style={styles.buttonContainer}>
             <TouchableOpacity
@@ -213,7 +213,7 @@ export function CartSidebar({
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleCheckout}
-              style={[styles.actionButton, styles.checkoutButton]}
+              style={[styles.actionButton, {backgroundColor: colors.accent}]}
               disabled={items.length === 0}
             >
               <CreditCard size={18} color="white" />

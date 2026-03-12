@@ -200,8 +200,6 @@ export function ReceiptModal({ visible, onClose, onOrderPlaced }: ReceiptModalPr
                         }}
                         colors={colors}
                       />
-
-                      <Text style={{ color: colors.text }}>Apply Discount</Text>
                     </View>
                     <View style={{ flexDirection: "row", alignItems: "center" }}>
                       <TouchableOpacity
@@ -264,7 +262,7 @@ export function ReceiptModal({ visible, onClose, onOrderPlaced }: ReceiptModalPr
                 <TouchableOpacity
                   onPress={handlePrintReceipt}
                   style={[
-                    styles.printButton,
+                    styles.printButton, { backgroundColor: colors.accent},
                     (cashAmount < total || isProcessing) && styles.disabledButton
                   ]}
                   disabled={cashAmount < total || isProcessing}
@@ -481,7 +479,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 14,
     borderRadius: 8,
-    backgroundColor: '#3B82F6',
     gap: 8,
   },
   disabledButton: {

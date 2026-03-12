@@ -112,8 +112,8 @@ export default React.memo(function PrinterScreen() {
         style={[styles.connectionTab, isActive && styles.activeConnectionTab, isMobile && { flexDirection: "column" }]}
         onPress={() => setActiveTab(type)}
       >
-        <IconComponent size={20} color={isActive ? '#2563EB' : '#6B7280'} />
-        <Text style={[styles.connectionTabText, isActive && styles.activeConnectionTabText]}>
+        <IconComponent size={20} color={isActive ? colors.accent : colors.primaryLight} />
+        <Text style={[styles.connectionTabText, {color: colors.primary}, isActive && {color: colors.accent}]}>
           {label}
         </Text>
       </TouchableOpacity>
@@ -126,7 +126,7 @@ export default React.memo(function PrinterScreen() {
         Connect to a Bluetooth-enabled receipt printer
       </Text>
       <TouchableOpacity
-        style={[styles.scanButton, isScanning && { backgroundColor: colors.textSecondary }]}
+        style={[styles.scanButton, { backgroundColor: colors.accent}, isScanning && { backgroundColor: colors.textSecondary }]}
         onPress={() => scanForDevicesList('bluetooth')}
         disabled={isScanning === true}
       >
@@ -230,7 +230,7 @@ export default React.memo(function PrinterScreen() {
         {/* Printer Status */}
         <View style={styles.statusCard}>
           <View style={styles.statusHeader}>
-            <Printer size={32} color="#2563EB" />
+            <Printer size={32} color={colors.accent} />
             <View style={styles.statusInfo}>
               <Text style={styles.statusTitle}>Printer Status</Text>
               <View style={styles.statusRow}>
@@ -274,12 +274,12 @@ export default React.memo(function PrinterScreen() {
         )}
 
         {/* Printer Information */}
-        <View style={styles.infoCard}>
-          <Text style={styles.infoTitle}>Supported Printers & Requirements</Text>
+        <View style={[styles.infoCard, { backgroundColor: colors.border}]}>
+          <Text style={[styles.infoTitle, { color: colors.primary}]}>Supported Printers & Requirements</Text>
           <View style={styles.infoList}>
-            <Text style={styles.infoCategory}>Bluetooth:</Text>
-            <Text style={styles.infoItem}>• Star TSP143III, Epson TM series, Zebra ZD series</Text>
-            <Text style={styles.infoItem}>• ESC/POS compatible thermal printers</Text>
+            <Text style={[styles.infoCategory, { color: colors.primary}]}>Bluetooth:</Text>
+            <Text style={[styles.infoItem, { color: colors.primary}]}>• Star TSP143III, Epson TM series, Zebra ZD series</Text>
+            <Text style={[styles.infoItem, { color: colors.primary}]}>• ESC/POS compatible thermal printers</Text>
             {/**
             <Text style={styles.infoCategory}>Network (Ethernet/WiFi):</Text>
             <Text style={styles.infoItem}>• IP-enabled printers on port 9100 (RAW)</Text>
@@ -437,7 +437,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   scanButton: {
-    backgroundColor: '#2563EB',
     padding: 12,
     borderRadius: 8,
     alignItems: 'center',

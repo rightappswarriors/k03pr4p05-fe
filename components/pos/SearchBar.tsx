@@ -55,7 +55,7 @@ export const SearchBar = forwardRef<TextInput, SearchBarProps>(({
         autoCorrect={false}
       />
       <TouchableOpacity onPress={onScanPress} style={[styles.scanButton, { backgroundColor: colors.surface }]}>
-        <ScanLine size={20} color="#3B82F6" />
+        <ScanLine size={20} color={colors.accent} />
       </TouchableOpacity>
     </View>
     </TouchableWithoutFeedback>

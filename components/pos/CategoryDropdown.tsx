@@ -129,7 +129,7 @@ export function CategoryDropdown({
         style={[styles.filterInput, { backgroundColor: colors.card, borderColor: colors.card }]}
         onPress={toggleDropdown}
       >
-        <Filter size={16} color="#2563EB" />
+        <Filter size={16} color={colors.accent} />
         {selectedCategory ? (
           selectedBadge()
         ) : (
@@ -137,7 +137,7 @@ export function CategoryDropdown({
             {'Select Category'}
           </Text>
         )}
-        {isOpen ? <ChevronUp size={16} color="#2563EB" /> : <ChevronDown size={16} color="#2563EB" />}
+        {isOpen ? <ChevronUp size={16} color={colors.accent} /> : <ChevronDown size={16} color={colors.accent} />}
       </TouchableOpacity>
 
       {isOpen && (

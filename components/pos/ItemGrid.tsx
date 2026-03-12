@@ -92,7 +92,7 @@ export function ItemGrid({ items, loading, viewMode, onAddToCart, isDropdownOpen
         <Text style={[styles.itemName, { color: colors.text }]} numberOfLines={viewMode === 'list' ? 1 : 2}>
           {item.name}
         </Text>
-        <Text style={styles.itemPrice}>₱{item.price}</Text>
+        <Text style={[styles.itemPrice, { color: colors.accent}]}>₱{item.price}</Text>
         {viewMode === 'list' && (
           <Text style={styles.itemDescription} numberOfLines={2}>
             {item.description}
@@ -104,6 +104,7 @@ export function ItemGrid({ items, loading, viewMode, onAddToCart, isDropdownOpen
         style={[
           styles.selectButton,
           viewMode === 'list' && styles.listSelectButton,
+          { backgroundColor: colors.accent}
         ]}
       >
         <Plus size={viewMode === 'list' ? 20 : 16} color="white" />
@@ -209,7 +210,6 @@ const styles = StyleSheet.create({
   itemPrice: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#3B82F6',
     marginBottom: 8,
   },
   itemDescription: {
@@ -218,7 +218,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   selectButton: {
-    backgroundColor: '#3B82F6',
     borderRadius: 8,
     width: 32,
     height: 32,

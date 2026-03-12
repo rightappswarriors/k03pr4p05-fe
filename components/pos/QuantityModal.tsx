@@ -45,7 +45,7 @@ export function QuantityModal({ visible, item, onAddToCart, onClose }: QuantityM
       <View style={styles.overlay}>
         <View style={[styles.modal, {backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={[styles.header, { borderColor: colors.border}]}>
-            <Text style={[styles.title, {color: colors.text}]}>Add to Cart</Text>
+            <Text style={[styles.title, {color: colors.text}]}>Select Item</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
               <X size={24} color={colors.textSecondary} />
             </TouchableOpacity>
@@ -94,7 +94,7 @@ export function QuantityModal({ visible, item, onAddToCart, onClose }: QuantityM
             <TouchableOpacity onPress={onClose} style={[styles.cancelButton, { backgroundColor: colors.background}]}>
               <Text style={[styles.cancelButtonText, {color: colors.textSecondary}]}>Cancel</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={handleAddToCart} style={styles.addButton}>
+            <TouchableOpacity onPress={handleAddToCart} style={[styles.addButton, { backgroundColor: colors.accent}]}>
               <Text style={styles.addButtonText}>Add to Cart</Text>
             </TouchableOpacity>
           </View>

@@ -1,28 +1,50 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
-import { MapPin, TrendingUp, LogOut, PhilippinePeso } from 'lucide-react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  SafeAreaView,
+  ScrollView,
+  TouchableOpacity,
+  RefreshControl,
+} from 'react-native';
+import {
+  MapPin,
+  TrendingUp,
+  LogOut,
+  PhilippinePeso,
+  Cpu,
+} from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 import { AdminService } from '@/services/adminService';
 import { Branch, BranchRevenue } from '@/types';
 import { DateRangeFilter, getDateRange } from '@/utils/dateHelpers';
-import DateRangePickerModal from '@/components/DateRangePickerModal'
+import DateRangePickerModal from '@/components/DateRangePickerModal';
 import { useWebSocket } from '@/contexts/WSContext';
+import { useTheme } from '@/contexts/ThemeContext';
 
 export default function BranchOverviewScreen() {
   const { user, logout } = useAuth();
   const [branches, setBranches] = useState<Branch[]>([]);
-  const [branchRevenues, setBranchRevenues] = useState<Record<string, BranchRevenue>>({});
+  const [branchRevenues, setBranchRevenues] = useState<
+    Record<string, BranchRevenue>
+  >({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeFilter, setActiveFilter] = useState<DateRangeFilter>('today')
-  const [showDatePicker, setShowDatePicker] = useState(false)
-  const [customStart, setCustomStart] = useState<Date | undefined>(undefined)  // ✅ explicit undefined
-  const [customEnd, setCustomEnd] = useState<Date | undefined>(undefined)      // ✅ explicit undefined
-  const FILTERS: DateRangeFilter[] = ['today', 'this_week', 'this_month', 'custom']
+  const [activeFilter, setActiveFilter] = useState<DateRangeFilter>('today');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [customStart, setCustomStart] = useState<Date | undefined>(undefined); // ✅ explicit undefined
+  const [customEnd, setCustomEnd] = useState<Date | undefined>(undefined); // ✅ explicit undefined
+  const FILTERS: DateRangeFilter[] = [
+    'today',
+    'this_week',
+    'this_month',
+    'custom',
+  ];
 
   const socket = useWebSocket();
-
+  const { colors } = useTheme();
   useEffect(() => {
     //console.log("Test Websocket");
 
@@ -31,16 +53,16 @@ export default function BranchOverviewScreen() {
     //console.log("Test Websocket found");
     socket.onmessage = async (event) => {
       const data = JSON.parse(event.data);
-      if (process.env.NODE_ENV === "development") {
+      if (process.env.NODE_ENV === 'development') {
         //console.log("Websocket response", data);
       }
       socket.onmessage = async (event) => {
         const data = JSON.parse(event.data);
 
-        if (data.type === "NEW_TRANSACTION") {
+        if (data.type === 'NEW_TRANSACTION') {
           const { branchId, total } = data.payload;
 
-          setBranchRevenues(prev => ({
+          setBranchRevenues((prev) => ({
             ...prev,
             [branchId]: {
               ...prev[branchId],
@@ -56,20 +78,31 @@ export default function BranchOverviewScreen() {
   const loadBranches = useCallback(async () => {
     try {
       setLoading(true);
-      const { startDate, endDate } = getDateRange(activeFilter, customStart, customEnd)
+      const { startDate, endDate } = getDateRange(
+        activeFilter,
+        customStart,
+        customEnd,
+      );
       const branchData = await AdminService.getBranches();
       setBranches(branchData);
 
       const revenuePromises = branchData.map(async (branch) => {
-        const revenue = await AdminService.getBranchRevenue(branch.id, startDate, endDate);
+        const revenue = await AdminService.getBranchRevenue(
+          branch.id,
+          startDate,
+          endDate,
+        );
         return { branchId: branch.id, revenue };
       });
 
       const revenueResults = await Promise.all(revenuePromises);
-      const revenueMap = revenueResults.reduce((acc, { branchId, revenue }) => {
-        acc[branchId] = revenue;
-        return acc;
-      }, {} as Record<string, BranchRevenue>);
+      const revenueMap = revenueResults.reduce(
+        (acc, { branchId, revenue }) => {
+          acc[branchId] = revenue;
+          return acc;
+        },
+        {} as Record<string, BranchRevenue>,
+      );
 
       setBranchRevenues(revenueMap);
     } catch (error) {
@@ -77,18 +110,18 @@ export default function BranchOverviewScreen() {
     } finally {
       setLoading(false);
     }
-  }, [activeFilter, customStart, customEnd])  // ✅ dependencies here instead of useEffect
+  }, [activeFilter, customStart, customEnd]); // ✅ dependencies here instead of useEffect
 
   // ✅ useEffect just calls it — no deps needed since loadBranches already has them
   useEffect(() => {
     loadBranches();
-  }, [loadBranches])
+  }, [loadBranches]);
 
   const handleCustomRange = (start: Date, end: Date) => {
-    setCustomStart(start)
-    setCustomEnd(end)
-    setActiveFilter('custom')
-  }
+    setCustomStart(start);
+    setCustomEnd(end);
+    setActiveFilter('custom');
+  };
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -99,55 +132,90 @@ export default function BranchOverviewScreen() {
   const navigateToOutlets = (branchId: string, branchName: string) => {
     router.push({
       pathname: '/(admin)/outlets',
-      params: { branchId, branchName }
+      params: { branchId, branchName },
     });
   };
 
   const getTotalRevenue = () => {
-    return Object.values(branchRevenues).reduce((sum, revenue) => sum + revenue.totalRevenue, 0);
+    return Object.values(branchRevenues).reduce(
+      (sum, revenue) => sum + revenue.totalRevenue,
+      0,
+    );
   };
 
   const getTotalTransactions = () => {
-    return Object.values(branchRevenues).reduce((sum, revenue) => sum + revenue.transactionCount, 0);
+    return Object.values(branchRevenues).reduce(
+      (sum, revenue) => sum + revenue.transactionCount,
+      0,
+    );
   };
 
   if (loading && branches.length === 0) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: colors.background }]}
+      >
         <View style={styles.loading}>
-          <Text style={styles.loadingText}>Loading branches...</Text>
+          <Text style={[styles.loadingText, { color: colors.text}]}>Loading branches...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: colors.background }]}
+    >
+      <View
+        style={[
+          styles.header,
+          {
+            backgroundColor: colors.background,
+            borderBottomColor: colors.border,
+          },
+        ]}
+      >
         <View>
-          <Text style={styles.title}>Admin Dashboard</Text>
-          <Text style={styles.subtitle}>Welcome back, {user?.email}</Text>
+          <Text style={[styles.title, { color: colors.text }]}>
+            Admin Dashboard
+          </Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+            Welcome back, {user?.email}
+          </Text>
         </View>
         <TouchableOpacity style={styles.logoutButton} onPress={logout}>
           <LogOut size={20} color="white" />
         </TouchableOpacity>
       </View>
 
-      <View style={styles.filterContainer}>
+      <View style={[styles.filterContainer, { backgroundColor: colors.card }]}>
         {FILTERS.map((filter) => {
-          const { label } = getDateRange(filter, customStart, customEnd)
-          const isActive = activeFilter === filter
+          const { label } = getDateRange(filter, customStart, customEnd);
+          const isActive = activeFilter === filter;
           return (
             <TouchableOpacity
               key={filter}
-              style={[styles.filterTab, isActive && styles.filterTabActive]}
-              onPress={() => filter === 'custom' ? setShowDatePicker(true) : setActiveFilter(filter)}
+              style={[
+                styles.filterTab,
+                isActive && { backgroundColor: colors.accent },
+              ]}
+              onPress={() =>
+                filter === 'custom'
+                  ? setShowDatePicker(true)
+                  : setActiveFilter(filter)
+              }
             >
-              <Text style={[styles.filterTabText, isActive && styles.filterTabTextActive]}>
+              <Text
+                style={[
+                  styles.filterTabText,
+                  { color: colors.text },
+                  isActive && { color: colors.card },
+                ]}
+              >
                 {label}
               </Text>
             </TouchableOpacity>
-          )
+          );
         })}
       </View>
 
@@ -162,20 +230,32 @@ export default function BranchOverviewScreen() {
 
       {/* Summary Cards */}
       <View style={styles.summaryContainer}>
-        <View style={styles.summaryCard}>
-          <PhilippinePeso size={24} color="#059669" />
-          <Text style={styles.summaryValue}>${getTotalRevenue().toFixed(2)}</Text>
-          <Text style={styles.summaryLabel}>Total Revenue</Text>
+        <View style={[styles.summaryCard, { backgroundColor: colors.card }]}>
+          <PhilippinePeso size={24} color={colors.success} />
+          <Text style={[styles.summaryValue, { color: colors.text }]}>
+            ${getTotalRevenue().toFixed(2)}
+          </Text>
+          <Text style={[styles.summaryLabel, { color: colors.text }]}>
+            Total Revenue
+          </Text>
         </View>
-        <View style={styles.summaryCard}>
-          <TrendingUp size={24} color="#2563EB" />
-          <Text style={styles.summaryValue}>{getTotalTransactions()}</Text>
-          <Text style={styles.summaryLabel}>Transactions</Text>
+        <View style={[styles.summaryCard, { backgroundColor: colors.card }]}>
+          <TrendingUp size={24} color={colors.accent} />
+          <Text style={[styles.summaryValue, { color: colors.text }]}>
+            {getTotalTransactions()}
+          </Text>
+          <Text style={[styles.summaryLabel, { color: colors.text }]}>
+            Transactions
+          </Text>
         </View>
-        <View style={styles.summaryCard}>
-          <MapPin size={24} color="#D97706" />
-          <Text style={styles.summaryValue}>{branches.length}</Text>
-          <Text style={styles.summaryLabel}>Active Branches</Text>
+        <View style={[styles.summaryCard, { backgroundColor: colors.card }]}>
+          <MapPin size={24} color={colors.warning} />
+          <Text style={[styles.summaryValue, { color: colors.text }]}>
+            {branches.length}
+          </Text>
+          <Text style={[styles.summaryLabel, { color: colors.text }]}>
+            Active Branches
+          </Text>
         </View>
       </View>
 
@@ -185,7 +265,7 @@ export default function BranchOverviewScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
         }
       >
-        <Text style={styles.sectionTitle}>Branches</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text}]}>Branches</Text>
 
         {branches.map((branch) => {
           const revenue = branchRevenues[branch.id];
@@ -193,30 +273,33 @@ export default function BranchOverviewScreen() {
           return (
             <TouchableOpacity
               key={branch.id}
-              style={styles.branchCard}
+              style={[styles.branchCard, { backgroundColor: colors.card }]}
               onPress={() => navigateToOutlets(branch.id, branch.name)}
             >
               <View style={styles.branchHeader}>
                 <View style={styles.branchInfo}>
-                  <Text style={styles.branchName}>{branch.name}</Text>
+                  <Text style={[styles.branchName, { color: colors.text }]}>
+                    {branch.name}
+                  </Text>
                   <View style={styles.locationRow}>
-                    <MapPin size={14} color="#6B7280" />
+                    <MapPin size={14} color={colors.textSecondary} />
                     {/**<Text style={styles.branchLocation}>{branch.location.address}</Text> */}
                   </View>
                 </View>
                 <View style={styles.branchStats}>
-                  <Text style={styles.revenueAmount}>
+                  <Text style={[styles.revenueAmount, { color: colors.success}]}>
                     ${revenue?.totalRevenue.toFixed(2) || '0.00'}
                   </Text>
-                  <Text style={styles.transactionCount}>
+                  <Text style={[styles.transactionCount, { color: colors.textSecondary}]}>
                     {revenue?.transactionCount || 0} transactions
                   </Text>
                 </View>
               </View>
 
-              <View style={styles.branchFooter}>
-                <Text style={styles.outletCount}>
-                  {branch.outletIds.length} outlet{branch.outletIds.length !== 1 ? 's' : ''}
+              <View style={[styles.branchFooter, { borderTopColor: colors.border}]}>
+                <Text style={[styles.outletCount, { color: colors.textSecondary}]}>
+                  {branch.outletIds.length} outlet
+                  {branch.outletIds.length !== 1 ? 's' : ''}
                 </Text>
                 <Text style={styles.viewDetails}>View Details →</Text>
               </View>

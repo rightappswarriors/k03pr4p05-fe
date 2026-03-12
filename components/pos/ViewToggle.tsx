@@ -20,26 +20,26 @@ export function ViewToggle({ viewMode, onToggle }: ViewToggleProps) {
         onPress={onToggle}
         style={[
           styles.toggleButton,
-          viewMode === 'grid' && styles.activeButton,
+          viewMode === 'grid' && [styles.activeButton, { backgroundColor: colors.background}],
           viewMode === 'grid' &&{ backgroundColor: colors.card}
         ]}
       >
         <Grid3X3 
           size={20} 
-          color={viewMode === 'grid' ? '#3B82F6' : '#6B7280'} 
+          color={viewMode === 'grid' ? colors.accent : colors.primary} 
         />
       </TouchableOpacity>
       <TouchableOpacity
         onPress={onToggle}
         style={[
           styles.toggleButton,
-          viewMode === 'list' && styles.activeButton,
+          viewMode === 'list' && [styles.activeButton, { backgroundColor: colors.background}],
           viewMode === 'list' &&{ backgroundColor: colors.card}
         ]}
       >
         <List 
           size={20} 
-          color={viewMode === 'list' ? '#3B82F6' : '#6B7280'} 
+          color={viewMode === 'list' ? colors.accent : colors.primary} 
         />
       </TouchableOpacity>
     </View>
@@ -49,7 +49,6 @@ export function ViewToggle({ viewMode, onToggle }: ViewToggleProps) {
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    backgroundColor: '#F3F4F6',
     borderRadius: 8,
     padding: 2,
   },
@@ -61,7 +60,6 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   activeButton: {
-    backgroundColor: 'white',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,

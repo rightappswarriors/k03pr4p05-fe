@@ -204,9 +204,6 @@ export const styles = StyleSheet.create({
        borderWidth: 1,
        borderColor: '#FECACA',
      },
-     checkoutButton: {
-       backgroundColor: '#3B82F6',
-     },
      actionButtonText: {
        fontSize: 14,
        fontWeight: '600',
