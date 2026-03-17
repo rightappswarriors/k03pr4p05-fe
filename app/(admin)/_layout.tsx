@@ -1,7 +1,7 @@
 import { WebSocketProvider } from '@/contexts/WSContext';
 import { useAuth } from '@/hooks/useAuth';
 import { router, Tabs } from 'expo-router';
-import { BarChart3, Store, Settings, Users } from 'lucide-react-native';
+import { BarChart3, Store,ShoppingCart, Settings, Users } from 'lucide-react-native';
 import React, { useEffect } from 'react';
 
 export default function AdminTabLayout() {
@@ -34,6 +34,15 @@ export default function AdminTabLayout() {
             title: 'Dashboard',
             tabBarIcon: ({ size, color }) => (
               <BarChart3 size={size} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="orderManagement"
+          options={{
+            title: 'Orders',
+            tabBarIcon: ({ size, color }) => (
+              <ShoppingCart size={size} color={color} />
             ),
           }}
         />

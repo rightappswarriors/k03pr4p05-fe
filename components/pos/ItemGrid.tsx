@@ -13,22 +13,28 @@ import { Plus } from 'lucide-react-native';
 import { SkeletonLoader } from './SkeletonLoader';
 import { QuantityModal } from './QuantityModal';
 import type { Item } from '@/types';
-import { useTheme } from '@/contexts/ThemeContext'
+import { useTheme } from '@/contexts/ThemeContext';
 const { width: screenWidth } = Dimensions.get('window');
-import { useResponsive } from '@/hooks/useResponsive'
+import { useResponsive } from '@/hooks/useResponsive';
 interface ItemGridProps {
   items: Item[];
   loading: boolean;
   viewMode: 'grid' | 'list';
   onAddToCart: (item: Item, quantity: number) => void;
-  isDropdownOpen: boolean
+  isDropdownOpen: boolean;
 }
 
-export function ItemGrid({ items, loading, viewMode, onAddToCart, isDropdownOpen }: ItemGridProps) {
+export function ItemGrid({
+  items,
+  loading,
+  viewMode,
+  onAddToCart,
+  isDropdownOpen,
+}: ItemGridProps) {
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
-  const { isDesktop } = useResponsive()
-  const { colors } = useTheme()
+  const { isDesktop } = useResponsive();
+  const { colors } = useTheme();
 
   const getNumColumns = () => {
     const availableWidth = screenWidth; // Full width
@@ -54,12 +60,12 @@ export function ItemGrid({ items, loading, viewMode, onAddToCart, isDropdownOpen
 
   if (loading) {
     return (
-      <ScrollView style={[styles.container, { backgroundColor: colors.background }]}
+      <ScrollView
+        style={[styles.container, { backgroundColor: colors.background }]}
         contentContainerStyle={[
           styles.loadingContainer,
           isDesktop && styles.desktopLoadingContainer, // typo: destop → desktop
         ]}
-
       >
         {Array.from({ length: 12 }).map((_, index) => (
           <SkeletonLoader key={index} viewMode={viewMode} />
@@ -68,53 +74,63 @@ export function ItemGrid({ items, loading, viewMode, onAddToCart, isDropdownOpen
     );
   }
 
-  const renderItem = ({ item }: { item: Item }) => (
+  const renderItem = ({ item }: { item: Item }) => {
+    // Calculate fixed card width based on column count
+    const cardWidth =
+      viewMode === 'grid'
+        ? (screenWidth - 32 - (numColumns - 1) * 8) / numColumns
+        : undefined;
 
-    <TouchableOpacity
-      activeOpacity={0.7}
-      onPress={() => handleItemPress(item)}
-      style={[
-        styles.itemCard,
-        viewMode === 'list' && styles.listItemCard,
-        { backgroundColor: colors.card }
-      ]}
-    >
-      {viewMode === 'grid' && (
-        <Image source={{ uri: item.image }} style={[
-          styles.itemImage,
-
-        ]} />)
-      }
-      <View style={[
-        styles.itemInfo,
-        viewMode === 'list' && styles.listItemInfo,
-      ]}>
-        <Text style={[styles.itemName, { color: colors.text }]} numberOfLines={viewMode === 'list' ? 1 : 2}>
-          {item.name}
-        </Text>
-        <Text style={[styles.itemPrice, { color: colors.accent}]}>₱{item.price}</Text>
-        {viewMode === 'list' && (
-          <Text style={styles.itemDescription} numberOfLines={2}>
-            {item.description}
-          </Text>
-        )}
-      </View>
+    return (
       <TouchableOpacity
+        activeOpacity={0.7}
         onPress={() => handleItemPress(item)}
         style={[
-          styles.selectButton,
-          viewMode === 'list' && styles.listSelectButton,
-          { backgroundColor: colors.accent}
+          styles.itemCard,
+          viewMode === 'grid' && { width: cardWidth, flex: 0 }, // ← fix: remove flex:1, set fixed width
+          viewMode === 'list' && styles.listItemCard,
+          { backgroundColor: colors.card },
         ]}
       >
-        <Plus size={viewMode === 'list' ? 20 : 16} color="white" />
+        {viewMode === 'grid' && (
+          <Image source={{ uri: item.image }} style={[styles.itemImage]} />
+        )}
+        <View
+          style={[styles.itemInfo, viewMode === 'list' && styles.listItemInfo]}
+        >
+          <Text
+            style={[styles.itemName, { color: colors.text }]}
+            numberOfLines={viewMode === 'list' ? 1 : 2}
+          >
+            {item.name}
+          </Text>
+          <Text style={[styles.itemPrice, { color: colors.accent }]}>
+            ₱{item.price}
+          </Text>
+          {viewMode === 'list' && (
+            <Text style={styles.itemDescription} numberOfLines={2}>
+              {item.description}
+            </Text>
+          )}
+        </View>
+        <TouchableOpacity
+          onPress={() => handleItemPress(item)}
+          style={[
+            styles.selectButton,
+            viewMode === 'list' && styles.listSelectButton,
+            { backgroundColor: colors.accent },
+          ]}
+        >
+          <Plus size={viewMode === 'list' ? 20 : 16} color="white" />
+        </TouchableOpacity>
       </TouchableOpacity>
-    </TouchableOpacity>
-  );
+    );
+  };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}
-      pointerEvents={isDropdownOpen ? "none" : "auto"}  // ✅ not className trick
+    <View
+      style={[styles.container, { backgroundColor: colors.background }]}
+      pointerEvents={isDropdownOpen ? 'none' : 'auto'} // ✅ not className trick
     >
       <FlatList
         data={items}
@@ -124,7 +140,9 @@ export function ItemGrid({ items, loading, viewMode, onAddToCart, isDropdownOpen
         key={`${viewMode}-${numColumns}`}
         contentContainerStyle={styles.gridContainer}
         showsVerticalScrollIndicator={false}
-        columnWrapperStyle={viewMode === 'grid' && numColumns > 1 ? styles.row : undefined}
+        columnWrapperStyle={
+          viewMode === 'grid' && numColumns > 1 ? styles.row : undefined
+        }
       />
 
       <QuantityModal
@@ -143,7 +161,6 @@ export function ItemGrid({ items, loading, viewMode, onAddToCart, isDropdownOpen
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-
   },
   loadingContainer: {
     flexDirection: 'row',
