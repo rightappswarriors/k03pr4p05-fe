@@ -69,10 +69,7 @@ export default function LoginScreenDefault({ isDesktop }: Props) {
     >
       <View style={styles.content}>
         <View style={styles.header}>
-          <Image
-            source={icon}
-            style={styles.logo}
-          />
+          {/**<Image source={icon} style={styles.logo} />**/}
           <Text style={[styles.title, { color: colors.text }]}>
             Welcome Back
           </Text>
@@ -144,7 +141,7 @@ export default function LoginScreenDefault({ isDesktop }: Props) {
             style={[
               { backgroundColor: colors.accent },
               styles.loginButton,
-              isLoading && { backgroundColor: colors.accentLight},
+              isLoading && { backgroundColor: colors.accentLight },
             ]}
             disabled={isLoading}
           >
@@ -154,6 +151,13 @@ export default function LoginScreenDefault({ isDesktop }: Props) {
               <Text style={styles.loginButtonText}>Sign In</Text>
             )}
           </TouchableOpacity>
+        </View>
+        <View style={styles.poweredBy}>
+          <Text style={{ color: colors.textSecondary }}>Powered By:</Text>
+          <Image
+            source={require('@/assets/images/logo_transparent.png')}
+            style={[styles.poweredlogo, { backgroundColor: colors.card }]}
+          />
         </View>
       </View>
     </SafeAreaView>
@@ -276,5 +280,17 @@ const styles = StyleSheet.create({
     color: '#374151',
     fontSize: 14,
     fontWeight: '500',
+  },
+  poweredBy: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 80,
+    justifyContent: 'center',
+  },
+  poweredlogo: {
+    width: 180,
+    height: 50,
+    borderRadius: 40,
   },
 });

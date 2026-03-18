@@ -8,7 +8,7 @@ export const styles = StyleSheet.create({
           borderColor: 'gray',
           padding: 10,
           width: 200,
-        },
+     },
      container: {
           flex: 1,
           backgroundColor: '#F9FAFB',
@@ -135,5 +135,17 @@ export const styles = StyleSheet.create({
           color: '#374151',
           fontSize: 14,
           fontWeight: '500',
+     },
+     poweredBy: {
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 5,
+          marginTop: 80,
+          justifyContent: "center"
+     }
+     , poweredlogo: {
+          width: 180,
+          height: 50,
+          borderRadius: 40,
      },
 });
