@@ -10,6 +10,11 @@
     },
     "preview": {
       "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://rai-pos-backend.onrender.com",
+        "EXPO_PUBLIC_API_URL_ANDROID_EMULATOR": "https://rai-pos-backend.onrender.com",
+        "EXPO_PUBLIC_WS_URL_ANDROID_EMULATOR": "wss://rai-pos-backend.onrender.com"
+      },
       "android": {
         "buildType": "apk"
       }
