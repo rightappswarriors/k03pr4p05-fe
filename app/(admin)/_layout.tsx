@@ -1,9 +1,8 @@
 import { WebSocketProvider } from '@/contexts/WSContext';
 import { useAuth } from '@/hooks/useAuth';
 import { router, Tabs } from 'expo-router';
-import { BarChart3, Store,ShoppingCart, Settings, Users } from 'lucide-react-native';
+import { BarChart3, Store,ShoppingCart, Settings, Users, Building2 } from 'lucide-react-native';
 import React, { useEffect } from 'react';
-
 export default function AdminTabLayout() {
 
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -34,6 +33,15 @@ export default function AdminTabLayout() {
             title: 'Dashboard',
             tabBarIcon: ({ size, color }) => (
               <BarChart3 size={size} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="erp"
+          options={{
+            title: 'ERP',
+            tabBarIcon: ({ size, color }) => (
+              <Building2 size={size} color={color} />
             ),
           }}
         />

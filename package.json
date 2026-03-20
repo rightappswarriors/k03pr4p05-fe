@@ -64,6 +64,7 @@
     "react-native": "0.79.6",
     "react-native-ble-plx": "^3.5.0",
     "react-native-bluetooth-escpos-printer": "github:gajendhir/react-native-bluetooth-printer",
+    "react-native-chart-kit": "^6.12.0",
     "react-native-credit-card-input": "^1.0.0",
     "react-native-credit-card-input-view": "^0.0.7",
     "react-native-external-display": "^0.6.6",
