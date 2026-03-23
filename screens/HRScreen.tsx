@@ -14,9 +14,22 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Filter, Plus, Search, Users, X } from 'lucide-react-native';
+import {
+  CheckCircle2,
+  ChevronDown,
+  Filter,
+  Plus,
+  Search,
+  Users,
+  X,
+} from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { employees as INITIAL_EMPLOYEES } from '@/data/erpMockData';
+import {
+  MasterItem,
+  useDepartments,
+  useRoleLabels,
+} from '@/contexts/MasterFileContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -34,16 +47,7 @@ interface Employee {
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const DEPT_COLORS: Record<string, string> = {
-  Engineering: '#3B82F6',
-  Product: '#8B5CF6',
-  Sales: '#10B981',
-  Design: '#EC4899',
-  Finance: '#F59E0B',
-  HR: '#06B6D4',
-  Marketing: '#EF4444',
-};
+// DEPT_COLORS, DEPARTMENTS, ROLE_OPTIONS are now live from MasterFileContext
 
 const STATUS_STYLES: Record<EmployeeStatus, { bg: string; text: string }> = {
   Active: { bg: 'rgba(16,185,129,0.14)', text: '#10B981' },
@@ -52,34 +56,6 @@ const STATUS_STYLES: Record<EmployeeStatus, { bg: string; text: string }> = {
 };
 
 const ALL_STATUSES: EmployeeStatus[] = ['Active', 'On Leave', 'Contract'];
-
-const DEPARTMENTS = [
-  'All',
-  'Engineering',
-  'Sales',
-  'Finance',
-  'HR',
-  'Product',
-  'Design',
-  'Marketing',
-];
-
-const ROLE_OPTIONS = [
-  'Branch Manager',
-  'Senior Cashier',
-  'Cashier',
-  'Inventory Clerk',
-  'Delivery Rider',
-  'HR Officer',
-  'Accountant',
-  'IT Support',
-  'Warehouse Staff',
-  'Marketing Officer',
-  'Senior Developer',
-  'UI/UX Designer',
-  'Finance Analyst',
-  'Operations Head',
-];
 
 function getInitials(name: string) {
   return name
@@ -120,16 +96,18 @@ function EmployeeDetailModal({
   visible,
   onClose,
   onUpdateStatus,
+  deptMap,
   colors,
 }: {
   employee: Employee | null;
   visible: boolean;
   onClose: () => void;
   onUpdateStatus: (id: string, status: EmployeeStatus) => void;
+  deptMap: Record<string, string>;
   colors: any;
 }) {
   if (!employee) return null;
-  const deptColor = DEPT_COLORS[employee.department] ?? colors.primary;
+  const deptColor = deptMap[employee.department] ?? colors.primary;
   const statusStyle = STATUS_STYLES[employee.status];
 
   return (
@@ -370,6 +348,261 @@ const edm = StyleSheet.create({
   },
 });
 
+// ─── Searchable Dropdown ──────────────────────────────────────────────────────
+
+function SearchableDropdown({
+  label,
+  value,
+  options,
+  onSelect,
+  colors,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  options: { label: string; color?: string }[];
+  onSelect: (v: string) => void;
+  colors: any;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+
+  const filteredOpts = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q
+      ? options.filter((o) => o.label.toLowerCase().includes(q))
+      : options;
+  }, [options, query]);
+
+  const selectedColor = options.find((o) => o.label === value)?.color;
+
+  return (
+    <View style={{ marginBottom: 14 }}>
+      <Text
+        style={{
+          fontSize: 11,
+          fontWeight: '700',
+          color: colors.textSecondary,
+          marginBottom: 5,
+          textTransform: 'uppercase',
+          letterSpacing: 0.6,
+        }}
+      >
+        {label}
+      </Text>
+      <TouchableOpacity
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 10,
+          paddingHorizontal: 12,
+          paddingVertical: 11,
+          backgroundColor: colors.background,
+        }}
+        onPress={() => {
+          setOpen(true);
+          setQuery('');
+        }}
+        activeOpacity={0.75}
+      >
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+            flex: 1,
+          }}
+        >
+          {selectedColor && (
+            <View
+              style={{
+                width: 12,
+                height: 12,
+                borderRadius: 6,
+                backgroundColor: selectedColor,
+              }}
+            />
+          )}
+          <Text
+            style={{
+              fontSize: 14,
+              color: value ? colors.text : colors.textSecondary,
+              flex: 1,
+            }}
+            numberOfLines={1}
+          >
+            {value || placeholder || 'Select…'}
+          </Text>
+        </View>
+        <ChevronDown size={16} color={colors.textSecondary} strokeWidth={2} />
+      </TouchableOpacity>
+
+      <Modal
+        visible={open}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setOpen(false)}
+      >
+        <TouchableOpacity
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.45)',
+            justifyContent: 'center',
+            padding: 24,
+          }}
+          activeOpacity={1}
+          onPress={() => setOpen(false)}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+            <View
+              style={{
+                backgroundColor: colors.surface,
+                borderRadius: 16,
+                overflow: 'hidden',
+                maxHeight: 460,
+              }}
+            >
+              <View
+                style={{
+                  padding: 16,
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.border,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 15,
+                    fontWeight: '700',
+                    color: colors.text,
+                    marginBottom: 10,
+                  }}
+                >
+                  {label}
+                </Text>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                    backgroundColor: colors.background,
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    paddingHorizontal: 10,
+                    paddingVertical: 8,
+                  }}
+                >
+                  <Search
+                    size={13}
+                    color={colors.textSecondary}
+                    strokeWidth={2}
+                  />
+                  <TextInput
+                    style={{ flex: 1, fontSize: 13, color: colors.text }}
+                    placeholder={`Search ${label.toLowerCase()}…`}
+                    placeholderTextColor={colors.textSecondary}
+                    value={query}
+                    onChangeText={setQuery}
+                    autoFocus
+                    autoCorrect={false}
+                  />
+                  {query.length > 0 && (
+                    <TouchableOpacity onPress={() => setQuery('')}>
+                      <X
+                        size={13}
+                        color={colors.textSecondary}
+                        strokeWidth={2}
+                      />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+              <FlatList
+                data={filteredOpts}
+                keyExtractor={(item) => item.label}
+                keyboardShouldPersistTaps="handled"
+                ListEmptyComponent={
+                  <View style={{ padding: 24, alignItems: 'center' }}>
+                    <Text style={{ fontSize: 13, color: colors.textSecondary }}>
+                      No results for "{query}"
+                    </Text>
+                  </View>
+                }
+                renderItem={({ item }) => {
+                  const isActive = item.label === value;
+                  return (
+                    <TouchableOpacity
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        paddingHorizontal: 16,
+                        paddingVertical: 13,
+                        borderBottomWidth: 1,
+                        borderBottomColor: colors.border,
+                        backgroundColor: isActive
+                          ? colors.primary + '12'
+                          : 'transparent',
+                      }}
+                      onPress={() => {
+                        onSelect(item.label);
+                        setOpen(false);
+                      }}
+                      activeOpacity={0.75}
+                    >
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 10,
+                          flex: 1,
+                        }}
+                      >
+                        {item.color && (
+                          <View
+                            style={{
+                              width: 14,
+                              height: 14,
+                              borderRadius: 7,
+                              backgroundColor: item.color,
+                              flexShrink: 0,
+                            }}
+                          />
+                        )}
+                        <Text
+                          style={{
+                            fontSize: 14,
+                            color: isActive ? colors.primary : colors.text,
+                            fontWeight: isActive ? '600' : '400',
+                            flex: 1,
+                          }}
+                        >
+                          {item.label}
+                        </Text>
+                      </View>
+                      {isActive && (
+                        <CheckCircle2
+                          size={16}
+                          color={colors.primary}
+                          strokeWidth={2}
+                        />
+                      )}
+                    </TouchableOpacity>
+                  );
+                }}
+              />
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+    </View>
+  );
+}
+
 // ─── Add Employee Modal ───────────────────────────────────────────────────────
 
 function AddEmployeeModal({
@@ -377,53 +610,63 @@ function AddEmployeeModal({
   onClose,
   onAdd,
   colors,
+  deptObjects,
+  roleOptions,
 }: {
   visible: boolean;
   onClose: () => void;
   onAdd: (emp: Employee) => void;
   colors: any;
+  deptObjects: MasterItem[];
+  roleOptions: string[];
 }) {
   const [name, setName] = useState('');
   const [role, setRole] = useState('');
-  const [department, setDepartment] = useState('Engineering');
+  const [department, setDepartment] = useState('');
   const [salary, setSalary] = useState('');
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<EmployeeStatus>('Active');
-  const [showRoles, setShowRoles] = useState(false);
   const [error, setError] = useState('');
 
   const handleAdd = () => {
-    if (!name.trim()) {
-      setError('Full name is required.');
+    // Name
+    if (!name.trim() || name.trim().length < 2) {
+      setError('Full name must be at least 2 characters.');
       return;
     }
+    if (!/^[a-zA-ZÀ-ÿ\s.\'\-]+$/.test(name.trim())) {
+      setError('Full name can only contain letters, spaces, and punctuation.');
+      return;
+    }
+
+    // Role
     if (!role.trim()) {
       setError('Please select a role.');
       return;
     }
-    if (!salary.trim()) {
-      setError('Salary is required.');
+
+    // Department
+    if (!department.trim()) {
+      setError('Please select a department.');
       return;
     }
-    const emp: Employee = {
-      id: `EMP${Date.now().toString().slice(-4)}`,
-      name: name.trim(),
-      role: role.trim(),
-      department,
-      salary: parseFloat(salary) || 0,
-      email:
-        email.trim() ||
-        `${name.trim().toLowerCase().replace(/\s/g, '.')}@rightapps.ph`,
-      hireDate: new Date().toISOString().slice(0, 10),
-      status,
-    };
-    onAdd(emp);
-    setName('');
-    setRole('');
-    setSalary('');
-    setEmail('');
-    setError('');
-    onClose();
+
+    // Email (optional but validate if filled)
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())) {
+      setError('Enter a valid email address.');
+      return;
+    }
+
+    // Salary
+    const salaryNum = parseFloat(salary);
+    if (!salary.trim() || isNaN(salaryNum) || salaryNum <= 0) {
+      setError('Enter a valid monthly salary greater than zero.');
+      return;
+    }
+    if (salaryNum > 9999999) {
+      setError('Salary amount seems too high. Please check.');
+      return;
+    }
   };
 
   const s = StyleSheet.create({
@@ -492,31 +735,6 @@ function AddEmployeeModal({
       borderWidth: 1.5,
       alignItems: 'center',
     },
-    roleBtn: {
-      backgroundColor: colors.background,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 10,
-      paddingHorizontal: 14,
-      paddingVertical: 11,
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-    },
-    roleList: {
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 10,
-      marginTop: 4,
-      maxHeight: 200,
-      overflow: 'hidden',
-    },
-    roleItem: {
-      paddingHorizontal: 14,
-      paddingVertical: 10,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
     addBtn: {
       backgroundColor: colors.primary,
       borderRadius: 12,
@@ -561,6 +779,7 @@ function AddEmployeeModal({
               placeholderTextColor={colors.textSecondary}
               value={name}
               onChangeText={setName}
+              autoCorrect={false}
             />
 
             <Text style={s.label}>EMAIL</Text>
@@ -569,75 +788,29 @@ function AddEmployeeModal({
               placeholder="e.g. m.santos@rightapps.ph"
               placeholderTextColor={colors.textSecondary}
               value={email}
-              onChangeText={setEmail}
+              onChangeText={(v) => setEmail(v.trim())}
               keyboardType="email-address"
               autoCapitalize="none"
+              autoCorrect={false}
             />
 
-            <Text style={s.label}>ROLE *</Text>
-            <TouchableOpacity
-              style={s.roleBtn}
-              onPress={() => setShowRoles((v) => !v)}
-            >
-              <Text
-                style={{
-                  fontSize: 14,
-                  color: role ? colors.text : colors.textSecondary,
-                }}
-              >
-                {role || 'Select role…'}
-              </Text>
-              <Text style={{ color: colors.textSecondary }}>▾</Text>
-            </TouchableOpacity>
-            {showRoles && (
-              <ScrollView style={s.roleList} nestedScrollEnabled>
-                {ROLE_OPTIONS.map((r) => (
-                  <TouchableOpacity
-                    key={r}
-                    style={s.roleItem}
-                    onPress={() => {
-                      setRole(r);
-                      setShowRoles(false);
-                    }}
-                  >
-                    <Text style={{ fontSize: 13, color: colors.text }}>
-                      {r}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            )}
+            <SearchableDropdown
+              label="Role"
+              value={role}
+              options={roleOptions.map((r: string) => ({ label: r }))}
+              onSelect={setRole}
+              colors={colors}
+              placeholder="Select role…"
+            />
 
-            <Text style={s.label}>DEPARTMENT</Text>
-            <View style={s.deptRow}>
-              {DEPARTMENTS.filter((d) => d !== 'All').map((dept) => {
-                const dc = DEPT_COLORS[dept] ?? colors.primary;
-                const isActive = department === dept;
-                return (
-                  <TouchableOpacity
-                    key={dept}
-                    style={[
-                      s.deptPill,
-                      {
-                        borderColor: isActive ? dc : colors.border,
-                        backgroundColor: isActive ? dc : 'transparent',
-                      },
-                    ]}
-                    onPress={() => setDepartment(dept)}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        fontWeight: '600',
-                        color: isActive ? '#fff' : colors.text,
-                      }}
-                    >
-                      {dept}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+            <SearchableDropdown
+              label="Department"
+              value={department}
+              options={deptObjects}
+              onSelect={setDepartment}
+              colors={colors}
+              placeholder="Select department…"
+            />
 
             <Text style={s.label}>MONTHLY SALARY ₱ *</Text>
             <TextInput
@@ -645,7 +818,7 @@ function AddEmployeeModal({
               placeholder="e.g. 25000"
               placeholderTextColor={colors.textSecondary}
               value={salary}
-              onChangeText={setSalary}
+              onChangeText={(v) => setSalary(v.replace(/[^0-9.]/g, ''))}
               keyboardType="decimal-pad"
             />
 
@@ -704,15 +877,17 @@ function EmployeeCard({
   isTablet,
   isDesktop,
   onPress,
+  deptMap,
   colors,
 }: {
   item: Employee;
   isTablet: boolean;
   isDesktop: boolean;
   onPress: () => void;
+  deptMap: Record<string, string>;
   colors: any;
 }) {
-  const deptColor = DEPT_COLORS[item.department] ?? colors.primary;
+  const deptColor = deptMap[item.department] ?? colors.primary;
   const statusStyle = STATUS_STYLES[item.status];
 
   return (
@@ -833,6 +1008,14 @@ export default function HRScreen() {
   const { width } = Dimensions.get('window');
   const isTablet = width >= 768;
   const isDesktop = width >= 1024;
+
+  // ── MasterFile context — live data ─────────────────────────────────────────
+  const deptObjects = useDepartments();
+  const ROLE_OPTIONS = useRoleLabels();
+  const DEPARTMENTS = ['All', ...deptObjects.map((d) => d.label)];
+  const deptMap = Object.fromEntries(
+    deptObjects.map((d) => [d.label, d.color ?? colors.primary]),
+  ) as Record<string, string>;
 
   // Responsive columns: 1 mobile, 2 tablet, 3 desktop
   const numColumns = isDesktop ? 3 : isTablet ? 2 : 1;
@@ -1112,7 +1295,7 @@ export default function HRScreen() {
                     deptFilter === dept && styles.pillActive,
                     dept !== 'All' &&
                       deptFilter !== dept && {
-                        borderColor: DEPT_COLORS[dept] ?? colors.border,
+                        borderColor: deptMap[dept] ?? colors.border,
                       },
                   ]}
                   onPress={() => setDeptFilter(dept)}
@@ -1123,7 +1306,7 @@ export default function HRScreen() {
                       deptFilter === dept && styles.pillTextAct,
                       dept !== 'All' &&
                         deptFilter !== dept && {
-                          color: DEPT_COLORS[dept] ?? colors.text,
+                          color: deptMap[dept] ?? colors.text,
                         },
                     ]}
                   >
@@ -1193,6 +1376,7 @@ export default function HRScreen() {
             item={item}
             isTablet={isTablet}
             isDesktop={isDesktop}
+            deptMap={deptMap}
             colors={colors}
             onPress={() => {
               setSelectedEmp(item);
@@ -1206,6 +1390,7 @@ export default function HRScreen() {
       <EmployeeDetailModal
         employee={selectedEmp}
         visible={detailVisible}
+        deptMap={deptMap}
         onClose={() => setDetailVisible(false)}
         onUpdateStatus={handleUpdateStatus}
         colors={colors}
@@ -1214,6 +1399,8 @@ export default function HRScreen() {
         visible={addVisible}
         onClose={() => setAddVisible(false)}
         onAdd={handleAddEmployee}
+        deptObjects={deptObjects}
+        roleOptions={ROLE_OPTIONS}
         colors={colors}
       />
     </View>

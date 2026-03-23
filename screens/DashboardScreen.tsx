@@ -60,7 +60,6 @@ import {
 import {
   calcVatAndNet,
   formatPeso,
-  formatPesoCompact,
   getResponsiveColumns,
 } from '@/utils/moneyHelpers';
 import {
@@ -68,8 +67,6 @@ import {
   FinancialCardData,
   FinancialDetailModal,
   GISTable,
-  SkeletonFinancialCard,
-  SkeletonTableRow,
   SummaryTable,
 } from '@/components/dashboardSummary/SummaryTable';
 import { DropdownField, s } from '@/app/(admin)';
@@ -590,9 +587,25 @@ export default function DashboardScreen() {
       setForm(EMPTY_FORM);
     });
   };
-
+  const [formError, setFormError] = useState('');
   const handleSubmit = () => {
-    const rawAmount = parseFloat(form.amount) || 0;
+    const rawAmount = parseFloat(form.amount);
+
+    if (!form.amount.trim() || isNaN(rawAmount) || rawAmount <= 0) {
+      // Show inline error — add an error state at the top of the component:
+      // const [formError, setFormError] = useState('');
+      setFormError('Enter a valid amount greater than zero.');
+      return;
+    }
+    if (!form.vatType) {
+      setFormError('Please select a VAT type.');
+      return;
+    }
+    if (!form.accountTitle) {
+      setFormError('Please select an account title.');
+      return;
+    }
+    setFormError('');
     const { net } = calcVatAndNet(rawAmount, form.vatType);
     const isIncome = form.accountTitle.startsWith('ACCOUNTS RECEIVABLE');
     const newRow: GISRow = {
@@ -1176,8 +1189,9 @@ export default function DashboardScreen() {
                     placeholder="e.g. OR-2026-00123"
                     placeholderTextColor={colors.textSecondary}
                     value={form.orInvoice}
+                    maxLength={30}
                     onChangeText={(v) =>
-                      setForm((f) => ({ ...f, orInvoice: v }))
+                      setForm((f) => ({ ...f, orInvoice: v.trim() }))
                     }
                   />
 
@@ -1234,7 +1248,12 @@ export default function DashboardScreen() {
                     placeholder="0.00"
                     placeholderTextColor={colors.textSecondary}
                     value={form.amount}
-                    onChangeText={(v) => setForm((f) => ({ ...f, amount: v }))}
+                    onChangeText={(v) =>
+                      setForm((f) => ({
+                        ...f,
+                        amount: v.replace(/[^0-9.]/g, ''),
+                      }))
+                    }
                     keyboardType="decimal-pad"
                   />
 
@@ -1341,21 +1360,39 @@ export default function DashboardScreen() {
                     colors={colors}
                     placeholder="Select account title…"
                   />
-
+                  {formError ? (
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color: colors.error,
+                        marginBottom: 8,
+                      }}
+                    >
+                      {formError}
+                    </Text>
+                  ) : null}
                   <TouchableOpacity
                     style={[
                       s.submitBtn,
                       {
                         backgroundColor: colors.primary,
                         opacity:
-                          !form.amount || !form.vatType || !form.accountTitle
+                          !form.amount ||
+                          isNaN(parseFloat(form.amount)) ||
+                          parseFloat(form.amount) <= 0 ||
+                          !form.vatType ||
+                          !form.accountTitle
                             ? 0.5
                             : 1,
                       },
                     ]}
                     onPress={handleSubmit}
                     disabled={
-                      !form.amount || !form.vatType || !form.accountTitle
+                      !form.amount ||
+                      isNaN(parseFloat(form.amount)) ||
+                      parseFloat(form.amount) <= 0 ||
+                      !form.vatType ||
+                      !form.accountTitle
                     }
                     activeOpacity={0.85}
                   >

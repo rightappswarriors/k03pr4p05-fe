@@ -39,7 +39,7 @@ import HRScreen from '@/screens/HRScreen';
 import FinanceScreen from '@/screens/FinancesScreen';
 import SalesAnalyticsScreen from '@/screens/SalesAnalyticsScreen';
 import MasterFileScreen from '@/screens/MasterFileScreen';
-import ERPUnlockOverlay from './ErpunlockOverlay';
+//import ERPUnlockOverlay from './ErpunlockOverlay';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -504,12 +504,12 @@ export default function ERPLayout() {
         backgroundColor={colors.surface}
       />
 
-      <ERPUnlockOverlay
+      {/*<ERPUnlockOverlay
         visible={!unlocked}
         onUnlock={() => setUnlocked(true)}
       />
 
-      {/* Header */}
+       Header */}
       <View style={styles.header}>
         {!isTablet && (
           <TouchableOpacity

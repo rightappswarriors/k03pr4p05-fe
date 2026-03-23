@@ -15,7 +15,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Filter, Plus, Search, X } from 'lucide-react-native';
+import { CheckCircle2, Filter, Plus, Search, X } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { salesOrders as INITIAL_ORDERS } from '@/data/erpMockData';
 
@@ -351,162 +351,112 @@ const PRODUCT_OPTIONS = [
   'Chippy BBQ 22g',
 ];
 
-function AddOrderModal({
-  visible,
-  onClose,
-  onAdd,
-  colors,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  onAdd: (order: SalesOrder) => void;
-  colors: any;
-}) {
-  const [customer, setCustomer] = useState('');
-  const [product, setProduct] = useState('');
-  const [qty, setQty] = useState('1');
-  const [price, setPrice] = useState('');
-  const [outlet, setOutlet] = useState(OUTLET_OPTIONS[0]);
-  const [showProd, setShowProd] = useState(false);
-  const [error, setError] = useState('');
 
+function AddOrderModal({
+  visible, onClose, onAdd, colors,
+}: {
+  visible: boolean; onClose: () => void;
+  onAdd: (order: SalesOrder) => void; colors: any;
+}) {
+  const [customer,   setCustomer]   = useState('');
+  const [product,    setProduct]    = useState('');
+  const [qty,        setQty]        = useState('1');
+  const [price,      setPrice]      = useState('');
+  const [outlet,     setOutlet]     = useState(OUTLET_OPTIONS[0]);
+  const [error,      setError]      = useState('');
+ 
+  // ── Product search state ───────────────────────────────────────────────────
+  const [prodQuery,    setProdQuery]    = useState('');
+  const [prodResults,  setProdResults]  = useState<string[]>(PRODUCT_OPTIONS);
+  const [searching,    setSearching]    = useState(false);
+  const [searchFired,  setSearchFired]  = useState(false); // tracks if user has searched
+ 
+  const doProductSearch = async () => {
+    setSearching(true);
+    // Simulate API request — 800ms delay
+    await new Promise(r => setTimeout(r, 800));
+    const q = prodQuery.trim().toLowerCase();
+    setProdResults(
+      q ? PRODUCT_OPTIONS.filter(p => p.toLowerCase().includes(q)) : PRODUCT_OPTIONS
+    );
+    setSearchFired(true);
+    setSearching(false);
+  };
+ 
+  const handleClearProduct = () => {
+    setProdQuery('');
+    setProdResults(PRODUCT_OPTIONS);
+    setProduct('');
+    setSearchFired(false);
+  };
+ 
+  // ── Submit ─────────────────────────────────────────────────────────────────
   const handleAdd = () => {
-    if (!customer.trim()) {
-      setError('Customer name is required.');
-      return;
+    if (!customer.trim() || customer.trim().length < 2) {
+      setError('Enter a valid customer name (at least 2 characters).'); return;
     }
-    if (!product.trim()) {
-      setError('Please select a product.');
-      return;
+    if (!product) {
+      setError('Please select a product.'); return;
     }
-    if (!price.trim() || isNaN(parseFloat(price))) {
-      setError('Enter a valid price.');
-      return;
+ 
+    const parsedQty = parseInt(qty, 10);
+    if (!qty || isNaN(parsedQty) || parsedQty < 1) {
+      setError('Quantity must be a whole number of at least 1.'); return;
     }
-    const total = parseFloat(price) * parseInt(qty || '1', 10);
+ 
+    const parsedPrice = parseFloat(price);
+    if (!price || isNaN(parsedPrice) || parsedPrice <= 0) {
+      setError('Enter a valid price greater than zero.'); return;
+    }
+ 
+    const total = parsedPrice * parsedQty;
     const newOrder: SalesOrder = {
-      id: `ORD-${Date.now().toString().slice(-6)}`,
+      id:       `ORD-${Date.now().toString().slice(-6)}`,
       customer: customer.trim(),
-      product: product.trim(),
-      qty: parseInt(qty || '1', 10),
+      product,
+      qty:      parsedQty,
       total,
-      status: 'Pending',
-      date: new Date().toISOString().slice(0, 10),
+      status:   'Pending',
+      date:     new Date().toISOString().slice(0, 10),
       outlet,
     };
     onAdd(newOrder);
-    setCustomer('');
-    setProduct('');
-    setQty('1');
-    setPrice('');
+    // Reset
+    setCustomer(''); setProduct(''); setQty('1'); setPrice('');
+    setProdQuery(''); setProdResults(PRODUCT_OPTIONS); setSearchFired(false);
     setError('');
     onClose();
   };
-
+ 
   const s = StyleSheet.create({
-    overlay: {
-      flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.5)',
-      justifyContent: 'flex-end',
-    },
-    sheet: {
-      backgroundColor: colors.surface,
-      borderTopLeftRadius: 20,
-      borderTopRightRadius: 20,
-      paddingBottom: 32,
-    },
-    handle: {
-      width: 40,
-      height: 4,
-      borderRadius: 2,
-      backgroundColor: colors.border,
-      alignSelf: 'center',
-      marginTop: 12,
-      marginBottom: 4,
-    },
-    header: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingHorizontal: 20,
-      paddingVertical: 14,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
-    title: { fontSize: 16, fontWeight: '800', color: colors.text },
-    label: {
-      fontSize: 11,
-      fontWeight: '700',
-      color: colors.textSecondary,
-      letterSpacing: 0.8,
-      marginBottom: 6,
-      marginTop: 14,
-    },
-    input: {
-      backgroundColor: colors.background,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 10,
-      paddingHorizontal: 14,
-      paddingVertical: 11,
-      fontSize: 14,
-      color: colors.text,
-    },
-    row2: { flexDirection: 'row', gap: 10 },
-    prodBtn: {
-      backgroundColor: colors.background,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 10,
-      paddingHorizontal: 14,
-      paddingVertical: 11,
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-    },
-    prodTxt: { fontSize: 14 },
-    prodList: {
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 10,
-      marginTop: 4,
-      overflow: 'hidden',
-    },
-    prodItem: {
-      paddingHorizontal: 14,
-      paddingVertical: 11,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
-    addBtn: {
-      backgroundColor: colors.primary,
-      borderRadius: 12,
-      paddingVertical: 15,
-      alignItems: 'center',
-      marginTop: 20,
-    },
-    addTxt: { fontSize: 15, fontWeight: '700', color: '#fff' },
-    errTxt: { fontSize: 12, color: colors.error, marginTop: 6 },
-    outRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 2 },
-    outPill: {
-      paddingHorizontal: 12,
-      paddingVertical: 7,
-      borderRadius: 20,
-      borderWidth: 1,
-    },
+    overlay:      { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+    sheet:        { backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 32 },
+    handle:       { width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginTop: 12, marginBottom: 4 },
+    header:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border },
+    title:        { fontSize: 16, fontWeight: '800', color: colors.text },
+    label:        { fontSize: 11, fontWeight: '700', color: colors.textSecondary, letterSpacing: 0.8, marginBottom: 6, marginTop: 14 },
+    input:        { backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, color: colors.text },
+    row2:         { flexDirection: 'row', gap: 10 },
+    addBtn:       { backgroundColor: colors.primary, borderRadius: 12, paddingVertical: 15, alignItems: 'center', marginTop: 20 },
+    addTxt:       { fontSize: 15, fontWeight: '700', color: '#fff' },
+    errTxt:       { fontSize: 12, color: colors.error, marginTop: 6 },
+    outRow:       { flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 2 },
+    outPill:      { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1 },
+    // product search
+    searchRow:    { flexDirection: 'row', gap: 8, marginTop: 2 },
+    searchBox:    { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.background, borderRadius: 10, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 10, paddingVertical: 8 },
+    searchInput:  { flex: 1, fontSize: 13, color: colors.text },
+    searchBtn:    { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10 },
+    searchBtnTxt: { fontSize: 13, fontWeight: '700', color: '#fff' },
+    // selected product
+    selectedProd: { flexDirection: 'row', alignItems: 'center', borderRadius: 10, borderWidth: 1, padding: 12, marginTop: 8 },
+    prodItem:     { paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    prodList:     { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 10, marginTop: 6, overflow: 'hidden' },
   });
-
+ 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={onClose}>
           <TouchableOpacity activeOpacity={1} onPress={() => {}}>
             <View style={s.sheet}>
@@ -517,143 +467,134 @@ function AddOrderModal({
                   <X size={20} color={colors.textSecondary} strokeWidth={2} />
                 </TouchableOpacity>
               </View>
-              <ScrollView
-                contentContainerStyle={{ padding: 20 }}
-                keyboardShouldPersistTaps="handled"
-              >
-                <Text style={s.label}>Customer Name</Text>
-                <TextInput
-                  style={s.input}
+              <ScrollView contentContainerStyle={{ padding: 20 }} keyboardShouldPersistTaps="handled">
+ 
+                {/* Customer */}
+                <Text style={s.label}>CUSTOMER NAME *</Text>
+                <TextInput style={s.input}
                   placeholder="e.g. Maria Santos"
                   placeholderTextColor={colors.textSecondary}
-                  value={customer}
-                  onChangeText={setCustomer}
-                />
-
-                <Text style={s.label}>Outlet</Text>
+                  value={customer} onChangeText={setCustomer} />
+ 
+                {/* Outlet pills */}
+                <Text style={s.label}>OUTLET</Text>
                 <View style={s.outRow}>
-                  {OUTLET_OPTIONS.map((opt) => (
-                    <TouchableOpacity
-                      key={opt}
-                      style={[
-                        s.outPill,
-                        {
-                          borderColor:
-                            outlet === opt ? colors.primary : colors.border,
-                          backgroundColor:
-                            outlet === opt ? colors.primary : 'transparent',
-                        },
-                      ]}
-                      onPress={() => setOutlet(opt)}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 12,
-                          fontWeight: '600',
-                          color: outlet === opt ? '#fff' : colors.text,
-                        }}
-                      >
-                        {opt}
-                      </Text>
+                  {OUTLET_OPTIONS.map(opt => (
+                    <TouchableOpacity key={opt}
+                      style={[s.outPill, { borderColor: outlet === opt ? colors.primary : colors.border, backgroundColor: outlet === opt ? colors.primary : 'transparent' }]}
+                      onPress={() => setOutlet(opt)}>
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: outlet === opt ? '#fff' : colors.text }}>{opt}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
-
-                <Text style={s.label}>Product</Text>
-                <TouchableOpacity
-                  style={s.prodBtn}
-                  onPress={() => setShowProd((v) => !v)}
-                >
-                  <Text
-                    style={[
-                      s.prodTxt,
-                      { color: product ? colors.text : colors.textSecondary },
-                    ]}
-                  >
-                    {product || 'Select product…'}
-                  </Text>
-                  <Text style={{ color: colors.textSecondary }}>▾</Text>
-                </TouchableOpacity>
-                {showProd && (
-                  <View style={s.prodList}>
-                    {PRODUCT_OPTIONS.map((p) => (
-                      <TouchableOpacity
-                        key={p}
-                        style={s.prodItem}
-                        onPress={() => {
-                          setProduct(p);
-                          setShowProd(false);
-                        }}
-                      >
-                        <Text style={{ fontSize: 13, color: colors.text }}>
-                          {p}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
+ 
+                {/* Product — searchable with API simulation */}
+                <Text style={s.label}>PRODUCT *</Text>
+ 
+                {/* Selected product display */}
+                {product ? (
+                  <View style={[s.selectedProd, { backgroundColor: colors.primary + '10', borderColor: colors.primary }]}>
+                    <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: colors.primary }}>{product}</Text>
+                    <TouchableOpacity onPress={handleClearProduct} hitSlop={{ top:8,bottom:8,left:8,right:8 }}>
+                      <X size={16} color={colors.primary} strokeWidth={2} />
+                    </TouchableOpacity>
                   </View>
+                ) : (
+                  <>
+                    {/* Search row */}
+                    <View style={s.searchRow}>
+                      <View style={s.searchBox}>
+                        <Search size={13} color={colors.textSecondary} strokeWidth={2} />
+                        <TextInput
+                          style={s.searchInput}
+                          placeholder="Search products…"
+                          placeholderTextColor={colors.textSecondary}
+                          value={prodQuery}
+                          onChangeText={setProdQuery}
+                          returnKeyType="search"
+                          onSubmitEditing={doProductSearch}
+                          autoCorrect={false}
+                        />
+                        {prodQuery.length > 0 && (
+                          <TouchableOpacity onPress={handleClearProduct}>
+                            <X size={13} color={colors.textSecondary} strokeWidth={2} />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                      <TouchableOpacity
+                        style={[s.searchBtn, { backgroundColor: searching ? colors.border : colors.primary }]}
+                        onPress={doProductSearch}
+                        disabled={searching}
+                        activeOpacity={0.85}
+                      >
+                        <Search size={14} color="#fff" strokeWidth={2.5} />
+                        <Text style={s.searchBtnTxt}>{searching ? 'Searching…' : 'Search'}</Text>
+                      </TouchableOpacity>
+                    </View>
+ 
+                    {/* Results list — shown after first search */}
+                    {searching ? (
+                      <View style={{ padding: 16, alignItems: 'center' }}>
+                        <Text style={{ fontSize: 12, color: colors.textSecondary }}>Searching products…</Text>
+                      </View>
+                    ) : (
+                      <View style={s.prodList}>
+                        {prodResults.length === 0 ? (
+                          <View style={{ padding: 16, alignItems: 'center' }}>
+                            <Text style={{ fontSize: 13, color: colors.textSecondary }}>
+                              No products found{prodQuery ? ` for "${prodQuery}"` : ''}.
+                            </Text>
+                          </View>
+                        ) : (
+                          prodResults.map(p => (
+                            <TouchableOpacity key={p} style={s.prodItem}
+                              onPress={() => setProduct(p)} activeOpacity={0.75}>
+                              <Text style={{ fontSize: 13, color: colors.text, flex: 1 }}>{p}</Text>
+                              <CheckCircle2 size={14} color={colors.border} strokeWidth={1.5} />
+                            </TouchableOpacity>
+                          ))
+                        )}
+                      </View>
+                    )}
+                  </>
                 )}
-
+ 
+                {/* Qty + Price */}
                 <View style={s.row2}>
                   <View style={{ flex: 1 }}>
-                    <Text style={s.label}>Quantity</Text>
-                    <TextInput
-                      style={s.input}
+                    <Text style={s.label}>QUANTITY *</Text>
+                    <TextInput style={s.input}
                       placeholder="1"
                       placeholderTextColor={colors.textSecondary}
                       value={qty}
-                      onChangeText={setQty}
-                      keyboardType="number-pad"
-                    />
+                      onChangeText={v => setQty(v.replace(/[^0-9]/g, ''))}
+                      keyboardType="number-pad" />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={s.label}>Unit Price (₱)</Text>
-                    <TextInput
-                      style={s.input}
+                    <Text style={s.label}>UNIT PRICE ₱ *</Text>
+                    <TextInput style={s.input}
                       placeholder="0.00"
                       placeholderTextColor={colors.textSecondary}
                       value={price}
-                      onChangeText={setPrice}
-                      keyboardType="decimal-pad"
-                    />
+                      onChangeText={v => setPrice(v.replace(/[^0-9.]/g, ''))}
+                      keyboardType="decimal-pad" />
                   </View>
                 </View>
-
-                {price && qty ? (
-                  <View
-                    style={{
-                      backgroundColor: colors.background,
-                      borderRadius: 8,
-                      padding: 10,
-                      marginTop: 8,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                    }}
-                  >
+ 
+                {/* Live total preview */}
+                {price && qty && !isNaN(parseFloat(price)) && parseInt(qty) > 0 ? (
+                  <View style={{ backgroundColor: colors.background, borderRadius: 8, padding: 10, marginTop: 4, borderWidth: 1, borderColor: colors.border }}>
                     <Text style={{ fontSize: 12, color: colors.textSecondary }}>
-                      Total:{' '}
-                      <Text
-                        style={{
-                          fontWeight: '800',
-                          color: colors.accent,
-                          fontSize: 14,
-                        }}
-                      >
-                        ₱
-                        {(
-                          parseFloat(price || '0') * parseInt(qty || '1', 10)
-                        ).toLocaleString()}
+                      Total: <Text style={{ fontWeight: '800', color: colors.accent, fontSize: 14 }}>
+                        ₱{(parseFloat(price) * parseInt(qty || '1', 10)).toLocaleString()}
                       </Text>
                     </Text>
                   </View>
                 ) : null}
-
+ 
                 {error ? <Text style={s.errTxt}>{error}</Text> : null}
-
-                <TouchableOpacity
-                  style={s.addBtn}
-                  onPress={handleAdd}
-                  activeOpacity={0.85}
-                >
+ 
+                <TouchableOpacity style={s.addBtn} onPress={handleAdd} activeOpacity={0.85}>
                   <Text style={s.addTxt}>Add Order</Text>
                 </TouchableOpacity>
                 <View style={{ height: 8 }} />

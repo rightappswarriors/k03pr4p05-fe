@@ -206,6 +206,7 @@ export interface Branch {
   address: string;
   isActive: boolean;
   createdAt: string;
+  phone?: string;
   location?: Location
 }
 
@@ -218,7 +219,8 @@ export interface Location {
 
 export interface AdminOutlet {
   id: string;
-  branchId: string;
+  phone: string,
+  branchId?: string;
   name: string;
   status: 'open' | 'closed' | 'maintenance';
   assignedCashierIds: string[];
