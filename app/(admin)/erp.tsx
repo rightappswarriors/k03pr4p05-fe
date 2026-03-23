@@ -1,7 +1,11 @@
-import React from "react"
+import React from 'react';
 import ERPLayout from '@/components/erp/ERPLayout';
+import { MasterFileProvider } from '@/contexts/MasterFileContext';
+
 export default function LayoutScreen() {
-    return (
-        <ERPLayout/>
-    );
+  return (
+    <MasterFileProvider>
+      <ERPLayout />
+    </MasterFileProvider>
+  );
 }

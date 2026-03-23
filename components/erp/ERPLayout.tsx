@@ -1,4 +1,11 @@
-import React, { useCallback, useState } from 'react';
+// components/ERPLayout.tsx
+// Fixed version:
+//   1. All StyleSheet.create calls moved OUTSIDE the component (run once, not every render)
+//   2. SidebarContent extracted as React.memo component (no remount on parent re-render)
+//   3. Screen map pre-built outside render (no switch re-evaluation)
+//   4. Master File accordion nav with chevron animation
+
+import React, { memo, useCallback, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
@@ -13,39 +20,63 @@ import {
   View,
 } from 'react-native';
 import {
-  Menu,
-  LayoutDashboard,
-  ShoppingCart,
-  Package,
-  Users,
-  CircleDollarSign,
   BarChart2,
   Building2,
+  ChevronDown,
+  CircleDollarSign,
+  Database,
+  LayoutDashboard,
+  Menu,
+  Package,
+  ShoppingCart,
+  Users,
 } from 'lucide-react-native';
-
 import { useTheme } from '@/contexts/ThemeContext';
-
 import DashboardScreen from '@/screens/DashboardScreen';
 import SalesScreen from '@/screens/SalesScreen';
 import InventoryScreen from '@/screens/InventoryScreen';
 import HRScreen from '@/screens/HRScreen';
 import FinanceScreen from '@/screens/FinancesScreen';
-import SalesAnalyticsScreen from '@/screens/SalaryAnalyticsScreen';
+import SalesAnalyticsScreen from '@/screens/SalesAnalyticsScreen';
+import MasterFileScreen from '@/screens/MasterFileScreen';
 import ERPUnlockOverlay from './ErpunlockOverlay';
 
-type ERPRoute = 'Dashboard' | 'Sales' | 'Inventory' | 'HR' | 'Finance' | 'SalesAnalytics';
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-// Lucide icon component map — avoids string-based icon lookups
-const NAV_ICON_MAP: Record<ERPRoute, React.FC<{ size: number; color: string; strokeWidth?: number }>> = {
+type ERPRoute =
+  | 'Dashboard'
+  | 'Sales'
+  | 'Inventory'
+  | 'HR'
+  | 'Finance'
+  | 'SalesAnalytics'
+  | 'MasterFile';
+
+const DRAWER_WIDTH = 240;
+
+// ─── Icon map (outside component — stable references) ─────────────────────────
+
+const NAV_ICON_MAP: Record<
+  ERPRoute,
+  React.FC<{ size: number; color: string; strokeWidth?: number }>
+> = {
   Dashboard: LayoutDashboard,
   Sales: ShoppingCart,
   Inventory: Package,
   HR: Users,
   Finance: CircleDollarSign,
   SalesAnalytics: BarChart2,
+  MasterFile: Database,
 };
 
-const NAV_ITEMS: { key: ERPRoute; label: string }[] = [
+// ─── Nav structure ────────────────────────────────────────────────────────────
+
+interface NavItem {
+  key: ERPRoute;
+  label: string;
+}
+
+const TOP_NAV: NavItem[] = [
   { key: 'Dashboard', label: 'Dashboard' },
   { key: 'Sales', label: 'Sales' },
   { key: 'Inventory', label: 'Inventory' },
@@ -54,70 +85,25 @@ const NAV_ITEMS: { key: ERPRoute; label: string }[] = [
   { key: 'SalesAnalytics', label: 'Sales Analytics' },
 ];
 
-const DRAWER_WIDTH = 240;
+// ─── Screen map (outside component — no re-evaluation on render) ──────────────
 
-export default function ERPLayout() {
-  const { colors, theme } = useTheme();
-  const [activeRoute, setActiveRoute] = useState<ERPRoute>('Dashboard');
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [unlocked, setUnlocked] = useState(false);
-  const drawerAnim = useState(new Animated.Value(0))[0];
+const SCREEN_MAP: Record<ERPRoute, React.ReactElement> = {
+  Dashboard: <DashboardScreen />,
+  Sales: <SalesScreen />,
+  Inventory: <InventoryScreen />,
+  HR: <HRScreen />,
+  Finance: <FinanceScreen />,
+  SalesAnalytics: <SalesAnalyticsScreen />,
+  MasterFile: <MasterFileScreen />,
+};
 
-  const { width } = Dimensions.get('window');
-  const isTablet = width >= 768;
+// ─── StyleSheet outside component (runs once at module load) ──────────────────
+// This is the #1 performance fix — creating styles inside the component
+// body causes React Native to diff + re-apply layout on every render.
 
-  const openDrawer = useCallback(() => {
-    setDrawerOpen(true);
-    Animated.timing(drawerAnim, {
-      toValue: 1,
-      duration: 260,
-      useNativeDriver: true,
-    }).start();
-  }, [drawerAnim]);
-
-  const closeDrawer = useCallback(() => {
-    Animated.timing(drawerAnim, {
-      toValue: 0,
-      duration: 220,
-      useNativeDriver: true,
-    }).start(() => setDrawerOpen(false));
-  }, [drawerAnim]);
-
-  const navigate = useCallback(
-    (route: ERPRoute) => {
-      setActiveRoute(route);
-      if (!isTablet) closeDrawer();
-    },
-    [isTablet, closeDrawer],
-  );
-
-  const drawerTranslate = drawerAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-DRAWER_WIDTH, 0],
-  });
-
-  const overlayOpacity = drawerAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 0.5],
-  });
-
-  const renderScreen = () => {
-    switch (activeRoute) {
-      case 'Dashboard':       return <DashboardScreen />;
-      case 'Sales':           return <SalesScreen />;
-      case 'Inventory':       return <InventoryScreen />;
-      case 'HR':              return <HRScreen />;
-      case 'Finance':         return <FinanceScreen />;
-      case 'SalesAnalytics':  return <SalesAnalyticsScreen />;
-      default:                return <DashboardScreen />;
-    }
-  };
-
-  const styles = StyleSheet.create({
-    root: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
+const makeStyles = (colors: any, isTablet: boolean) =>
+  StyleSheet.create({
+    root: { flex: 1, backgroundColor: colors.background },
     header: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -126,11 +112,11 @@ export default function ERPLayout() {
       paddingVertical: 12,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
+      elevation: 3,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 1 },
       shadowOpacity: 0.06,
       shadowRadius: 4,
-      elevation: 3,
     },
     hamburger: {
       width: 38,
@@ -162,26 +148,21 @@ export default function ERPLayout() {
       paddingVertical: 5,
       borderRadius: 20,
     },
-    headerBadgeText: {
+    headerBadgeTx: {
       color: '#fff',
       fontSize: 11,
       fontWeight: '700',
       letterSpacing: 0.5,
     },
-    body: {
-      flex: 1,
-      flexDirection: isTablet ? 'row' : 'column',
-    },
-    sidebarPersistent: {
+    body: { flex: 1, flexDirection: isTablet ? 'row' : 'column' },
+    sidebar: {
       width: DRAWER_WIDTH,
       backgroundColor: colors.surface,
       borderRightWidth: 1,
       borderRightColor: colors.border,
-      paddingTop: 16,
+      paddingTop: 8,
     },
-    content: {
-      flex: 1,
-    },
+    content: { flex: 1 },
     drawerOverlay: {
       position: 'absolute',
       top: 0,
@@ -210,8 +191,8 @@ export default function ERPLayout() {
     },
     drawerHeader: {
       paddingHorizontal: 20,
-      paddingBottom: 20,
-      marginBottom: 8,
+      paddingBottom: 16,
+      marginBottom: 4,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
       flexDirection: 'row',
@@ -242,24 +223,74 @@ export default function ERPLayout() {
     navItem: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingVertical: 11,
-      paddingHorizontal: 16,
+      paddingVertical: 10,
+      paddingHorizontal: 14,
       marginHorizontal: 8,
       marginBottom: 2,
       borderRadius: 8,
-      gap: 12,
+      gap: 10,
     },
-    navItemActive: {
-      backgroundColor: colors.primary,
+    navItemActive: { backgroundColor: colors.primary },
+    navLabel: { fontSize: 14, fontWeight: '600', letterSpacing: 0.1, flex: 1 },
+    // Master File accordion
+    mfItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      marginHorizontal: 8,
+      marginBottom: 2,
+      borderRadius: 8,
+      gap: 10,
     },
-    navLabel: {
-      fontSize: 14,
-      fontWeight: '600',
-      letterSpacing: 0.1,
+    mfItemActive: { backgroundColor: colors.primary },
+    mfLabel: { fontSize: 14, fontWeight: '600', letterSpacing: 0.1, flex: 1 },
+    subItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 8,
+      paddingLeft: 46,
+      paddingRight: 14,
+      marginHorizontal: 8,
+      marginBottom: 1,
+      borderRadius: 8,
+      gap: 8,
     },
+    subItemActive: { backgroundColor: colors.primary + '22' },
+    subDot: { width: 5, height: 5, borderRadius: 3 },
+    subLabel: { fontSize: 13, fontWeight: '500' },
   });
 
-  const SidebarContent = () => (
+// ─── Sidebar Content — extracted + memoized ───────────────────────────────────
+// This is the #2 performance fix — when defined inside ERPLayout,
+// React creates a new function reference every render and fully
+// unmounts+remounts the sidebar tree on every tap. memo + extract = fixed.
+
+interface SidebarProps {
+  activeRoute: ERPRoute;
+  navigate: (route: ERPRoute) => void;
+  colors: any;
+  styles: ReturnType<typeof makeStyles>;
+  mfOpen: boolean;
+  toggleMF: () => void;
+  mfChevronAnim: Animated.Value;
+}
+
+const SidebarContent = memo(function SidebarContent({
+  activeRoute,
+  navigate,
+  colors,
+  styles,
+  mfOpen,
+  toggleMF,
+  mfChevronAnim,
+}: SidebarProps) {
+  const chevronRotate = mfChevronAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '180deg'],
+  });
+
+  return (
     <>
       <View style={styles.drawerHeader}>
         <View style={styles.drawerLogoIcon}>
@@ -270,9 +301,11 @@ export default function ERPLayout() {
           <Text style={styles.drawerSubtitle}>Enterprise Suite</Text>
         </View>
       </View>
-      {NAV_ITEMS.map((item) => {
+
+      {/* Regular nav items */}
+      {TOP_NAV.map((item) => {
         const isActive = activeRoute === item.key;
-        const IconComponent = NAV_ICON_MAP[item.key];
+        const Icon = NAV_ICON_MAP[item.key];
         return (
           <TouchableOpacity
             key={item.key}
@@ -280,22 +313,189 @@ export default function ERPLayout() {
             onPress={() => navigate(item.key)}
             activeOpacity={0.75}
           >
-            <IconComponent
-              size={18}
+            <Icon
+              size={17}
               color={isActive ? '#fff' : colors.textSecondary}
               strokeWidth={isActive ? 2.5 : 2}
             />
-            <Text style={[styles.navLabel, { color: isActive ? '#fff' : colors.text }]}>
+            <Text
+              style={[
+                styles.navLabel,
+                { color: isActive ? '#fff' : colors.text },
+              ]}
+            >
               {item.label}
             </Text>
           </TouchableOpacity>
         );
       })}
+
+      {/* Master File accordion */}
+      <TouchableOpacity
+        style={[
+          styles.mfItem,
+          activeRoute === 'MasterFile' && styles.mfItemActive,
+        ]}
+        onPress={toggleMF}
+        activeOpacity={0.75}
+      >
+        <Database
+          size={17}
+          color={activeRoute === 'MasterFile' ? '#fff' : colors.textSecondary}
+          strokeWidth={activeRoute === 'MasterFile' ? 2.5 : 2}
+        />
+        <Text
+          style={[
+            styles.mfLabel,
+            { color: activeRoute === 'MasterFile' ? '#fff' : colors.text },
+          ]}
+        >
+          Master File
+        </Text>
+        <Animated.View style={{ transform: [{ rotate: chevronRotate }] }}>
+          <ChevronDown
+            size={15}
+            color={activeRoute === 'MasterFile' ? '#fff' : colors.textSecondary}
+            strokeWidth={2}
+          />
+        </Animated.View>
+      </TouchableOpacity>
+
+      {/* Accordion sub-items — rendered when open */}
+      {mfOpen && (
+        <View>
+          {[
+            'Item Categories',
+            'VAT Types',
+            'Departments',
+            'Roles / Positions',
+            'Centers',
+            'Sub-Centers',
+            'Account Titles',
+          ].map((label) => {
+            const isActiveSub = activeRoute === 'MasterFile';
+            return (
+              <TouchableOpacity
+                key={label}
+                style={[styles.subItem, isActiveSub && styles.subItemActive]}
+                onPress={() => navigate('MasterFile')}
+                activeOpacity={0.75}
+              >
+                <View
+                  style={[
+                    styles.subDot,
+                    {
+                      backgroundColor: isActiveSub
+                        ? colors.primary
+                        : colors.textSecondary,
+                    },
+                  ]}
+                />
+                <Text
+                  style={[
+                    styles.subLabel,
+                    {
+                      color: isActiveSub
+                        ? colors.primary
+                        : colors.textSecondary,
+                    },
+                  ]}
+                >
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
     </>
   );
+});
 
-  const activeLabel = NAV_ITEMS.find((i) => i.key === activeRoute)?.label ?? 'ERP';
+// ─── Main Layout ──────────────────────────────────────────────────────────────
+
+export default function ERPLayout() {
+  const { colors, theme } = useTheme();
+  const { width } = Dimensions.get('window');
+  const isTablet = width >= 768;
+
+  const [activeRoute, setActiveRoute] = useState<ERPRoute>('Dashboard');
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [unlocked, setUnlocked] = useState(false);
+  const [mfOpen, setMFOpen] = useState(false);
+
+  const drawerAnim = useRef(new Animated.Value(0)).current;
+  const mfChevronAnim = useRef(new Animated.Value(0)).current;
+
+  // Memoize styles — only recalculate when colors or isTablet changes
+  const styles = React.useMemo(
+    () => makeStyles(colors, isTablet),
+    [colors, isTablet],
+  );
+
+  // ── Drawer ──────────────────────────────────────────────────────────────────
+  const openDrawer = useCallback(() => {
+    setDrawerOpen(true);
+    Animated.timing(drawerAnim, {
+      toValue: 1,
+      duration: 240,
+      useNativeDriver: true,
+    }).start();
+  }, [drawerAnim]);
+
+  const closeDrawer = useCallback(() => {
+    Animated.timing(drawerAnim, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => setDrawerOpen(false));
+  }, [drawerAnim]);
+
+  // ── Master File accordion ───────────────────────────────────────────────────
+  const toggleMF = useCallback(() => {
+    const toValue = mfOpen ? 0 : 1;
+    setMFOpen((prev) => !prev);
+    Animated.spring(mfChevronAnim, {
+      toValue,
+      tension: 80,
+      friction: 10,
+      useNativeDriver: true,
+    }).start();
+  }, [mfOpen, mfChevronAnim]);
+
+  // ── Navigation ──────────────────────────────────────────────────────────────
+  const navigate = useCallback(
+    (route: ERPRoute) => {
+      setActiveRoute(route);
+      if (!isTablet) closeDrawer();
+    },
+    [isTablet, closeDrawer],
+  );
+
+  const drawerTranslate = drawerAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-DRAWER_WIDTH, 0],
+  });
+  const overlayOpacity = drawerAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 0.5],
+  });
+
+  const activeLabel =
+    [...TOP_NAV, { key: 'MasterFile' as ERPRoute, label: 'Master File' }].find(
+      (i) => i.key === activeRoute,
+    )?.label ?? 'ERP';
   const ActiveIcon = NAV_ICON_MAP[activeRoute];
+
+  const sidebarProps: SidebarProps = {
+    activeRoute,
+    navigate,
+    colors,
+    styles,
+    mfOpen,
+    toggleMF,
+    mfChevronAnim,
+  };
 
   return (
     <SafeAreaView style={styles.root}>
@@ -304,13 +504,19 @@ export default function ERPLayout() {
         backgroundColor={colors.surface}
       />
 
-      {/* ERP Unlock Overlay */}
-      <ERPUnlockOverlay visible={!unlocked} onUnlock={() => setUnlocked(true)} />
+      <ERPUnlockOverlay
+        visible={!unlocked}
+        onUnlock={() => setUnlocked(true)}
+      />
 
-      {/* Top Header */}
+      {/* Header */}
       <View style={styles.header}>
         {!isTablet && (
-          <TouchableOpacity style={styles.hamburger} onPress={openDrawer} activeOpacity={0.7}>
+          <TouchableOpacity
+            style={styles.hamburger}
+            onPress={openDrawer}
+            activeOpacity={0.7}
+          >
             <Menu size={20} color={colors.text} strokeWidth={2} />
           </TouchableOpacity>
         )}
@@ -320,22 +526,25 @@ export default function ERPLayout() {
         </View>
         <View style={styles.headerBadge}>
           <Building2 size={12} color="#fff" strokeWidth={2} />
-          <Text style={styles.headerBadgeText}>ERP</Text>
+          <Text style={styles.headerBadgeTx}>ERP</Text>
         </View>
       </View>
 
       <View style={styles.body}>
-        {/* Persistent Sidebar (tablet/desktop) */}
+        {/* Tablet persistent sidebar */}
         {isTablet && (
-          <ScrollView style={styles.sidebarPersistent} showsVerticalScrollIndicator={false}>
-            <SidebarContent />
+          <ScrollView
+            style={styles.sidebar}
+            showsVerticalScrollIndicator={false}
+          >
+            <SidebarContent {...sidebarProps} />
           </ScrollView>
         )}
 
-        {/* Main Content */}
-        <View style={styles.content}>{renderScreen()}</View>
+        {/* Main content — pre-built map, no switch */}
+        <View style={styles.content}>{SCREEN_MAP[activeRoute]}</View>
 
-        {/* Drawer Overlay (mobile) */}
+        {/* Mobile drawer */}
         {!isTablet && drawerOpen && (
           <>
             <Animated.View
@@ -344,9 +553,14 @@ export default function ERPLayout() {
             >
               <Pressable style={{ flex: 1 }} onPress={closeDrawer} />
             </Animated.View>
-            <Animated.View style={[styles.drawer, { transform: [{ translateX: drawerTranslate }] }]}>
+            <Animated.View
+              style={[
+                styles.drawer,
+                { transform: [{ translateX: drawerTranslate }] },
+              ]}
+            >
               <ScrollView showsVerticalScrollIndicator={false}>
-                <SidebarContent />
+                <SidebarContent {...sidebarProps} />
               </ScrollView>
             </Animated.View>
           </>

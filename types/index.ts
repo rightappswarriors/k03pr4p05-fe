@@ -24,6 +24,7 @@ export interface Category {
 export interface User {
   id: string;
   email: string;
+  fullname?: string,
   name: string;
   role: 'OWNER' | 'CASHIER' | 'STAFF' | 'MANAGER' | 'ADMIN';
   assignedOutletId?: string; // For cashiers

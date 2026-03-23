@@ -20,5 +20,5 @@
     "app.config.js",
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
-  ]
+, "components/dashboardSummary"  ]
 }
