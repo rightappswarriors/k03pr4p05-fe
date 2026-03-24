@@ -37,8 +37,10 @@ import {
   X,
 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { GISRow, SummaryRow } from '@/data/SummaryData';
+
 import { useTheme } from '@/contexts/ThemeContext';
+import { useSubscription } from '@/contexts/SubscriptionContext';
+import { Lock } from 'lucide-react-native';
 import StatCard from '@/components/erp/StatCard';
 import ChartCard from '@/components/erp/ChartCard';
 import {
@@ -49,6 +51,7 @@ import {
   salesTrendByQuarter,
 } from '@/data/erpMockData';
 import { INITIAL_GIS_ROWS, INITIAL_SUMMARY_ROWS } from '@/data/SummaryData';
+import type { GISRow, SummaryRow } from '@/data/SummaryData';
 import {
   PAGE_SIZE,
   PaginationControls,
@@ -60,6 +63,7 @@ import {
 import {
   calcVatAndNet,
   formatPeso,
+  formatPesoCompact,
   getResponsiveColumns,
 } from '@/utils/moneyHelpers';
 import {
@@ -67,6 +71,8 @@ import {
   FinancialCardData,
   FinancialDetailModal,
   GISTable,
+  SkeletonFinancialCard,
+  SkeletonTableRow,
   SummaryTable,
 } from '@/components/dashboardSummary/SummaryTable';
 import { DropdownField, s } from '@/app/(admin)';
@@ -74,30 +80,16 @@ import {
   ACCOUNT_TITLE_OPTIONS,
   VAT_TYPE_OPTIONS,
 } from '@/components/dashboardSummary/AddingEntry';
-import { ExportModal } from '@/components/dashboardSummary/ExportModal';
+import {
+  useCenterLabels,
+  useSubCenterLabels,
+  useVatTypeLabels,
+  useAccountTitleLabels,
+} from '@/contexts/MasterFileContext';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const CENTER_DEPT_OPTIONS = [
-  'Head Office',
-  'Branch A',
-  'Branch B',
-  'Branch C',
-  'Finance',
-  'HR',
-  'Operations',
-  'IT',
-];
-const SUB_CENTER_OPTIONS = [
-  'Accounting',
-  'Payroll',
-  'Procurement',
-  'Sales',
-  'Marketing',
-  'Admin',
-  'Audit',
-  'Compliance',
-];
+// CENTER_DEPT_OPTIONS and SUB_CENTER_OPTIONS are now live from MasterFileContext
+// so changes in Master File → Centers / Sub-Centers appear here immediately.
 
 const DATE_PRESETS = [
   'This Month',
@@ -395,10 +387,30 @@ function exportSummaryToCSV(rows: SummaryRow[]): string {
 export default function DashboardScreen() {
   const { colors, theme } = useTheme();
   const { width } = Dimensions.get('window');
+
+  // ── Live from Master File — updates instantly when Master File changes ──────
+  const CENTER_DEPT_OPTIONS = useCenterLabels();
+  const SUB_CENTER_OPTIONS = useSubCenterLabels();
+  // VAT types and Account Titles also live from Master File
+  // Falls back to the imported constants if context returns empty (first load safety)
+  const vatTypesFromCtx = useVatTypeLabels();
+  const accountTitlesFromCtx = useAccountTitleLabels();
+  const VAT_TYPES_LIVE =
+    vatTypesFromCtx.length > 0 ? vatTypesFromCtx : VAT_TYPE_OPTIONS;
+  const ACCT_TITLES_LIVE =
+    accountTitlesFromCtx.length > 0
+      ? accountTitlesFromCtx
+      : ACCOUNT_TITLE_OPTIONS;
   const isTablet = width >= 768;
 
+  // ── Subscription limits ──────────────────────────────────────────────────────
+  const { limits } = useSubscription();
+
   // ── State ────────────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<TabKey>('expense');
+  // Basic users can only see itemnet tab — redirect if they somehow land on expense
+  const [activeTab, setActiveTab] = useState<TabKey>(
+    limits.canAccessExpenseSummary ? 'expense' : 'itemnet',
+  );
   const [viewMode, setViewMode] = useState<ViewMode>('card');
   const [gisRows, setGisRows] = useState<GISRow[]>(INITIAL_GIS_ROWS);
   const [summaryRows] = useState<SummaryRow[]>(INITIAL_SUMMARY_ROWS);
@@ -587,25 +599,9 @@ export default function DashboardScreen() {
       setForm(EMPTY_FORM);
     });
   };
-  const [formError, setFormError] = useState('');
-  const handleSubmit = () => {
-    const rawAmount = parseFloat(form.amount);
 
-    if (!form.amount.trim() || isNaN(rawAmount) || rawAmount <= 0) {
-      // Show inline error — add an error state at the top of the component:
-      // const [formError, setFormError] = useState('');
-      setFormError('Enter a valid amount greater than zero.');
-      return;
-    }
-    if (!form.vatType) {
-      setFormError('Please select a VAT type.');
-      return;
-    }
-    if (!form.accountTitle) {
-      setFormError('Please select an account title.');
-      return;
-    }
-    setFormError('');
+  const handleSubmit = () => {
+    const rawAmount = parseFloat(form.amount) || 0;
     const { net } = calcVatAndNet(rawAmount, form.vatType);
     const isIncome = form.accountTitle.startsWith('ACCOUNTS RECEIVABLE');
     const newRow: GISRow = {
@@ -652,7 +648,7 @@ export default function DashboardScreen() {
     }),
     [colors, theme],
   );
-  const [exportModalOpen, setExportModalOpen] = useState(false);
+
   const revData = {
     labels: chartData.labels,
     datasets: [
@@ -925,53 +921,108 @@ export default function DashboardScreen() {
           { backgroundColor: colors.surface, borderBottomColor: colors.border },
         ]}
       >
-        {[
-          {
-            key: 'expense' as TabKey,
-            label: 'Expense Summary',
-            Icon: FileText,
-          },
-          {
-            key: 'itemnet' as TabKey,
-            label: 'Item Net Summary',
-            Icon: BarChart2,
-          },
-        ].map(({ key, label, Icon }) => {
-          const isActive = activeTab === key;
-          return (
-            <TouchableOpacity
-              key={key}
+        {/* Expense Summary tab — Gold only */}
+        {limits.canAccessExpenseSummary ? (
+          <TouchableOpacity
+            style={[
+              s.tab,
+              activeTab === 'expense' && {
+                borderBottomColor: colors.primary,
+                borderBottomWidth: 2.5,
+              },
+            ]}
+            onPress={() => handleTabChange('expense')}
+            activeOpacity={0.8}
+          >
+            <FileText
+              size={15}
+              color={
+                activeTab === 'expense' ? colors.primary : colors.textSecondary
+              }
+              strokeWidth={activeTab === 'expense' ? 2.5 : 2}
+            />
+            <Text
               style={[
-                s.tab,
-                isActive && {
-                  borderBottomColor: colors.primary,
-                  borderBottomWidth: 2.5,
+                s.tabLabel,
+                {
+                  color:
+                    activeTab === 'expense'
+                      ? colors.primary
+                      : colors.textSecondary,
+                  fontWeight: activeTab === 'expense' ? '700' : '500',
                 },
               ]}
-              onPress={() => handleTabChange(key)}
-              activeOpacity={0.8}
+              numberOfLines={1}
+              adjustsFontSizeToFit
             >
-              <Icon
-                size={15}
-                color={isActive ? colors.primary : colors.textSecondary}
-                strokeWidth={isActive ? 2.5 : 2}
-              />
-              <Text
-                style={[
-                  s.tabLabel,
-                  {
-                    color: isActive ? colors.primary : colors.textSecondary,
-                    fontWeight: isActive ? '700' : '500',
-                  },
-                ]}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-              >
-                {label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+              Expense Summary
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          // Locked tab — tapping shows the upgrade modal via LockedNavItem pattern
+          <TouchableOpacity
+            style={[s.tab, { opacity: 0.5 }]}
+            onPress={() => {
+              /* UpgradeModal shown via LockedNavItem in sidebar */
+            }}
+            activeOpacity={0.7}
+          >
+            <Lock size={13} color={colors.textSecondary} strokeWidth={2} />
+            <Text
+              style={[
+                s.tabLabel,
+                { color: colors.textSecondary, fontWeight: '500' },
+              ]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
+              Expense Summary
+            </Text>
+            <Lock
+              size={10}
+              color={colors.textSecondary}
+              strokeWidth={2}
+              style={{ marginLeft: 2 }}
+            />
+          </TouchableOpacity>
+        )}
+
+        {/* Item Net Summary tab — always visible */}
+        <TouchableOpacity
+          style={[
+            s.tab,
+            activeTab === 'itemnet' && {
+              borderBottomColor: colors.primary,
+              borderBottomWidth: 2.5,
+            },
+          ]}
+          onPress={() => handleTabChange('itemnet')}
+          activeOpacity={0.8}
+        >
+          <BarChart2
+            size={15}
+            color={
+              activeTab === 'itemnet' ? colors.primary : colors.textSecondary
+            }
+            strokeWidth={activeTab === 'itemnet' ? 2.5 : 2}
+          />
+          <Text
+            style={[
+              s.tabLabel,
+              {
+                color:
+                  activeTab === 'itemnet'
+                    ? colors.primary
+                    : colors.textSecondary,
+                fontWeight: activeTab === 'itemnet' ? '700' : '500',
+              },
+            ]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+          >
+            Item Net Summary
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* TABLE / CARD AREA */}
@@ -981,7 +1032,7 @@ export default function DashboardScreen() {
         nestedScrollEnabled
         contentContainerStyle={{ paddingBottom: 100 }}
       >
-        {/* TOOLBAR: search + view toggle + export */}
+        {/* TOOLBAR: search + view toggle + export (export locked for Basic) */}
         <View style={styles.toolbarFull}>
           <View style={styles.searchBox}>
             <Search size={13} color={colors.textSecondary} strokeWidth={2} />
@@ -1008,17 +1059,47 @@ export default function DashboardScreen() {
             colors={colors}
           />
 
-          <TouchableOpacity
-            style={[styles.iconBtn, { borderColor: colors.border }]}
-            onPress={() => setExportModalOpen(true)}
-            activeOpacity={0.8}
-          >
-            <Download size={15} color={colors.textSecondary} strokeWidth={2} />
-          </TouchableOpacity>
+          {/* Export button — locked for Basic */}
+          {limits.canExport ? (
+            <TouchableOpacity
+              style={[
+                styles.iconBtn,
+                {
+                  borderColor: exportSuccess ? colors.success : colors.border,
+                  backgroundColor: exportSuccess
+                    ? colors.success + '20'
+                    : undefined,
+                },
+              ]}
+              onPress={handleExport}
+              activeOpacity={0.8}
+            >
+              <Download
+                size={15}
+                color={exportSuccess ? colors.success : colors.textSecondary}
+                strokeWidth={2}
+              />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[
+                styles.iconBtn,
+                { borderColor: colors.border, opacity: 0.45 },
+              ]}
+              onPress={() => {
+                /* Upgrade modal — use LockedScreen pattern */
+              }}
+              activeOpacity={0.7}
+            >
+              <Lock size={15} color={colors.textSecondary} strokeWidth={2} />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* result count */}
-        <View style={{ paddingHorizontal: 0, paddingTop: 8, paddingBottom: 4 }}>
+        <View
+          style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 4 }}
+        >
           <Text style={{ fontSize: 11, color: colors.textSecondary }}>
             {activeDataset.length}{' '}
             {activeTab === 'expense' ? 'entries' : 'items'}
@@ -1026,7 +1107,7 @@ export default function DashboardScreen() {
           </Text>
         </View>
 
-        <View style={{ paddingTop: 12 }}>
+        <View style={{ padding: 12 }}>
           {viewMode === 'table' ? (
             activeTab === 'expense' ? (
               <GISTable
@@ -1066,14 +1147,7 @@ export default function DashboardScreen() {
           colors={colors}
         />
       </ScrollView>
-      <ExportModal
-        visible={exportModalOpen}
-        onClose={() => setExportModalOpen(false)}
-        gisRows={gisRows}
-        summaryRows={summaryRows}
-        defaultTab={activeTab}
-        defaultDate={datePreset}
-      />
+
       {/* NEW ENTRY BUTTON */}
       <TouchableOpacity
         style={[s.newEntryBtn, { backgroundColor: colors.primary }]}
@@ -1189,9 +1263,8 @@ export default function DashboardScreen() {
                     placeholder="e.g. OR-2026-00123"
                     placeholderTextColor={colors.textSecondary}
                     value={form.orInvoice}
-                    maxLength={30}
                     onChangeText={(v) =>
-                      setForm((f) => ({ ...f, orInvoice: v.trim() }))
+                      setForm((f) => ({ ...f, orInvoice: v }))
                     }
                   />
 
@@ -1228,7 +1301,7 @@ export default function DashboardScreen() {
                   <DropdownField
                     label="VAT Type"
                     value={form.vatType}
-                    options={VAT_TYPE_OPTIONS}
+                    options={VAT_TYPES_LIVE}
                     onSelect={(v) => setForm((f) => ({ ...f, vatType: v }))}
                     colors={colors}
                   />
@@ -1248,12 +1321,7 @@ export default function DashboardScreen() {
                     placeholder="0.00"
                     placeholderTextColor={colors.textSecondary}
                     value={form.amount}
-                    onChangeText={(v) =>
-                      setForm((f) => ({
-                        ...f,
-                        amount: v.replace(/[^0-9.]/g, ''),
-                      }))
-                    }
+                    onChangeText={(v) => setForm((f) => ({ ...f, amount: v }))}
                     keyboardType="decimal-pad"
                   />
 
@@ -1353,46 +1421,28 @@ export default function DashboardScreen() {
                   <DropdownField
                     label="Account Title"
                     value={form.accountTitle}
-                    options={ACCOUNT_TITLE_OPTIONS}
+                    options={ACCT_TITLES_LIVE}
                     onSelect={(v) =>
                       setForm((f) => ({ ...f, accountTitle: v }))
                     }
                     colors={colors}
                     placeholder="Select account title…"
                   />
-                  {formError ? (
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        color: colors.error,
-                        marginBottom: 8,
-                      }}
-                    >
-                      {formError}
-                    </Text>
-                  ) : null}
+
                   <TouchableOpacity
                     style={[
                       s.submitBtn,
                       {
                         backgroundColor: colors.primary,
                         opacity:
-                          !form.amount ||
-                          isNaN(parseFloat(form.amount)) ||
-                          parseFloat(form.amount) <= 0 ||
-                          !form.vatType ||
-                          !form.accountTitle
+                          !form.amount || !form.vatType || !form.accountTitle
                             ? 0.5
                             : 1,
                       },
                     ]}
                     onPress={handleSubmit}
                     disabled={
-                      !form.amount ||
-                      isNaN(parseFloat(form.amount)) ||
-                      parseFloat(form.amount) <= 0 ||
-                      !form.vatType ||
-                      !form.accountTitle
+                      !form.amount || !form.vatType || !form.accountTitle
                     }
                     activeOpacity={0.85}
                   >

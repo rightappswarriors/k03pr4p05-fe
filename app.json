@@ -24,7 +24,12 @@
         "ACCESS_FINE_LOCATION",
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"
-      ]
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY"
+        }
+      }
     },
     "web": {
       "bundler": "metro",
@@ -40,10 +45,7 @@
       [
         "react-native-permissions",
         {
-          "iosPermissions": [
-            "BluetoothPeripheral",
-            "Bluetooth"
-          ],
+          "iosPermissions": ["BluetoothPeripheral", "Bluetooth"],
           "androidPermissions": [
             "android.permission.BLUETOOTH_CONNECT",
             "android.permission.BLUETOOTH_SCAN",

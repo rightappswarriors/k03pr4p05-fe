@@ -49,14 +49,31 @@ export default function AdminTabLayout() {
             }}
           />
           <Tabs.Screen
-            name="erp"
+            name="erp" // can I do this? erp { isGold ? "erp" : "basic"}
             options={{
-              title: 'ERP',
+              title: 'ERP', // can I do this? erp { isGold ? "ERP" : "Something somthing name"}
               tabBarIcon: ({ size, color }) => (
                 <Building2 size={size} color={color} />
               ),
             }}
           />
+          {/*
+          isGold ?(
+            <Tabs.Screen // this will dynamically change which to obscure.
+            name="basic" erp { isGold ? "erp" : "basic"}
+            options={{
+              title: 'ERP', // can I do this? erp { isGold ? "ERP" : "Something somthing name"}
+              
+              href: null,
+              tabBarIcon: ({ size, color }) => (
+              
+                <Building2 size={size} color={color} />
+              ),
+            }}
+          />) :
+          
+          
+          */}
           <Tabs.Screen
             name="orderManagement"
             options={{

@@ -61,7 +61,10 @@ export function SubscriptionProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const [plan, setPlan] = useState<SubscriptionPlan>('gold');
+  // Default to 'basic' — set to 'gold' once backend confirms the user's plan.
+  // In production: read from JWT payload or user profile API on login.
+  // To test Gold features during dev: change 'basic' → 'gold' here temporarily.
+  const [plan, setPlan] = useState<SubscriptionPlan>('basic');
   const limits = PLAN_LIMITS[plan];
 
   // FIX: was using < but maxBranches is 1, so 1 < 1 = false correctly

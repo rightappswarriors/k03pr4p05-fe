@@ -143,13 +143,34 @@ function CatalogSearchModal({
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<CatalogItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
+
+  // Show full catalog on open — no need to search for the first load
+  React.useEffect(() => {
+    if (visible && !hasSearched) {
+      setResults(MOCK_CATALOG);
+    }
+    if (!visible) {
+      // Reset when closed so next open shows full list again
+      setQuery('');
+      setResults([]);
+      setHasSearched(false);
+    }
+  }, [visible]);
 
   const doSearch = async () => {
-    if (!query.trim()) return;
+    const q = query.trim();
     setLoading(true);
-    const res = await searchCatalog(query);
+    setHasSearched(true);
+    const res = await searchCatalog(q || ''); // empty string returns all
     setResults(res);
     setLoading(false);
+  };
+
+  const handleClear = () => {
+    setQuery('');
+    setResults(MOCK_CATALOG);
+    setHasSearched(false);
   };
 
   return (
@@ -181,7 +202,7 @@ function CatalogSearchModal({
               <X size={20} color={colors.textSecondary} strokeWidth={2} />
             </TouchableOpacity>
           </View>
-          {/* Search */}
+          {/* Search row */}
           <View style={[csm.searchRow, { borderBottomColor: colors.border }]}>
             <View
               style={[
@@ -205,10 +226,8 @@ function CatalogSearchModal({
               />
               {query.length > 0 && (
                 <TouchableOpacity
-                  onPress={() => {
-                    setQuery('');
-                    setResults([]);
-                  }}
+                  onPress={handleClear}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <X size={13} color={colors.textSecondary} strokeWidth={2} />
                 </TouchableOpacity>
@@ -221,63 +240,81 @@ function CatalogSearchModal({
               ]}
               onPress={doSearch}
               disabled={loading}
+              activeOpacity={0.85}
             >
-              <Search size={14} color="#fff" strokeWidth={2.5} />
+              <Search size={13} color="#fff" strokeWidth={2.5} />
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#fff' }}>
+                {loading ? '…' : 'Search'}
+              </Text>
             </TouchableOpacity>
           </View>
-          <FlatList
-            data={results}
-            keyExtractor={(i) => i.id}
-            style={{ maxHeight: 340 }}
-            ListEmptyComponent={
-              <View style={{ padding: 28, alignItems: 'center' }}>
-                <Package size={32} color={colors.border} strokeWidth={1.5} />
-                <Text
-                  style={{
-                    fontSize: 13,
-                    color: colors.textSecondary,
-                    marginTop: 10,
+
+          {/* Loading state — shown above FlatList so it's always visible */}
+          {loading && (
+            <View style={{ padding: 20, alignItems: 'center' }}>
+              <Text style={{ fontSize: 13, color: colors.textSecondary }}>
+                Searching catalog…
+              </Text>
+            </View>
+          )}
+
+          {!loading && (
+            <FlatList
+              data={results}
+              keyExtractor={(i) => i.id}
+              style={{ maxHeight: 320 }}
+              keyboardShouldPersistTaps="handled"
+              ListEmptyComponent={
+                <View style={{ padding: 28, alignItems: 'center' }}>
+                  <Package size={32} color={colors.border} strokeWidth={1.5} />
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      color: colors.textSecondary,
+                      marginTop: 10,
+                    }}
+                  >
+                    {query
+                      ? `No items found for "${query}"`
+                      : 'No catalog items available.'}
+                  </Text>
+                </View>
+              }
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[csm.resultRow, { borderBottomColor: colors.border }]}
+                  onPress={() => {
+                    onSelect(item);
+                    onClose();
                   }}
+                  activeOpacity={0.75}
                 >
-                  {loading
-                    ? 'Searching…'
-                    : query
-                      ? 'No items found'
-                      : 'Type to search the catalog'}
-                </Text>
-              </View>
-            }
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={[csm.resultRow, { borderBottomColor: colors.border }]}
-                onPress={() => {
-                  onSelect(item);
-                  onClose();
-                  setQuery('');
-                  setResults([]);
-                }}
-                activeOpacity={0.75}
-              >
-                <View
-                  style={[csm.icon, { backgroundColor: colors.primary + '18' }]}
-                >
-                  <Package size={16} color={colors.primary} strokeWidth={2} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[csm.itemName, { color: colors.text }]}>
-                    {item.name}
+                  <View
+                    style={[
+                      csm.icon,
+                      { backgroundColor: colors.primary + '18' },
+                    ]}
+                  >
+                    <Package size={16} color={colors.primary} strokeWidth={2} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[csm.itemName, { color: colors.text }]}>
+                      {item.name}
+                    </Text>
+                    <Text
+                      style={[csm.itemMeta, { color: colors.textSecondary }]}
+                    >
+                      {item.brand ? `${item.brand} · ` : ''}
+                      {item.category} · {item.barcode}
+                    </Text>
+                  </View>
+                  <Text style={[csm.selectTxt, { color: colors.primary }]}>
+                    Select
                   </Text>
-                  <Text style={[csm.itemMeta, { color: colors.textSecondary }]}>
-                    {item.brand ? `${item.brand} · ` : ''}
-                    {item.category} · {item.barcode}
-                  </Text>
-                </View>
-                <Text style={[csm.selectTxt, { color: colors.primary }]}>
-                  Select
-                </Text>
-              </TouchableOpacity>
-            )}
-          />
+                </TouchableOpacity>
+              )}
+            />
+          )}
         </View>
       </View>
     </Modal>
@@ -325,10 +362,12 @@ const csm = StyleSheet.create({
   },
   searchInput: { flex: 1, fontSize: 13 },
   searchBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 10,
     justifyContent: 'center',
   },
   resultRow: {

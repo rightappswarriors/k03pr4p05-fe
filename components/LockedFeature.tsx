@@ -251,7 +251,7 @@ export function LockedScreen({
   children,
 }: {
   featureName: string;
-  children: React.ReactNode;
+  children?: React.ReactNode;
 }) {
   const { colors } = useTheme();
   const [show, setShow] = useState(false);
@@ -323,12 +323,14 @@ const ls = StyleSheet.create({
   btnTxt: { fontSize: 15, fontWeight: '700', color: '#fff' },
 });
 
-// ─── useLimitGuard — FIXED ─────────────────────────────────────────────────────
-// The bug: branches.length was read from stale closure in React state.
-// Fix: checkBranch/checkOutlet receive the CURRENT count at call time.
+// ─── useLimitGuard ────────────────────────────────────────────────────────────
+// Returns modal state + a renderGuardModal() function.
+// The parent must render {renderGuardModal()} directly in its JSX tree —
+// do NOT wrap it in a component function defined inside the hook, as that
+// creates a new component type on every render and React will unmount the modal.
 
 export function useLimitGuard() {
-  const { canAddBranch, canAddOutlet, limits, plan } = useSubscription();
+  const { canAddBranch, canAddOutlet, limits } = useSubscription();
   const [show, setShow] = useState(false);
   const [feature, setFeature] = useState('');
   const [limitInfo, setLimitInfo] = useState('');
@@ -337,7 +339,7 @@ export function useLimitGuard() {
     if (canAddBranch(currentCount)) return true;
     setFeature('Additional Branches');
     setLimitInfo(
-      `Basic plan allows ${limits.maxBranches} branch. You already have ${currentCount}.`,
+      `Basic plan allows ${limits.maxBranches === 1 ? '1 branch' : `${limits.maxBranches} branches`}. You already have ${currentCount}.`,
     );
     setShow(true);
     return false;
@@ -347,13 +349,16 @@ export function useLimitGuard() {
     if (canAddOutlet(currentCount)) return true;
     setFeature('Additional Outlets');
     setLimitInfo(
-      `Basic plan allows ${limits.maxOutlets} outlets. You already have ${currentCount}.`,
+      `Basic plan allows ${limits.maxOutlets} outlet${limits.maxOutlets !== 1 ? 's' : ''}. You already have ${currentCount}.`,
     );
     setShow(true);
     return false;
   };
 
-  const GuardModal = () => (
+  // renderGuardModal() returns a stable JSX element — call it in your render:
+  //   {renderGuardModal()}
+  // Backward compat: GuardModal is kept as an alias so existing <GuardModal /> calls work.
+  const renderGuardModal = () => (
     <UpgradeModal
       visible={show}
       onClose={() => setShow(false)}
@@ -362,5 +367,8 @@ export function useLimitGuard() {
     />
   );
 
-  return { checkBranch, checkOutlet, GuardModal };
+  // GuardModal alias — use as {renderGuardModal()} not <GuardModal />
+  const GuardModal = renderGuardModal;
+
+  return { checkBranch, checkOutlet, GuardModal, renderGuardModal };
 }

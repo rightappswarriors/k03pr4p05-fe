@@ -5,261 +5,142 @@
 //   3. Screen map pre-built outside render (no switch re-evaluation)
 //   4. Master File accordion nav with chevron animation
 
-import React, { memo, useCallback, useRef, useState } from 'react';
+import React, {
+  memo, useCallback, useRef, useState,
+} from 'react';
 import {
-  Animated,
-  Dimensions,
-  Platform,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+  Animated, Dimensions, Platform, Pressable,
+  SafeAreaView, ScrollView, StatusBar,
+  StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import {
-  BarChart2,
-  Building2,
-  ChevronDown,
-  CircleDollarSign,
-  Database,
-  LayoutDashboard,
-  Menu,
-  Package,
-  ShoppingCart,
-  Users,
+  BarChart2, Building2, ChevronDown, CircleDollarSign,
+  Database, LayoutDashboard, Menu, Package,
+  ShoppingCart, Users,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import DashboardScreen from '@/screens/DashboardScreen';
-import SalesScreen from '@/screens/SalesScreen';
-import InventoryScreen from '@/screens/InventoryScreen';
-import HRScreen from '@/screens/HRScreen';
-import FinanceScreen from '@/screens/FinancesScreen';
+import { useSubscription } from '@/contexts/SubscriptionContext';
+import { LockedNavItem, LockedScreen } from '@/components/LockedFeature';
+import DashboardScreen      from '@/screens/DashboardScreen';
+import SalesScreen          from '@/screens/SalesScreen';
+import InventoryScreen      from '@/screens/InventoryScreen';
+import HRScreen             from '@/screens/HRScreen';
+import FinanceScreen        from '@/screens/FinancesScreen';
 import SalesAnalyticsScreen from '@/screens/SalesAnalyticsScreen';
-import MasterFileScreen from '@/screens/MasterFileScreen';
-//import ERPUnlockOverlay from './ErpunlockOverlay';
+import MasterFileScreen     from '@/screens/MasterFileScreen';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type ERPRoute =
-  | 'Dashboard'
-  | 'Sales'
-  | 'Inventory'
-  | 'HR'
-  | 'Finance'
-  | 'SalesAnalytics'
-  | 'MasterFile';
+  | 'Dashboard' | 'Sales' | 'Inventory'
+  | 'HR' | 'Finance' | 'SalesAnalytics' | 'MasterFile';
 
 const DRAWER_WIDTH = 240;
 
 // ─── Icon map (outside component — stable references) ─────────────────────────
 
-const NAV_ICON_MAP: Record<
-  ERPRoute,
-  React.FC<{ size: number; color: string; strokeWidth?: number }>
-> = {
-  Dashboard: LayoutDashboard,
-  Sales: ShoppingCart,
-  Inventory: Package,
-  HR: Users,
-  Finance: CircleDollarSign,
+const NAV_ICON_MAP: Record<ERPRoute, React.FC<{ size: number; color: string; strokeWidth?: number }>> = {
+  Dashboard:      LayoutDashboard,
+  Sales:          ShoppingCart,
+  Inventory:      Package,
+  HR:             Users,
+  Finance:        CircleDollarSign,
   SalesAnalytics: BarChart2,
-  MasterFile: Database,
+  MasterFile:     Database,
 };
 
 // ─── Nav structure ────────────────────────────────────────────────────────────
 
-interface NavItem {
-  key: ERPRoute;
-  label: string;
-}
+interface NavItem { key: ERPRoute; label: string }
 
-const TOP_NAV: NavItem[] = [
-  { key: 'Dashboard', label: 'Dashboard' },
-  { key: 'Sales', label: 'Sales' },
-  { key: 'Inventory', label: 'Inventory' },
-  { key: 'HR', label: 'HR' },
-  { key: 'Finance', label: 'Finance' },
-  { key: 'SalesAnalytics', label: 'Sales Analytics' },
+// Always visible for both Basic and Gold
+const FREE_NAV: NavItem[] = [
+  { key: 'Dashboard',  label: 'Dashboard' },
+  { key: 'Sales',      label: 'Sales' },
+  { key: 'Inventory',  label: 'Inventory' },
 ];
 
-// ─── Screen map (outside component — no re-evaluation on render) ──────────────
+// Gold-only nav items — shown as LockedNavItem for Basic
+const GATED_NAV: (NavItem & { featureName: string })[] = [
+  { key: 'HR',             label: 'HR',             featureName: 'HR Module' },
+  { key: 'Finance',        label: 'Finance',         featureName: 'Finance & Budget Planner' },
+  { key: 'SalesAnalytics', label: 'Sales Analytics', featureName: 'Sales Analytics' },
+];
 
-const SCREEN_MAP: Record<ERPRoute, React.ReactElement> = {
-  Dashboard: <DashboardScreen />,
-  Sales: <SalesScreen />,
-  Inventory: <InventoryScreen />,
-  HR: <HRScreen />,
-  Finance: <FinanceScreen />,
-  SalesAnalytics: <SalesAnalyticsScreen />,
-  MasterFile: <MasterFileScreen />,
-};
+// Combined for label lookups
+const ALL_NAV: NavItem[] = [...FREE_NAV, ...GATED_NAV,
+  { key: 'MasterFile', label: 'Master File' },
+];
+
+// ─── Screen map is built inside component (depends on plan) ───────────────────
+// See buildScreenMap() in ERPLayout function body.
 
 // ─── StyleSheet outside component (runs once at module load) ──────────────────
 // This is the #1 performance fix — creating styles inside the component
 // body causes React Native to diff + re-apply layout on every render.
 
-const makeStyles = (colors: any, isTablet: boolean) =>
-  StyleSheet.create({
-    root: { flex: 1, backgroundColor: colors.background },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: colors.surface,
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-      elevation: 3,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.06,
-      shadowRadius: 4,
-    },
-    hamburger: {
-      width: 38,
-      height: 38,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderRadius: 8,
-      backgroundColor: colors.background,
-      marginRight: 12,
-    },
-    headerLeft: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      flex: 1,
-      gap: 10,
-    },
-    headerTitle: {
-      fontSize: 16,
-      fontWeight: '700',
-      color: colors.text,
-      letterSpacing: -0.3,
-    },
-    headerBadge: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 5,
-      backgroundColor: colors.accent,
-      paddingHorizontal: 10,
-      paddingVertical: 5,
-      borderRadius: 20,
-    },
-    headerBadgeTx: {
-      color: '#fff',
-      fontSize: 11,
-      fontWeight: '700',
-      letterSpacing: 0.5,
-    },
-    body: { flex: 1, flexDirection: isTablet ? 'row' : 'column' },
-    sidebar: {
-      width: DRAWER_WIDTH,
-      backgroundColor: colors.surface,
-      borderRightWidth: 1,
-      borderRightColor: colors.border,
-      paddingTop: 8,
-    },
-    content: { flex: 1 },
-    drawerOverlay: {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: '#000',
-      zIndex: 10,
-    },
-    drawer: {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      bottom: 0,
-      width: DRAWER_WIDTH,
-      backgroundColor: colors.surface,
-      zIndex: 20,
-      paddingTop: Platform.OS === 'ios' ? 48 : 24,
-      borderRightWidth: 1,
-      borderRightColor: colors.border,
-      shadowColor: '#000',
-      shadowOffset: { width: 4, height: 0 },
-      shadowOpacity: 0.2,
-      shadowRadius: 12,
-      elevation: 12,
-    },
-    drawerHeader: {
-      paddingHorizontal: 20,
-      paddingBottom: 16,
-      marginBottom: 4,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 10,
-    },
-    drawerLogoIcon: {
-      width: 36,
-      height: 36,
-      borderRadius: 10,
-      backgroundColor: colors.primary,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    drawerLogo: {
-      fontSize: 16,
-      fontWeight: '800',
-      color: colors.primary,
-      letterSpacing: -0.5,
-    },
-    drawerSubtitle: {
-      fontSize: 10,
-      color: colors.textSecondary,
-      marginTop: 1,
-      letterSpacing: 0.5,
-      textTransform: 'uppercase',
-    },
-    navItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingVertical: 10,
-      paddingHorizontal: 14,
-      marginHorizontal: 8,
-      marginBottom: 2,
-      borderRadius: 8,
-      gap: 10,
-    },
-    navItemActive: { backgroundColor: colors.primary },
-    navLabel: { fontSize: 14, fontWeight: '600', letterSpacing: 0.1, flex: 1 },
-    // Master File accordion
-    mfItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingVertical: 10,
-      paddingHorizontal: 14,
-      marginHorizontal: 8,
-      marginBottom: 2,
-      borderRadius: 8,
-      gap: 10,
-    },
-    mfItemActive: { backgroundColor: colors.primary },
-    mfLabel: { fontSize: 14, fontWeight: '600', letterSpacing: 0.1, flex: 1 },
-    subItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingVertical: 8,
-      paddingLeft: 46,
-      paddingRight: 14,
-      marginHorizontal: 8,
-      marginBottom: 1,
-      borderRadius: 8,
-      gap: 8,
-    },
-    subItemActive: { backgroundColor: colors.primary + '22' },
-    subDot: { width: 5, height: 5, borderRadius: 3 },
-    subLabel: { fontSize: 13, fontWeight: '500' },
-  });
+const makeStyles = (colors: any, isTablet: boolean) => StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.background },
+  header: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: colors.surface,
+    paddingHorizontal: 16, paddingVertical: 12,
+    borderBottomWidth: 1, borderBottomColor: colors.border,
+    elevation: 3, shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4,
+  },
+  hamburger: {
+    width: 38, height: 38, alignItems: 'center', justifyContent: 'center',
+    borderRadius: 8, backgroundColor: colors.background, marginRight: 12,
+  },
+  headerLeft:    { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 },
+  headerTitle:   { fontSize: 16, fontWeight: '700', color: colors.text, letterSpacing: -0.3 },
+  headerBadge:   { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.accent, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+  headerBadgeTx: { color: '#fff', fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
+  body:          { flex: 1, flexDirection: isTablet ? 'row' : 'column' },
+  sidebar:       { width: DRAWER_WIDTH, backgroundColor: colors.surface, borderRightWidth: 1, borderRightColor: colors.border, paddingTop: 8 },
+  content:       { flex: 1 },
+  drawerOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000', zIndex: 10 },
+  drawer: {
+    position: 'absolute', top: 0, left: 0, bottom: 0,
+    width: DRAWER_WIDTH, backgroundColor: colors.surface,
+    zIndex: 20, paddingTop: Platform.OS === 'ios' ? 48 : 24,
+    borderRightWidth: 1, borderRightColor: colors.border,
+    shadowColor: '#000', shadowOffset: { width: 4, height: 0 },
+    shadowOpacity: 0.2, shadowRadius: 12, elevation: 12,
+  },
+  drawerHeader: {
+    paddingHorizontal: 20, paddingBottom: 16, marginBottom: 4,
+    borderBottomWidth: 1, borderBottomColor: colors.border,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+  },
+  drawerLogoIcon:   { width: 36, height: 36, borderRadius: 10, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  drawerLogo:       { fontSize: 16, fontWeight: '800', color: colors.primary, letterSpacing: -0.5 },
+  drawerSubtitle:   { fontSize: 10, color: colors.textSecondary, marginTop: 1, letterSpacing: 0.5, textTransform: 'uppercase' },
+  navItem: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 10, paddingHorizontal: 14,
+    marginHorizontal: 8, marginBottom: 2, borderRadius: 8, gap: 10,
+  },
+  navItemActive: { backgroundColor: colors.primary },
+  navLabel:      { fontSize: 14, fontWeight: '600', letterSpacing: 0.1, flex: 1 },
+  // Master File accordion
+  mfItem: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 10, paddingHorizontal: 14,
+    marginHorizontal: 8, marginBottom: 2, borderRadius: 8, gap: 10,
+  },
+  mfItemActive:  { backgroundColor: colors.primary },
+  mfLabel:       { fontSize: 14, fontWeight: '600', letterSpacing: 0.1, flex: 1 },
+  subItem: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 8, paddingLeft: 46, paddingRight: 14,
+    marginHorizontal: 8, marginBottom: 1, borderRadius: 8, gap: 8,
+  },
+  subItemActive: { backgroundColor: colors.primary + '22' },
+  subDot:        { width: 5, height: 5, borderRadius: 3 },
+  subLabel:      { fontSize: 13, fontWeight: '500' },
+});
 
 // ─── Sidebar Content — extracted + memoized ───────────────────────────────────
 // This is the #2 performance fix — when defined inside ERPLayout,
@@ -267,27 +148,22 @@ const makeStyles = (colors: any, isTablet: boolean) =>
 // unmounts+remounts the sidebar tree on every tap. memo + extract = fixed.
 
 interface SidebarProps {
-  activeRoute: ERPRoute;
-  navigate: (route: ERPRoute) => void;
-  colors: any;
-  styles: ReturnType<typeof makeStyles>;
-  mfOpen: boolean;
-  toggleMF: () => void;
-  mfChevronAnim: Animated.Value;
+  activeRoute:    ERPRoute;
+  navigate:       (route: ERPRoute) => void;
+  colors:         any;
+  styles:         ReturnType<typeof makeStyles>;
+  mfOpen:         boolean;
+  toggleMF:       () => void;
+  mfChevronAnim:  Animated.Value;
+  limits:         ReturnType<typeof useSubscription>['limits'];
 }
 
 const SidebarContent = memo(function SidebarContent({
-  activeRoute,
-  navigate,
-  colors,
-  styles,
-  mfOpen,
-  toggleMF,
-  mfChevronAnim,
+  activeRoute, navigate, colors, styles, mfOpen, toggleMF, mfChevronAnim, limits,
 }: SidebarProps) {
+
   const chevronRotate = mfChevronAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '180deg'],
+    inputRange: [0, 1], outputRange: ['0deg', '180deg'],
   });
 
   return (
@@ -302,8 +178,8 @@ const SidebarContent = memo(function SidebarContent({
         </View>
       </View>
 
-      {/* Regular nav items */}
-      {TOP_NAV.map((item) => {
+      {/* Free nav items — always visible */}
+      {FREE_NAV.map(item => {
         const isActive = activeRoute === item.key;
         const Icon = NAV_ICON_MAP[item.key];
         return (
@@ -313,100 +189,109 @@ const SidebarContent = memo(function SidebarContent({
             onPress={() => navigate(item.key)}
             activeOpacity={0.75}
           >
-            <Icon
-              size={17}
-              color={isActive ? '#fff' : colors.textSecondary}
-              strokeWidth={isActive ? 2.5 : 2}
-            />
-            <Text
-              style={[
-                styles.navLabel,
-                { color: isActive ? '#fff' : colors.text },
-              ]}
-            >
+            <Icon size={17} color={isActive ? '#fff' : colors.textSecondary} strokeWidth={isActive ? 2.5 : 2} />
+            <Text style={[styles.navLabel, { color: isActive ? '#fff' : colors.text }]}>
               {item.label}
             </Text>
           </TouchableOpacity>
         );
       })}
 
-      {/* Master File accordion */}
-      <TouchableOpacity
-        style={[
-          styles.mfItem,
-          activeRoute === 'MasterFile' && styles.mfItemActive,
-        ]}
-        onPress={toggleMF}
-        activeOpacity={0.75}
-      >
-        <Database
-          size={17}
-          color={activeRoute === 'MasterFile' ? '#fff' : colors.textSecondary}
-          strokeWidth={activeRoute === 'MasterFile' ? 2.5 : 2}
-        />
-        <Text
-          style={[
-            styles.mfLabel,
-            { color: activeRoute === 'MasterFile' ? '#fff' : colors.text },
-          ]}
-        >
-          Master File
-        </Text>
-        <Animated.View style={{ transform: [{ rotate: chevronRotate }] }}>
-          <ChevronDown
-            size={15}
-            color={activeRoute === 'MasterFile' ? '#fff' : colors.textSecondary}
-            strokeWidth={2}
-          />
-        </Animated.View>
-      </TouchableOpacity>
+      {/* Gated nav items — LockedNavItem for Basic, normal item for Gold */}
+      {GATED_NAV.map(item => {
+        const isActive = activeRoute === item.key;
+        const Icon = NAV_ICON_MAP[item.key];
 
-      {/* Accordion sub-items — rendered when open */}
-      {mfOpen && (
-        <View>
-          {[
-            'Item Categories',
-            'VAT Types',
-            'Departments',
-            'Roles / Positions',
-            'Centers',
-            'Sub-Centers',
-            'Account Titles',
-          ].map((label) => {
-            const isActiveSub = activeRoute === 'MasterFile';
-            return (
-              <TouchableOpacity
-                key={label}
-                style={[styles.subItem, isActiveSub && styles.subItemActive]}
-                onPress={() => navigate('MasterFile')}
-                activeOpacity={0.75}
-              >
-                <View
-                  style={[
-                    styles.subDot,
-                    {
-                      backgroundColor: isActiveSub
-                        ? colors.primary
-                        : colors.textSecondary,
-                    },
-                  ]}
-                />
-                <Text
-                  style={[
-                    styles.subLabel,
-                    {
-                      color: isActiveSub
-                        ? colors.primary
-                        : colors.textSecondary,
-                    },
-                  ]}
-                >
-                  {label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        const canAccess =
+          item.key === 'HR'             ? limits.canAccessHR        :
+          item.key === 'Finance'        ? limits.canAccessFinance    :
+          item.key === 'SalesAnalytics' ? limits.canAccessAnalytics  : true;
+
+        if (!canAccess) {
+          return (
+            <LockedNavItem
+              key={item.key}
+              label={item.label}
+              icon={Icon}
+              featureName={item.featureName}
+              colors={colors}
+              styles={styles}
+            />
+          );
+        }
+
+        return (
+          <TouchableOpacity
+            key={item.key}
+            style={[styles.navItem, isActive && styles.navItemActive]}
+            onPress={() => navigate(item.key)}
+            activeOpacity={0.75}
+          >
+            <Icon size={17} color={isActive ? '#fff' : colors.textSecondary} strokeWidth={isActive ? 2.5 : 2} />
+            <Text style={[styles.navLabel, { color: isActive ? '#fff' : colors.text }]}>
+              {item.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+
+      {/* Master File — locked for Basic */}
+      {!limits.canAccessMasterFile ? (
+        <LockedNavItem
+          label="Master File"
+          icon={Database}
+          featureName="Master File"
+          colors={colors}
+          styles={styles}
+        />
+      ) : (
+        <>
+          <TouchableOpacity
+            style={[styles.mfItem, activeRoute === 'MasterFile' && styles.mfItemActive]}
+            onPress={toggleMF}
+            activeOpacity={0.75}
+          >
+            <Database size={17} color={activeRoute === 'MasterFile' ? '#fff' : colors.textSecondary} strokeWidth={activeRoute === 'MasterFile' ? 2.5 : 2} />
+            <Text style={[styles.mfLabel, { color: activeRoute === 'MasterFile' ? '#fff' : colors.text }]}>
+              Master File
+            </Text>
+            <Animated.View style={{ transform: [{ rotate: chevronRotate }] }}>
+              <ChevronDown
+                size={15}
+                color={activeRoute === 'MasterFile' ? '#fff' : colors.textSecondary}
+                strokeWidth={2}
+              />
+            </Animated.View>
+          </TouchableOpacity>
+
+          {mfOpen && (
+            <View>
+              {[
+                'Item Categories', 'VAT Types', 'Departments',
+                'Roles / Positions', 'Centers', 'Sub-Centers', 'Account Titles',
+              ].map(label => {
+                const isActiveSub = activeRoute === 'MasterFile';
+                return (
+                  <TouchableOpacity
+                    key={label}
+                    style={[styles.subItem, isActiveSub && styles.subItemActive]}
+                    onPress={() => navigate('MasterFile')}
+                    activeOpacity={0.75}
+                  >
+                    <View style={[styles.subDot, {
+                      backgroundColor: isActiveSub ? colors.primary : colors.textSecondary,
+                    }]} />
+                    <Text style={[styles.subLabel, {
+                      color: isActiveSub ? colors.primary : colors.textSecondary,
+                    }]}>
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+        </>
       )}
     </>
   );
@@ -418,83 +303,78 @@ export default function ERPLayout() {
   const { colors, theme } = useTheme();
   const { width } = Dimensions.get('window');
   const isTablet = width >= 768;
+  const { limits } = useSubscription();
 
   const [activeRoute, setActiveRoute] = useState<ERPRoute>('Dashboard');
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [unlocked, setUnlocked] = useState(false);
-  const [mfOpen, setMFOpen] = useState(false);
+  const [drawerOpen,  setDrawerOpen]  = useState(false);
+  const [unlocked,    setUnlocked]    = useState(false);
+  const [mfOpen,      setMFOpen]      = useState(false);
 
-  const drawerAnim = useRef(new Animated.Value(0)).current;
+  const drawerAnim    = useRef(new Animated.Value(0)).current;
   const mfChevronAnim = useRef(new Animated.Value(0)).current;
 
   // Memoize styles — only recalculate when colors or isTablet changes
-  const styles = React.useMemo(
-    () => makeStyles(colors, isTablet),
-    [colors, isTablet],
-  );
+  const styles = React.useMemo(() => makeStyles(colors, isTablet), [colors, isTablet]);
+
+  // ── Screen map — gated screens show LockedScreen for Basic ─────────────────
+  const SCREEN_MAP = React.useMemo((): Record<ERPRoute, React.ReactElement> => ({
+    Dashboard:      <DashboardScreen />,
+    Sales:          <SalesScreen />,
+    Inventory:      <InventoryScreen />,
+    HR:             limits.canAccessHR
+                      ? <HRScreen />
+                      : <LockedScreen featureName="HR Module" />,
+    Finance:        limits.canAccessFinance
+                      ? <FinanceScreen />
+                      : <LockedScreen featureName="Finance & Budget Planner" />,
+    SalesAnalytics: limits.canAccessAnalytics
+                      ? <SalesAnalyticsScreen />
+                      : <LockedScreen featureName="Sales Analytics" />,
+    MasterFile:     limits.canAccessMasterFile
+                      ? <MasterFileScreen />
+                      : <LockedScreen featureName="Master File" />,
+  }), [limits]);
 
   // ── Drawer ──────────────────────────────────────────────────────────────────
   const openDrawer = useCallback(() => {
     setDrawerOpen(true);
-    Animated.timing(drawerAnim, {
-      toValue: 1,
-      duration: 240,
-      useNativeDriver: true,
-    }).start();
+    Animated.timing(drawerAnim, { toValue: 1, duration: 240, useNativeDriver: true }).start();
   }, [drawerAnim]);
 
   const closeDrawer = useCallback(() => {
-    Animated.timing(drawerAnim, {
-      toValue: 0,
-      duration: 200,
-      useNativeDriver: true,
-    }).start(() => setDrawerOpen(false));
+    Animated.timing(drawerAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(
+      () => setDrawerOpen(false)
+    );
   }, [drawerAnim]);
 
   // ── Master File accordion ───────────────────────────────────────────────────
   const toggleMF = useCallback(() => {
     const toValue = mfOpen ? 0 : 1;
-    setMFOpen((prev) => !prev);
+    setMFOpen(prev => !prev);
     Animated.spring(mfChevronAnim, {
-      toValue,
-      tension: 80,
-      friction: 10,
-      useNativeDriver: true,
+      toValue, tension: 80, friction: 10, useNativeDriver: true,
     }).start();
   }, [mfOpen, mfChevronAnim]);
 
   // ── Navigation ──────────────────────────────────────────────────────────────
-  const navigate = useCallback(
-    (route: ERPRoute) => {
-      setActiveRoute(route);
-      if (!isTablet) closeDrawer();
-    },
-    [isTablet, closeDrawer],
-  );
+  const navigate = useCallback((route: ERPRoute) => {
+    setActiveRoute(route);
+    if (!isTablet) closeDrawer();
+  }, [isTablet, closeDrawer]);
 
   const drawerTranslate = drawerAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-DRAWER_WIDTH, 0],
+    inputRange: [0, 1], outputRange: [-DRAWER_WIDTH, 0],
   });
   const overlayOpacity = drawerAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 0.5],
+    inputRange: [0, 1], outputRange: [0, 0.5],
   });
 
-  const activeLabel =
-    [...TOP_NAV, { key: 'MasterFile' as ERPRoute, label: 'Master File' }].find(
-      (i) => i.key === activeRoute,
-    )?.label ?? 'ERP';
-  const ActiveIcon = NAV_ICON_MAP[activeRoute];
+  const activeLabel = ALL_NAV.find(i => i.key === activeRoute)?.label ?? 'ERP';
+  const ActiveIcon  = NAV_ICON_MAP[activeRoute];
 
   const sidebarProps: SidebarProps = {
-    activeRoute,
-    navigate,
-    colors,
-    styles,
-    mfOpen,
-    toggleMF,
-    mfChevronAnim,
+    activeRoute, navigate, colors, styles,
+    mfOpen, toggleMF, mfChevronAnim, limits,
   };
 
   return (
@@ -504,19 +384,10 @@ export default function ERPLayout() {
         backgroundColor={colors.surface}
       />
 
-      {/*<ERPUnlockOverlay
-        visible={!unlocked}
-        onUnlock={() => setUnlocked(true)}
-      />
-
-       Header */}
+      {/* Header */}
       <View style={styles.header}>
         {!isTablet && (
-          <TouchableOpacity
-            style={styles.hamburger}
-            onPress={openDrawer}
-            activeOpacity={0.7}
-          >
+          <TouchableOpacity style={styles.hamburger} onPress={openDrawer} activeOpacity={0.7}>
             <Menu size={20} color={colors.text} strokeWidth={2} />
           </TouchableOpacity>
         )}
@@ -533,32 +404,23 @@ export default function ERPLayout() {
       <View style={styles.body}>
         {/* Tablet persistent sidebar */}
         {isTablet && (
-          <ScrollView
-            style={styles.sidebar}
-            showsVerticalScrollIndicator={false}
-          >
+          <ScrollView style={styles.sidebar} showsVerticalScrollIndicator={false}>
             <SidebarContent {...sidebarProps} />
           </ScrollView>
         )}
 
         {/* Main content — pre-built map, no switch */}
-        <View style={styles.content}>{SCREEN_MAP[activeRoute]}</View>
+        <View style={styles.content}>
+          {SCREEN_MAP[activeRoute]}
+        </View>
 
         {/* Mobile drawer */}
         {!isTablet && drawerOpen && (
           <>
-            <Animated.View
-              style={[styles.drawerOverlay, { opacity: overlayOpacity }]}
-              pointerEvents="auto"
-            >
+            <Animated.View style={[styles.drawerOverlay, { opacity: overlayOpacity }]} pointerEvents="auto">
               <Pressable style={{ flex: 1 }} onPress={closeDrawer} />
             </Animated.View>
-            <Animated.View
-              style={[
-                styles.drawer,
-                { transform: [{ translateX: drawerTranslate }] },
-              ]}
-            >
+            <Animated.View style={[styles.drawer, { transform: [{ translateX: drawerTranslate }] }]}>
               <ScrollView showsVerticalScrollIndicator={false}>
                 <SidebarContent {...sidebarProps} />
               </ScrollView>

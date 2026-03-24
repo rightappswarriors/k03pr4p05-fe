@@ -1,4 +1,4 @@
-// app/(admin)/index.tsx  — BranchOverviewScreen
+// screens/(admin)/index.tsx  — BranchOverviewScreen
 // Added: Add Branch FAB + modal, subscription limit guard
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -26,7 +26,6 @@ import {
   CheckCircle2,
   Plus,
   X,
-  Building2,
 } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
@@ -440,7 +439,7 @@ export default function BranchOverviewScreen() {
   const { user, logout } = useAuth();
   const { colors } = useTheme();
   const socket = useWebSocket();
-  const { checkBranch, GuardModal } = useLimitGuard();
+  const { checkBranch, renderGuardModal } = useLimitGuard();
 
   const [branches, setBranches] = useState<Branch[]>([]);
   const [branchRevenues, setBranchRevenues] = useState<
@@ -524,7 +523,6 @@ export default function BranchOverviewScreen() {
       name: data.name!,
       address: data.address!,
       outletIds: [],
-      phone: data.phone,
       isActive: true,
       createdAt: new Date().toISOString(),
     };
@@ -765,7 +763,7 @@ export default function BranchOverviewScreen() {
         onAdd={handleAddBranch}
         colors={colors}
       />
-      <GuardModal />
+      {renderGuardModal()}
     </SafeAreaView>
   );
 }
