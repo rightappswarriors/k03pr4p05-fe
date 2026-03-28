@@ -4,6 +4,7 @@
 
 import React, { useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Dimensions,
   FlatList,
   Modal,
@@ -24,7 +25,7 @@ import {
   X,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import { employees as INITIAL_EMPLOYEES } from '@/data/erpMockData';
+import { HrService } from '@/services';
 import {
   MasterItem,
   useDepartments,
@@ -1020,10 +1021,38 @@ export default function HRScreen() {
   // Responsive columns: 1 mobile, 2 tablet, 3 desktop
   const numColumns = isDesktop ? 3 : isTablet ? 2 : 1;
 
-  const [employees, setEmployees] = useState<Employee[]>(
-    INITIAL_EMPLOYEES as Employee[],
-  );
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [search, setSearch] = useState('');
+  const [loadingEmployees, setLoadingEmployees] = useState(true);
+
+  React.useEffect(() => {
+    const loadEmployees = async () => {
+      setLoadingEmployees(true);
+      try {
+        const staff = await HrService.getAllStaffs();
+        if (Array.isArray(staff)) {
+          setEmployees(
+            staff.map((u) => ({
+              id: String(u.id),
+              name: u.fullname || u.name || 'Unknown',
+              role: u.role || 'Staff',
+              department: u.department || 'General',
+              status: 'Active',
+              salary: Number(u.salary || 0),
+              hireDate: u.createdAt || new Date().toISOString(),
+              email: u.email || 'n/a',
+            })),
+          );
+        }
+      } catch (err) {
+        console.warn('Failed to load employees', err);
+      } finally {
+        setLoadingEmployees(false);
+      }
+    };
+
+    loadEmployees();
+  }, []);
   const [deptFilter, setDeptFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState<EmployeeStatus | 'All'>(
     'All',
@@ -1177,6 +1206,17 @@ export default function HRScreen() {
       alignItems: 'center',
     },
   });
+
+  if (loadingEmployees) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={{ marginTop: 12, color: colors.textSecondary }}>
+          Loading staff data...
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>

@@ -3,6 +3,7 @@
 
 import React, { useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Dimensions,
   FlatList,
   KeyboardAvoidingView,
@@ -17,7 +18,7 @@ import {
 } from 'react-native';
 import { CheckCircle2, Filter, Plus, Search, X } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import { salesOrders as INITIAL_ORDERS } from '@/data/erpMockData';
+import { SalesService } from '@/services';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -614,10 +615,37 @@ export default function SalesScreen() {
   const { width } = Dimensions.get('window');
   const isTablet = width >= 768;
 
-  const [orders, setOrders] = useState<SalesOrder[]>(
-    INITIAL_ORDERS as SalesOrder[],
-  );
+  const [orders, setOrders] = useState<SalesOrder[]>([]);
   const [search, setSearch] = useState('');
+  const [loadingOrders, setLoadingOrders] = useState(true);
+
+  React.useEffect(() => {
+    const loadOrders = async () => {
+      setLoadingOrders(true);
+      try {
+        const transactions = await SalesService.getTransactions(1);
+        const mappedOrders: SalesOrder[] = (transactions || []).map((tx: any) => ({
+          id: tx.id || `ORD-${Date.now().toString().slice(-6)}`,
+          customer: tx.customerName || tx.customer || 'Customer',
+          product:
+            tx.itemsSold?.map((it: any) => `${it.quantity}x ${it.itemName || it.itemId}`).join(', ') ||
+            'Products',
+          qty: tx.itemsSold?.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0) || 0,
+          total: Number(tx.total || 0),
+          status: tx.status || 'Pending',
+          date: tx.createdAt ? new Date(tx.createdAt).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+          outlet: tx.outlet || 'Main Branch',
+        }));
+        setOrders(mappedOrders);
+      } catch (error) {
+        console.warn('Failed to load sales orders', error);
+      } finally {
+        setLoadingOrders(false);
+      }
+    };
+
+    loadOrders();
+  }, []);
   const [statusFilter, setStatusFilter] = useState<OrderStatus | 'All'>('All');
   const [dateFilter, setDateFilter] = useState<DateFilter>('All');
   const [filterOpen, setFilterOpen] = useState(false);
@@ -796,6 +824,15 @@ export default function SalesScreen() {
       paddingBottom: 6,
     },
   });
+
+  if (loadingOrders) {
+    return (
+      <View style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={{ marginTop: 12, color: colors.textSecondary }}>Loading sales orders...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>

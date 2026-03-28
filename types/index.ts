@@ -219,8 +219,15 @@ export interface Location {
 
 export interface AdminOutlet {
   id: string;
+  code?: string,
+  governmentTax?: number | string
   phone: string,
   branchId?: string;
+  serviceCharge?: number | string
+  latitude?: number | string,
+  longitude?: number | string,
+  bannerImage?: string,
+
   name: string;
   status: 'open' | 'closed' | 'maintenance';
   assignedCashierIds: string[];

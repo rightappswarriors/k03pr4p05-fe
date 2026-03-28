@@ -32,13 +32,7 @@ import {
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import ChartCard from '@/components/erp/ChartCard';
-import {
-  dashboardStats,
-  financeData,
-  salesTrend,
-  salesTrendByQuarter,
-  topProducts,
-} from '@/data/erpMockData';
+import { FinanceService, SalesService, MasterFileService } from '@/services';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -50,6 +44,54 @@ interface Outlet {
   name: string;
   city: string;
 }
+
+interface SalesTrendData {
+  labels: string[];
+  data: number[];
+}
+
+interface TopProduct {
+  id: string;
+  name: string;
+  revenue: number;
+  units: number;
+}
+
+interface DashboardStats {
+  totalSales: number;
+  totalOrders: number;
+  totalCustomers: number;
+}
+
+interface FinanceSummary {
+  revenue: number;
+  expenses: number;
+  profit: number;
+}
+
+const DEFAULT_SALES_TREND: SalesTrendData = {
+  labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+  data: [42, 48, 61, 67, 72, 79],
+};
+
+const DEFAULT_SALES_TREND_Q: SalesTrendData = {
+  labels: ['Q1', 'Q2', 'Q3', 'Q4'],
+  data: [160, 178, 190, 210],
+};
+
+const DEFAULT_TOP_PRODUCTS: TopProduct[] = [
+  { id: '1', name: 'Ganador Rice 25kg', revenue: 124000, units: 620 },
+  { id: '2', name: 'NFA Rice 25kg', revenue: 87000, units: 430 },
+  { id: '3', name: 'Century Tuna Flakes', revenue: 48000, units: 960 },
+  { id: '4', name: 'Sprite 1.5L', revenue: 59500, units: 730 },
+  { id: '5', name: 'Bear Brand 300g', revenue: 31000, units: 210 },
+];
+
+const DEFAULT_DASHBOARD_STATS: DashboardStats = {
+  totalSales: 850000,
+  totalOrders: 1438,
+  totalCustomers: 342,
+};
 
 // ─── Mock outlet database (simulates API) ─────────────────────────────────────
 
@@ -815,11 +857,85 @@ export default function SalesAnalyticsScreen() {
   const [period, setPeriod] = useState<Period>('Monthly');
   const [selectedOutlet, setSelectedOutlet] = useState<Outlet>(ALL_OUTLETS[0]);
   const [loading, setLoading] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState<
-    (typeof topProducts)[0] | null
-  >(null);
+  const [selectedProduct, setSelectedProduct] = useState<TopProduct | null>(null);
   const [selectedRank, setSelectedRank] = useState(1);
   const [productModalOpen, setProductModalOpen] = useState(false);
+
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats>(DEFAULT_DASHBOARD_STATS);
+  const [salesTrend, setSalesTrend] = useState<SalesTrendData>(DEFAULT_SALES_TREND);
+  const [salesTrendByQuarter, setSalesTrendByQuarter] = useState<SalesTrendData>(DEFAULT_SALES_TREND_Q);
+  const [topProducts, setTopProducts] = useState<TopProduct[]>(DEFAULT_TOP_PRODUCTS);
+  const [financeData, setFinanceData] = useState<FinanceSummary>({ revenue: 0, expenses: 0, profit: 0 });
+
+  useEffect(() => {
+    const loadAnalytics = async () => {
+      setLoading(true);
+      try {
+        const outletId = 1;
+        const ss = await SalesService.getSalesAnalytics(outletId);
+        const tx = await SalesService.getTransactions(outletId);
+        const giro = await FinanceService.getSummaryRows();
+
+        const monthMap: Record<string, number> = {};
+        const quarterMap: Record<string, number> = { Q1: 0, Q2: 0, Q3: 0, Q4: 0 };
+        const productMap: Record<string, {name:string,revenue:number,units:number}> = {};
+
+        tx.forEach((t: any) => {
+          const date = new Date(t.createdAt);
+          const m = date.toLocaleString('en-US', { month: 'short' });
+          const v = Number(t.total ?? 0);
+          monthMap[m] = (monthMap[m] || 0) + v;
+          const quarter = `Q${Math.floor(date.getMonth() / 3) + 1}`;
+          quarterMap[quarter] = (quarterMap[quarter] || 0) + v;
+          (Array.isArray(t.itemsSold) ? t.itemsSold : []).forEach((item: any) => {
+            const key = String(item.itemId);
+            if (!productMap[key]) {
+              productMap[key] = { name: `Item ${item.itemId}`, revenue: 0, units: 0 };
+            }
+            productMap[key].revenue += Number(item.quantity || 0) * Number(item.price || 0);
+            productMap[key].units += Number(item.quantity || 0);
+          });
+        });
+
+        const selectedMonths = ['Jan','Feb','Mar','Apr','May','Jun'];
+        setSalesTrend({
+          labels: selectedMonths,
+          data: selectedMonths.map((m) => Math.round(monthMap[m] || 0)),
+        });
+        setSalesTrendByQuarter({
+          labels: ['Q1','Q2','Q3','Q4'],
+          data: ['Q1','Q2','Q3','Q4'].map((q) => Math.round(quarterMap[q] || 0)),
+        });
+
+        const tops = Object.values(productMap)
+          .sort((a, b) => b.revenue - a.revenue)
+          .slice(0, 6)
+          .map((item, index) => ({ id: `${index + 1}`, name: item.name, revenue: item.revenue, units: item.units }));
+
+        setTopProducts(tops.length > 0 ? tops : DEFAULT_TOP_PRODUCTS);
+
+        const totalSales = Number(ss?.totalSales ?? tx.reduce((s:any,t:any)=>s+Number(t.total||0),0));
+        const totalExpenses = Number(giro.reduce((s:any,row:any)=>s+Number(row.total||0),0) * -1);
+        setFinanceData({
+          revenue: totalSales,
+          expenses: totalExpenses,
+          profit: totalSales - totalExpenses,
+        });
+
+        setDashboardStats({
+          totalSales: Math.round(totalSales),
+          totalOrders: tx.length,
+          totalCustomers: new Set(tx.map((t: any) => t.customerName || t.customer || '')).size,
+        });
+      } catch (err) {
+        console.warn('Sales analytics load error', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadAnalytics();
+  }, []);
 
   // Simulate loading when outlet or period changes
   const prevOutlet = useRef(selectedOutlet.id);
@@ -1130,6 +1246,14 @@ export default function SalesAnalyticsScreen() {
               <View style={styles.heroStatBox}>
                 <Text style={styles.heroStatVal}>{profitMargin}%</Text>
                 <Text style={styles.heroStatLbl}>Profit Margin</Text>
+              </View>
+              <View style={styles.heroStatBox}>
+                <Text style={styles.heroStatVal}>{dashboardStats.totalOrders}</Text>
+                <Text style={styles.heroStatLbl}>Orders this period</Text>
+              </View>
+              <View style={styles.heroStatBox}>
+                <Text style={styles.heroStatVal}>{dashboardStats.totalCustomers}</Text>
+                <Text style={styles.heroStatLbl}>Customers</Text>
               </View>
               <View style={styles.heroStatBox}>
                 <Text style={styles.heroStatVal}>

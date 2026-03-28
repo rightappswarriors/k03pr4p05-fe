@@ -43,14 +43,7 @@ import { useSubscription } from '@/contexts/SubscriptionContext';
 import { Lock } from 'lucide-react-native';
 import StatCard from '@/components/erp/StatCard';
 import ChartCard from '@/components/erp/ChartCard';
-import {
-  dashboardStats,
-  financeData,
-  inventoryDistribution,
-  salesTrend,
-  salesTrendByQuarter,
-} from '@/data/erpMockData';
-import { INITIAL_GIS_ROWS, INITIAL_SUMMARY_ROWS } from '@/data/SummaryData';
+import { InventoryService, SalesService, HrService, FinanceService } from '@/services';
 import type { GISRow, SummaryRow } from '@/data/SummaryData';
 import {
   PAGE_SIZE,
@@ -412,11 +405,41 @@ export default function DashboardScreen() {
     limits.canAccessExpenseSummary ? 'expense' : 'itemnet',
   );
   const [viewMode, setViewMode] = useState<ViewMode>('card');
-  const [gisRows, setGisRows] = useState<GISRow[]>(INITIAL_GIS_ROWS);
-  const [summaryRows] = useState<SummaryRow[]>(INITIAL_SUMMARY_ROWS);
+  const [gisRows, setGisRows] = useState<GISRow[]>([]);
+  const [summaryRows, setSummaryRows] = useState<SummaryRow[]>([]);
   const [datePreset, setDatePreset] = useState<DatePreset>('Last 6 Months');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+
+  const [dashboardStats, setDashboardStats] = useState({
+    totalSales: 0,
+    salesGrowth: 0,
+    inventoryItems: 0,
+    inventoryChange: 0,
+    employees: 0,
+    employeeChange: 0,
+    monthlyProfit: 0,
+    profitGrowth: 0,
+  });
+
+  const [inventoryDistribution, setInventoryDistribution] = useState({
+    labels: [] as string[],
+    data: [] as number[],
+  });
+
+  const [financeData, setFinanceData] = useState({
+    revenue: 0,
+    expenses: 0,
+    profit: 0,
+    revenueVsExpenses: {
+      revenue: [] as number[],
+      expenses: [] as number[],
+    },
+  });
+
+  const [salesTrendData, setSalesTrendData] = useState<number[]>([]);
+  const [isLoadingDashboardData, setIsLoadingDashboardData] = useState(true);
+
   const [modalVisible, setModalVisible] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -449,12 +472,133 @@ export default function DashboardScreen() {
     AsyncStorage.setItem(VIEW_MODE_KEY, mode).catch(() => {});
   }, []);
 
+  const buildSalesTrend = (transactions: any[]): number[] => {
+    const now = new Date();
+    const window = 6;
+    const months = Array.from({ length: window }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - (window - 1 - i), 1);
+      return `${d.getFullYear()}-${d.getMonth() + 1}`;
+    });
+
+    return months.map((monthKey) => {
+      const [year, month] = monthKey.split('-').map(Number);
+      return transactions
+        .filter((tx) => {
+          const txDate = new Date(tx.createdAt ?? tx.date ?? 0);
+          return txDate.getFullYear() === year && txDate.getMonth() + 1 === month;
+        })
+        .reduce((sum, tx) => sum + Number(tx.total ?? tx.amount ?? 0), 0);
+    });
+  };
+
+  useEffect(() => {
+    const loadDashboardData = async () => {
+      setIsLoadingDashboardData(true);
+      try {
+        const outletId = 1;
+
+        const [transactions, gisData, summaryData, inventoryData, staffData] =
+          await Promise.all([
+            SalesService.getTransactions(outletId),
+            FinanceService.getGISRows(outletId),
+            FinanceService.getSummaryRows(outletId),
+            InventoryService.getInventory(outletId),
+            HrService.getAllStaffs(),
+          ]);
+
+        const totalSales = transactions.reduce(
+          (sum, tx) => sum + Number(tx.total ?? 0),
+          0,
+        );
+        const expenses = gisData.reduce(
+          (sum: number, row: any) => sum + Number(row.amount ?? 0),
+          0,
+        );
+        const profits = totalSales - expenses;
+        const itemCount =
+          inventoryData?.inventory?.inventoryItems?.length ??
+          (inventoryData?.inventoryItems?.length ?? 0);
+        const employeesCount = staffData?.length ?? 0;
+
+        setDashboardStats({
+          totalSales,
+          salesGrowth: 0,
+          inventoryItems: itemCount,
+          inventoryChange: 0,
+          employees: employeesCount,
+          employeeChange: 0,
+          monthlyProfit: profits,
+          profitGrowth: 0,
+        });
+
+        setInventoryDistribution({
+          labels: ['Category A', 'Category B', 'Category C'],
+          data: [
+            inventoryData?.inventory?.inventoryItems?.length ?? 0,
+            0,
+            0,
+          ],
+        });
+
+        setFinanceData({
+          revenue: totalSales,
+          expenses,
+          profit: profits,
+          revenueVsExpenses: {
+            revenue: buildSalesTrend(transactions),
+            expenses:
+              gisData.length > 0
+                ? gisData.map((row: any) => Number(row.amount ?? 0))
+                : [],
+          },
+        });
+
+        setSalesTrendData(buildSalesTrend(transactions));
+
+        setGisRows(
+          (gisData ?? []).map((row: any, index: number) => ({
+            id: String(row.id ?? `g-${index}`),
+            main: row.main ?? 'Expenses',
+            group: row.group ?? 'Finance',
+            code: row.code ?? `GIS-${row.id ?? index}`,
+            description: row.description ?? row.accountTitle ?? '',
+            debit: Number(row.debit ?? row.amount ?? 0),
+            credit: Number(row.credit ?? 0),
+            total: Number(row.total ?? row.amount ?? 0),
+          })),
+        );
+
+        setSummaryRows(
+          (summaryData ?? []).map((row: any, index: number) => ({
+            id: String(row.id ?? `s-${index}`),
+            itemCode: row.itemCode ?? `S-${row.id ?? index}`,
+            description: row.description ?? `Summary ${row.id ?? index}`,
+            opExPct: 0,
+            computedCost: Number(row.amount ?? 0),
+            costContribution: Number(row.amount ?? 0) * 0.7,
+            sellingPrice: Number(row.amount ?? 0) * 1.4,
+          })),
+        );
+      } catch (error) {
+        console.error('Dashboard load error:', error);
+      } finally {
+        setIsLoadingDashboardData(false);
+      }
+    };
+
+    loadDashboardData();
+  }, []);
+
   // ── Chart data driven by date preset ─────────────────────────────────────────
   const chartData = useMemo(() => {
     const range = CHART_RANGE_LABELS[datePreset];
-    const allSales = salesTrend.data;
-    const allFinRev = financeData.revenueVsExpenses.revenue;
-    const allFinExp = financeData.revenueVsExpenses.expenses;
+    const allSales = salesTrendData.length ? salesTrendData : Array(6).fill(0);
+    const allFinRev = financeData.revenueVsExpenses.revenue.length
+      ? financeData.revenueVsExpenses.revenue
+      : Array(6).fill(0);
+    const allFinExp = financeData.revenueVsExpenses.expenses.length
+      ? financeData.revenueVsExpenses.expenses
+      : Array(6).fill(0);
 
     // Slice or derive based on preset
     const idxs = range.salesIdx;
@@ -469,7 +613,7 @@ export default function DashboardScreen() {
     );
 
     return { labels: range.labels, salesData, revData, expData };
-  }, [datePreset]);
+  }, [datePreset, salesTrendData, financeData]);
 
   // ── Filtered dataset (search) ─────────────────────────────────────────────
   const activeDataset: FinancialCardData[] = useMemo(() => {
@@ -799,7 +943,7 @@ export default function DashboardScreen() {
             label="Inventory Items"
             value={dashboardStats.inventoryItems}
             icon="inventory"
-            trend={dashboardStats.inventoryChange}
+            trend={Number(dashboardStats.inventoryChange)}
             trendUp={false}
           />
         </View>
@@ -822,7 +966,6 @@ export default function DashboardScreen() {
           />
         </View>
       </View>
-
       {/* CHARTS */}
       <View style={styles.rowBetween}>
         <Text style={styles.sectionTitle}>Analytics</Text>

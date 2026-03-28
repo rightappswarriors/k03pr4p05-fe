@@ -5,6 +5,7 @@
 
 import React, { useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Animated,
   Modal,
   ScrollView,
@@ -34,6 +35,7 @@ import {
   TableKey,
   useMasterFile,
 } from '@/contexts/MasterFileContext';
+import { MasterFileService, FinanceService } from '@/services';
 
 // ─── Table meta ───────────────────────────────────────────────────────────────
 
@@ -522,7 +524,14 @@ function TableDetailScreen({
   colors: any;
 }) {
   const mf = useMasterFile();
-  const items = mf[meta.key] as MasterItem[];
+  
+  // Use local state for service-backed tables, context for others
+  const [serviceItems, setServiceItems] = useState<MasterItem[]>([]);
+  const [loadingItems, setLoadingItems] = useState(true);
+  
+  // Fallback to context if service data not available
+  const contextItems = mf[meta.key] as MasterItem[];
+  const items = serviceItems.length > 0 ? serviceItems : contextItems;
 
   const [query, setQuery] = useState(''); // what user types
   const [search, setSearch] = useState(''); // committed query (on button tap)
@@ -531,12 +540,41 @@ function TableDetailScreen({
   const [editingItem, setEditingItem] = useState<MasterItem | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<MasterItem | null>(null);
 
-  // Initial load skeleton — fires once when screen mounts
-  const [initialLoad, setInitialLoad] = useState(true);
+  // Load items from service (if available) or context
   React.useEffect(() => {
-    const t = setTimeout(() => setInitialLoad(false), 900);
-    return () => clearTimeout(t);
-  }, []);
+    const loadItems = async () => {
+      try {
+        if (meta.key === 'itemCategories') {
+          const categories = await MasterFileService.getCategories();
+          setServiceItems(
+            categories.map((cat: any) => ({
+              id: String(cat.id),
+              label: cat.name,
+            }))
+          );
+        } else if (meta.key === 'accountTitles') {
+          const titles = await FinanceService.getAccountTitles();
+          setServiceItems(
+            titles.map((title: any) => ({
+              id: String(title.id),
+              label: title.name,
+            }))
+          );
+        } else {
+          // For tables without services, use context data
+          setServiceItems(contextItems);
+        }
+      } catch (error) {
+        console.error(`Failed to load ${meta.label}:`, error);
+        // Fallback to context on error
+        setServiceItems(contextItems);
+      } finally {
+        setLoadingItems(false);
+      }
+    };
+
+    loadItems();
+  }, [meta.key, contextItems]);
 
   // Simulate API search — only fires when user taps Search button or presses return
   const doSearch = React.useCallback(() => {
@@ -566,12 +604,50 @@ function TableDetailScreen({
     return q ? items.filter((i) => i.label.toLowerCase().includes(q)) : items;
   }, [items, search]);
 
-  const handleSave = (item: MasterItem) => {
-    if (editingItem) mf.updateItem(meta.key, item);
-    else mf.addItem(meta.key, item);
+  const handleSave = async (item: MasterItem) => {
+    try {
+      if (meta.key === 'itemCategories') {
+        if (editingItem) {
+          await MasterFileService.updateCategory(Number(editingItem.id), item.label);
+        } else {
+          await MasterFileService.createCategories([item.label]);
+        }
+        // Reload items after successful save
+        const categories = await MasterFileService.getCategories();
+        setServiceItems(
+          categories.map((cat: any) => ({
+            id: String(cat.id),
+            label: cat.name,
+          }))
+        );
+      } else if (meta.key === 'accountTitles') {
+        if (editingItem) {
+          await FinanceService.updateAccountTitle(Number(editingItem.id), item.label, '');
+        } else {
+          await FinanceService.createAccountTitle(1, item.label, ''); // orgId defaults to 1
+        }
+        // Reload items after successful save
+        const titles = await FinanceService.getAccountTitles();
+        setServiceItems(
+          titles.map((title: any) => ({
+            id: String(title.id),
+            label: title.name,
+          }))
+        );
+      } else {
+        // For tables without services, use context
+        if (editingItem) mf.updateItem(meta.key, item);
+        else mf.addItem(meta.key, item);
+      }
+    } catch (error) {
+      console.error(`Failed to save ${meta.label}:`, error);
+      // Fallback to context update on error
+      if (editingItem) mf.updateItem(meta.key, item);
+      else mf.addItem(meta.key, item);
+    }
   };
 
-  const isLoading = initialLoad || searching;
+  const isLoading = loadingItems || searching;
 
   const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
@@ -846,8 +922,39 @@ function TableDetailScreen({
         visible={!!deleteTarget}
         label={deleteTarget?.label ?? ''}
         onCancel={() => setDeleteTarget(null)}
-        onConfirm={() => {
-          if (deleteTarget) mf.deleteItem(meta.key, deleteTarget.id);
+        onConfirm={async () => {
+          if (deleteTarget) {
+            try {
+              if (meta.key === 'itemCategories') {
+                await MasterFileService.deleteCategory(Number(deleteTarget.id));
+                // Reload items after successful delete
+                const categories = await MasterFileService.getCategories();
+                setServiceItems(
+                  categories.map((cat: any) => ({
+                    id: String(cat.id),
+                    label: cat.name,
+                  }))
+                );
+              } else if (meta.key === 'accountTitles') {
+                await FinanceService.deleteAccountTitle(Number(deleteTarget.id));
+                // Reload items after successful delete
+                const titles = await FinanceService.getAccountTitles();
+                setServiceItems(
+                  titles.map((title: any) => ({
+                    id: String(title.id),
+                    label: title.name,
+                  }))
+                );
+              } else {
+                // For tables without services, use context
+                mf.deleteItem(meta.key, deleteTarget.id);
+              }
+            } catch (error) {
+              console.error(`Failed to delete ${meta.label}:`, error);
+              // Fallback to context delete on error
+              mf.deleteItem(meta.key, deleteTarget.id);
+            }
+          }
           setDeleteTarget(null);
         }}
         colors={colors}

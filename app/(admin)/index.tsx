@@ -517,16 +517,17 @@ export default function BranchOverviewScreen() {
   };
 
   const handleAddBranch = async (data: Partial<Branch>) => {
-    // TODO: replace with AdminService.createBranch(data) when backend ready
-    const mock: Branch = {
-      id: `b_${Date.now()}`,
-      name: data.name!,
-      address: data.address!,
-      outletIds: [],
-      isActive: true,
-      createdAt: new Date().toISOString(),
-    };
-    setBranches((prev) => [...prev, mock]);
+    try {
+      const newBranch = await AdminService.createBranch({
+        name: data.name!,
+        address: data.address!,
+        phone: data.phone,
+      });
+      setBranches((prev) => [...prev, newBranch]);
+    } catch (error) {
+      console.error('Failed to create branch:', error);
+      // TODO: Show error toast to user
+    }
   };
 
   const openAddModal = () => {

@@ -19,8 +19,7 @@ import { X } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import ChartCard from '@/components/erp/ChartCard';
 import { BudgetModule } from '@/components/finance/BudgetModule';
-import { INITIAL_GIS_ROWS } from '@/data/SummaryData';
-import { financeData } from '@/data/erpMockData';
+import { FinanceService } from '@/services';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -76,21 +75,29 @@ const YOY_LABELS: Record<
   },
 };
 
-function getYearData(year: Year) {
+type FinanceSeries = {
+  labels: string[];
+  revenue: number[];
+  expenses: number[];
+};
+
+const DEFAULT_FINANCE_SERIES: FinanceSeries = {
+  labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+  revenue: [420000, 460000, 510000, 550000, 580000, 620000],
+  expenses: [270000, 290000, 305000, 320000, 330000, 345000],
+};
+
+function getYearData(year: Year, series: FinanceSeries) {
   const m = YEAR_MULTIPLIERS[year];
-  const rev = financeData.revenueVsExpenses.revenue.map((v) =>
-    Math.round(v * m),
-  );
-  const exp = financeData.revenueVsExpenses.expenses.map((v) =>
-    Math.round(v * m),
-  );
+  const rev = series.revenue.map((v) => Math.round(v * m));
+  const exp = series.expenses.map((v) => Math.round(v * m));
   const totalRev = rev.reduce((s, v) => s + v, 0);
   const totalExp = exp.reduce((s, v) => s + v, 0);
   return {
     revenue: totalRev,
     expenses: totalExp,
     profit: totalRev - totalExp,
-    labels: financeData.revenueVsExpenses.labels,
+    labels: series.labels,
     revenueByMonth: rev,
     expensesByMonth: exp,
   };
@@ -431,8 +438,52 @@ export default function FinanceScreen() {
   const [activeYear, setActiveYear] = useState<Year>('2026');
   const [selectedMonth, setSelectedMonth] = useState<MonthDetail | null>(null);
   const [monthModalOpen, setMonthModalOpen] = useState(false);
+  const [financeSeries, setFinanceSeries] = useState<FinanceSeries>(DEFAULT_FINANCE_SERIES);
+  const [gisRows, setGisRows] = useState<any[]>([]);
+  const [loadingFinance, setLoadingFinance] = useState(true);
 
-  const data = useMemo(() => getYearData(activeYear), [activeYear]);
+  React.useEffect(() => {
+    const loadFinance = async () => {
+      setLoadingFinance(true);
+      try {
+        const [rows, gis] = await Promise.all([
+          FinanceService.getSummaryRows(),
+          FinanceService.getGISRows(),
+        ]);
+
+        setGisRows(gis || []);
+
+        if (Array.isArray(rows) && rows.length > 0) {
+          const fiscalLabels = rows
+            .slice(0, 12)
+            .map((item, idx) => item.itemCode || `M${idx + 1}`);
+          const revenue = rows
+            .slice(0, 12)
+            .map((item) => Number(item.sellingPrice ?? 0));
+          const expenses = rows
+            .slice(0, 12)
+            .map((item) => Number(item.computedCost ?? 0));
+
+          setFinanceSeries({
+            labels:
+              fiscalLabels.length > 0 ? fiscalLabels : DEFAULT_FINANCE_SERIES.labels,
+            revenue:
+              revenue.length > 0 ? revenue : DEFAULT_FINANCE_SERIES.revenue,
+            expenses:
+              expenses.length > 0 ? expenses : DEFAULT_FINANCE_SERIES.expenses,
+          });
+        }
+      } catch (error) {
+        console.warn('Unable to load finance data', error);
+      } finally {
+        setLoadingFinance(false);
+      }
+    };
+
+    loadFinance();
+  }, []);
+
+  const data = useMemo(() => getYearData(activeYear, financeSeries), [activeYear, financeSeries]);
   const yoy = YOY_LABELS[activeYear];
   const profitMargin =
     data.revenue > 0 ? ((data.profit / data.revenue) * 100).toFixed(1) : '0';
@@ -717,7 +768,7 @@ export default function FinanceScreen() {
 
       {/* ── Budget module ─────────────────────────────────────────────────────── */}
       <Text style={styles.sectionTitle}>Budget Planning</Text>
-      <BudgetModule gisRows={INITIAL_GIS_ROWS} colors={colors} />
+      <BudgetModule gisRows={gisRows} colors={colors} />
 
       {/* Month detail modal */}
       <MonthDetailModal

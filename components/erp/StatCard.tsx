@@ -23,7 +23,7 @@ interface StatCardProps {
   label: string;
   value: string | number;
   icon: IconKey;
-  trend?: string;
+  trend?: string | number;
   trendUp?: boolean;
   accent?: boolean;
 }

@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import {
   ArrowLeft, MapPin, PhilippinePeso, Users,
-  Circle, Plus, X, Navigation, Map
+  Circle, Plus, X, Navigation, Map, Camera, Image as ImageIcon
 } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { AdminService } from '@/services/adminService';
@@ -27,6 +27,7 @@ import { SkeletonPulse } from '.';
 import {
   validatePercentage, validatePHPhone, validateOutletCode,
 } from '@/utils/validators';
+import * as ImagePicker from 'expo-image-picker';
 
 export const FILTERS: DateRangeFilter[] = ['today', 'this_week', 'this_month', 'custom'];
 const OUTLET_TYPES    = ['retail', 'wholesale', 'service'];
@@ -197,8 +198,9 @@ interface OutletFormData {
   governmentTax: string;
   serviceCharge: string;
   wifiSSID:      string;
-  latitude:      number | null;
-  longitude:     number | null;
+  latitude:      number | undefined;
+  longitude:     number | undefined;
+  bannerImage:   string;
 }
 
 function AddOutletModal({ visible, onClose, onAdd, colors, branchName }: {
@@ -212,11 +214,13 @@ function AddOutletModal({ visible, onClose, onAdd, colors, branchName }: {
     name: '', address: '', phone: '', code: '',
     outletType: 'retail', status: 'open', isActive: true,
     governmentTax: '', serviceCharge: '', wifiSSID: '',
-    latitude: null, longitude: null,
+    latitude: undefined, longitude: undefined, bannerImage: '',
   });
   const [showMapPicker, setShowMapPicker] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState('');
+
+  const set = (field: keyof OutletFormData) => (value: any) => setForm(prev => ({ ...prev, [field]: value }));
 
   // Per-field validation errors — shown on blur
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -253,8 +257,42 @@ function AddOutletModal({ visible, onClose, onAdd, colors, branchName }: {
       </Text>
     ) : null;
 
-  const set = (field: keyof OutletFormData) => (value: any) =>
-    setForm(prev => ({ ...prev, [field]: value }));
+  const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      alert('Sorry, we need camera roll permissions to make this work!');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [16, 9],
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      setForm(prev => ({ ...prev, bannerImage: result.assets[0].uri }));
+    }
+  };
+
+  const takePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      alert('Sorry, we need camera permissions to make this work!');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [16, 9],
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      setForm(prev => ({ ...prev, bannerImage: result.assets[0].uri }));
+    }
+  };
 
   // Auto-generate outlet code from name
   const autoCode = (name: string) => {
@@ -285,7 +323,7 @@ function AddOutletModal({ visible, onClose, onAdd, colors, branchName }: {
     setLoading(true);
     try {
       await onAdd({ ...form, code: finalCode });
-      setForm({ name: '', address: '', phone: '', code: '', outletType: 'retail', status: 'open', isActive: true, governmentTax: '', serviceCharge: '', wifiSSID: '', latitude: null, longitude: null });
+      setForm({ name: '', address: '', phone: '', code: '', outletType: 'retail', status: 'open', isActive: true, governmentTax: '', serviceCharge: '', wifiSSID: '', latitude: undefined, longitude: undefined, bannerImage: '' });
       setError('');
       onClose();
     } catch { setError('Failed to create outlet. Please try again.'); }
@@ -333,6 +371,37 @@ function AddOutletModal({ visible, onClose, onAdd, colors, branchName }: {
                   placeholderTextColor={colors.textSecondary}
                   value={form.address} onChangeText={set('address')}
                   multiline numberOfLines={3} textAlignVertical="top" />
+
+                {/* ── Banner Image ──────────────────────────────── */}
+                <Text style={[aom.label, labelStyle]}>BANNER IMAGE (optional)</Text>
+                {form.bannerImage ? (
+                  <View style={[aom.imagePreview, { borderColor: colors.border, backgroundColor: colors.background }]}>
+                    <ImageIcon size={40} color={colors.primary} />
+                    <Text style={[aom.imageText, { color: colors.textSecondary }]}>
+                      Banner selected
+                    </Text>
+                    <TouchableOpacity
+                      style={aom.removeImageBtn}
+                      onPress={() => setForm(prev => ({ ...prev, bannerImage: '' }))}
+                    >
+                      <X size={16} color={colors.error} strokeWidth={2} />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={aom.imagePicker}>
+                    <TouchableOpacity style={[aom.imageBtn, { borderColor: colors.border, backgroundColor: colors.background }]} onPress={pickImage}>
+                      <ImageIcon size={20} color={colors.primary} strokeWidth={2} />
+                      <Text style={[aom.imageBtnText, { color: colors.primary }]}>Gallery</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[aom.imageBtn, { borderColor: colors.border, backgroundColor: colors.background }]} onPress={takePhoto}>
+                      <Camera size={20} color={colors.primary} strokeWidth={2} />
+                      <Text style={[aom.imageBtnText, { color: colors.primary }]}>Camera</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                <Text style={[aom.hint, { color: colors.textSecondary }]}>
+                  Banner image will be displayed at the top of the outlet in the POS app.
+                </Text>
 
                 <Text style={[aom.label, labelStyle]}>PHONE (optional)</Text>
                 <TextInput
@@ -455,14 +524,13 @@ function AddOutletModal({ visible, onClose, onAdd, colors, branchName }: {
                   </Text>
                   {form.latitude && (
                     <TouchableOpacity
-                      onPress={() => setForm(p => ({ ...p, latitude: null, longitude: null }))}
+                      onPress={() => setForm(p => ({ ...p, latitude: undefined, longitude: undefined }))}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
                       <X size={14} color={colors.error} strokeWidth={2} />
                     </TouchableOpacity>
                   )}
                 </TouchableOpacity>
-
                 {error ? <Text style={[aom.error, { color: colors.error }]}>{error}</Text> : null}
 
                 <TouchableOpacity
@@ -506,6 +574,12 @@ const aom = StyleSheet.create({
   toggleSub:      { fontSize: 11, marginTop: 1 },
   locationBtn:    { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, marginBottom: 14 },
   locationBtnTxt: { fontSize: 14 },
+  imagePicker:    { flexDirection: 'row', gap: 12, marginBottom: 14 },
+  imageBtn:       { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderRadius: 10, paddingVertical: 12 },
+  imageBtnText:   { fontSize: 14, fontWeight: '600' },
+  imagePreview:   { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderRadius: 10, padding: 12, marginBottom: 14 },
+  imageText:      { flex: 1, fontSize: 14 },
+  removeImageBtn: { padding: 4 },
   error:          { fontSize: 12, marginBottom: 8 },
   submitBtn:      { borderRadius: 12, paddingVertical: 15, alignItems: 'center', marginTop: 8 },
   submitTxt:      { color: '#fff', fontSize: 15, fontWeight: '800' },
@@ -572,19 +646,25 @@ export default function OutletListScreen() {
   const handleRefresh = async () => { setRefreshing(true); await loadOutlets(); setRefreshing(false); };
 
   const handleAddOutlet = async (data: OutletFormData) => {
-    // TODO: replace with AdminService.createOutlet(branchId, data)
-    const mock: AdminOutlet = {
-      id: `o_${Date.now()}`,
-      name: data.name,
-      address: data.address,
-      phone: data.phone,
-      outletType: data.outletType as any,
-      status: data.status as any,
-      createdAt: new Date().toISOString(),
-      assignedCashierIds: [],
-      currentCashiers: [],
-    };
-    setOutlets(prev => [...prev, mock]);
+    try {
+      const newOutlet = await AdminService.createOutlet(branchId!, {
+        name: data.name,
+        address: data.address,
+        phone: data.phone,
+        outletType: data.outletType,
+        status: data.status,
+        code: data.code,
+        governmentTax: parseFloat(data.governmentTax) || 0,
+        serviceCharge: parseFloat(data.serviceCharge) || 0,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        bannerImage: data.bannerImage,
+      });
+      setOutlets(prev => [...prev, newOutlet]);
+    } catch (error) {
+      console.error('Failed to create outlet:', error);
+      throw error; // Re-throw to show error in modal
+    }
   };
 
   const openAddModal = () => {

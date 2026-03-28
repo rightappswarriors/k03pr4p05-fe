@@ -39,9 +39,12 @@ import {
   PhilippinePeso,
   ChevronLeft,
   ChevronRight,
+  Check,
 } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { AdminService } from '@/services/adminService';
+import { InventoryService } from '@/services/inventoryService';
+import { HrService } from '@/services/hrService';
 import { AdminTransaction, Cashier, OutletRevenue } from '@/types';
 import { DateRangeFilter, getDateRange } from '@/utils/dateHelpers';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -867,11 +870,17 @@ export default function OutletDetailScreen() {
   const [currentCashiers, setCurrentCashiers] = useState<Cashier[]>([]);
   const [assignedStaff, setAssignedStaff] = useState<Cashier[]>([]);
   const [transactions, setTransactions] = useState<AdminTransaction[]>([]);
+  const [outletItems, setOutletItems] = useState<any[]>([]);
+  const [availableItems, setAvailableItems] = useState<any[]>([]);
+  const [availableStaff, setAvailableStaff] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showAssignItemsModal, setShowAssignItemsModal] = useState(false);
+  const [selectedItems, setSelectedItems] = useState<string[]>([]);
+  const [selectedStaff, setSelectedStaff] = useState<string[]>([]);
   const [txnView, setTxnView] = useState<TxnView>('card');
   const [txnPage, setTxnPage] = useState(1);
   const [activeFilter, setActiveFilter] = useState<DateRangeFilter>('today');
@@ -891,16 +900,22 @@ export default function OutletDetailScreen() {
     try {
       setLoading(true);
       const { startDate, endDate } = getDateRange(activeFilter);
-      const [cashiers, txns, allStaff, revenue] = await Promise.all([
+      const [cashiers, txns, allStaff, revenue, outletItemsData, availableItemsData, availableStaffData] = await Promise.all([
         AdminService.getCurrentCashiers(outletId),
         AdminService.getRecentTransactions(outletId, 50),
         AdminService.getCashiersByOutlet(outletId),
         AdminService.getOutletRevenue(outletId, startDate, endDate),
+        AdminService.getItemsByOutlet(outletId),
+        InventoryService.getItems(),
+        HrService.getAllStaffs(),
       ]);
       setCurrentCashiers(cashiers);
       setTransactions(txns);
       setAssignedStaff(allStaff);
       setOutletRevenue(revenue);
+      setOutletItems(outletItemsData);
+      setAvailableItems(availableItemsData);
+      setAvailableStaff(availableStaffData);
       setTxnPage(1);
     } finally {
       setLoading(false);
@@ -911,6 +926,28 @@ export default function OutletDetailScreen() {
     setRefreshing(true);
     await loadData();
     setRefreshing(false);
+  };
+
+  const handleAssignItems = async () => {
+    try {
+      await AdminService.assignItemsToOutlet(outletId, selectedItems);
+      setSelectedItems([]);
+      setShowAssignItemsModal(false);
+      await loadData(); // Refresh data
+    } catch (error) {
+      console.error('Failed to assign items:', error);
+    }
+  };
+
+  const handleAssignStaff = async () => {
+    try {
+      await AdminService.assignStaffToOutlet(outletId, selectedStaff);
+      setSelectedStaff([]);
+      setShowAssignModal(false);
+      await loadData(); // Refresh data
+    } catch (error) {
+      console.error('Failed to assign staff:', error);
+    }
   };
 
   // Pagination
@@ -1490,44 +1527,65 @@ export default function OutletDetailScreen() {
             }}
           >
             <Text style={[st.sectionTitle, { color: colors.text }]}>
-              Outlet Inventory
+              {outletItems.length} Items Assigned
             </Text>
             <TouchableOpacity
               style={[st.addBtn, { backgroundColor: colors.primary }]}
-              onPress={() =>
-                router.push({
-                  pathname: '/(admin)/add-inventory-item',
-                  params: { outletId, outletName },
-                })
-              }
+              onPress={() => setShowAssignItemsModal(true)}
               activeOpacity={0.85}
             >
               <Plus size={14} color="#fff" strokeWidth={2.5} />
-              <Text style={st.addBtnTxt}>Add Item</Text>
+              <Text style={st.addBtnTxt}>Assign Items</Text>
             </TouchableOpacity>
           </View>
-          <View
-            style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-          >
-            <Package size={48} color={colors.border} strokeWidth={1} />
-            <Text
-              style={[
-                st.emptyTxt,
-                { color: colors.textSecondary, marginTop: 12 },
-              ]}
+          {outletItems.length === 0 ? (
+            <View
+              style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
             >
-              No items yet
-            </Text>
-            <Text
-              style={{
-                fontSize: 12,
-                color: colors.textSecondary,
-                marginTop: 4,
+              <Package size={48} color={colors.border} strokeWidth={1} />
+              <Text
+                style={[
+                  st.emptyTxt,
+                  { color: colors.textSecondary, marginTop: 12 },
+                ]}
+              >
+                No items assigned
+              </Text>
+              <Text
+                style={{
+                  fontSize: 12,
+                  color: colors.textSecondary,
+                  marginTop: 4,
+                }}
+              >
+                Tap Assign Items to add items to this outlet
+              </Text>
+            </View>
+          ) : (
+            <ScrollView
+              contentContainerStyle={{
+                padding: 16,
+                paddingTop: 4,
+                paddingBottom: 40,
               }}
             >
-              Tap Add Item to assign items to this outlet
-            </Text>
-          </View>
+              {outletItems.map((item) => (
+                <View
+                  key={item.id}
+                  style={[st.itemCard, { backgroundColor: colors.card }]}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={[st.itemName, { color: colors.text }]}>
+                      {item.name}
+                    </Text>
+                    <Text style={[st.itemDetail, { color: colors.textSecondary }]}>
+                      Stock: {item.quantity} | Price: {formatPeso(item.price)}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+          )}
         </View>
       )}
 
@@ -1548,29 +1606,12 @@ export default function OutletDetailScreen() {
             </Text>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <TouchableOpacity
-                style={[
-                  st.addBtn,
-                  {
-                    backgroundColor: colors.card,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                  },
-                ]}
-                onPress={() => setShowCreateModal(true)}
-                activeOpacity={0.85}
-              >
-                <UserPlus size={14} color={colors.primary} strokeWidth={2.5} />
-                <Text style={[st.addBtnTxt, { color: colors.primary }]}>
-                  New
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
                 style={[st.addBtn, { backgroundColor: colors.primary }]}
                 onPress={() => setShowAssignModal(true)}
                 activeOpacity={0.85}
               >
                 <Plus size={14} color="#fff" strokeWidth={2.5} />
-                <Text style={st.addBtnTxt}>Assign</Text>
+                <Text style={st.addBtnTxt}>Assign Staff</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1718,6 +1759,146 @@ export default function OutletDetailScreen() {
         outletId={outletId ?? ''}
         colors={colors}
       />
+
+      {/* Assign Items Modal */}
+      <Modal visible={showAssignItemsModal} transparent animationType="slide">
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowAssignItemsModal(false)} />
+          <View style={[st.modalSheet, { backgroundColor: colors.surface }]}>
+            <View style={[st.modalHandle, { backgroundColor: colors.border }]} />
+            <View style={[st.modalHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[st.modalTitle, { color: colors.text }]}>Assign Items to Outlet</Text>
+              <TouchableOpacity onPress={() => setShowAssignItemsModal(false)}>
+                <X size={20} color={colors.textSecondary} strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={st.modalBody}>
+              {availableItems.map((item) => {
+                const isSelected = selectedItems.includes(item.id.toString());
+                const isAssigned = outletItems.some(oi => oi.id === item.id);
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={[st.itemRow, { backgroundColor: colors.card, opacity: isAssigned ? 0.5 : 1 }]}
+                    onPress={() => {
+                      if (isAssigned) return;
+                      setSelectedItems(prev =>
+                        isSelected
+                          ? prev.filter(id => id !== item.id.toString())
+                          : [...prev, item.id.toString()]
+                      );
+                    }}
+                    disabled={isAssigned}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[st.itemName, { color: colors.text }]}>{item.name}</Text>
+                      <Text style={[st.itemDetail, { color: colors.textSecondary }]}>
+                        {formatPeso(item.price)}
+                      </Text>
+                    </View>
+                    {isAssigned ? (
+                      <Text style={[st.assignedText, { color: colors.success }]}>Assigned</Text>
+                    ) : (
+                      <View style={[st.checkbox, isSelected && { backgroundColor: colors.primary }]}>
+                        {isSelected && <Check size={16} color="#fff" strokeWidth={3} />}
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <View style={[st.modalFooter, { borderTopColor: colors.border }]}>
+              <TouchableOpacity
+                style={[st.modalBtn, st.modalCancelBtn, { borderColor: colors.border }]}
+                onPress={() => {
+                  setSelectedItems([]);
+                  setShowAssignItemsModal(false);
+                }}
+              >
+                <Text style={[st.modalBtnText, { color: colors.text }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[st.modalBtn, st.modalConfirmBtn, { backgroundColor: colors.primary }]}
+                onPress={handleAssignItems}
+                disabled={selectedItems.length === 0}
+              >
+                <Text style={[st.modalBtnText, { color: '#fff' }]}>
+                  Assign {selectedItems.length} Items
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Assign Staff Modal */}
+      <Modal visible={showAssignModal} transparent animationType="slide">
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowAssignModal(false)} />
+          <View style={[st.modalSheet, { backgroundColor: colors.surface }]}>
+            <View style={[st.modalHandle, { backgroundColor: colors.border }]} />
+            <View style={[st.modalHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[st.modalTitle, { color: colors.text }]}>Assign Staff to Outlet</Text>
+              <TouchableOpacity onPress={() => setShowAssignModal(false)}>
+                <X size={20} color={colors.textSecondary} strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={st.modalBody}>
+              {availableStaff.map((staff) => {
+                const isSelected = selectedStaff.includes(staff.id.toString());
+                const isAssigned = assignedStaff.some(as => as.id === staff.id);
+                return (
+                  <TouchableOpacity
+                    key={staff.id}
+                    style={[st.staffRow, { backgroundColor: colors.card, opacity: isAssigned ? 0.5 : 1 }]}
+                    onPress={() => {
+                      if (isAssigned) return;
+                      setSelectedStaff(prev =>
+                        isSelected
+                          ? prev.filter(id => id !== staff.id.toString())
+                          : [...prev, staff.id.toString()]
+                      );
+                    }}
+                    disabled={isAssigned}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[st.staffName, { color: colors.text }]}>{staff.fullname}</Text>
+                      <Text style={[st.staffDetail, { color: colors.textSecondary }]}>{staff.email}</Text>
+                    </View>
+                    {isAssigned ? (
+                      <Text style={[st.assignedText, { color: colors.success }]}>Assigned</Text>
+                    ) : (
+                      <View style={[st.checkbox, isSelected && { backgroundColor: colors.primary }]}>
+                        {isSelected && <Check size={16} color="#fff" strokeWidth={3} />}
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <View style={[st.modalFooter, { borderTopColor: colors.border }]}>
+              <TouchableOpacity
+                style={[st.modalBtn, st.modalCancelBtn, { borderColor: colors.border }]}
+                onPress={() => {
+                  setSelectedStaff([]);
+                  setShowAssignModal(false);
+                }}
+              >
+                <Text style={[st.modalBtnText, { color: colors.text }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[st.modalBtn, st.modalConfirmBtn, { backgroundColor: colors.primary }]}
+                onPress={handleAssignStaff}
+                disabled={selectedStaff.length === 0}
+              >
+                <Text style={[st.modalBtnText, { color: '#fff' }]}>
+                  Assign {selectedStaff.length} Staff
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1872,4 +2053,48 @@ const st = StyleSheet.create({
   },
   staffName: { fontSize: 14, fontWeight: '700' },
   staffEmail: { fontSize: 12, marginTop: 1 },
+  itemCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 8,
+    borderWidth: 1,
+  },
+  itemName: { fontSize: 14, fontWeight: '700' },
+  itemDetail: { fontSize: 12, marginTop: 1 },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusText: { fontSize: 11, fontWeight: '600' },
+  modalSheet: { borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '80%' },
+  modalHandle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginTop: 10, marginBottom: 4 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1 },
+  modalTitle: { fontSize: 17, fontWeight: '800' },
+  modalBody: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 20 },
+  modalFooter: { flexDirection: 'row', padding: 20, borderTopWidth: 1, gap: 12 },
+  modalBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
+  modalCancelBtn: { borderWidth: 1, backgroundColor: 'transparent' },
+  modalConfirmBtn: {},
+  modalBtnText: { fontSize: 15, fontWeight: '700' },
+  itemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 8,
+    borderWidth: 1,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#ccc',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  assignedText: { fontSize: 12, fontWeight: '600' },
 });

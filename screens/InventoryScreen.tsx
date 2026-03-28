@@ -8,6 +8,7 @@
 
 import React, { useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Dimensions,
   FlatList,
   Modal,
@@ -28,7 +29,7 @@ import {
   X,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import { inventoryItems as INITIAL_ITEMS } from '@/data/erpMockData';
+import { InventoryService } from '@/services';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1156,10 +1157,41 @@ export default function InventoryScreen() {
   const { width } = Dimensions.get('window');
   const isTablet = width >= 768;
 
-  const [items, setItems] = useState<InventoryItem[]>(
-    INITIAL_ITEMS as InventoryItem[],
-  );
+  const [items, setItems] = useState<InventoryItem[]>([]);
   const [search, setSearch] = useState('');
+  const [loadingItems, setLoadingItems] = useState(true);
+
+  React.useEffect(() => {
+    const loadInventory = async () => {
+      setLoadingItems(true);
+      try {
+        const inventory = await InventoryService.getItems();
+        setItems(
+          (inventory || []).map((it: any) => ({
+            id: String(it.id),
+            name: it.name || 'Unnamed item',
+            sku: it.barcode || it.sku || `SKU-${it.id}`,
+            stock: Number(it.stock || 0),
+            minStock: Number(it.minStock || 10),
+            category: it.categoryId ? String(it.categoryId) : 'General',
+            price: Number(it.price || 0),
+            lowStock: Number(it.stock || 0) < Number(it.minStock || 10),
+            costLines: [],
+            opExPct: 0.1,
+            priceB: Number(it.price || 0) * 0.9,
+            priceC: Number(it.price || 0) * 0.85,
+            vatExempt: Boolean(it.vatExempt),
+          })),
+        );
+      } catch (error) {
+        console.warn('Unable to load inventory items', error);
+      } finally {
+        setLoadingItems(false);
+      }
+    };
+
+    loadInventory();
+  }, []);
   const [stockFilter, setStockFilter] = useState<StockFilter>('All');
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('All');
   const [filterOpen, setFilterOpen] = useState(false);
@@ -1350,6 +1382,17 @@ export default function InventoryScreen() {
       paddingBottom: 6,
     },
   });
+
+  if (loadingItems) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}> 
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={{ marginTop: 12, color: colors.textSecondary }}>
+          Loading inventory...
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
