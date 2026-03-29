@@ -5,8 +5,11 @@ import type { AuthState, User } from '@/types';
 import { Alert, Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { getGraphQLClient } from '@/utils/constants';
+import { graphQLRequest } from './apiClient';
 import { gql } from 'graphql-request';
 import { DeviceService } from './deviceService';
+import { OrganizationService } from './organizationService';
+import { SubscriptionService } from './subscriptionService';
 interface AuthPayload {
   user: User;
   token: string;
@@ -91,6 +94,16 @@ export class AuthService {
             username
             role
             fullname
+            isVerified
+            orgId
+            org {
+              id
+              name
+              subscription {
+                id
+                plan
+              }
+            }
           }
           token
           refresh_token
@@ -109,13 +122,136 @@ export class AuthService {
       const { user, token, refresh_token } = response.login;
 
       await secureStorage.setItemAsync(AUTH_TOKEN_KEY, token);
-      await secureStorage.setItemAsync(REFRESH_TOKEN_KEY, refresh_token),
-        await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
+      await secureStorage.setItemAsync(REFRESH_TOKEN_KEY, refresh_token);
+      await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
       return user;
     } catch (error) {
       //console.error('GraphQL login error:', error);
       throw new Error('Invalid email or password');
     }
+  }
+
+  static async registerUser({
+    fullname,
+    email,
+    password,
+    contactNumber,
+  }: {
+    fullname: string;
+    email: string;
+    password: string;
+    contactNumber?: string;
+  }): Promise<any> {
+    const REGISTER_MUTATION = gql`
+      mutation RegisterUser($fullname: String!, $email: String!, $password: String!, $contactNumber: String) {
+        registerUser(fullname: $fullname, email: $email, password: $password, contactNumber: $contactNumber) {
+          id
+          fullname
+          email
+          isVerified
+          orgId
+        }
+      }
+    `;
+    
+    try {
+       const response = await graphQLRequest<{ registerUser: any }>(
+        REGISTER_MUTATION,
+        { fullname, email, password, contactNumber },
+        { skipAuth: true }
+      );
+
+      return response.registerUser;
+    } catch (error: any) {
+      console.log("❌ Register Error:", error);
+
+      // If using GraphQL (like graphql-request or Apollo)
+      if (error.response) {
+        console.log("📛 GraphQL Errors:", error.response.errors);
+      }
+
+      if (error.message) {
+        console.log("📩 Message:", error.message);
+      }
+
+      throw error; // rethrow so UI can still handle it
+    }
+
+  }
+
+  static async verifyEmail(email: string, code: string): Promise<User> {
+    try {
+      console.log(`[AuthService] Verifying email: ${email}`)
+      
+      const VERIFY_MUTATION = gql`
+        mutation VerifyEmail($email: String!, $code: String!) {
+          verifyEmail(email: $email, code: $code) {
+            user {
+              id
+              email
+              username
+              role
+              fullname
+              isVerified
+              orgId
+              org {
+                id
+                name
+                subscription {
+                  id
+                  plan
+                }
+              }
+            }
+            token
+            refresh_token
+          }
+        }
+      `;
+
+      const response = await graphQLRequest<{ verifyEmail: AuthPayload }>(
+        VERIFY_MUTATION,
+        { email, code },
+        { skipAuth: true }
+      );
+
+      const { user, token, refresh_token } = response.verifyEmail;
+
+      await secureStorage.setItemAsync(AUTH_TOKEN_KEY, token);
+      await secureStorage.setItemAsync(REFRESH_TOKEN_KEY, refresh_token);
+      await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
+
+      console.log(`[AuthService] ✅ Email verified successfully for:`, user.email)
+      return user;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      console.error(`[AuthService] ❌ Email verification error:`, errorMessage)
+      throw error
+    }
+  }
+
+  static async resendOTP(email: string): Promise<string> {
+    const RESEND_OTP_MUTATION = gql`
+      mutation ResendOTP($email: String!) {
+        resendOTP(email: $email)
+      }
+    `;
+
+    const response = await graphQLRequest<{ resendOTP: string }>(
+      RESEND_OTP_MUTATION,
+      { email },
+      { skipAuth: true }
+    );
+
+    return response.resendOTP;
+  }
+
+  static async createOrganization(name: string): Promise<any> {
+    return OrganizationService.createOrganization(name);
+  }
+
+  static async createSubscription(orgId: number, plan: 'BASIC' | 'GOLD'): Promise<any> {
+    return SubscriptionService.createSubscription(orgId, plan);
   }
 
   /**
@@ -195,6 +331,16 @@ export class AuthService {
             profilePhoto
             fullname
             role
+            isVerified
+            orgId
+            org {
+              id
+              name
+              subscription {
+                id
+                plan
+              }
+            }
           }
         }
       `;
@@ -203,9 +349,19 @@ export class AuthService {
         {},
         { Authorization: `Bearer ${accessToken}` }
       )) as any;
-      return response.ME;
+
+      const user = response.ME;
+      if (user) {
+        await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
+      }
+
+      return user;
     } catch (error) {
-      Alert.alert("Something went wrong", "Log in again.")
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      if (process.env.EXPO_PUBLIC_ENV === 'development') {
+        console.warn('[AuthService] fetchCurrentUser error:', errorMessage)
+      }
+      // Don't show alert during onboarding - silently return null for token refresh
       return null;
     }
   }

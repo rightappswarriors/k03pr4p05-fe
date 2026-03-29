@@ -42,6 +42,12 @@
       "./app.plugin.js",
       "expo-web-browser",
       "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "The app accesses your photos to let you share them with your friends."
+        }
+      ],
 
       [
         "react-native-permissions",
@@ -67,7 +73,7 @@
       "USER_DATA_KEY": "user_data",
       "BIOMETRIC_ENABLED_KEY": "biometric_enable",
       "REFRESH_TOKEN_KEY": "refreshToken",
-      "API_BASE_URL": "http://localhost:4000",
+      "API_BASE_URL":"http://10.0.2.2:4000/graphql",
       "router": {},
       "eas": {
         "projectId": "de692183-0733-4faa-812c-e994f6995fe1"

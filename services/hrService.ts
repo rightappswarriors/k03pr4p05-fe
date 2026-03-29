@@ -85,4 +85,25 @@ export class HrService {
     const res = await graphQLRequest<{ getAllStaffs: any[] }>(QUERY);
     return res.getAllStaffs;
   }
+
+  static async checkUserTimeInStatus(userId: string): Promise<{ hasTimeIn: boolean }> {
+    const QUERY = gql`
+      query CheckUserTimeInStatus($userId: ID!) {
+        checkUserTimeInStatus(userId: $userId) {
+          hasTimeIn
+          lastTimeIn
+          status
+        }
+      }
+    `;
+
+    try {
+      const res = await graphQLRequest<{ checkUserTimeInStatus: any }>(QUERY, { userId });
+      return res.checkUserTimeInStatus;
+    } catch (error) {
+      console.error('Failed to check time-in status:', error);
+      // Return false if query fails
+      return { hasTimeIn: false };
+    }
+  }
 }

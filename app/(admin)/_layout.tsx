@@ -22,8 +22,25 @@ export default function AdminTabLayout() {
       (user?.role === 'CASHIER' || user?.role === 'STAFF')
     ) {
       router.replace('/(tabs)');
+    } else if (
+      !isLoading &&
+      isAuthenticated &&
+      (user?.role === 'ADMIN' || user?.role === 'OWNER') &&
+      !user?.orgId
+    ) {
+      // User has admin/owner role but no organization - redirect to onboarding
+      router.replace('/onboarding?step=organization');
+    } else if (
+      !isLoading &&
+      isAuthenticated &&
+      (user?.role === 'ADMIN' || user?.role === 'OWNER') &&
+      user?.orgId &&
+      !user?.org?.subscription?.id
+    ) {
+      // User has organization but no subscription - redirect to subscription step
+      router.replace('/onboarding?step=subscription');
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, isLoading, user]);
   return (
     <SubscriptionProvider>
       <WebSocketProvider>

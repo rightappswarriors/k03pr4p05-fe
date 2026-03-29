@@ -900,7 +900,15 @@ export default function OutletDetailScreen() {
     try {
       setLoading(true);
       const { startDate, endDate } = getDateRange(activeFilter);
-      const [cashiers, txns, allStaff, revenue, outletItemsData, availableItemsData, availableStaffData] = await Promise.all([
+      const [
+        cashiers,
+        txns,
+        allStaff,
+        revenue,
+        outletItemsData,
+        availableItemsData,
+        availableStaffData,
+      ] = await Promise.all([
         AdminService.getCurrentCashiers(outletId),
         AdminService.getRecentTransactions(outletId, 50),
         AdminService.getCashiersByOutlet(outletId),
@@ -1540,7 +1548,11 @@ export default function OutletDetailScreen() {
           </View>
           {outletItems.length === 0 ? (
             <View
-              style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+              style={{
+                flex: 1,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
             >
               <Package size={48} color={colors.border} strokeWidth={1} />
               <Text
@@ -1578,7 +1590,9 @@ export default function OutletDetailScreen() {
                     <Text style={[st.itemName, { color: colors.text }]}>
                       {item.name}
                     </Text>
-                    <Text style={[st.itemDetail, { color: colors.textSecondary }]}>
+                    <Text
+                      style={[st.itemDetail, { color: colors.textSecondary }]}
+                    >
                       Stock: {item.quantity} | Price: {formatPeso(item.price)}
                     </Text>
                   </View>
@@ -1762,12 +1776,28 @@ export default function OutletDetailScreen() {
 
       {/* Assign Items Modal */}
       <Modal visible={showAssignItemsModal} transparent animationType="slide">
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowAssignItemsModal(false)} />
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            justifyContent: 'flex-end',
+          }}
+        >
+          <TouchableOpacity
+            style={{ flex: 1 }}
+            activeOpacity={1}
+            onPress={() => setShowAssignItemsModal(false)}
+          />
           <View style={[st.modalSheet, { backgroundColor: colors.surface }]}>
-            <View style={[st.modalHandle, { backgroundColor: colors.border }]} />
-            <View style={[st.modalHeader, { borderBottomColor: colors.border }]}>
-              <Text style={[st.modalTitle, { color: colors.text }]}>Assign Items to Outlet</Text>
+            <View
+              style={[st.modalHandle, { backgroundColor: colors.border }]}
+            />
+            <View
+              style={[st.modalHeader, { borderBottomColor: colors.border }]}
+            >
+              <Text style={[st.modalTitle, { color: colors.text }]}>
+                Assign Items to Outlet
+              </Text>
               <TouchableOpacity onPress={() => setShowAssignItemsModal(false)}>
                 <X size={20} color={colors.textSecondary} strokeWidth={2} />
               </TouchableOpacity>
@@ -1775,32 +1805,53 @@ export default function OutletDetailScreen() {
             <ScrollView contentContainerStyle={st.modalBody}>
               {availableItems.map((item) => {
                 const isSelected = selectedItems.includes(item.id.toString());
-                const isAssigned = outletItems.some(oi => oi.id === item.id);
+                const isAssigned = outletItems.some((oi) => oi.id === item.id);
                 return (
                   <TouchableOpacity
                     key={item.id}
-                    style={[st.itemRow, { backgroundColor: colors.card, opacity: isAssigned ? 0.5 : 1 }]}
+                    style={[
+                      st.itemRow,
+                      {
+                        backgroundColor: colors.card,
+                        opacity: isAssigned ? 0.5 : 1,
+                      },
+                    ]}
                     onPress={() => {
                       if (isAssigned) return;
-                      setSelectedItems(prev =>
+                      setSelectedItems((prev) =>
                         isSelected
-                          ? prev.filter(id => id !== item.id.toString())
-                          : [...prev, item.id.toString()]
+                          ? prev.filter((id) => id !== item.id.toString())
+                          : [...prev, item.id.toString()],
                       );
                     }}
                     disabled={isAssigned}
                   >
                     <View style={{ flex: 1 }}>
-                      <Text style={[st.itemName, { color: colors.text }]}>{item.name}</Text>
-                      <Text style={[st.itemDetail, { color: colors.textSecondary }]}>
+                      <Text style={[st.itemName, { color: colors.text }]}>
+                        {item.name}
+                      </Text>
+                      <Text
+                        style={[st.itemDetail, { color: colors.textSecondary }]}
+                      >
                         {formatPeso(item.price)}
                       </Text>
                     </View>
                     {isAssigned ? (
-                      <Text style={[st.assignedText, { color: colors.success }]}>Assigned</Text>
+                      <Text
+                        style={[st.assignedText, { color: colors.success }]}
+                      >
+                        Assigned
+                      </Text>
                     ) : (
-                      <View style={[st.checkbox, isSelected && { backgroundColor: colors.primary }]}>
-                        {isSelected && <Check size={16} color="#fff" strokeWidth={3} />}
+                      <View
+                        style={[
+                          st.checkbox,
+                          isSelected && { backgroundColor: colors.primary },
+                        ]}
+                      >
+                        {isSelected && (
+                          <Check size={16} color="#fff" strokeWidth={3} />
+                        )}
                       </View>
                     )}
                   </TouchableOpacity>
@@ -1809,16 +1860,26 @@ export default function OutletDetailScreen() {
             </ScrollView>
             <View style={[st.modalFooter, { borderTopColor: colors.border }]}>
               <TouchableOpacity
-                style={[st.modalBtn, st.modalCancelBtn, { borderColor: colors.border }]}
+                style={[
+                  st.modalBtn,
+                  st.modalCancelBtn,
+                  { borderColor: colors.border },
+                ]}
                 onPress={() => {
                   setSelectedItems([]);
                   setShowAssignItemsModal(false);
                 }}
               >
-                <Text style={[st.modalBtnText, { color: colors.text }]}>Cancel</Text>
+                <Text style={[st.modalBtnText, { color: colors.text }]}>
+                  Cancel
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[st.modalBtn, st.modalConfirmBtn, { backgroundColor: colors.primary }]}
+                style={[
+                  st.modalBtn,
+                  st.modalConfirmBtn,
+                  { backgroundColor: colors.primary },
+                ]}
                 onPress={handleAssignItems}
                 disabled={selectedItems.length === 0}
               >
@@ -1833,12 +1894,28 @@ export default function OutletDetailScreen() {
 
       {/* Assign Staff Modal */}
       <Modal visible={showAssignModal} transparent animationType="slide">
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowAssignModal(false)} />
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            justifyContent: 'flex-end',
+          }}
+        >
+          <TouchableOpacity
+            style={{ flex: 1 }}
+            activeOpacity={1}
+            onPress={() => setShowAssignModal(false)}
+          />
           <View style={[st.modalSheet, { backgroundColor: colors.surface }]}>
-            <View style={[st.modalHandle, { backgroundColor: colors.border }]} />
-            <View style={[st.modalHeader, { borderBottomColor: colors.border }]}>
-              <Text style={[st.modalTitle, { color: colors.text }]}>Assign Staff to Outlet</Text>
+            <View
+              style={[st.modalHandle, { backgroundColor: colors.border }]}
+            />
+            <View
+              style={[st.modalHeader, { borderBottomColor: colors.border }]}
+            >
+              <Text style={[st.modalTitle, { color: colors.text }]}>
+                Assign Staff to Outlet
+              </Text>
               <TouchableOpacity onPress={() => setShowAssignModal(false)}>
                 <X size={20} color={colors.textSecondary} strokeWidth={2} />
               </TouchableOpacity>
@@ -1846,30 +1923,58 @@ export default function OutletDetailScreen() {
             <ScrollView contentContainerStyle={st.modalBody}>
               {availableStaff.map((staff) => {
                 const isSelected = selectedStaff.includes(staff.id.toString());
-                const isAssigned = assignedStaff.some(as => as.id === staff.id);
+                const isAssigned = assignedStaff.some(
+                  (as) => as.id === staff.id,
+                );
                 return (
                   <TouchableOpacity
                     key={staff.id}
-                    style={[st.staffRow, { backgroundColor: colors.card, opacity: isAssigned ? 0.5 : 1 }]}
+                    style={[
+                      st.staffRow,
+                      {
+                        backgroundColor: colors.card,
+                        opacity: isAssigned ? 0.5 : 1,
+                      },
+                    ]}
                     onPress={() => {
                       if (isAssigned) return;
-                      setSelectedStaff(prev =>
+                      setSelectedStaff((prev) =>
                         isSelected
-                          ? prev.filter(id => id !== staff.id.toString())
-                          : [...prev, staff.id.toString()]
+                          ? prev.filter((id) => id !== staff.id.toString())
+                          : [...prev, staff.id.toString()],
                       );
                     }}
                     disabled={isAssigned}
                   >
                     <View style={{ flex: 1 }}>
-                      <Text style={[st.staffName, { color: colors.text }]}>{staff.fullname}</Text>
-                      <Text style={[st.staffDetail, { color: colors.textSecondary }]}>{staff.email}</Text>
+                      <Text style={[st.staffName, { color: colors.text }]}>
+                        {staff.fullname}
+                      </Text>
+                      <Text
+                        style={[
+                          st.staffDetail,
+                          { color: colors.textSecondary },
+                        ]}
+                      >
+                        {staff.email}
+                      </Text>
                     </View>
                     {isAssigned ? (
-                      <Text style={[st.assignedText, { color: colors.success }]}>Assigned</Text>
+                      <Text
+                        style={[st.assignedText, { color: colors.success }]}
+                      >
+                        Assigned
+                      </Text>
                     ) : (
-                      <View style={[st.checkbox, isSelected && { backgroundColor: colors.primary }]}>
-                        {isSelected && <Check size={16} color="#fff" strokeWidth={3} />}
+                      <View
+                        style={[
+                          st.checkbox,
+                          isSelected && { backgroundColor: colors.primary },
+                        ]}
+                      >
+                        {isSelected && (
+                          <Check size={16} color="#fff" strokeWidth={3} />
+                        )}
                       </View>
                     )}
                   </TouchableOpacity>
@@ -1878,16 +1983,26 @@ export default function OutletDetailScreen() {
             </ScrollView>
             <View style={[st.modalFooter, { borderTopColor: colors.border }]}>
               <TouchableOpacity
-                style={[st.modalBtn, st.modalCancelBtn, { borderColor: colors.border }]}
+                style={[
+                  st.modalBtn,
+                  st.modalCancelBtn,
+                  { borderColor: colors.border },
+                ]}
                 onPress={() => {
                   setSelectedStaff([]);
                   setShowAssignModal(false);
                 }}
               >
-                <Text style={[st.modalBtnText, { color: colors.text }]}>Cancel</Text>
+                <Text style={[st.modalBtnText, { color: colors.text }]}>
+                  Cancel
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[st.modalBtn, st.modalConfirmBtn, { backgroundColor: colors.primary }]}
+                style={[
+                  st.modalBtn,
+                  st.modalConfirmBtn,
+                  { backgroundColor: colors.primary },
+                ]}
                 onPress={handleAssignStaff}
                 disabled={selectedStaff.length === 0}
               >
@@ -1956,7 +2071,7 @@ const st = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
   },
-  
+
   filterTabText: { fontSize: 11, fontWeight: '600' },
   metricsRow: { flexDirection: 'row', gap: 10, marginBottom: 14 },
   metricCard: {
@@ -2052,6 +2167,7 @@ const st = StyleSheet.create({
     marginRight: 10,
   },
   staffName: { fontSize: 14, fontWeight: '700' },
+  staffDetail: { fontSize: 8 },
   staffEmail: { fontSize: 12, marginTop: 1 },
   itemCard: {
     flexDirection: 'row',
@@ -2069,13 +2185,41 @@ const st = StyleSheet.create({
     borderRadius: 12,
   },
   statusText: { fontSize: 11, fontWeight: '600' },
-  modalSheet: { borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '80%' },
-  modalHandle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginTop: 10, marginBottom: 4 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1 },
+  modalSheet: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '80%',
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+  },
   modalTitle: { fontSize: 17, fontWeight: '800' },
   modalBody: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 20 },
-  modalFooter: { flexDirection: 'row', padding: 20, borderTopWidth: 1, gap: 12 },
-  modalBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
+  modalFooter: {
+    flexDirection: 'row',
+    padding: 20,
+    borderTopWidth: 1,
+    gap: 12,
+  },
+  modalBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
   modalCancelBtn: { borderWidth: 1, backgroundColor: 'transparent' },
   modalConfirmBtn: {},
   modalBtnText: { fontSize: 15, fontWeight: '700' },

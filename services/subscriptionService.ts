@@ -20,23 +20,36 @@ export class SubscriptionService {
   }
 
   static async createSubscription(orgId: number, plan: 'BASIC' | 'GOLD'): Promise<any> {
-    const MUTATION = gql`
-      mutation CreateSubscription($orgId: Int, $plan: SubscriptionPlan) {
-        createSubscription(orgId: $orgId, plan: $plan) {
-          id
-          orgId
-          plan
-          createdAt
-          updatedAt
+    try {
+      console.log(`[Frontend] Creating subscription for org ${orgId} with plan ${plan}...`)
+      
+      const MUTATION = gql`
+        mutation CreateSubscription($orgId: Int!, $plan: SubscriptionPlan!) {
+          createSubscription(orgId: $orgId, plan: $plan) {
+            id
+            orgId
+            plan
+            createdAt
+          }
         }
-      }
-    `;
+      `;
 
-    const response = await graphQLRequest<{ createSubscription: any }>(MUTATION, {
-      orgId,
-      plan,
-    });
-    return response.createSubscription;
+      const response = await graphQLRequest<{ createSubscription: any }>(MUTATION, {
+        orgId,
+        plan,
+      });
+      
+      if (!response?.createSubscription) {
+        throw new Error('No subscription returned from server')
+      }
+      
+      console.log(`[Frontend] ✅ Subscription created:`, response.createSubscription)
+      return response.createSubscription;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      console.error(`[Frontend] ❌ Subscription creation error:`, errorMessage)
+      throw new Error(errorMessage || 'Failed to create subscription')
+    }
   }
 
   static async updateSubscription(orgId: number, plan: 'BASIC' | 'GOLD'): Promise<any> {

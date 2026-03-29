@@ -41,7 +41,9 @@ export default function LoginScreenDefault({ isDesktop }: Props) {
 
     try {
       await login(email, password);
-      router.replace('/(tabs)');
+      // Don't redirect here - let the navigation logic in index.tsx handle routing
+      // based on user onboarding state
+      router.replace('/');
     } catch (error) {
       Alert.alert('Login Failed', (error as Error).message);
     } finally {
@@ -152,6 +154,14 @@ export default function LoginScreenDefault({ isDesktop }: Props) {
             )}
           </TouchableOpacity>
         </View>
+        <View style={{ alignItems: 'center', marginTop: 16 }}>
+          <Text style={{ color: colors.textSecondary }}>New here?</Text>
+          <TouchableOpacity onPress={() => router.replace('/onboarding')}>
+            <Text style={{ color: colors.accent, fontWeight: '700' }}>
+              Get Started
+            </Text>
+          </TouchableOpacity>
+        </View>
         <View style={styles.poweredBy}>
           <Text style={{ color: colors.textSecondary }}>Powered By:</Text>
           <Image
@@ -174,6 +184,7 @@ const styles = StyleSheet.create({
     padding: 24,
     justifyContent: 'center',
   },
+
   header: {
     alignItems: 'center',
     marginBottom: 48,

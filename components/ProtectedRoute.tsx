@@ -14,18 +14,17 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   useEffect(() => {
     if (isLoading) return; // ✅ wait until auth finishes
 
+    // Allow access to onboarding screen for unauthenticated users
+    if (pathname === '/onboarding') {
+      return;
+    }
+
     if (!isAuthenticated || !user) {
-      // only redirect if not already on login
       if (pathname !== '/login') {
         router.replace('/login');
       }
-    } else {
-      // authenticated: go to tabs if not already there
-      if (!pathname.startsWith('/(tabs)')) {
-        router.replace('/(tabs)');
-      }
     }
-  }, [isLoading, user, isAuthenticated, router]);
+  }, [isLoading, user, isAuthenticated, router, pathname]);
 
   if (isLoading) {
     return (

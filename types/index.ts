@@ -21,12 +21,26 @@ export interface Category {
   color?: string;
   brand?: string;
 }
+export interface Subscription {
+  id: string;
+  plan: 'BASIC' | 'GOLD';
+}
+
+export interface OrganizationInfo {
+  id: string;
+  name: string;
+  subscription?: Subscription | null;
+}
+
 export interface User {
   id: string;
   email: string;
-  fullname?: string,
+  fullname?: string;
   name: string;
   role: 'OWNER' | 'CASHIER' | 'STAFF' | 'MANAGER' | 'ADMIN';
+  isVerified?: boolean;
+  orgId?: number | null;
+  org?: OrganizationInfo | null;
   assignedOutletId?: string; // For cashiers
   createdAt: string;
   profilePhoto?: string;

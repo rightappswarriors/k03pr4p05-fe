@@ -8,6 +8,7 @@ interface AuthContextType extends AuthState {
   loginWithBiometric: () => Promise<void>;
   logout: (outletId: number) => Promise<void>;  // ✅ add outletId here
   removeUser: () => Promise<void>;
+  refreshUser: () => Promise<void>;
   setBiometricEnabled: (enabled: boolean) => Promise<void>;
   isBiometricSupported: () => Promise<boolean>;
   isBiometricEnabled: () => Promise<boolean>;
@@ -29,6 +30,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const checkAuthStatus = async () => {
+    try {
+      setLoading(true)
+      const user = await AuthService.fetchCurrentUser();
+      setAuthState({
+        user,
+        isLoading: false,
+        isAuthenticated: !!user,
+      });
+    } catch (error) {
+      setAuthState({
+        user: null,
+        isLoading: false,
+        isAuthenticated: false,
+      });
+    } finally {
+      setLoading(false)
+    }
+  };
+
+  const refreshUser = async () => {
     try {
       setLoading(true)
       const user = await AuthService.fetchCurrentUser();
@@ -135,6 +156,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loginWithBiometric,
         logout,
         removeUser,
+        refreshUser,
         setBiometricEnabled,
         isBiometricSupported,
         isBiometricEnabled,

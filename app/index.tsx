@@ -9,15 +9,37 @@ import { useTheme } from '@/contexts/ThemeContext'
 export default function SplashScreen() {
      const { colors } = useTheme()
      const { user, isLoading, isAuthenticated } = useAuth()
-     const [isDesktop, setIsDesktop] = useState(false)
      useEffect(() => {
-          if (Platform.OS === 'web') setIsDesktop(true)
+          if (Platform.OS === 'web') {
+               // Desktop-specific logic could go here if needed
+          }
           if (!isLoading) {
-               if (isAuthenticated && (user?.role === "CASHIER" || user?.role === "STAFF")) {
-                    // Route based on the User role
+               if (!isAuthenticated || !user) {
+                    router.replace('/login')
+                    return
+               }
+
+               // Check onboarding state and redirect accordingly
+               if (!user.isVerified) {
+                    router.replace('/onboarding?step=verify')
+                    return
+               }
+
+               if (!user.orgId) {
+                    router.replace('/onboarding?step=organization')
+                    return
+               }
+
+               if (!user.org?.subscription?.id) {
+                    router.replace('/onboarding?step=subscription')
+                    return
+               }
+
+               // Fully onboarded - route based on role
+               if (user.role === 'CASHIER' || user.role === 'STAFF') {
                     router.replace('/(tabs)')
-               } else if (isAuthenticated && (user?.role === "OWNER" || user?.role === "MANAGER"  || user?.role === "ADMIN")) {
-                    router.replace("/(admin)")
+               } else if (user.role === 'OWNER' || user.role === 'MANAGER' || user.role === 'ADMIN') {
+                    router.replace('/(admin)')
                } else {
                     router.replace('/login')
                }

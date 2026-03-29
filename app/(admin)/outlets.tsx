@@ -8,7 +8,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, SafeAreaView, ScrollView,
   TouchableOpacity, RefreshControl, Modal, TextInput,
-  KeyboardAvoidingView, Platform, Animated, Switch,
+  KeyboardAvoidingView, Platform, Switch,
 } from 'react-native';
 import {
   ArrowLeft, MapPin, PhilippinePeso, Users,
@@ -213,7 +213,7 @@ function AddOutletModal({ visible, onClose, onAdd, colors, branchName }: {
   const [form, setForm] = useState<OutletFormData>({
     name: '', address: '', phone: '', code: '',
     outletType: 'retail', status: 'open', isActive: true,
-    governmentTax: '', serviceCharge: '', wifiSSID: '',
+    governmentTax: '12', serviceCharge: '', wifiSSID: '',
     latitude: undefined, longitude: undefined, bannerImage: '',
   });
   const [showMapPicker, setShowMapPicker] = useState(false);
@@ -323,7 +323,7 @@ function AddOutletModal({ visible, onClose, onAdd, colors, branchName }: {
     setLoading(true);
     try {
       await onAdd({ ...form, code: finalCode });
-      setForm({ name: '', address: '', phone: '', code: '', outletType: 'retail', status: 'open', isActive: true, governmentTax: '', serviceCharge: '', wifiSSID: '', latitude: undefined, longitude: undefined, bannerImage: '' });
+      setForm({ name: '', address: '', phone: '', code: '', outletType: 'retail', status: 'open', isActive: true, governmentTax: '12', serviceCharge: '', wifiSSID: '', latitude: undefined, longitude: undefined, bannerImage: '' });
       setError('');
       onClose();
     } catch { setError('Failed to create outlet. Please try again.'); }

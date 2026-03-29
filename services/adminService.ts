@@ -446,6 +446,12 @@ export class AdminService {
   }
 
   static async createBranch(data: { name: string; address: string; phone?: string }): Promise<Branch> {
+    // Check if user has an organization
+    const currentUser = await AuthService.getCurrentUser();
+    if (!currentUser?.orgId) {
+      throw new Error('You must complete organization setup before creating branches');
+    }
+
     const CREATE_BRANCH_MUTATION = gql`
       mutation CreateBranch($name: String!, $address: String!, $phone: String) {
         createBranch(name: $name, address: $address, phone: $phone) {
@@ -493,7 +499,7 @@ export class AdminService {
   static async createOutlet(branchId: string, data: {
     name: string;
     address: string;
-    phone: string;
+    phone?: string;
     outletType: string;
     status: string;
     code: string;
@@ -508,7 +514,7 @@ export class AdminService {
         $branchId: ID!
         $name: String!
         $address: String!
-        $phone: String!
+        $phone: String
         $outletType: OutletType!
         $status: OutletStatus!
         $code: String!
