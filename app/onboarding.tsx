@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   ScrollView,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '@/contexts/ThemeContext';
 import { AuthService } from '@/services/authService';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -98,11 +99,12 @@ export default function OnboardingScreen({
   const goToComplete = async () => {
     try {
       console.log('[Onboarding] goToComplete: Starting completion process');
-      if (refreshUser) {
-        console.log('[Onboarding] goToComplete: Refreshing user data...');
-        await refreshUser();
-        console.log('[Onboarding] goToComplete: User data refreshed successfully');
-      }
+      // User is already logged in after subscription, no need to refresh
+      // if (refreshUser) {
+      //   console.log('[Onboarding] goToComplete: Refreshing user data...');
+      //   await refreshUser();
+      //   console.log('[Onboarding] goToComplete: User data refreshed successfully');
+      // }
       if (onboarding) {
         console.log('[Onboarding] goToComplete: Setting onboarding states...');
         await onboarding.setHasOnboarded(true);
@@ -113,7 +115,7 @@ export default function OnboardingScreen({
       router.replace('/(admin)/erp');
     } catch (error) {
       console.error('[Onboarding] goToComplete: Error during completion:', error);
-      // Even if refreshUser fails, try to navigate - the admin layout will handle auth checks
+      // Even if something fails, try to navigate - the admin layout will handle auth checks
       console.log('[Onboarding] goToComplete: Attempting navigation despite error...');
       router.replace('/(admin)/erp');
     }
@@ -133,6 +135,8 @@ export default function OnboardingScreen({
         password,
         contactNumber,
       });
+      // Store password temporarily for auto-login after subscription
+      await AsyncStorage.setItem('temp_password', password);
       setStep(2);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed');
@@ -211,6 +215,14 @@ export default function OnboardingScreen({
     setError('');
     try {
       await AuthService.createSubscription(organizationId, plan);
+      
+      // Auto-login after subscription completion
+      const tempPassword = await AsyncStorage.getItem('temp_password');
+      if (tempPassword) {
+        await AuthService.login(email, tempPassword);
+        await AsyncStorage.removeItem('temp_password');
+      }
+      
       await goToComplete();
     } catch (err) {
       setError(

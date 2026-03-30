@@ -43,7 +43,12 @@ import { useSubscription } from '@/contexts/SubscriptionContext';
 import { Lock } from 'lucide-react-native';
 import StatCard from '@/components/erp/StatCard';
 import ChartCard from '@/components/erp/ChartCard';
-import { InventoryService, SalesService, HrService, FinanceService } from '@/services';
+import {
+  InventoryService,
+  SalesService,
+  HrService,
+  FinanceService,
+} from '@/services';
 import type { GISRow, SummaryRow } from '@/data/SummaryData';
 import {
   PAGE_SIZE,
@@ -79,6 +84,7 @@ import {
   useVatTypeLabels,
   useAccountTitleLabels,
 } from '@/contexts/MasterFileContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 // CENTER_DEPT_OPTIONS and SUB_CENTER_OPTIONS are now live from MasterFileContext
@@ -476,7 +482,11 @@ export default function DashboardScreen() {
     const now = new Date();
     const window = 6;
     const months = Array.from({ length: window }, (_, i) => {
-      const d = new Date(now.getFullYear(), now.getMonth() - (window - 1 - i), 1);
+      const d = new Date(
+        now.getFullYear(),
+        now.getMonth() - (window - 1 - i),
+        1,
+      );
       return `${d.getFullYear()}-${d.getMonth() + 1}`;
     });
 
@@ -485,23 +495,32 @@ export default function DashboardScreen() {
       return transactions
         .filter((tx) => {
           const txDate = new Date(tx.createdAt ?? tx.date ?? 0);
-          return txDate.getFullYear() === year && txDate.getMonth() + 1 === month;
+          return (
+            txDate.getFullYear() === year && txDate.getMonth() + 1 === month
+          );
         })
         .reduce((sum, tx) => sum + Number(tx.total ?? tx.amount ?? 0), 0);
     });
   };
-
+  const { user } = useAuth();
+  if (!user?.orgId) {
+    return null;
+  }
   useEffect(() => {
     const loadDashboardData = async () => {
+      // Type guard to ensure orgId is defined
+      if (!user?.orgId) {
+        return;
+      }
       setIsLoadingDashboardData(true);
       try {
         const outletId = 1;
 
         const [transactions, gisData, summaryData, inventoryData, staffData] =
           await Promise.all([
-            SalesService.getTransactions(outletId),
-            FinanceService.getGISRows(outletId),
-            FinanceService.getSummaryRows(outletId),
+            SalesService.getTransactionsByOrgId(user.orgId),
+            FinanceService.getGISRows(user.orgId),
+            FinanceService.getSummaryRows(user.orgId),
             InventoryService.getInventory(outletId),
             HrService.getAllStaffs(),
           ]);
@@ -517,7 +536,8 @@ export default function DashboardScreen() {
         const profits = totalSales - expenses;
         const itemCount =
           inventoryData?.inventory?.inventoryItems?.length ??
-          (inventoryData?.inventoryItems?.length ?? 0);
+          inventoryData?.inventoryItems?.length ??
+          0;
         const employeesCount = staffData?.length ?? 0;
 
         setDashboardStats({
@@ -533,11 +553,7 @@ export default function DashboardScreen() {
 
         setInventoryDistribution({
           labels: ['Category A', 'Category B', 'Category C'],
-          data: [
-            inventoryData?.inventory?.inventoryItems?.length ?? 0,
-            0,
-            0,
-          ],
+          data: [inventoryData?.inventory?.inventoryItems?.length ?? 0, 0, 0],
         });
 
         setFinanceData({

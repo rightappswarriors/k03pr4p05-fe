@@ -35,6 +35,39 @@ export class SalesService {
     return response.getTransactionsByStoreId;
   }
 
+  static async getTransactionsByOrgId(orgId: number, startDate?: string, endDate?: string): Promise<any[]> {
+    const QUERY = gql`
+      query GetTransactionsByOrgId($orgId: Int!, $startDate: String, $endDate: String) {
+        getTransactionsByOrgId(orgId: $orgId, startDate: $startDate, endDate: $endDate) {
+          id
+          outletId
+          cashierId
+          total
+          subtotal
+          vatAmount
+          cashReceived
+          change
+          paymentMethod
+          paymentType
+          status
+          createdAt
+          itemsSold {
+            itemId
+            quantity
+            price
+          }
+        }
+      }
+    `;
+
+    const response = await graphQLRequest<{ getTransactionsByOrgId: any[] }>(QUERY, {
+      orgId,
+      startDate,
+      endDate,
+    });
+    return response.getTransactionsByOrgId;
+  }
+
   static async createTransaction(data: {
     outletId: number;
     cashierId: number;

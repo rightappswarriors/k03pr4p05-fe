@@ -39,7 +39,7 @@ export interface User {
   name: string;
   role: 'OWNER' | 'CASHIER' | 'STAFF' | 'MANAGER' | 'ADMIN';
   isVerified?: boolean;
-  orgId?: number | null;
+  orgId?: number;
   org?: OrganizationInfo | null;
   assignedOutletId?: string; // For cashiers
   createdAt: string;

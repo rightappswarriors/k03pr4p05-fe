@@ -76,6 +76,7 @@ export function useAuth() {
     isDeviceBound: authState.deviceBound,
     isWiFiAuthorized: authState.wifiAuthorized,
     user: authState.user,
+    orgId: authState.user?.orgId,
     token: authState.accessToken,
     isLoading,
     login,

@@ -217,9 +217,10 @@ export class AuthService {
 
       const { user, token, refresh_token } = response.verifyEmail;
 
-      await secureStorage.setItemAsync(AUTH_TOKEN_KEY, token);
-      await secureStorage.setItemAsync(REFRESH_TOKEN_KEY, refresh_token);
-      await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
+      // Don't store tokens during onboarding - will login after subscription
+      // await secureStorage.setItemAsync(AUTH_TOKEN_KEY, token);
+      // await secureStorage.setItemAsync(REFRESH_TOKEN_KEY, refresh_token);
+      // await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
 
       console.log(`[AuthService] ✅ Email verified successfully for:`, user.email)
       return user;
