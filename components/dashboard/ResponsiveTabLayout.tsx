@@ -3,16 +3,23 @@ import React, {useState, useEffect} from 'react'
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StyleSheet, useWindowDimensions, Text, TouchableOpacity, View } from 'react-native'
 import { useTheme } from '@/contexts/ThemeContext'
+import { Platform } from 'react-native'
 interface ResponsiveTabLayoutProps {
      children: React.ReactNode
 }
 
-const TABS = [
-     { name: 'index', title: 'POS', icon: ShoppingCart },
-     { name: 'history', title: 'Orders', icon: History },
-     { name: 'printer', title: 'Printer', icon: Printer },
-     { name: 'settings', title: 'Settings', icon: Settings },
-]
+const TABS = Platform.OS === 'web' ?
+     [
+          { name: 'index', title: 'POS', icon: ShoppingCart },
+          { name: 'history', title: 'Orders', icon: History },
+          { name: 'settings', title: 'Settings', icon: Settings },
+     ] :
+     [
+          { name: 'index', title: 'POS', icon: ShoppingCart },
+          { name: 'history', title: 'Orders', icon: History },
+          { name: 'printer', title: 'Printer', icon: Printer },
+          { name: 'settings', title: 'Settings', icon: Settings },
+     ];
 import { useResponsive } from '@/hooks/useResponsive'
 import MainScreen from '@/app/(tabs)';
 import HistoryScreen from '@/app/(tabs)/history';

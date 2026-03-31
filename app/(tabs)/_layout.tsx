@@ -88,7 +88,7 @@ export default function TabLayout() {
           name="history"
           options={{ tabBarIcon: ({ color }) => <History size={20} color={color} />, title: 'Orders' }}
         />
-        {Platform.OS === "android" && (
+        {Platform.OS !== "web" && (
           <Tabs.Screen
             name="printer"
             options={{

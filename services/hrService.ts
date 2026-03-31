@@ -68,10 +68,10 @@ export class HrService {
     }
   }
 
-  static async getAllStaffs(): Promise<any[]> {
+  static async getAllStaffs(orgId?: number): Promise<any[]> {
     const QUERY = gql`
-      query GetAllStaffs {
-        getAllStaffs {
+      query GetAllStaffs($orgId: Int) {
+        getAllStaffs(orgId: $orgId) {
           id
           email
           fullname
@@ -82,7 +82,7 @@ export class HrService {
       }
     `;
 
-    const res = await graphQLRequest<{ getAllStaffs: any[] }>(QUERY);
+    const res = await graphQLRequest<{ getAllStaffs: any[] }>(QUERY, { orgId });
     return res.getAllStaffs;
   }
 

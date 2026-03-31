@@ -535,6 +535,12 @@ function ItemDetailModal({
                 </Text>
               </View>
             ))}
+            <View style={[idm.detailRow, { borderBottomColor: colors.border }]}> 
+              <Text style={[idm.detailLabel, { color: colors.textSecondary }]}>VAT</Text>
+              <Text style={[idm.detailValue, { color: colors.text }]}> 
+                {item.vatExempt ? 'VAT Exempt' : 'VAT 12%'}
+              </Text>
+            </View>
           </View>
 
           {/* Cost breakdown */}
@@ -746,6 +752,7 @@ function AddItemModal({
   const [price, setPrice] = useState('');
   const [vatExempt, setVatExempt] = useState(false);
   const [opExPct, setOpExPct] = useState('10');
+  const [isLoading, setIsLoading] = useState(false);
   const [costLines, setCostLines] = useState<CostLine[]>([
     { id: 'cl_purchase', label: 'Purchase Cost', amount: 0 },
   ]);
@@ -753,7 +760,7 @@ function AddItemModal({
 
   const totalCost = costLines.reduce((s, l) => s + l.amount, 0);
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!name.trim()) {
       setError('Item name is required.');
       return;
@@ -762,28 +769,55 @@ function AddItemModal({
       setError('Selling price is required.');
       return;
     }
-    const newItem: InventoryItem = {
-      id: `INV${Date.now().toString().slice(-5)}`,
-      name: name.trim(),
-      sku: sku.trim() || `SKU-${Date.now().toString().slice(-6)}`,
-      stock: parseInt(stock) || 0,
-      minStock: parseInt(minStock) || 10,
-      category,
-      price: parseFloat(price) || 0,
-      lowStock: parseInt(stock) < parseInt(minStock),
-      costLines,
-      opExPct: parseFloat(opExPct) / 100 || 0.1,
-      vatExempt,
-    };
-    onAdd(newItem);
-    setName('');
-    setSku('');
-    setStock('0');
-    setMinStock('10');
-    setPrice('');
-    setCostLines([{ id: 'cl_purchase', label: 'Purchase Cost', amount: 0 }]);
-    setError('');
-    onClose();
+
+    try {
+      setError('');
+      // First, create the item on the backend
+      const createdItem = await InventoryService.createItem({
+        name: name.trim(),
+        stock: parseInt(stock) || 0,
+        description: '',
+        barcode: sku.trim() || `SKU-${Date.now().toString().slice(-6)}`,
+        brand: '',
+        categoryId: undefined,
+        price: parseFloat(price) || 0,
+        vatExempt,
+        assembly: false,
+        skuNumber: sku.trim() || `SKU-${Date.now().toString().slice(-6)}`,
+        costLines: costLines.length > 0 ? costLines.map(({ id, ...rest }) => rest) : undefined,
+        opExPct: parseFloat(opExPct) / 100 || 0.1,
+      });
+
+      // Then map it to local InventoryItem format
+      if (createdItem && createdItem.id) {
+        const returnedStock = Number(createdItem.stock ?? 0);
+        const newItem: InventoryItem = {
+          id: String(createdItem.id),
+          name: createdItem.name,
+          sku: createdItem.barcode || createdItem.skuNumber || `SKU-${createdItem.id}`,
+          stock: returnedStock,
+          minStock: parseInt(minStock) || 10,
+          category: category || 'General',
+          price: parseFloat(price) || 0,
+          lowStock: returnedStock < (parseInt(minStock) || 10),
+          costLines,
+          opExPct: parseFloat(opExPct) / 100 || 0.1,
+          vatExempt,
+        };
+        onAdd(newItem);
+      }
+
+      setName('');
+      setSku('');
+      setStock('0');
+      setMinStock('10');
+      setPrice('');
+      setCostLines([{ id: 'cl_purchase', label: 'Purchase Cost', amount: 0 }]);
+      onClose();
+    } catch (err: any) {
+      console.error('Failed to create item:', err);
+      setError(err.message || 'Failed to create item. Please try again.');
+    }
   };
 
   const s = StyleSheet.create({
@@ -1140,7 +1174,7 @@ function AddItemModal({
               onPress={handleAdd}
               activeOpacity={0.85}
             >
-              <Text style={s.addTxt}>Add to Inventory</Text>
+              <Text style={s.addTxt}>{isLoading ? 'Adding...' : 'Add to Inventory'}</Text>
             </TouchableOpacity>
             <View style={{ height: 8 }} />
           </ScrollView>
@@ -1165,7 +1199,7 @@ export default function InventoryScreen() {
     const loadInventory = async () => {
       setLoadingItems(true);
       try {
-        const inventory = await InventoryService.getItems();
+        const inventory = await InventoryService.getOrgItems();
         setItems(
           (inventory || []).map((it: any) => ({
             id: String(it.id),
@@ -1229,6 +1263,8 @@ export default function InventoryScreen() {
   };
 
   const handleAddItem = (item: InventoryItem) => {
+    // Item is already saved to backend via InventoryService.createItem()
+    // Just add it to local state for immediate UI feedback
     setItems((prev) => [item, ...prev]);
   };
 

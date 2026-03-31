@@ -141,7 +141,7 @@ export default function LoginScreenDefault({
             Welcome back
           </Text>
           <Text style={[styles.name, { color: colors.textSecondary }]}>
-            {user.name}
+            {user.fullname}
           </Text>
         </View>
 

@@ -8,8 +8,22 @@ import {
   TouchableOpacity,
   Alert,
 } from 'react-native';
+import { Platform } from 'react-native';
 
-import { useBluetooth } from "@/hooks/useBluetooth"
+let useBluetooth;
+if (Platform.OS !== 'web') {
+  const bluetoothHook = require("@/hooks/useBluetooth");
+  useBluetooth = bluetoothHook.useBluetooth;
+} else {
+  // Mock for web
+  useBluetooth = () => ({
+    devices: [],
+    printReceipt: async () => {},
+    connectedDevice: null,
+    connectToPrinter: async () => {},
+    scanForDevices: async () => {},
+  });
+}
 
 import { Printer, Bluetooth, Usb, Settings, CircleCheck as CheckCircle, Circle as XCircle, Wifi, } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext'
@@ -138,7 +152,7 @@ export default React.memo(function PrinterScreen() {
       {devices.length > 0 && (
         <View style={styles.devicesList}>
           <Text style={styles.devicesTitle}>Available Devices:</Text>
-          {devices.map((device, index) => (
+          {devices.map((device: any, index: number) => (
             <TouchableOpacity
               key={index}
               style={styles.deviceItem}

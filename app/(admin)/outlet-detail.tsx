@@ -45,6 +45,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { AdminService } from '@/services/adminService';
 import { InventoryService } from '@/services/inventoryService';
 import { HrService } from '@/services/hrService';
+import { MasterFileService } from '@/services/masterFileService';
 import { AdminTransaction, Cashier, OutletRevenue } from '@/types';
 import { DateRangeFilter, getDateRange } from '@/utils/dateHelpers';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -52,6 +53,7 @@ import { DropdownField } from '.';
 import { formatPeso } from '@/utils/moneyHelpers';
 import DateRangePickerModal from '@/components/DateRangePickerModal';
 import { FILTERS } from './outlets';
+import { useAuth } from '@/contexts/AuthContext';
 
 type Tab = 'overview' | 'inventory' | 'staff';
 type TxnView = 'card' | 'table';
@@ -121,7 +123,6 @@ function EditOutletModal({
   const [wifiSSID, setWifiSSID] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
   useEffect(() => {
     if (visible) setName(outletName);
   }, [visible, outletName]);
@@ -133,11 +134,21 @@ function EditOutletModal({
     }
     setLoading(true);
     try {
-      // TODO: AdminService.updateOutlet(outletId, { name, address, phone, outletType: type, status, governmentTax: parseFloat(govTax), serviceCharge: parseFloat(svcChg), wifiSSID })
-      await new Promise((r) => setTimeout(r, 600));
+      await AdminService.updateOutlet(outletId, {
+        name: name.trim(),
+        address: address.trim() || undefined,
+        phone: phone.trim() || undefined,
+        outletType: type as 'retail' | 'wholesale' | 'service',
+        status: status as 'open' | 'closed' | 'maintenance',
+        governmentTax: govTax ? parseFloat(govTax) : undefined,
+        serviceCharge: svcChg ? parseFloat(svcChg) : undefined,
+      });
       onClose();
-    } catch {
-      setError('Failed to update outlet.');
+    } catch (err) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to update outlet', err);
+      }
+      setError('Failed to update outlet. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -879,11 +890,17 @@ export default function OutletDetailScreen() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAssignItemsModal, setShowAssignItemsModal] = useState(false);
+  const [orgCategories, setOrgCategories] = useState<any[]>([]);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
+  const [itemQuantities, setItemQuantities] = useState<Record<string, number>>(
+    {},
+  );
+  const [itemPrices, setItemPrices] = useState<Record<string, number>>({});
   const [selectedStaff, setSelectedStaff] = useState<string[]>([]);
   const [txnView, setTxnView] = useState<TxnView>('card');
   const [txnPage, setTxnPage] = useState(1);
   const [activeFilter, setActiveFilter] = useState<DateRangeFilter>('today');
+  const { user } = useAuth();
 
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [customStart, setCustomStart] = useState<Date | undefined>();
@@ -893,13 +910,28 @@ export default function OutletDetailScreen() {
   );
 
   useEffect(() => {
-    if (outletId) loadData();
+    if (outletId) {
+      loadData();
+      loadCategories();
+    }
   }, [outletId, activeFilter]);
+
+  const loadCategories = async () => {
+    try {
+      const categories = await MasterFileService.getCategories();
+      setOrgCategories(categories || []);
+    } catch (error) {
+      console.error('Failed to load categories:', error);
+    }
+  };
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
       const { startDate, endDate } = getDateRange(activeFilter);
+      if (!user?.orgId) {
+        return null;
+      }
       const [
         cashiers,
         txns,
@@ -914,7 +946,7 @@ export default function OutletDetailScreen() {
         AdminService.getCashiersByOutlet(outletId),
         AdminService.getOutletRevenue(outletId, startDate, endDate),
         AdminService.getItemsByOutlet(outletId),
-        InventoryService.getItems(),
+        InventoryService.getOrgItems().catch(() => []),
         HrService.getAllStaffs(),
       ]);
       setCurrentCashiers(cashiers);
@@ -938,8 +970,15 @@ export default function OutletDetailScreen() {
 
   const handleAssignItems = async () => {
     try {
-      await AdminService.assignItemsToOutlet(outletId, selectedItems);
+      await AdminService.assignItemsToOutlet(
+        outletId,
+        selectedItems,
+        itemQuantities,
+        itemPrices,
+      );
       setSelectedItems([]);
+      setItemQuantities({});
+      setItemPrices({});
       setShowAssignItemsModal(false);
       await loadData(); // Refresh data
     } catch (error) {
@@ -1066,6 +1105,7 @@ export default function OutletDetailScreen() {
       </View>
 
       {/* ── OVERVIEW TAB ─────────────────────────────────────────────────────── */}
+
       {activeTab === 'overview' && (
         <ScrollView
           style={{ flex: 1 }}
@@ -1539,7 +1579,12 @@ export default function OutletDetailScreen() {
             </Text>
             <TouchableOpacity
               style={[st.addBtn, { backgroundColor: colors.primary }]}
-              onPress={() => setShowAssignItemsModal(true)}
+              onPress={() =>
+                router.push({
+                  pathname: '/(admin)/add-inventory-item',
+                  params: { outletId, outletName },
+                })
+              }
               activeOpacity={0.85}
             >
               <Plus size={14} color="#fff" strokeWidth={2.5} />
@@ -1804,57 +1849,211 @@ export default function OutletDetailScreen() {
             </View>
             <ScrollView contentContainerStyle={st.modalBody}>
               {availableItems.map((item) => {
-                const isSelected = selectedItems.includes(item.id.toString());
-                const isAssigned = outletItems.some((oi) => oi.id === item.id);
+                const itemIdStr = item.id.toString();
+                const isSelected = selectedItems.includes(itemIdStr);
+                const isAssigned = outletItems.some(
+                  (oi) => oi.item?.id === item.id,
+                );
+                const quantity = itemQuantities[itemIdStr] || 0;
+                const outletPrice = itemPrices[itemIdStr] || 0;
+
+                // Price comparison
+                const sellingPrice = Number(item.price || 0);
+                const totalCost =
+                  item.costLines?.reduce(
+                    (s: number, l: any) => s + (l.amount || 0),
+                    0,
+                  ) ?? 0;
+                const priceDiff = outletPrice - sellingPrice;
+                const priceVariance =
+                  sellingPrice > 0
+                    ? ((priceDiff / sellingPrice) * 100).toFixed(1)
+                    : '0';
+
+                // Stock validation
+                const availableStock = Number(item.stock || 0);
+                const isStockValid = quantity <= availableStock;
+                const qtyStr = quantity > 0 ? quantity.toString() : '';
+
                 return (
-                  <TouchableOpacity
+                  <View
                     key={item.id}
                     style={[
                       st.itemRow,
                       {
                         backgroundColor: colors.card,
-                        opacity: isAssigned ? 0.5 : 1,
+                        borderColor: isAssigned
+                          ? colors.border + '40'
+                          : colors.border,
+                        opacity: isAssigned ? 0.6 : 1,
                       },
                     ]}
-                    onPress={() => {
-                      if (isAssigned) return;
-                      setSelectedItems((prev) =>
-                        isSelected
-                          ? prev.filter((id) => id !== item.id.toString())
-                          : [...prev, item.id.toString()],
-                      );
-                    }}
-                    disabled={isAssigned}
                   >
-                    <View style={{ flex: 1 }}>
+                    {/* Checkbox */}
+                    <TouchableOpacity
+                      style={[
+                        st.checkbox,
+                        {
+                          borderColor: isSelected
+                            ? colors.primary
+                            : colors.border,
+                          backgroundColor: isSelected
+                            ? colors.primary + '30'
+                            : 'transparent',
+                          opacity: isAssigned ? 0.5 : 1,
+                        },
+                      ]}
+                      onPress={() => {
+                        if (!isAssigned) {
+                          setSelectedItems((prev) =>
+                            isSelected
+                              ? prev.filter((id) => id !== itemIdStr)
+                              : [...prev, itemIdStr],
+                          );
+                        }
+                      }}
+                      disabled={isAssigned}
+                    >
+                      {isSelected && (
+                        <Text
+                          style={{
+                            fontSize: 16,
+                            fontWeight: '700',
+                            color: colors.primary,
+                          }}
+                        >
+                          ✓
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+
+                    {/* Item details */}
+                    <View style={{ flex: 1, marginLeft: 12 }}>
                       <Text style={[st.itemName, { color: colors.text }]}>
                         {item.name}
                       </Text>
                       <Text
-                        style={[st.itemDetail, { color: colors.textSecondary }]}
-                      >
-                        {formatPeso(item.price)}
-                      </Text>
-                    </View>
-                    {isAssigned ? (
-                      <Text
-                        style={[st.assignedText, { color: colors.success }]}
-                      >
-                        Assigned
-                      </Text>
-                    ) : (
-                      <View
                         style={[
-                          st.checkbox,
-                          isSelected && { backgroundColor: colors.primary },
+                          st.itemDetail,
+                          { color: colors.textSecondary, marginTop: 2 },
                         ]}
                       >
-                        {isSelected && (
-                          <Check size={16} color="#fff" strokeWidth={3} />
-                        )}
+                        {item.barcode && `SKU: ${item.barcode}`}
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          color: colors.textSecondary,
+                          marginTop: 2,
+                        }}
+                      >
+                        Available Stock: {availableStock}
+                      </Text>
+
+                      {/* Price comparison */}
+                      {(isSelected || isAssigned) && (
+                        <View style={{ marginTop: 6, gap: 4 }}>
+                          <View
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 8,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 11,
+                                color: colors.textSecondary,
+                              }}
+                            >
+                              Original Price:
+                            </Text>
+                            <Text
+                              style={{
+                                fontSize: 12,
+                                fontWeight: '600',
+                                color: colors.text,
+                              }}
+                            >
+                              ₱{sellingPrice.toFixed(2)}
+                            </Text>
+                          </View>
+                          {totalCost > 0 && (
+                            <View
+                              style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 8,
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontSize: 11,
+                                  color: colors.textSecondary,
+                                }}
+                              >
+                                Cost:
+                              </Text>
+                              <Text
+                                style={{
+                                  fontSize: 12,
+                                  fontWeight: '600',
+                                  color: colors.text,
+                                }}
+                              >
+                                ₱{totalCost.toFixed(2)}
+                              </Text>
+                            </View>
+                          )}
+                          {isSelected && (
+                            <View
+                              style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 8,
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontSize: 11,
+                                  color: colors.textSecondary,
+                                }}
+                              >
+                                Outlet Price:
+                              </Text>
+                              <Text
+                                style={{
+                                  fontSize: 12,
+                                  fontWeight: '700',
+                                  color:
+                                    priceDiff >= 0 ? '#059669' : colors.error,
+                                }}
+                              >
+                                ₱{outletPrice.toFixed(2)} (
+                                {priceDiff >= 0 ? '+' : ''}
+                                {priceVariance}%)
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Assigned badge */}
+                    {isAssigned && (
+                      <View style={{ alignItems: 'center', gap: 4 }}>
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            fontWeight: '700',
+                            color: colors.success,
+                          }}
+                        >
+                          ✓ Assigned
+                        </Text>
                       </View>
                     )}
-                  </TouchableOpacity>
+                  </View>
                 );
               })}
             </ScrollView>
@@ -1867,6 +2066,8 @@ export default function OutletDetailScreen() {
                 ]}
                 onPress={() => {
                   setSelectedItems([]);
+                  setItemQuantities({});
+                  setItemPrices({});
                   setShowAssignItemsModal(false);
                 }}
               >

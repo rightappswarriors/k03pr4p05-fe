@@ -596,11 +596,21 @@ export class AdminService {
     }
   }
 
-  static async assignItemsToOutlet(outletId: string, itemIds: string[]): Promise<void> {
-    const ASSIGN_ITEMS_MUTATION = gql`
-      mutation AssignItemsToOutlet($outletId: ID!, $itemIds: [ID!]!) {
-        assignItemsToOutlet(outletId: $outletId, itemIds: $itemIds) {
-          success
+  static async updateBranch(branchId: string, data: { name?: string; address?: string; phone?: string; }): Promise<Branch> {
+    const UPDATE_BRANCH_MUTATION = gql`
+      mutation UpdateBranch($branchId: ID!, $name: String, $address: String, $phone: String) {
+        updateBranch(id: $branchId, name: $name, address: $address, phone: $phone) {
+          id
+          name
+          address
+          phone
+          isActive
+          owner {
+            id
+            fullname
+          }
+          outlets { id }
+          createdAt
         }
       }
     `;
@@ -608,10 +618,188 @@ export class AdminService {
     try {
       const { accessToken } = await AuthService.getTokens();
       const client = await getGraphQLClient();
-      await client.request(ASSIGN_ITEMS_MUTATION, { outletId, itemIds }, {
+      const res = (await client.request(UPDATE_BRANCH_MUTATION, {
+        branchId,
+        name: data.name,
+        address: data.address,
+        phone: data.phone,
+      }, {
         Authorization: `Bearer ${accessToken}`
-      });
-      console.log("Success assigning items to outlet");
+      })) as any;
+
+      const branch = res.updateBranch;
+      return {
+        id: branch.id,
+        name: branch.name,
+        address: branch.address,
+        phone: branch.phone,
+        outletIds: branch.outlets.map((o: any) => o.id) ?? [],
+        isActive: branch.isActive,
+        createdAt: branch.createdAt,
+      };
+    } catch (error) {
+      console.error('Failed to update branch:', error);
+      throw error;
+    }
+  }
+
+  static async updateOutlet(outletId: string, data: {
+    name?: string;
+    address?: string;
+    phone?: string;
+    code?: string;
+    status?: string;
+    outletType?: string;
+    governmentTax?: number;
+    serviceCharge?: number;
+    latitude?: number;
+    longitude?: number;
+    isActive?: boolean;
+  }): Promise<AdminOutlet> {
+    const UPDATE_OUTLET_MUTATION = gql`
+      mutation UpdateOutlet(
+        $outletId: ID!
+        $name: String
+        $address: String
+        $phone: String
+        $code: String
+        $status: OutletStatus
+        $outletType: OutletType
+        $governmentTax: Float
+        $serviceCharge: Float
+        $latitude: Float
+        $longitude: Float
+        $isActive: Boolean
+      ) {
+        updateOutlet(
+          outletId: $outletId
+          name: $name
+          address: $address
+          phone: $phone
+          code: $code
+          status: $status
+          outletType: $outletType
+          governmentTax: $governmentTax
+          serviceCharge: $serviceCharge
+          latitude: $latitude
+          longitude: $longitude
+          isActive: $isActive
+        ) {
+          id
+          name
+          address
+          phone
+          code
+          status
+          outletType
+          governmentTax
+          serviceCharge
+          latitude
+          longitude
+          bannerImage
+          branchId
+          createdAt
+          staff { id isPresent }
+        }
+      }
+    `;
+
+    try {
+      const { accessToken } = await AuthService.getTokens();
+      const client = await getGraphQLClient();
+      const res = (await client.request(UPDATE_OUTLET_MUTATION, {
+        outletId,
+        ...data,
+      }, {
+        Authorization: `Bearer ${accessToken}`,
+      })) as any;
+
+      const outlet = res.updateOutlet;
+      return {
+        id: outlet.id,
+        name: outlet.name,
+        address: outlet.address,
+        phone: outlet.phone,
+        outletType: outlet.outletType,
+        status: outlet.status,
+        code: outlet.code,
+        governmentTax: outlet.governmentTax,
+        serviceCharge: outlet.serviceCharge,
+        latitude: outlet.latitude,
+        longitude: outlet.longitude,
+        bannerImage: outlet.bannerImage,
+        branchId: outlet.branchId,
+        createdAt: outlet.createdAt,
+        assignedCashierIds: outlet.staff.map((s: any) => s.id) ?? [],
+        currentCashiers: outlet.staff.filter((s: any) => s.isPresent === true).map((s: any) => ({
+          id: s.id,
+          isPresent: s.isPresent,
+        })) ?? [],
+      };
+    } catch (error) {
+      console.error('Failed to update outlet:', error);
+      throw error;
+    }
+  }
+
+  static async assignItemsToOutlet(
+    outletId: string, 
+    itemIds: string[],
+    quantities?: Record<string, number>,
+    prices?: Record<string, number>
+  ): Promise<void> {
+    try {
+      const { accessToken } = await AuthService.getTokens();
+      const client = await getGraphQLClient();
+
+      // Step 1: Fetch the outlet to get its inventory ID
+      const GET_OUTLET_INVENTORY = gql`
+        query GetOutletInventory($outletId: Int!) {
+          getInventoryByOutletId(outletId: $outletId) {
+            inventory {
+              id
+            }
+          }
+        }
+      `;
+
+      const outletData = await client.request(
+        GET_OUTLET_INVENTORY, 
+        { outletId: parseInt(outletId) },
+        { Authorization: `Bearer ${accessToken}` }
+      ) as any;
+
+      const inventoryId = outletData.getInventoryByOutletId?.inventory?.id;
+      if (!inventoryId) {
+        throw new Error("Could not find inventory for this outlet");
+      }
+
+      // Step 2: Prepare items for addition with quantities and prices
+      const itemsToAdd = itemIds.map((itemId) => ({
+        itemId: parseInt(itemId),
+        quantity: quantities?.[itemId] || 0,
+        price: prices?.[itemId] || 0, // Use provided price or default to 0
+      }));
+
+      // Step 3: Add items to inventory
+      const ADD_ITEMS_MUTATION = gql`
+        mutation AddItemsToInventory($inventoryId: ID!, $items: [AddItemToInventoryInput!]!) {
+          addItemsToInventory(inventoryId: $inventoryId, items: $items) {
+            count
+          }
+        }
+      `;
+
+      const result = await client.request(
+        ADD_ITEMS_MUTATION,
+        {
+          inventoryId: inventoryId.toString(),
+          items: itemsToAdd,
+        },
+        { Authorization: `Bearer ${accessToken}` }
+      );
+
+      console.log(`Successfully assigned ${itemIds.length} items to outlet`);
     } catch (error) {
       console.error("Failed to assign items to outlet:", error);
       throw error;
@@ -645,11 +833,14 @@ export class AdminService {
       query GetItemsByOutlet($outletId: ID!) {
         getItemsByOutlet(outletId: $outletId) {
           id
-          name
-          barcode
-          categoryId
-          price
-          stock
+          item {
+            id
+            name
+            barcode
+            categoryId
+            price
+          }
+          quantity
         }
       }
     `;

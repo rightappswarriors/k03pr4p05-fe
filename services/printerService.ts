@@ -1,5 +1,4 @@
 import * as Print from 'expo-print';
-import { useState } from 'react';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
@@ -301,6 +300,7 @@ Thank you for testing!
       </html>
     `;
   }
+  
   private static async saveConfig(): Promise<void> {
     await AsyncStorage.setItem(PRINTER_CONFIG_KEY, JSON.stringify(this.config));
   }

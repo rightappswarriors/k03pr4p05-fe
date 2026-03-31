@@ -25,6 +25,7 @@ import {
 } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
+import { InventoryService } from '@/services/inventoryService';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -35,6 +36,8 @@ interface CatalogItem {
   brand?: string;
   category?: string;
   image?: string;
+  price?: string;
+  stock?: number;
 }
 
 interface UnitLine {
@@ -50,81 +53,26 @@ interface UnitLine {
 }
 
 // ─── Mock catalog search ───────────────────────────────────────────────────────
+// removed mock data and replaced with actual search function that calls backend API
 
-const MOCK_CATALOG: CatalogItem[] = [
-  {
-    id: 'i1',
-    name: 'Ganador Rice 25kg',
-    barcode: '4800045678901',
-    brand: 'Ganador',
-    category: 'Rice',
-  },
-  {
-    id: 'i2',
-    name: 'Century Tuna Flakes',
-    barcode: '4800012345678',
-    brand: 'Century',
-    category: 'Canned',
-  },
-  {
-    id: 'i3',
-    name: 'Nescafe 3in1 100s',
-    barcode: '4800087654321',
-    brand: 'Nestle',
-    category: 'Beverages',
-  },
-  {
-    id: 'i4',
-    name: 'Tide Powder 1kg',
-    barcode: '4800011223344',
-    brand: 'P&G',
-    category: 'Household',
-  },
-  {
-    id: 'i5',
-    name: 'Chippy BBQ 22g',
-    barcode: '4800099887766',
-    brand: 'Jack & Jill',
-    category: 'Snacks',
-  },
-  {
-    id: 'i6',
-    name: 'Bear Brand 300g',
-    barcode: '4800055443322',
-    brand: 'Nestle',
-    category: 'Dairy',
-  },
-  {
-    id: 'i7',
-    name: 'Sprite 1.5L',
-    barcode: '4800024681357',
-    brand: 'Coca-Cola',
-    category: 'Beverages',
-  },
-  {
-    id: 'i8',
-    name: 'Lucky Me Pancit Canton',
-    barcode: '4800077665544',
-    brand: 'Monde',
-    category: 'Noodles',
-  },
-];
 
 async function searchCatalog(q: string): Promise<CatalogItem[]> {
-  return new Promise((resolve) =>
-    setTimeout(() => {
-      const query = q.toLowerCase();
-      resolve(
-        MOCK_CATALOG.filter(
-          (i) =>
-            i.name.toLowerCase().includes(query) ||
-            i.barcode.includes(query) ||
-            (i.brand ?? '').toLowerCase().includes(query) ||
-            (i.category ?? '').toLowerCase().includes(query),
-        ),
-      );
-    }, 800),
-  );
+  try {
+    const items = await InventoryService.getOrgItems(q, 50);
+    return items.map(item => ({
+      id: item.id.toString(),
+      name: item.name,
+      barcode: item.barcode,
+      brand: item.brandDetails?.name,
+      category: item.category?.name,
+      image: item.media?.[0]?.url,
+      price: '0', // Default price since Item doesn't have price at org level
+      stock: item.stock,
+    }));
+  } catch (error) {
+    console.error('Failed to search catalog:', error);
+    return [];
+  }
 }
 
 // ─── Catalog Search Modal ──────────────────────────────────────────────────────
@@ -148,7 +96,7 @@ function CatalogSearchModal({
   // Show full catalog on open — no need to search for the first load
   React.useEffect(() => {
     if (visible && !hasSearched) {
-      setResults(MOCK_CATALOG);
+      searchCatalog('').then(setResults);
     }
     if (!visible) {
       // Reset when closed so next open shows full list again
@@ -169,7 +117,7 @@ function CatalogSearchModal({
 
   const handleClear = () => {
     setQuery('');
-    setResults(MOCK_CATALOG);
+    searchCatalog('').then(setResults);
     setHasSearched(false);
   };
 
@@ -203,6 +151,7 @@ function CatalogSearchModal({
             </TouchableOpacity>
           </View>
           {/* Search row */}
+
           <View style={[csm.searchRow, { borderBottomColor: colors.border }]}>
             <View
               style={[
@@ -390,6 +339,200 @@ const csm = StyleSheet.create({
   selectTxt: { fontSize: 13, fontWeight: '700' },
 });
 
+// ─── Category Search Modal ──────────────────────────────────────────────────────
+
+function CategorySearchModal({
+  visible,
+  onClose,
+  onSelect,
+  colors,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onSelect: (category: string) => void;
+  colors: any;
+}) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
+
+  // Mock categories
+  const MOCK_CATEGORIES = [
+    'Rice',
+    'Canned Goods',
+    'Beverages',
+    'Snacks',
+    'Household',
+    'Dairy',
+    'Noodles',
+    'Bakery',
+    'Frozen',
+    'Personal Care',
+  ];
+
+  React.useEffect(() => {
+    if (visible && !hasSearched) {
+      setResults(MOCK_CATEGORIES);
+    }
+    if (!visible) {
+      setQuery('');
+      setResults([]);
+      setHasSearched(false);
+    }
+  }, [visible]);
+
+  const doSearch = async () => {
+    const q = query.trim();
+    setLoading(true);
+    setHasSearched(true);
+    setTimeout(() => {
+      const filtered = MOCK_CATEGORIES.filter(cat =>
+        cat.toLowerCase().includes(q.toLowerCase())
+      );
+      setResults(filtered);
+      setLoading(false);
+    }, 500);
+  };
+
+  const handleClear = () => {
+    setQuery('');
+    setResults(MOCK_CATEGORIES);
+    setHasSearched(false);
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          justifyContent: 'flex-end',
+        }}
+      >
+        <TouchableOpacity
+          style={{ flex: 1 }}
+          activeOpacity={1}
+          onPress={onClose}
+        />
+        <View style={[csm.sheet, { backgroundColor: colors.surface }]}>
+          <View style={[csm.handle, { backgroundColor: colors.border }]} />
+          <View style={[csm.header, { borderBottomColor: colors.border }]}>
+            <Text style={[csm.title, { color: colors.text }]}>
+              Search Category
+            </Text>
+            <TouchableOpacity onPress={onClose}>
+              <X size={20} color={colors.textSecondary} strokeWidth={2} />
+            </TouchableOpacity>
+          </View>
+          <View style={[csm.searchRow, { borderBottomColor: colors.border }]}>
+            <View
+              style={[
+                csm.searchBox,
+                {
+                  backgroundColor: colors.background,
+                  borderColor: colors.border,
+                },
+              ]}
+            >
+              <Search size={13} color={colors.textSecondary} strokeWidth={2} />
+              <TextInput
+                style={[csm.searchInput, { color: colors.text }]}
+                placeholder="Search category…"
+                placeholderTextColor={colors.textSecondary}
+                value={query}
+                onChangeText={setQuery}
+                returnKeyType="search"
+                onSubmitEditing={doSearch}
+                autoCorrect={false}
+              />
+              {query.length > 0 && (
+                <TouchableOpacity
+                  onPress={handleClear}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <X size={13} color={colors.textSecondary} strokeWidth={2} />
+                </TouchableOpacity>
+              )}
+            </View>
+            <TouchableOpacity
+              style={[
+                csm.searchBtn,
+                { backgroundColor: loading ? colors.border : colors.primary },
+              ]}
+              onPress={doSearch}
+              disabled={loading}
+              activeOpacity={0.85}
+            >
+              <Search size={13} color="#fff" strokeWidth={2.5} />
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#fff' }}>
+                {loading ? '…' : 'Search'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {!loading && (
+            <FlatList
+              data={results}
+              keyExtractor={(item) => item}
+              style={{ maxHeight: 320 }}
+              keyboardShouldPersistTaps="handled"
+              ListEmptyComponent={
+                <View style={{ padding: 28, alignItems: 'center' }}>
+                  <Package size={32} color={colors.border} strokeWidth={1.5} />
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      color: colors.textSecondary,
+                      marginTop: 10,
+                    }}
+                  >
+                    {query
+                      ? `No categories found for "${query}"`
+                      : 'No categories available.'}
+                  </Text>
+                </View>
+              }
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[csm.resultRow, { borderBottomColor: colors.border }]}
+                  onPress={() => {
+                    onSelect(item);
+                    onClose();
+                  }}
+                  activeOpacity={0.75}
+                >
+                  <View
+                    style={[
+                      csm.icon,
+                      { backgroundColor: colors.primary + '18' },
+                    ]}
+                  >
+                    <Package size={16} color={colors.primary} strokeWidth={2} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[csm.itemName, { color: colors.text }]}>
+                      {item}
+                    </Text>
+                  </View>
+                  <Text style={[csm.selectTxt, { color: colors.primary }]}>
+                    Select
+                  </Text>
+                </TouchableOpacity>
+              )}
+            />
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 // ─── Main Screen ───────────────────────────────────────────────────────────────
 
 export default function AddInventoryItemScreen() {
@@ -400,7 +543,10 @@ export default function AddInventoryItemScreen() {
   const { colors } = useTheme();
 
   const [catalogOpen, setCatalogOpen] = useState(false);
+  const [categoryOpen, setCategoryOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<CatalogItem | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [displayToKompraph, setDisplayToKompraph] = useState(false);
   const [basePrice, setBasePrice] = useState('');
   const [baseQty, setBaseQty] = useState('0');
   const [opExPct, setOpExPct] = useState('10');
@@ -468,16 +614,33 @@ export default function AddInventoryItemScreen() {
     }
     setSaving(true);
     try {
-      // TODO: AdminService.addItemToOutlet({
-      //   outletId, itemId: selectedItem.id,
-      //   price: parseFloat(basePrice), quantity: parseInt(baseQty),
-      //   units: units.map(u => ({ unitName: u.unitName, unitLabel: u.unitLabel, price: parseFloat(u.price || basePrice), quantity: parseFloat(u.quantity), conversionFactor: parseFloat(u.conversionFactor), isDefault: u.isDefault, barcode: u.barcode || undefined, reorderPoint: parseFloat(u.reorderPoint) }))
-      // })
-      await new Promise((r) => setTimeout(r, 1000)); // simulate
+      await InventoryService.addItemToOutletWithUnits(Number(outletId), {
+        itemId: Number(selectedItem.id),
+        price: parseFloat(basePrice),
+        quantity: parseInt(baseQty) || 0,
+        minQuantity: parseInt(units[0]?.reorderPoint || '0') || 0,
+        opExPct: parseFloat(opExPct) / 100,
+       // costLines: costLines.map(({ id, ...rest }) => rest),
+        priceB: parseFloat(units[0]?.price || basePrice) * 0.9,
+        priceC: parseFloat(units[0]?.price || basePrice) * 0.85,
+        units: units.map(u => ({
+          unitName: u.unitName,
+          unitLabel: u.unitLabel,
+          price: parseFloat(u.price || basePrice),
+          quantity: parseFloat(u.quantity) || 0,
+          conversionFactor: parseFloat(u.conversionFactor) || 1,
+          baseUnit: 'piece',
+          barcode: u.barcode || undefined,
+          isDefault: u.isDefault,
+          minOrderQty: parseFloat(u.reorderPoint) || 0,
+          maxOrderQty: undefined,
+          reorderPoint: parseFloat(u.reorderPoint) || 0,
+        }))
+      });
       setSuccess(true);
       setTimeout(() => router.back(), 1500);
-    } catch {
-      setError('Failed to add item. Please try again.');
+    } catch (error: any) {
+      setError(error.message || 'Failed to add item. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -500,7 +663,7 @@ export default function AddInventoryItemScreen() {
       >
         <TouchableOpacity
           style={[ais.backBtn, { backgroundColor: colors.card }]}
-          onPress={() => router.back()}
+          onPress={() => router.back()} // when pressed back to outlet-detail to which outlet this tab was pressed. with the outletId 
         >
           <ArrowLeft size={22} color={colors.text} strokeWidth={2} />
         </TouchableOpacity>
@@ -576,6 +739,103 @@ export default function AddInventoryItemScreen() {
             )}
           </TouchableOpacity>
 
+          {/* Item Info Card */}
+          {selectedItem && (
+            <View
+              style={[
+                ais.infoCard,
+                {
+                  backgroundColor:
+                    parseFloat(basePrice || '0') >= parseFloat(selectedItem.price || '0')
+                      ? colors.success + '20'
+                      : colors.error + '20',
+                  borderColor:
+                    parseFloat(basePrice || '0') >= parseFloat(selectedItem.price || '0')
+                      ? colors.success
+                      : colors.error,
+                },
+              ]}
+            >
+              <Text style={[ais.infoCardTitle, { color: colors.text }]}>
+                Item Details
+              </Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={[ais.infoCardLabel, { color: colors.textSecondary }]}>
+                  Selling Price:
+                </Text>
+                <Text style={[ais.infoCardValue, { color: colors.text }]}>
+                  ₱{parseFloat(selectedItem.price || '0').toFixed(2)}
+                </Text>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={[ais.infoCardLabel, { color: colors.textSecondary }]}>
+                  Available Stock:
+                </Text>
+                <Text style={[ais.infoCardValue, { color: colors.text }]}>
+                  {selectedItem.stock || 0}
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {/* Category Search */}
+          {fieldLabel('CATEGORY')}
+          <TouchableOpacity
+            style={[
+              ais.itemPicker,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+              },
+            ]}
+            onPress={() => setCategoryOpen(true)}
+            activeOpacity={0.82}
+          >
+            <View
+              style={{
+                flex: 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+              }}
+            >
+              <Search
+                size={16}
+                color={colors.textSecondary}
+                strokeWidth={2}
+              />
+              <Text style={{ fontSize: 14, color: colors.textSecondary }}>
+                Search category…
+              </Text>
+            </View>
+            <Text style={{ color: colors.textSecondary }}>›</Text>
+          </TouchableOpacity>
+
+          {/* Display to Kompra.ph Switch */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={[ais.label, { color: colors.text }]}>Display to Kompra.ph</Text>
+              <Text style={[ais.hint, { color: colors.textSecondary }]}>
+                Note: This will need to be approved by the admin.
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[
+                ais.switch,
+                { backgroundColor: displayToKompraph ? colors.primary : colors.border },
+              ]}
+              onPress={() => setDisplayToKompraph(!displayToKompraph)}
+              activeOpacity={0.8}
+            >
+              <View
+                style={[
+                  ais.switchThumb,
+                  { transform: [{ translateX: displayToKompraph ? 20 : 0 }] },
+                ]}
+              />
+            </TouchableOpacity>
+          </View>
+
           {/* Base price + qty */}
           <View style={{ flexDirection: 'row', gap: 12 }}>
             <View style={{ flex: 1 }}>
@@ -610,7 +870,15 @@ export default function AddInventoryItemScreen() {
                 placeholder="0"
                 placeholderTextColor={colors.textSecondary}
                 value={baseQty}
-                onChangeText={setBaseQty}
+                onChangeText={(text) => {
+                  const num = parseInt(text) || 0;
+                  const maxStock = selectedItem?.stock || 0;
+                  if (num <= maxStock) {
+                    setBaseQty(text);
+                  } else {
+                    setBaseQty(maxStock.toString());
+                  }
+                }}
                 keyboardType="number-pad"
               />
             </View>
@@ -997,6 +1265,13 @@ export default function AddInventoryItemScreen() {
         }}
         colors={colors}
       />
+
+      <CategorySearchModal
+        visible={categoryOpen}
+        onClose={() => setCategoryOpen(false)}
+        onSelect={(category) => setSelectedCategory(category)}
+        colors={colors}
+      />
     </SafeAreaView>
   );
 }
@@ -1042,6 +1317,28 @@ const ais = StyleSheet.create({
     borderRadius: 12,
     padding: 14,
     marginBottom: 14,
+  },
+  infoCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 12,
+    marginBottom: 12,
+  },
+  infoCardTitle: { fontSize: 14, fontWeight: '700', marginBottom: 8 },
+  infoCardLabel: { fontSize: 12 },
+  infoCardValue: { fontSize: 12, fontWeight: '600' },
+  switch: {
+    width: 44,
+    height: 24,
+    borderRadius: 12,
+    padding: 2,
+  },
+  switchThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#fff',
   },
   itemPickerName: { fontSize: 14, fontWeight: '700' },
   itemPickerMeta: { fontSize: 11, marginTop: 2 },

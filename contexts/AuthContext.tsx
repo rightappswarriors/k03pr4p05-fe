@@ -115,8 +115,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user: null,
         isLoading: false,
         isAuthenticated: false,
+        accessToken: null,
+        refreshToken: null,
       });
     } catch (error) {
+      console.error('Logout error:', error);
     } finally {
       setLoading(false)
     }

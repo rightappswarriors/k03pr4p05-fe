@@ -9,10 +9,12 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   const { colors } = useTheme();
   const { user, isLoading, isAuthenticated } = useAuth();
   const router = useRouter();
-  const pathname = usePathname(); // ✅ get current route path
+  const pathname = usePathname();
 
+  // ✅ Only include dependencies that actually change
+  // router object reference doesn't matter for route changes
   useEffect(() => {
-    if (isLoading) return; // ✅ wait until auth finishes
+    if (isLoading) return;
 
     // Allow access to onboarding screen for unauthenticated users
     if (pathname === '/onboarding') {
@@ -24,15 +26,18 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
         router.replace('/login');
       }
     }
-  }, [isLoading, user, isAuthenticated, router, pathname]);
+  }, [isLoading, isAuthenticated, user, pathname]);
 
-  if (isLoading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
-  }
-
-  return <>{children}</>;
+  // ✅ Render hooks consistently - always render children structure
+  // Just conditionally show loading overlay inside
+  return (
+    <>
+      {isLoading && (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+          <ActivityIndicator size="large" />
+        </View>
+      )}
+      {!isLoading && children}
+    </>
+  );
 }

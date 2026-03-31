@@ -516,14 +516,14 @@ export default function DashboardScreen() {
       try {
         const outletId = 1;
 
-        const [transactions, gisData, summaryData, inventoryData, staffData] =
-          await Promise.all([
-            SalesService.getTransactionsByOrgId(user.orgId),
-            FinanceService.getGISRows(user.orgId),
-            FinanceService.getSummaryRows(user.orgId),
-            InventoryService.getInventory(outletId),
-            HrService.getAllStaffs(),
-          ]);
+        // Fetch data with individual error handling
+        const [transactions, gisData, summaryData, inventoryData, staffData] = await Promise.all([
+          SalesService.getTransactionsByOrgId(user.orgId).catch(() => []),
+          FinanceService.getGISRows(user.orgId).catch(() => []),
+          FinanceService.getSummaryRows(user.orgId).catch(() => []),
+          InventoryService.getInventory(outletId).catch(() => null),
+          HrService.getAllStaffs(user.orgId).catch(() => []),
+        ]);
 
         const totalSales = transactions.reduce(
           (sum, tx) => sum + Number(tx.total ?? 0),

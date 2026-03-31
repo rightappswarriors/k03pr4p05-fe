@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import {
   ArrowLeft, MapPin, PhilippinePeso, Users,
-  Circle, Plus, X, Navigation, Map, Camera, Image as ImageIcon
+  Circle, Plus, X, Navigation, Map, Camera, Image as ImageIcon, Edit2
 } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { AdminService } from '@/services/adminService';
@@ -55,7 +55,7 @@ function SkeletonOutletCard({ colors }: { colors: any }) {
 }
 
 // ─── Map Pin Picker ───────────────────────────────────────────────────────────
-// Full Google Maps pin-drop using react-native-maps (Expo managed).
+// Google Maps via react-native-maps (conditionally imported to prevent startup errors)
 // Works in Expo Go out of the box — no rebuild needed for testing.
 // For production: add API key to app.json plugins (see docs below).
 //
@@ -65,14 +65,31 @@ function SkeletonOutletCard({ colors }: { colors: any }) {
 //     "iosGoogleMapsApiKey": "YOUR_KEY"
 //   }]]
 
-import MapView, { Marker, PROVIDER_GOOGLE, MapPressEvent, Region } from 'react-native-maps';
+import { ActivityIndicator } from 'react-native';
 
 // Philippines default region — Iloilo City
-const PH_REGION: Region = {
+const PH_REGION = {
   latitude:      10.7202,
   longitude:     122.5621,
   latitudeDelta:  0.05,
   longitudeDelta: 0.05,
+};
+
+// Dynamic MapView wrapper to avoid native init on startup
+let MapViewComponent: any = null;
+let MapMarkerComponent: any = null;
+
+const loadMapComponents = () => {
+  if (!MapViewComponent) {
+    try {
+      const mapModule = require('react-native-maps');
+      MapViewComponent = mapModule.default || mapModule.MapView;
+      MapMarkerComponent = mapModule.Marker;
+    } catch (e) {
+      console.warn('react-native-maps not available:', e);
+    }
+  }
+  return { MapViewComponent, MapMarkerComponent };
 };
 
 function MapPinPicker({ visible, onClose, onConfirm, colors }: {
@@ -82,13 +99,18 @@ function MapPinPicker({ visible, onClose, onConfirm, colors }: {
   colors: any;
 }) {
   const [marker, setMarker] = useState<{ lat: number; lng: number } | null>(null);
+  const [componentReady, setComponentReady] = useState(false);
 
-  // Reset pin when modal reopens
   React.useEffect(() => {
-    if (!visible) setMarker(null);
+    if (visible) {
+      loadMapComponents();
+      setComponentReady(true);
+    } else {
+      setMarker(null);
+    }
   }, [visible]);
 
-  const handleMapPress = (e: MapPressEvent) => {
+  const handleMapPress = (e: any) => {
     const { latitude, longitude } = e.nativeEvent.coordinate;
     setMarker({ lat: latitude, lng: longitude });
   };
@@ -99,25 +121,34 @@ function MapPinPicker({ visible, onClose, onConfirm, colors }: {
     onClose();
   };
 
+  const { MapViewComponent: MapView, MapMarkerComponent: Marker } = loadMapComponents();
+
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={{ flex: 1 }}>
-        {/* Full-screen map */}
-        <MapView
-          style={{ flex: 1 }}
-          provider={PROVIDER_GOOGLE}
-          initialRegion={PH_REGION}
-          onPress={handleMapPress}
-          showsUserLocation
-          showsMyLocationButton
-        >
-          {marker && (
-            <Marker
-              coordinate={{ latitude: marker.lat, longitude: marker.lng }}
-              pinColor={colors.primary ?? '#1B3A6B'}
-            />
-          )}
-        </MapView>
+        {/* Map View - renders if components loaded */}
+        {componentReady && MapView ? (
+          <MapView
+            style={{ flex: 1 }}
+            provider="google"
+            initialRegion={PH_REGION}
+            onPress={handleMapPress}
+            showsUserLocation
+            showsMyLocationButton
+          >
+            {marker && Marker && (
+              <Marker
+                coordinate={{ latitude: marker.lat, longitude: marker.lng }}
+                pinColor={colors.primary ?? '#1B3A6B'}
+              />
+            )}
+          </MapView>
+        ) : (
+          <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' }}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={{ color: colors.text, marginTop: 12 }}>Loading map...</Text>
+          </View>
+        )}
 
         {/* Floating header */}
         <View style={[mpp.header, { backgroundColor: colors.surface }]}>
@@ -585,6 +616,124 @@ const aom = StyleSheet.create({
   submitTxt:      { color: '#fff', fontSize: 15, fontWeight: '800' },
 });
 
+// ─── Edit Branch Modal ────────────────────────────────────────────────────────
+
+function EditBranchModal({
+  visible,
+  onClose,
+  branchId,
+  branchName,
+  branchAddress,
+  branchPhone,
+  onUpdated,
+  colors,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  branchId: string;
+  branchName: string;
+  branchAddress: string;
+  branchPhone: string;
+  onUpdated: (branch: { name: string; address: string; phone?: string }) => void;
+  colors: any;
+}) {
+  const [name, setName] = useState(branchName);
+  const [address, setAddress] = useState(branchAddress);
+  const [phone, setPhone] = useState(branchPhone);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (visible) {
+      setName(branchName);
+      setAddress(branchAddress);
+      setPhone(branchPhone);
+      setError('');
+    }
+  }, [visible, branchName, branchAddress, branchPhone]);
+
+  const handleSave = async () => {
+    if (!name.trim()) {
+      setError('Branch name is required.');
+      return;
+    }
+    if (!address.trim()) {
+      setError('Branch address is required.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const updated = await AdminService.updateBranch(branchId, {
+        name: name.trim(),
+        address: address.trim(),
+        phone: phone.trim() || undefined,
+      });
+      onUpdated({ name: updated.name, address: updated.address, phone: updated.phone });
+      onClose();
+    } catch (err) {
+      console.error('Failed to update branch', err);
+      setError('Unable to update branch. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />
+          <View style={[ebm.sheet, { backgroundColor: colors.surface }]}> 
+            <View style={[ebm.handle, { backgroundColor: colors.border }]} />
+            <View style={[ebm.header, { borderBottomColor: colors.border }]}> 
+              <Text style={[ebm.title, { color: colors.text }]}>Edit Branch</Text>
+              <TouchableOpacity onPress={onClose}>
+                <X size={20} color={colors.textSecondary} strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={ebm.body} keyboardShouldPersistTaps="handled">
+              <Text style={[ebm.label, { color: colors.textSecondary }]}>Branch Name *</Text>
+              <TextInput
+                style={[ebm.input, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border }]}
+                value={name}
+                onChangeText={setName}
+                placeholder="Branch name"
+                placeholderTextColor={colors.textSecondary}
+              />
+              <Text style={[ebm.label, { color: colors.textSecondary }]}>Address *</Text>
+              <TextInput
+                style={[ebm.input, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border }]}
+                value={address}
+                onChangeText={setAddress}
+                placeholder="Branch address"
+                placeholderTextColor={colors.textSecondary}
+              />
+              <Text style={[ebm.label, { color: colors.textSecondary }]}>Phone</Text>
+              <TextInput
+                style={[ebm.input, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border }]}
+                value={phone}
+                onChangeText={setPhone}
+                placeholder="Contact phone"
+                placeholderTextColor={colors.textSecondary}
+                keyboardType="phone-pad"
+              />
+              {error ? <Text style={{ color: colors.error, marginTop: 8 }}>{error}</Text> : null}
+              <TouchableOpacity
+                style={[ebm.saveBtn, { backgroundColor: colors.primary, opacity: loading ? 0.7 : 1 }]}
+                onPress={handleSave}
+                disabled={loading}
+                activeOpacity={0.85}
+              >
+                <Text style={ebm.saveTxt}>{loading ? 'Updating…' : 'Save Changes'}</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
 // ─── Main Screen ───────────────────────────────────────────────────────────────
 
 export default function OutletListScreen() {
@@ -601,7 +750,11 @@ export default function OutletListScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [customStart,    setCustomStart]    = useState<Date | undefined>();
   const [customEnd,      setCustomEnd]      = useState<Date | undefined>();
-  const [addModalOpen,   setAddModalOpen]   = useState(false);
+  const [addModalOpen,      setAddModalOpen]      = useState(false);
+  const [editBranchModalOpen, setEditBranchModalOpen] = useState(false);
+  const [currentBranchName, setCurrentBranchName] = useState(branchName ?? '');
+  const [currentBranchAddress, setCurrentBranchAddress] = useState('');
+  const [currentBranchPhone, setCurrentBranchPhone] = useState('');
 
   useEffect(() => {
     if (!socket) return;
@@ -621,6 +774,14 @@ export default function OutletListScreen() {
     try {
       setLoading(true);
       const { startDate, endDate } = getDateRange(activeFilter, customStart, customEnd);
+
+      const branchData = await AdminService.getBranchById(branchId);
+      if (branchData) {
+        setCurrentBranchName(branchData.name || branchName || '');
+        setCurrentBranchAddress(branchData.address || '');
+        setCurrentBranchPhone(branchData.phone || '');
+      }
+
       const outletData = await AdminService.getOutletsByBranch(branchId);
       setOutlets(outletData);
       const revenueResults = await Promise.all(
@@ -688,9 +849,17 @@ export default function OutletListScreen() {
           <ArrowLeft size={22} color={colors.text} strokeWidth={2} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={[ols.title, { color: colors.text }]}>{branchName}</Text>
+          <Text style={[ols.title, { color: colors.text }]}>{currentBranchName}</Text>
           <Text style={[ols.subtitle, { color: colors.textSecondary }]}>Outlets Overview</Text>
         </View>
+        <TouchableOpacity
+          style={[ols.editBtn, { backgroundColor: colors.background, borderColor: colors.border }]}
+          onPress={() => setEditBranchModalOpen(true)}
+          activeOpacity={0.8}
+        >
+          <Edit2 size={15} color={colors.primary} strokeWidth={2} />
+          <Text style={[ols.editBtnTxt, { color: colors.primary }]}>Edit</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Date filters */}
@@ -754,6 +923,7 @@ export default function OutletListScreen() {
                       </View>
                     </View>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          
                       <Circle size={10} color={statusColor} fill={statusColor} />
                       <Text style={[ols.statusText, { color: statusColor }]}>
                         {outlet.status.charAt(0).toUpperCase() + outlet.status.slice(1)}
@@ -804,7 +974,21 @@ export default function OutletListScreen() {
         onClose={() => setAddModalOpen(false)}
         onAdd={handleAddOutlet}
         colors={colors}
-        branchName={branchName ?? ''}
+        branchName={currentBranchName}
+      />
+      <EditBranchModal
+        visible={editBranchModalOpen}
+        onClose={() => setEditBranchModalOpen(false)}
+        branchId={branchId}
+        branchName={currentBranchName}
+        branchAddress={currentBranchAddress}
+        branchPhone={currentBranchPhone}
+        onUpdated={(branch) => {
+          setCurrentBranchName(branch.name);
+          setCurrentBranchAddress(branch.address);
+          setCurrentBranchPhone(branch.phone || '');
+        }}
+        colors={colors}
       />
       {renderGuardModal()}
     </SafeAreaView>
@@ -817,6 +1001,8 @@ const ols = StyleSheet.create({
   backBtn:        { width: 38, height: 38, borderRadius: 19, justifyContent: 'center', alignItems: 'center' },
   title:          { fontSize: 20, fontWeight: '800' },
   subtitle:       { fontSize: 13, marginTop: 2 },
+  editBtn:        { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, borderWidth: 1 },
+  editBtnTxt:     { fontSize: 13, fontWeight: '600' },
   filterContainer:{ flexDirection: 'row', marginHorizontal: 16, marginTop: 12, marginBottom: 4, borderRadius: 10, padding: 3, gap: 3 },
   filterTab:      { flex: 1, paddingVertical: 7, borderRadius: 8, alignItems: 'center' },
   filterTabText:  { fontSize: 12, fontWeight: '500' },
@@ -835,4 +1021,16 @@ const ols = StyleSheet.create({
   footer:         { flexDirection: 'row', justifyContent: 'flex-end', paddingTop: 10, borderTopWidth: 1 },
   viewDetails:    { fontSize: 13, fontWeight: '600' },
   fab:            { position: 'absolute', bottom: 24, right: 20, width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', elevation: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 },
+});
+
+const ebm = StyleSheet.create({
+  sheet: { borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '90%' },
+  handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginTop: 10, marginBottom: 4 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1 },
+  title: { fontSize: 17, fontWeight: '800' },
+  body: { padding: 20, paddingBottom: 32 },
+  label: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8, marginBottom: 5, marginTop: 14 },
+  input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, fontSize: 14, marginBottom: 4 },
+  saveBtn: { borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 20 },
+  saveTxt: { fontSize: 15, fontWeight: '700', color: '#fff' },
 });
