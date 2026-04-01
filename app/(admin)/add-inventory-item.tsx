@@ -14,6 +14,7 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import {
   ArrowLeft,
@@ -26,6 +27,7 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { InventoryService } from '@/services/inventoryService';
+import { CostLine } from '@/screens/InventoryScreen';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -36,7 +38,8 @@ interface CatalogItem {
   brand?: string;
   category?: string;
   image?: string;
-  price?: string;
+  sellingPrice: string;
+  costLines: CostLine[] | [];
   stock?: number;
 }
 
@@ -55,19 +58,19 @@ interface UnitLine {
 // ─── Mock catalog search ───────────────────────────────────────────────────────
 // removed mock data and replaced with actual search function that calls backend API
 
-
 async function searchCatalog(q: string): Promise<CatalogItem[]> {
   try {
     const items = await InventoryService.getOrgItems(q, 50);
-    return items.map(item => ({
+    return items.map((item) => ({
       id: item.id.toString(),
       name: item.name,
       barcode: item.barcode,
       brand: item.brandDetails?.name,
       category: item.category?.name,
       image: item.media?.[0]?.url,
-      price: '0', // Default price since Item doesn't have price at org level
+      sellingPrice: item.sellingPrice, // Default price since Item doesn't have price at org level
       stock: item.stock,
+      costLines: item.costLines || [],
     }));
   } catch (error) {
     console.error('Failed to search catalog:', error);
@@ -223,9 +226,13 @@ function CatalogSearchModal({
                       marginTop: 10,
                     }}
                   >
-                    {query
-                      ? `No items found for "${query}"`
-                      : 'No catalog items available.'}
+                    {loading ? (
+                      <ActivityIndicator />
+                    ) : query ? (
+                      `No items found for "${query}"`
+                    ) : (
+                      'No catalog items available.'
+                    )}
                   </Text>
                 </View>
               }
@@ -387,8 +394,8 @@ function CategorySearchModal({
     setLoading(true);
     setHasSearched(true);
     setTimeout(() => {
-      const filtered = MOCK_CATEGORIES.filter(cat =>
-        cat.toLowerCase().includes(q.toLowerCase())
+      const filtered = MOCK_CATEGORIES.filter((cat) =>
+        cat.toLowerCase().includes(q.toLowerCase()),
       );
       setResults(filtered);
       setLoading(false);
@@ -536,9 +543,11 @@ function CategorySearchModal({
 // ─── Main Screen ───────────────────────────────────────────────────────────────
 
 export default function AddInventoryItemScreen() {
-  const { outletId, outletName } = useLocalSearchParams<{
+  const { outletId, outletName, branchName, branchId } = useLocalSearchParams<{
     outletId: string;
     outletName: string;
+    branchName: string;
+    branchId: string;
   }>();
   const { colors } = useTheme();
 
@@ -598,7 +607,29 @@ export default function AddInventoryItemScreen() {
 
   const setDefaultUnit = (id: string) =>
     setUnits((prev) => prev.map((u) => ({ ...u, isDefault: u.id === id })));
-
+  const resetForm = () => {
+    setSelectedItem(null);
+    setSelectedCategory(null);
+    setDisplayToKompraph(false);
+    setBasePrice('');
+    setBaseQty('0');
+    setOpExPct('10');
+    setUnits([
+      {
+        id: 'u1',
+        unitName: 'piece',
+        unitLabel: 'Piece',
+        price: '',
+        quantity: '0',
+        conversionFactor: '1',
+        barcode: '',
+        isDefault: true,
+        reorderPoint: '10',
+      },
+    ]);
+    setError('');
+    setSuccess(false);
+  };
   const handleSave = async () => {
     if (!selectedItem) {
       setError('Please select an item from the catalog.');
@@ -618,12 +649,7 @@ export default function AddInventoryItemScreen() {
         itemId: Number(selectedItem.id),
         price: parseFloat(basePrice),
         quantity: parseInt(baseQty) || 0,
-        minQuantity: parseInt(units[0]?.reorderPoint || '0') || 0,
-        opExPct: parseFloat(opExPct) / 100,
-       // costLines: costLines.map(({ id, ...rest }) => rest),
-        priceB: parseFloat(units[0]?.price || basePrice) * 0.9,
-        priceC: parseFloat(units[0]?.price || basePrice) * 0.85,
-        units: units.map(u => ({
+        units: units.map((u) => ({
           unitName: u.unitName,
           unitLabel: u.unitLabel,
           price: parseFloat(u.price || basePrice),
@@ -635,10 +661,21 @@ export default function AddInventoryItemScreen() {
           minOrderQty: parseFloat(u.reorderPoint) || 0,
           maxOrderQty: undefined,
           reorderPoint: parseFloat(u.reorderPoint) || 0,
-        }))
+        })),
       });
       setSuccess(true);
-      setTimeout(() => router.back(), 1500);
+      setTimeout(() => {
+        resetForm();
+        router.push({
+          pathname: '/(admin)/outlet-detail',
+          params: {
+            outletId,
+            outletName,
+            branchName,
+            branchId,
+          },
+        });
+      }, 1500);
     } catch (error: any) {
       setError(error.message || 'Failed to add item. Please try again.');
     } finally {
@@ -663,7 +700,17 @@ export default function AddInventoryItemScreen() {
       >
         <TouchableOpacity
           style={[ais.backBtn, { backgroundColor: colors.card }]}
-          onPress={() => router.back()} // when pressed back to outlet-detail to which outlet this tab was pressed. with the outletId 
+          onPress={() =>
+            router.push({
+              pathname: '/(admin)/outlet-detail',
+              params: {
+                outletId,
+                outletName,
+                branchName,
+                branchId,
+              },
+            })
+          } // when pressed back to outlet-detail to which outlet this tab was pressed. with the outletId
         >
           <ArrowLeft size={22} color={colors.text} strokeWidth={2} />
         </TouchableOpacity>
@@ -746,11 +793,13 @@ export default function AddInventoryItemScreen() {
                 ais.infoCard,
                 {
                   backgroundColor:
-                    parseFloat(basePrice || '0') >= parseFloat(selectedItem.price || '0')
+                    parseFloat(basePrice || '0') >=
+                    parseFloat(selectedItem.sellingPrice || '0')
                       ? colors.success + '20'
                       : colors.error + '20',
                   borderColor:
-                    parseFloat(basePrice || '0') >= parseFloat(selectedItem.price || '0')
+                    parseFloat(basePrice || '0') >=
+                    parseFloat(selectedItem.sellingPrice || '0')
                       ? colors.success
                       : colors.error,
                 },
@@ -759,16 +808,30 @@ export default function AddInventoryItemScreen() {
               <Text style={[ais.infoCardTitle, { color: colors.text }]}>
                 Item Details
               </Text>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={[ais.infoCardLabel, { color: colors.textSecondary }]}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <Text
+                  style={[ais.infoCardLabel, { color: colors.textSecondary }]}
+                >
                   Selling Price:
                 </Text>
                 <Text style={[ais.infoCardValue, { color: colors.text }]}>
-                  ₱{parseFloat(selectedItem.price || '0').toFixed(2)}
+                  ₱{parseFloat(selectedItem.sellingPrice || '0').toFixed(2)}
                 </Text>
               </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={[ais.infoCardLabel, { color: colors.textSecondary }]}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <Text
+                  style={[ais.infoCardLabel, { color: colors.textSecondary }]}
+                >
                   Available Stock:
                 </Text>
                 <Text style={[ais.infoCardValue, { color: colors.text }]}>
@@ -799,11 +862,7 @@ export default function AddInventoryItemScreen() {
                 gap: 8,
               }}
             >
-              <Search
-                size={16}
-                color={colors.textSecondary}
-                strokeWidth={2}
-              />
+              <Search size={16} color={colors.textSecondary} strokeWidth={2} />
               <Text style={{ fontSize: 14, color: colors.textSecondary }}>
                 Search category…
               </Text>
@@ -812,9 +871,18 @@ export default function AddInventoryItemScreen() {
           </TouchableOpacity>
 
           {/* Display to Kompra.ph Switch */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginTop: 16,
+            }}
+          >
             <View style={{ flex: 1 }}>
-              <Text style={[ais.label, { color: colors.text }]}>Display to Kompra.ph</Text>
+              <Text style={[ais.label, { color: colors.text }]}>
+                Display to Kompra.ph
+              </Text>
               <Text style={[ais.hint, { color: colors.textSecondary }]}>
                 Note: This will need to be approved by the admin.
               </Text>
@@ -822,7 +890,11 @@ export default function AddInventoryItemScreen() {
             <TouchableOpacity
               style={[
                 ais.switch,
-                { backgroundColor: displayToKompraph ? colors.primary : colors.border },
+                {
+                  backgroundColor: displayToKompraph
+                    ? colors.primary
+                    : colors.border,
+                },
               ]}
               onPress={() => setDisplayToKompraph(!displayToKompraph)}
               activeOpacity={0.8}

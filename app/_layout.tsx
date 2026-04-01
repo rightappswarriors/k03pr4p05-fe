@@ -88,8 +88,6 @@ export default function RootLayout() {
               <Stack.Screen name="login" />
               <Stack.Screen name="onboarding" />
               <Stack.Screen name="index" />
-              <Stack.Screen name="(tabs)" />
-              <Stack.Screen name="(admin)" />
               <Stack.Screen name="+not-found" />
             </Stack>
           </ProtectedRoute>

@@ -23,7 +23,7 @@ import {
   BarChart2,
   Building2,
   ChevronDown,
-  CircleDollarSign,
+  PhilippinePeso,
   Database,
   LayoutDashboard,
   Menu,
@@ -137,7 +137,7 @@ const NAV_ICON_MAP: Record<
   Sales: ShoppingCart,
   Inventory: Package,
   HR: Users,
-  Finance: CircleDollarSign,
+  Finance: PhilippinePeso,
   SalesAnalytics: BarChart2,
   MasterFile: Database,
 };

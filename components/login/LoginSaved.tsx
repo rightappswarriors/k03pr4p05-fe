@@ -32,7 +32,7 @@ export default function LoginScreenDefault({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const { isLoading, setLoading } = useLoading();
+  const [isLoading, setLoading] = useState(false);
   const [biometricSupported, setBiometricSupported] = useState(false);
   const [biometricEnabled, setBiometricEnabledState] = useState(false);
 
@@ -45,11 +45,9 @@ export default function LoginScreenDefault({
   } = useAuth();
   const { isTablet } = useResponsive();
   useEffect(() => {
-    setLoading(true);
     setEmail(user.email);
     checkBiometricAvailability();
-    setLoading(false);
-  }, [isLoading]);
+  }, [user]);
 
   const checkBiometricAvailability = async () => {
     const supported = await isBiometricSupported();
@@ -99,6 +97,7 @@ export default function LoginScreenDefault({
     }
   };
   const handleLogin = async () => {
+    if (isLoading) return;
     if (!email.trim() || !password.trim()) {
       if (isDesktop) {
         window.alert('Error Please enter both email and password');
@@ -117,11 +116,16 @@ export default function LoginScreenDefault({
       setLoading(false);
     }
   };
+
   const handleBiometricLogin = async () => {
+    if (isLoading) return;
     try {
+      setLoading(true);
       await loginWithBiometric();
     } catch (error) {
       Alert.alert('Biometric Login Failed', (error as Error).message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -226,10 +230,10 @@ export default function LoginScreenDefault({
           </View>
         </View>
         <View style={styles.poweredBy}>
-          <Text style={{ color: colors.textSecondary }}>Powered By:</Text>
+          <Text style={{ color: colors.textSecondary }}>KompraPOS:</Text>
           <Image
-            source={require('@/assets/images/logo_transparent.png')}
-            style={[styles.poweredlogo, { backgroundColor: colors.card}]}
+            source={require('@/assets/images/logo_text_light.png')}
+            style={[styles.poweredlogo, { backgroundColor: colors.card }]}
           />
         </View>
       </View>

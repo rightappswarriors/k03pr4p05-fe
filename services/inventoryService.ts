@@ -67,6 +67,12 @@ export class InventoryService {
           description
           categoryId
           stock
+          sellingPrice
+          opExPct
+          priceB
+          priceC
+          minQuantity
+          costLines { label amount }
           category {
             id
             name
@@ -135,7 +141,7 @@ export class InventoryService {
     brand?: string;
     categoryId?: number;
     stock: number;
-    price: number;
+    sellingPrice: number;
     vatExempt?: boolean;
     assembly?: boolean;
     skuNumber?: string;
@@ -154,6 +160,10 @@ export class InventoryService {
           description
           categoryId
           stock
+          opExPct
+          sellingPrice
+          minQuantity
+          costLines { label amount }
           category { id name }
           vatExempt
           assembly
@@ -190,6 +200,8 @@ export class InventoryService {
           brand
           categoryId
           stock
+          sellingPrice
+          costLines { label amount}
           category { id name }
           price
           vatExempt
@@ -332,11 +344,6 @@ export class InventoryService {
     itemId: number;
     quantity: number;
     price: number;
-    minQuantity?: number;
-    opExPct?: number;
-    costLines?: Array<{ label: string; amount: number }>;
-    priceB?: number;
-    priceC?: number;
     units?: Array<{
       unitName: string;
       unitLabel: string;
@@ -351,25 +358,13 @@ export class InventoryService {
       reorderPoint?: number;
     }>;
   }): Promise<any> {
-    // First get the inventory ID for the outlet
-    const inventory = await this.getInventory(outletId);
-    if (!inventory?.inventory?.id) {
-      throw new Error('No inventory found for this outlet');
-    }
-
     const MUTATION = gql`
-      mutation AddItemToInventoryWithUnits($inventoryId: ID!, $data: AddItemToInventoryWithUnitsInput!) {
-        addItemToInventoryWithUnits(inventoryId: $inventoryId, data: $data) {
+      mutation AddItemToInventoryWithUnits($outletId: ID!, $data: AddItemToInventoryWithUnitsInput!) {
+        addItemToInventoryWithUnits(outletId: $outletId, data: $data) {
           id
           itemId
           quantity
           price
-          minQuantity
-          opExPct
-          costJson
-          totalCost
-          priceB
-          priceC
           item {
             id
             name
@@ -403,7 +398,7 @@ export class InventoryService {
       const { accessToken } = await AuthService.getTokens();
       const client = await getGraphQLClient();
       const response = await client.request(MUTATION, {
-        inventoryId: String(inventory.inventory.id),
+        outletId: outletId,
         data,
       }, {
         Authorization: `Bearer ${accessToken}`

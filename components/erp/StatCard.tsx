@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import {
-  DollarSign,
+  PhilippinePeso,
   Package,
   Users,
   TrendingUp,
@@ -13,7 +13,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 type IconKey = 'sales' | 'inventory' | 'hr' | 'profit';
 
 const ICON_MAP: Record<IconKey, React.FC<LucideProps>> = {
-  sales: DollarSign,
+  sales: PhilippinePeso,
   inventory: Package,
   hr: Users,
   profit: TrendingUp,
@@ -37,7 +37,7 @@ export default function StatCard({
   accent,
 }: StatCardProps) {
   const { colors } = useTheme();
-  const IconComponent = ICON_MAP[icon] ?? DollarSign;
+  const IconComponent = ICON_MAP[icon] ?? PhilippinePeso;
 
   const iconColor = accent ? '#fff' : colors.primary;
   const iconBg = accent ? 'rgba(255,255,255,0.18)' : colors.background;

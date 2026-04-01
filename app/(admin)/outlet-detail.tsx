@@ -22,6 +22,7 @@ import {
   FlatList,
   Animated,
 } from 'react-native';
+import { useIsFocused } from '@react-navigation/native';
 import {
   ArrowLeft,
   User,
@@ -901,6 +902,7 @@ export default function OutletDetailScreen() {
   const [txnPage, setTxnPage] = useState(1);
   const [activeFilter, setActiveFilter] = useState<DateRangeFilter>('today');
   const { user } = useAuth();
+  const isFocused = useIsFocused();
 
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [customStart, setCustomStart] = useState<Date | undefined>();
@@ -938,7 +940,6 @@ export default function OutletDetailScreen() {
         allStaff,
         revenue,
         outletItemsData,
-        availableItemsData,
         availableStaffData,
       ] = await Promise.all([
         AdminService.getCurrentCashiers(outletId),
@@ -946,7 +947,6 @@ export default function OutletDetailScreen() {
         AdminService.getCashiersByOutlet(outletId),
         AdminService.getOutletRevenue(outletId, startDate, endDate),
         AdminService.getItemsByOutlet(outletId),
-        InventoryService.getOrgItems().catch(() => []),
         HrService.getAllStaffs(),
       ]);
       setCurrentCashiers(cashiers);
@@ -954,19 +954,24 @@ export default function OutletDetailScreen() {
       setAssignedStaff(allStaff);
       setOutletRevenue(revenue);
       setOutletItems(outletItemsData);
-      setAvailableItems(availableItemsData);
       setAvailableStaff(availableStaffData);
       setTxnPage(1);
     } finally {
       setLoading(false);
     }
   }, [outletId, activeFilter]);
-
+  console.log("Loaded outlet Items:", outletItems);
   const handleRefresh = async () => {
     setRefreshing(true);
     await loadData();
     setRefreshing(false);
   };
+
+  useEffect(() => {
+    if (isFocused && outletId) {
+      loadData();
+    }
+  }, [isFocused, outletId, loadData]);
 
   const handleAssignItems = async () => {
     try {
@@ -1582,7 +1587,7 @@ export default function OutletDetailScreen() {
               onPress={() =>
                 router.push({
                   pathname: '/(admin)/add-inventory-item',
-                  params: { outletId, outletName },
+                  params: { outletId, outletName, branchId, branchName },
                 })
               }
               activeOpacity={0.85}
@@ -1633,13 +1638,22 @@ export default function OutletDetailScreen() {
                 >
                   <View style={{ flex: 1 }}>
                     <Text style={[st.itemName, { color: colors.text }]}>
-                      {item.name}
+                      {item.item?.name ?? item.name ?? 'Unnamed Item'}
                     </Text>
                     <Text
                       style={[st.itemDetail, { color: colors.textSecondary }]}
                     >
                       Stock: {item.quantity} | Price: {formatPeso(item.price)}
                     </Text>
+                    {item.units && item.units.length > 0 && (
+                      <Text
+                        style={[st.itemDetail, { color: colors.textSecondary }]}
+                      >
+                        Units: {(item.units as any[])
+                          .map((u) => u.unitName)
+                          .join(', ')}
+                      </Text>
+                    )}
                   </View>
                 </View>
               ))}

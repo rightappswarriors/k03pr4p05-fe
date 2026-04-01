@@ -29,9 +29,6 @@ export default function LoginScreenDefault({ isDesktop }: Props) {
   const { login } = useAuth();
   const { isTablet } = useResponsive();
 
-  useEffect(() => {
-    //console.log("isLoading changed:", isLoading);
-  }, [isLoading]);
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
       Alert.alert('Error', 'Please enter both email and password');
@@ -54,17 +51,7 @@ export default function LoginScreenDefault({ isDesktop }: Props) {
     theme === 'dark'
       ? require('@/assets/images/icon_dark.png')
       : require('@/assets/images/icon_light.png');
-  const fillDemoCredentials = (role: 'owner' | 'cashier') => {
-    if (role === 'owner') {
-      setEmail('owner@techstore.com');
-      setPassword('owner123');
-    } else {
-      //setEmail('vader@gm232ail.com')
-      //setPassword('mmanrus123')
-      setEmail('cashier1@techstore.com');
-      setPassword('cashier123');
-    }
-  };
+
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
@@ -163,7 +150,7 @@ export default function LoginScreenDefault({ isDesktop }: Props) {
           </TouchableOpacity>
         </View>
         <View style={styles.poweredBy}>
-          <Text style={{ color: colors.textSecondary }}>Powered By:</Text>
+          <Text style={{ color: colors.textSecondary }}>KompraPOS:</Text>
           <Image
             source={require('@/assets/images/logo_transparent.png')}
             style={[styles.poweredlogo, { backgroundColor: colors.card }]}

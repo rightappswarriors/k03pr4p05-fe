@@ -33,20 +33,20 @@ import { InventoryService } from '@/services';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface CostLine {
+export interface CostLine {
   id: string;
   label: string; // e.g. "Purchase Cost", "Freight", "Packaging"
   amount: number;
 }
 
-interface InventoryItem {
+export interface InventoryItem {
   id: string;
   name: string;
   sku: string;
   stock: number;
   minStock: number;
   category: string;
-  price: number; // selling price (retail)
+  sellingPrice: number; // selling price (retail)
   lowStock: boolean;
   // New fields for cost breakdown
   costLines?: CostLine[]; // itemized cost components
@@ -248,13 +248,12 @@ function ItemDetailModal({
   const totalCost = item.costLines
     ? item.costLines.reduce((s, l) => s + l.amount, 0)
     : 0;
-  const profit = item.price - totalCost;
-  const margin = item.price > 0 ? (profit / item.price) * 100 : 0;
+  const profit = item.sellingPrice - totalCost;
+  const margin = item.sellingPrice > 0 ? (profit / item.sellingPrice) * 100 : 0;
 
   return (
     <Modal
       visible={visible}
-      transparent
       animationType="slide"
       presentationStyle="pageSheet"
       onRequestClose={onClose}
@@ -500,15 +499,15 @@ function ItemDetailModal({
               PRICING
             </Text>
             {[
-              ['Price A (Retail)', item.price, colors.accent],
+              ['Price A (Retail)', item.sellingPrice, colors.accent],
               [
                 'Price B (Wholesale)',
-                item.priceB ?? item.price * 0.9,
+                item.priceB ?? item.sellingPrice * 0.9,
                 colors.primary,
               ],
               [
                 'Price C (Special)',
-                item.priceC ?? item.price * 0.85,
+                item.priceC ?? item.sellingPrice * 0.85,
                 colors.success,
               ],
             ].map(([label, val, color]) => (
@@ -535,9 +534,11 @@ function ItemDetailModal({
                 </Text>
               </View>
             ))}
-            <View style={[idm.detailRow, { borderBottomColor: colors.border }]}> 
-              <Text style={[idm.detailLabel, { color: colors.textSecondary }]}>VAT</Text>
-              <Text style={[idm.detailValue, { color: colors.text }]}> 
+            <View style={[idm.detailRow, { borderBottomColor: colors.border }]}>
+              <Text style={[idm.detailLabel, { color: colors.textSecondary }]}>
+                VAT
+              </Text>
+              <Text style={[idm.detailValue, { color: colors.text }]}>
                 {item.vatExempt ? 'VAT Exempt' : 'VAT 12%'}
               </Text>
             </View>
@@ -761,12 +762,15 @@ function AddItemModal({
   const totalCost = costLines.reduce((s, l) => s + l.amount, 0);
 
   const handleAdd = async () => {
+    setIsLoading(true);
     if (!name.trim()) {
       setError('Item name is required.');
+      setIsLoading(false);
       return;
     }
     if (!price.trim()) {
       setError('Selling price is required.');
+      setIsLoading(false);
       return;
     }
 
@@ -780,11 +784,14 @@ function AddItemModal({
         barcode: sku.trim() || `SKU-${Date.now().toString().slice(-6)}`,
         brand: '',
         categoryId: undefined,
-        price: parseFloat(price) || 0,
+        sellingPrice: parseFloat(price) || 0,
         vatExempt,
         assembly: false,
         skuNumber: sku.trim() || `SKU-${Date.now().toString().slice(-6)}`,
-        costLines: costLines.length > 0 ? costLines.map(({ id, ...rest }) => rest) : undefined,
+        costLines:
+          costLines.length > 0
+            ? costLines.map(({ id, ...rest }) => rest)
+            : undefined,
         opExPct: parseFloat(opExPct) / 100 || 0.1,
       });
 
@@ -794,11 +801,14 @@ function AddItemModal({
         const newItem: InventoryItem = {
           id: String(createdItem.id),
           name: createdItem.name,
-          sku: createdItem.barcode || createdItem.skuNumber || `SKU-${createdItem.id}`,
+          sku:
+            createdItem.barcode ||
+            createdItem.skuNumber ||
+            `SKU-${createdItem.id}`,
           stock: returnedStock,
           minStock: parseInt(minStock) || 10,
           category: category || 'General',
-          price: parseFloat(price) || 0,
+          sellingPrice: parseFloat(price) || 0,
           lowStock: returnedStock < (parseInt(minStock) || 10),
           costLines,
           opExPct: parseFloat(opExPct) / 100 || 0.1,
@@ -814,9 +824,12 @@ function AddItemModal({
       setPrice('');
       setCostLines([{ id: 'cl_purchase', label: 'Purchase Cost', amount: 0 }]);
       onClose();
+      setIsLoading(false);
     } catch (err: any) {
       console.error('Failed to create item:', err);
       setError(err.message || 'Failed to create item. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -1174,7 +1187,9 @@ function AddItemModal({
               onPress={handleAdd}
               activeOpacity={0.85}
             >
-              <Text style={s.addTxt}>{isLoading ? 'Adding...' : 'Add to Inventory'}</Text>
+              <Text style={s.addTxt}>
+                {isLoading ? <ActivityIndicator /> : 'Add to Inventory'}
+              </Text>
             </TouchableOpacity>
             <View style={{ height: 8 }} />
           </ScrollView>
@@ -1206,14 +1221,20 @@ export default function InventoryScreen() {
             name: it.name || 'Unnamed item',
             sku: it.barcode || it.sku || `SKU-${it.id}`,
             stock: Number(it.stock || 0),
-            minStock: Number(it.minStock || 10),
+            minStock: Number(it.minQuantity || 10),
             category: it.categoryId ? String(it.categoryId) : 'General',
-            price: Number(it.price || 0),
-            lowStock: Number(it.stock || 0) < Number(it.minStock || 10),
-            costLines: [],
-            opExPct: 0.1,
-            priceB: Number(it.price || 0) * 0.9,
-            priceC: Number(it.price || 0) * 0.85,
+            sellingPrice: Number(it.sellingPrice || 0), // <-- use it.sellingPrice
+            lowStock: Number(it.stock || 0) < Number(it.minQuantity || 10),
+            costLines: it.costLines || [],
+            opExPct: Number(it.opExPct || 0),
+            priceB:
+              it.priceB != null
+                ? Number(it.priceB)
+                : Number(it.sellingPrice || 0) * 0.9, // fallback
+            priceC:
+              it.priceC != null
+                ? Number(it.priceC)
+                : Number(it.sellingPrice || 0) * 0.85,
             vatExempt: Boolean(it.vatExempt),
           })),
         );
@@ -1263,8 +1284,6 @@ export default function InventoryScreen() {
   };
 
   const handleAddItem = (item: InventoryItem) => {
-    // Item is already saved to backend via InventoryService.createItem()
-    // Just add it to local state for immediate UI feedback
     setItems((prev) => [item, ...prev]);
   };
 
@@ -1421,7 +1440,12 @@ export default function InventoryScreen() {
 
   if (loadingItems) {
     return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}> 
+      <View
+        style={[
+          styles.container,
+          { justifyContent: 'center', alignItems: 'center' },
+        ]}
+      >
         <ActivityIndicator size="large" color={colors.primary} />
         <Text style={{ marginTop: 12, color: colors.textSecondary }}>
           Loading inventory...
@@ -1675,7 +1699,7 @@ export default function InventoryScreen() {
                       marginTop: 2,
                     }}
                   >
-                    ₱{item.price.toLocaleString()}{' '}
+                    ₱{item.sellingPrice.toLocaleString()}{' '}
                     <Text
                       style={{
                         fontSize: 11,

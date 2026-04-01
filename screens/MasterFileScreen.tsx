@@ -18,7 +18,7 @@ import {
 import {
   BookOpen,
   ChevronRight,
-  DollarSign,
+  PhilippinePeso,
   Edit2,
   FolderOpen,
   LayoutGrid,
@@ -63,7 +63,7 @@ const TABLES: TableMeta[] = [
     key: 'vatTypes',
     label: 'VAT Types',
     description: 'Used in Inventory + Dashboard entry modal',
-    icon: DollarSign,
+    icon: PhilippinePeso,
     hasColor: false,
     accent: '#10B981',
     placeholder: 'e.g. Zero-Rated',

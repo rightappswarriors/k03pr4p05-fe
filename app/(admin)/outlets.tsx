@@ -143,6 +143,36 @@ function MapPinPicker({ visible, onClose, onConfirm, colors }: {
               />
             )}
           </MapView>
+        ) : componentReady && !MapView ? (
+          <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+            <Text style={{ color: colors.text, fontSize: 16, textAlign: 'center', marginBottom: 20 }}>
+              Map is not available. Please enter coordinates manually below.
+            </Text>
+            <Text style={[aom.label, { color: colors.textSecondary, marginBottom: 5 }]}>Latitude</Text>
+            <TextInput
+              style={[aom.input, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border, marginBottom: 10 }]}
+              placeholder="e.g. 10.7202"
+              placeholderTextColor={colors.textSecondary}
+              value={marker?.lat.toString() || ''}
+              onChangeText={(text) => {
+                const lat = parseFloat(text);
+                setMarker(prev => ({ lat: isNaN(lat) ? prev?.lat || 0 : lat, lng: prev?.lng || 0 }));
+              }}
+              keyboardType="decimal-pad"
+            />
+            <Text style={[aom.label, { color: colors.textSecondary, marginBottom: 5 }]}>Longitude</Text>
+            <TextInput
+              style={[aom.input, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border, marginBottom: 20 }]}
+              placeholder="e.g. 122.5621"
+              placeholderTextColor={colors.textSecondary}
+              value={marker?.lng.toString() || ''}
+              onChangeText={(text) => {
+                const lng = parseFloat(text);
+                setMarker(prev => ({ lat: prev?.lat || 0, lng: isNaN(lng) ? prev?.lng || 0 : lng }));
+              }}
+              keyboardType="decimal-pad"
+            />
+          </View>
         ) : (
           <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' }}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -161,7 +191,7 @@ function MapPinPicker({ visible, onClose, onConfirm, colors }: {
           <View style={{ flex: 1 }}>
             <Text style={[mpp.title, { color: colors.text }]}>Pin Outlet Location</Text>
             <Text style={[mpp.hint, { color: colors.textSecondary }]}>
-              {marker ? `${marker.lat.toFixed(6)}, ${marker.lng.toFixed(6)}` : 'Tap anywhere on the map to drop a pin'}
+              {marker ? `${marker.lat.toFixed(6)}, ${marker.lng.toFixed(6)}` : MapView ? 'Tap anywhere on the map to drop a pin' : 'Enter coordinates manually'}
             </Text>
           </View>
         </View>

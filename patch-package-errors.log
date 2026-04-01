@@ -1,0 +1,43 @@
+Cannot apply hunk 0 for file node_modules\react-native\Libraries\ReactNative\BridgelessUIManager.js
+```diff
+@@ -15,7 +15,7 @@ import type {UIManagerJSInterface} from '../Types/UIManagerJSInterface';
+
+ import {unstable_hasComponent} from '../NativeComponent/NativeComponentRegistryUnstable';
+ import defineLazyObjectProperty from '../Utilities/defineLazyObjectProperty';
+-import Platform from '../Utilities/Platform';
++import { Platform } from 'react-native';
+ import {getFabricUIManager} from './FabricUIManager';
+ import nullthrows from 'nullthrows';
+
+```
+
+
+Cannot apply hunk 0 for file node_modules\react-native\Libraries\ReactNative\PaperUIManager.js
+```diff
+@@ -16,8 +16,9 @@ import nullthrows from 'nullthrows';
+
+ const NativeModules = require('../BatchedBridge/NativeModules').default;
+ const defineLazyObjectProperty =
+-  require('../Utilities/defineLazyObjectProperty').default;
+-const Platform = require('../Utilities/Platform').default;
++  require('../Utilities/defineLazyObjectProperty').default
++import { Platform } from 'react-native';
++
+ const UIManagerProperties = require('./UIManagerProperties').default;
+
+ const viewManagerConfigs: {[string]: any | null} = {};
+```
+
+
+Cannot apply hunk 0 for file node_modules\react-native\Libraries\ReactPrivate\ReactNativePrivateInterface.js
+```diff
+@@ -35,7 +35,7 @@ import typeof * as ReactNativeViewConfigRegistry from '../Renderer/shims/ReactNativeViewConfigRegistry';
+
+ import typeof flattenStyle from '../StyleSheet/flattenStyle';
+ import typeof deepFreezeAndThrowOnMutationInDev from '../Utilities/deepFreezeAndThrowOnMutationInDev';
+-import typeof Platform from '../Utilities/Platform';
++import type { Platform } from 'react-native';
+
+ // Expose these types to the React renderer
+ export type {
+```

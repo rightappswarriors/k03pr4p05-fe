@@ -429,7 +429,7 @@ export class AdminService {
         outletType: o.outletType,
         branchId: o.branchId,
         address: o.address,
-        phone:o.phone,
+        phone: o.phone,
         createdAt: o.createdAt,
         assignedCashierIds: o.staff.map((s: any) => s.id) ?? [],
         currentCashiers: o.staffs.filter((s: any) => s.isPresent === true).map((s: any) => {
@@ -743,7 +743,7 @@ export class AdminService {
   }
 
   static async assignItemsToOutlet(
-    outletId: string, 
+    outletId: string,
     itemIds: string[],
     quantities?: Record<string, number>,
     prices?: Record<string, number>
@@ -764,7 +764,7 @@ export class AdminService {
       `;
 
       const outletData = await client.request(
-        GET_OUTLET_INVENTORY, 
+        GET_OUTLET_INVENTORY,
         { outletId: parseInt(outletId) },
         { Authorization: `Bearer ${accessToken}` }
       ) as any;
@@ -838,9 +838,28 @@ export class AdminService {
             name
             barcode
             categoryId
-            price
+            sellingPrice
+            costLines {
+              label
+              amount
+            }
           }
+          price
           quantity
+          units {
+            id
+            unitName
+            unitLabel
+            price
+            quantity
+            conversionFactor
+            baseUnit
+            barcode
+            isDefault
+            minOrderQty
+            maxOrderQty
+            reorderPoint
+          }
         }
       }
     `;
@@ -848,7 +867,7 @@ export class AdminService {
     try {
       const { accessToken } = await AuthService.getTokens();
       const client = await getGraphQLClient();
-      const res = await client.request(GET_OUTLET_ITEMS, { outletId }, {
+      const res = await client.request(GET_OUTLET_ITEMS, { outletId: parseInt(outletId) }, {
         Authorization: `Bearer ${accessToken}`
       }) as any;
       return res.getItemsByOutlet ?? [];
