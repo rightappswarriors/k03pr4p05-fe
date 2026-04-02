@@ -44,7 +44,6 @@ import {
 } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { AdminService } from '@/services/adminService';
-import { InventoryService } from '@/services/inventoryService';
 import { HrService } from '@/services/hrService';
 import { MasterFileService } from '@/services/masterFileService';
 import { AdminTransaction, Cashier, OutletRevenue } from '@/types';

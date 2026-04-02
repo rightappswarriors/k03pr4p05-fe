@@ -12,7 +12,6 @@ import {
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import { Audio } from 'expo-av';
 import { X, Flashlight, FlashlightOff } from 'lucide-react-native';
-import type { Item } from '@/types';
 import { usePOS } from '@/contexts/POSContext'
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');

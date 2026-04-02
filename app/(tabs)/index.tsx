@@ -2,11 +2,13 @@ import React from 'react'
 import POSScreen from '../../components/pos/Pos'
 import { CartProvider } from "@/contexts/POSContext"
 import { Platform } from "react-native"
-import { GestureHandlerRootView } from 'react-native-gesture-handler'
+import RootView from '@/components/ui/RootView'
+// remove direct react-native-gesture-handler dependency for web
 import { DisplayProvider } from '@/contexts/DisplayContext';
 import { useAuth } from '@/hooks/useAuth'
 import DashboardScreen from '@/components/ManagerDashboard'
 //import LoadingScreen from '@/components/dashboard/LoadingScreen'
+
 
 export default React.memo(function MainScreen() {
   const { user, isLoading } = useAuth();
@@ -16,11 +18,9 @@ export default React.memo(function MainScreen() {
 
     <DisplayProvider>
       {Platform.OS !== "web" ? (
-        <GestureHandlerRootView className="flex-1">
-
+        <RootView style={{ flex: 1 }}>
           {user?.role === 'MANAGER' || user?.role === "OWNER" ? <DashboardScreen /> : <POSScreen />}
-
-        </GestureHandlerRootView>
+        </RootView>
       ) : (
         <POSScreen />
       )}

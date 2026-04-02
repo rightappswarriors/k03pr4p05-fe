@@ -16,6 +16,7 @@ interface SubscriptionLimits {
   canExport: boolean;
   canAccessExpenseSummary: boolean;
   canAccessItemNetSummary: boolean;
+  canAccessRestockScheduling: boolean;
 }
 
 const PLAN_LIMITS: Record<SubscriptionPlan, SubscriptionLimits> = {
@@ -29,6 +30,7 @@ const PLAN_LIMITS: Record<SubscriptionPlan, SubscriptionLimits> = {
     canExport: false,
     canAccessExpenseSummary: false,
     canAccessItemNetSummary: true,
+    canAccessRestockScheduling: false,
   },
   gold: {
     maxBranches: Infinity,
@@ -40,6 +42,7 @@ const PLAN_LIMITS: Record<SubscriptionPlan, SubscriptionLimits> = {
     canExport: true,
     canAccessExpenseSummary: true,
     canAccessItemNetSummary: true,
+    canAccessRestockScheduling: true,
   },
 };
 

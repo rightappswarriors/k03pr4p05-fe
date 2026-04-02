@@ -28,6 +28,7 @@ import {
   LayoutDashboard,
   Menu,
   Package,
+  PackagePlus,
   ShoppingCart,
   Users,
   Star,
@@ -42,6 +43,7 @@ import HRScreen from '@/screens/HRScreen';
 import FinanceScreen from '@/screens/FinancesScreen';
 import SalesAnalyticsScreen from '@/screens/SalesAnalyticsScreen';
 import MasterFileScreen from '@/screens/MasterFileScreen';
+import RestockSchedulingScreen from '@/screens/RestockSchedulingScreen';
 
 // ─── DEV: Plan Toggle FAB ─────────────────────────────────────────────────────
 // Floating badge for presentations and testing — tap to switch Basic ↔ Gold.
@@ -123,7 +125,8 @@ type ERPRoute =
   | 'HR'
   | 'Finance'
   | 'SalesAnalytics'
-  | 'MasterFile';
+  | 'MasterFile'
+  | 'RestockScheduling';
 
 const DRAWER_WIDTH = 240;
 
@@ -136,6 +139,7 @@ const NAV_ICON_MAP: Record<
   Dashboard: LayoutDashboard,
   Sales: ShoppingCart,
   Inventory: Package,
+  RestockScheduling: PackagePlus,
   HR: Users,
   Finance: PhilippinePeso,
   SalesAnalytics: BarChart2,
@@ -158,8 +162,14 @@ const FREE_NAV: NavItem[] = [
 
 // Gold-only nav items — shown as LockedNavItem for Basic
 const GATED_NAV: (NavItem & { featureName: string })[] = [
+  {
+    key: 'RestockScheduling',
+    label: 'Restock Item',
+    featureName: 'Restock Scheduling',
+  },
   { key: 'HR', label: 'HR', featureName: 'HR Module' },
   { key: 'Finance', label: 'Finance', featureName: 'Finance & Budget Planner' },
+
   {
     key: 'SalesAnalytics',
     label: 'Sales Analytics',
@@ -573,7 +583,6 @@ export default function ERPLayout() {
 
   const [activeRoute, setActiveRoute] = useState<ERPRoute>('Dashboard');
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [unlocked, setUnlocked] = useState(false);
   const [mfOpen, setMFOpen] = useState(false);
 
   const drawerAnim = useRef(new Animated.Value(0)).current;
@@ -591,6 +600,11 @@ export default function ERPLayout() {
       Dashboard: <DashboardScreen />,
       Sales: <SalesScreen />,
       Inventory: <InventoryScreen />,
+      RestockScheduling: limits.canAccessRestockScheduling ? (
+        <RestockSchedulingScreen />
+      ) : (
+        <LockedScreen featureName="Restock Scheduling" />
+      ),
       HR: limits.canAccessHR ? (
         <HRScreen />
       ) : (
@@ -704,7 +718,7 @@ export default function ERPLayout() {
           <Building2 size={12} color="#fff" strokeWidth={2} />
           <Text style={styles.headerBadgeTx}>ERP</Text>
         </View>
-        
+
         <PlanToggleFAB />
       </View>
 

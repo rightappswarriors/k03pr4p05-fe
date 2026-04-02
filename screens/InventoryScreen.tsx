@@ -5,7 +5,7 @@
 //   - Adjust stock modal
 //   - Add new item modal with cost breakdown builder
 //   - Item detail modal (mirrors the old ERP item screen — but readable)
-
+// rai-pos-app\screens\InventoryScreen.tsx
 import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,

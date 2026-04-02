@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { Checkbox, RadioButton } from 'react-native-paper';
 import { PrinterService } from "@/services/printerService"
 // import our event bus
 import {
@@ -21,7 +20,6 @@ import { TransactionService } from '@/services/orderService';
 import { usePOS } from '@/contexts/POSContext'
 import { calculateTotal } from '@/hooks/calculateTotal'
 import { outletData } from '@/data/mockData';
-import { DiscountRadio } from './DiscountRadio';
 interface ReceiptModalProps {
   visible: boolean;
   onClose: () => void;
@@ -29,6 +27,44 @@ interface ReceiptModalProps {
   onOrderPlaced?: () => void; // ✅ New prop
 }
 
+type DiscountRadioProps = {
+  label: string;
+  value: DiscountType;
+  selectedValue: DiscountType;
+  onSelect: (value: DiscountType) => void;
+  disabled?: boolean;
+};
+
+function DiscountRadio({ label, value, selectedValue, onSelect, disabled }: DiscountRadioProps) {
+  const checked = selectedValue === value;
+  return (
+    <TouchableOpacity
+      style={[
+        styles.discountItem,
+        disabled && styles.disabledItem,
+        checked && styles.discountItemSelected,
+      ]}
+      disabled={disabled}
+      onPress={() => onSelect(value)}
+    >
+      <View style={[styles.radioOuter, checked && styles.radioOuterSelected, disabled && styles.disabledRadio]}>
+        {checked && <View style={styles.radioInner} />}
+      </View>
+      <Text style={[styles.discountLabel, disabled && styles.disabledText]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function CustomCheckbox({ checked, onPress, label }: { checked: boolean; onPress: () => void; label: string }) {
+  return (
+    <TouchableOpacity style={styles.checkboxRow} onPress={onPress}>
+      <View style={[styles.checkboxBox, checked && styles.checkboxBoxChecked]}>
+        {checked && <View style={styles.checkboxTick} />}
+      </View>
+      <Text style={styles.checkboxLabel}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
 
 export function ReceiptModalBigScreen({ visible, onClose, onOrderPlaced }: ReceiptModalProps) {
 
@@ -217,23 +253,34 @@ export function ReceiptModalBigScreen({ visible, onClose, onOrderPlaced }: Recei
                   </View>
 
                   <View>
-                    <View style={{ flexDirection: "row", alignItems: "center" }}>
-                      <Checkbox
-                        status={isDiscounted ? "checked" : "unchecked"}
-                        onPress={() => setIsDiscounted(!isDiscounted)}
+                    <CustomCheckbox
+                      checked={isDiscounted}
+                      onPress={() => setIsDiscounted(!isDiscounted)}
+                      label="Apply Discount"
+                    />
+                    <View style={styles.radioGroup}>
+                      <DiscountRadio
+                        label="Promo"
+                        value="PROMO"
+                        selectedValue={discountOption}
+                        onSelect={(value) => setDiscountOption(value)}
+                        disabled={!isDiscounted}
                       />
-                      <Text>Apply Discount</Text>
+                      <DiscountRadio
+                        label="Senior"
+                        value="SENIOR"
+                        selectedValue={discountOption}
+                        onSelect={(value) => setDiscountOption(value)}
+                        disabled={!isDiscounted}
+                      />
+                      <DiscountRadio
+                        label="PWD"
+                        value="PWD"
+                        selectedValue={discountOption}
+                        onSelect={(value) => setDiscountOption(value)}
+                        disabled={!isDiscounted}
+                      />
                     </View>
-                    <RadioButton.Group
-                      onValueChange={(value) => setDiscountOption(value as DiscountType)}
-                      value={isDiscounted ? discountOption : "NONE"}
-                    >
-                      <View className="flex flex-row justify-evenly">
-                        <DiscountRadio label="Promo" value="PROMO" disabled={!isDiscounted} />
-                        <DiscountRadio label="Senior" value="SENIOR" disabled={!isDiscounted} />
-                        <DiscountRadio label="PWD" value="PWD" disabled={!isDiscounted} />
-                      </View>
-                    </RadioButton.Group>
                   </View>
                 </View>
                 <View style={[styles.cashInputContainer, { backgroundColor: colors.background, borderColor: colors.border }]}>
@@ -487,6 +534,86 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     backgroundColor: '#9CA3AF',
+  },
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 6,
+  },
+  checkboxBox: {
+    width: 20,
+    height: 20,
+    borderWidth: 1,
+    borderColor: '#6B7280',
+    borderRadius: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  checkboxBoxChecked: {
+    backgroundColor: '#3B82F6',
+    borderColor: '#3B82F6',
+  },
+  checkboxTick: {
+    width: 10,
+    height: 10,
+    backgroundColor: 'white',
+    borderRadius: 2,
+  },
+  checkboxLabel: {
+    fontSize: 14,
+    color: '#1F2937',
+  },
+  radioGroup: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  discountItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 10,
+    marginRight: 8,
+  },
+  discountItemSelected: {
+    borderColor: '#3B82F6',
+    backgroundColor: '#DBEAFE',
+  },
+  disabledItem: {
+    opacity: 0.5,
+  },
+  radioOuter: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: '#6B7280',
+    marginRight: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  radioOuterSelected: {
+    borderColor: '#3B82F6',
+  },
+  radioInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#3B82F6',
+  },
+  disabledRadio: {
+    borderColor: '#9CA3AF',
+  },
+  discountLabel: {
+    fontSize: 14,
+    color: '#1F2937',
+  },
+  disabledText: {
+    color: '#9CA3AF',
   },
   printButtonText: {
     fontSize: 16,

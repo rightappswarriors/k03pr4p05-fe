@@ -20,9 +20,11 @@ import { calculateTotal } from '@/hooks/calculateTotal'
 import { outletData } from '@/data/mockData';
 import DiscountModal from './DiscountModal';
 import PaymentBottomSheet from '@/components/pos/paymentMethod/PaymentBottomSheet';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
+// import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import RootView from '@/components/ui/RootView'
 import { useAuth } from "@/contexts/AuthContext"
 import { ReceiptService } from '@/services/paymentService';
+
 import useNetworkStatus from '@/hooks/useNetworkStatus';
 interface ReceiptModalProps {
   visible: boolean;
@@ -111,7 +113,7 @@ export function ReceiptModal({ visible, onClose, onOrderPlaced }: ReceiptModalPr
           onClose();
         }}
       >
-        <GestureHandlerRootView style={styles.modalContainer}>
+        <RootView style={styles.modalContainer}>
           <View style={styles.overlay}>
             <TouchableOpacity
               style={StyleSheet.absoluteFillObject}
@@ -277,7 +279,7 @@ export function ReceiptModal({ visible, onClose, onOrderPlaced }: ReceiptModalPr
           </View>
 
           <PaymentBottomSheet ref={paymentSheetRef} />
-        </GestureHandlerRootView>
+        </RootView>
       </Modal>
     </>
   );
