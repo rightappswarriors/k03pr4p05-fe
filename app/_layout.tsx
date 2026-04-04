@@ -3,9 +3,9 @@ import { Stack } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
-import "@/global.css"
-import { AuthProvider } from '@/contexts/AuthContext'
-import { ThemeProvider } from '@/contexts/ThemeContext'
+import '@/global.css';
+import { AuthProvider } from '@/contexts/AuthContext';
+import { ThemeProvider } from '@/contexts/ThemeContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 
 // Keep onboarding context to avoid extra changes for existing onboarding data usage
@@ -16,7 +16,9 @@ interface OnboardingContextType {
   setIsLoggedIn: (value: boolean) => Promise<void>;
 }
 
-export const OnboardingContext = createContext<OnboardingContextType | undefined>(undefined);
+export const OnboardingContext = createContext<
+  OnboardingContextType | undefined
+>(undefined);
 
 export const useOnboarding = () => {
   const ctx = useContext(OnboardingContext);
@@ -85,6 +87,7 @@ export default function RootLayout() {
         >
           <ProtectedRoute>
             <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="(public)" />
               <Stack.Screen name="login" />
               <Stack.Screen name="onboarding" />
               <Stack.Screen name="index" />

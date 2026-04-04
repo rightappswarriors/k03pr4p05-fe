@@ -21,6 +21,8 @@ import {
   Platform,
   FlatList,
   Animated,
+  Image,
+  Alert,
 } from 'react-native';
 import { useIsFocused } from '@react-navigation/native';
 import {
@@ -43,7 +45,9 @@ import {
   Check,
 } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { AdminService } from '@/services/adminService';
+import { AuthService } from '@/services/authService';
 import { HrService } from '@/services/hrService';
 import { MasterFileService } from '@/services/masterFileService';
 import { AdminTransaction, Cashier, OutletRevenue } from '@/types';
@@ -54,6 +58,7 @@ import { formatPeso } from '@/utils/moneyHelpers';
 import DateRangePickerModal from '@/components/DateRangePickerModal';
 import { FILTERS } from './outlets';
 import { useAuth } from '@/contexts/AuthContext';
+import { MediaService } from '@/services/mediaService';
 
 type Tab = 'overview' | 'inventory' | 'staff';
 type TxnView = 'card' | 'table';
@@ -105,27 +110,91 @@ function EditOutletModal({
   onClose,
   outletName,
   outletId,
+  outletBannerImage,
+  outletBannerImagePath,
+  outletData,
+  onUpdated,
+  onSuccess,
   colors,
 }: {
   visible: boolean;
   onClose: () => void;
   outletName: string;
   outletId: string;
+  outletBannerImage?: string;
+  outletBannerImagePath?: string;
+  outletData?: any;
+  onUpdated?: (bannerImage?: string, bannerImagePath?: string) => void;
+  onSuccess?: () => void;
   colors: any;
 }) {
   const [name, setName] = useState(outletName);
-  const [address, setAddress] = useState('');
-  const [phone, setPhone] = useState('');
-  const [type, setType] = useState('retail');
-  const [status, setStatus] = useState('open');
-  const [govTax, setGovTax] = useState('');
-  const [svcChg, setSvcChg] = useState('');
-  const [wifiSSID, setWifiSSID] = useState('');
+  const [bannerImage, setBannerImage] = useState(outletBannerImage || '');
+  const [bannerImagePath, setBannerImagePath] = useState(outletBannerImagePath || '');
+  const [address, setAddress] = useState(outletData?.address || '');
+  const [phone, setPhone] = useState(outletData?.phone || '');
+  const [latitude, setLatitude] = useState(outletData?.latitude?.toString() || '');
+  const [longitude, setLongitude] = useState(outletData?.longitude?.toString() || '');
+  const [type, setType] = useState(outletData?.outletType || 'retail');
+  const [status, setStatus] = useState(outletData?.status || 'open');
+  const [govTax, setGovTax] = useState(outletData?.governmentTax?.toString() || '');
+  const [svcChg, setSvcChg] = useState(outletData?.serviceCharge?.toString() || '');
+  const [code, setCode] = useState(outletData?.code || '');
+  const [wifiSSID, setWifiSSID] = useState(outletData?.wifiSSID || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   useEffect(() => {
-    if (visible) setName(outletName);
-  }, [visible, outletName]);
+    if (visible && outletData) {
+      setName(outletData.name || outletName);
+      setBannerImage(outletBannerImage || '');
+      setBannerImagePath(outletBannerImagePath || '');
+      setAddress(outletData.address || '');
+      setPhone(outletData.phone || '');
+      setLatitude(outletData.latitude?.toString() || '');
+      setLongitude(outletData.longitude?.toString() || '');
+      setType(outletData.outletType || 'retail');
+      setStatus(outletData.status || 'open');
+      setGovTax(outletData.governmentTax?.toString() || '');
+      setSvcChg(outletData.serviceCharge?.toString() || '');
+      setCode(outletData.code || '');
+      setWifiSSID(outletData.wifiSSID || '');
+    }
+  }, [visible, outletData, outletName, outletBannerImage, outletBannerImagePath]);
+
+  const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      alert('Sorry, we need media library permissions to make this work!');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [16, 9],
+      quality: 0.8,
+    });
+    if (!result.canceled) {
+      setBannerImage(result.assets[0].uri);
+      setBannerImagePath('');
+    }
+  };
+
+  const takePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      alert('Sorry, we need camera permissions to make this work!');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [16, 9],
+      quality: 0.8,
+    });
+    if (!result.canceled) {
+      setBannerImage(result.assets[0].uri);
+      setBannerImagePath('');
+    }
+  };
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -134,21 +203,60 @@ function EditOutletModal({
     }
     setLoading(true);
     try {
+      let finalBannerImage = bannerImage;
+      let finalBannerImagePath = bannerImagePath;
+
+      const isLocalImage = finalBannerImage && !finalBannerImage.startsWith('http');
+      if (isLocalImage) {
+        const user = await AuthService.getCurrentUser();
+        if (!user?.orgId) {
+          throw new Error('Organization identifier not found.');
+        }
+
+        if (bannerImagePath) {
+          const updated = await MediaService.updateMedia(
+            { uri: finalBannerImage, name: `outlet_${Date.now()}.jpg`, type: 'image/jpeg' },
+            bannerImagePath,
+            String(user.orgId),
+          );
+          finalBannerImage = updated?.publicUrl;
+          finalBannerImagePath = updated?.filePath;
+        } else {
+          const uploaded = await MediaService.uploadMedia(
+            { uri: finalBannerImage, name: `outlet_${Date.now()}.jpg`, type: 'image/jpeg' },
+            String(user.orgId),
+          );
+          finalBannerImage = uploaded.publicUrl;
+          finalBannerImagePath = uploaded.filePath;
+        }
+      }
+
       await AdminService.updateOutlet(outletId, {
         name: name.trim(),
         address: address.trim() || undefined,
         phone: phone.trim() || undefined,
+        code: code.trim() || undefined,
         outletType: type as 'retail' | 'wholesale' | 'service',
         status: status as 'open' | 'closed' | 'maintenance',
         governmentTax: govTax ? parseFloat(govTax) : undefined,
         serviceCharge: svcChg ? parseFloat(svcChg) : undefined,
+        latitude: latitude ? parseFloat(latitude) : undefined,
+        longitude: longitude ? parseFloat(longitude) : undefined,
+        bannerImage: finalBannerImage || undefined,
       });
+
+      if (onUpdated) {
+        onUpdated(finalBannerImage, finalBannerImagePath);
+      }
+      if (onSuccess) {
+        onSuccess();
+      }
       onClose();
-    } catch (err) {
+    } catch (err: any) {
       if (process.env.NODE_ENV === 'development') {
         console.error('Failed to update outlet', err);
       }
-      setError('Failed to update outlet. Please try again.');
+      setError(err?.message || 'Failed to update outlet. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -201,6 +309,7 @@ function EditOutletModal({
                 ],
                 ['ADDRESS', address, setAddress, 'Full address', true],
                 ['PHONE', phone, setPhone, '+63 9XX XXX XXXX', false],
+                ['CODE', code, setCode, 'Outlet code', false],
                 ['WIFI SSID', wifiSSID, setWifiSSID, 'Network name', false],
               ].map(([label, val, setter, ph, multi]: any) => (
                 <View key={label as string}>
@@ -283,6 +392,80 @@ function EditOutletModal({
                 onSelect={setStatus}
                 colors={colors}
               />
+
+              <Text style={[eom.label, { color: colors.textSecondary }]}>LOCATION (optional)</Text>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[eom.label, { color: colors.textSecondary, fontSize: 11 }]}>
+                    LATITUDE
+                  </Text>
+                  <TextInput
+                    style={[
+                      eom.input,
+                      {
+                        color: colors.text,
+                        backgroundColor: colors.background,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                    placeholder="e.g. 14.5995"
+                    placeholderTextColor={colors.textSecondary}
+                    value={latitude}
+                    onChangeText={setLatitude}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[eom.label, { color: colors.textSecondary, fontSize: 11 }]}>
+                    LONGITUDE
+                  </Text>
+                  <TextInput
+                    style={[
+                      eom.input,
+                      {
+                        color: colors.text,
+                        backgroundColor: colors.background,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                    placeholder="e.g. 120.9842"
+                    placeholderTextColor={colors.textSecondary}
+                    value={longitude}
+                    onChangeText={setLongitude}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+              </View>
+
+              <Text style={[eom.label, { color: colors.textSecondary, marginTop: 14 }]}>BANNER IMAGE (optional)</Text>
+              {bannerImage ? (
+                <View style={{ marginBottom: 12 }}>
+                  <Image
+                    source={{ uri: bannerImage }}
+                    style={{ width: '100%', height: 140, borderRadius: 10, marginBottom: 8 }}
+                    resizeMode="cover"
+                  />
+                  <TouchableOpacity onPress={() => { setBannerImage(''); setBannerImagePath(''); }}>
+                    <Text style={{ color: colors.error, fontSize: 12 }}>Remove image</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                  <TouchableOpacity
+                    onPress={pickImage}
+                    style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 10, alignItems: 'center' }}
+                  >
+                    <Text style={{ color: colors.primary }}>Gallery</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={takePhoto}
+                    style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 10, alignItems: 'center' }}
+                  >
+                    <Text style={{ color: colors.primary }}>Camera</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
               {error ? (
                 <Text
                   style={{ fontSize: 12, color: colors.error, marginBottom: 8 }}
@@ -903,6 +1086,10 @@ export default function OutletDetailScreen() {
   const { user } = useAuth();
   const isFocused = useIsFocused();
 
+  const [outletBannerImage, setOutletBannerImage] = useState<string>('');
+  const [outletBannerImagePath, setOutletBannerImagePath] = useState<string>('');
+  const [outletData, setOutletData] = useState<any>(null);
+
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [customStart, setCustomStart] = useState<Date | undefined>();
   const [customEnd, setCustomEnd] = useState<Date | undefined>();
@@ -948,6 +1135,8 @@ export default function OutletDetailScreen() {
         AdminService.getItemsByOutlet(outletId),
         HrService.getAllStaffs(),
       ]);
+
+      const outletDetails = await AdminService.getOutletById(outletId);
       setCurrentCashiers(cashiers);
       setTransactions(txns);
       setAssignedStaff(allStaff);
@@ -955,6 +1144,13 @@ export default function OutletDetailScreen() {
       setOutletItems(outletItemsData);
       setAvailableStaff(availableStaffData);
       setTxnPage(1);
+
+      if (outletDetails) {
+        setOutletBannerImage(outletDetails.bannerImage || '');
+        // Path only available if created in this session; keep fallback
+        setOutletBannerImagePath((outletDetails as any).bannerImagePath || '');
+        setOutletData(outletDetails);
+      }
     } finally {
       setLoading(false);
     }
@@ -1064,6 +1260,26 @@ export default function OutletDetailScreen() {
           <Text style={[st.editBtnTxt, { color: colors.primary }]}>Edit</Text>
         </TouchableOpacity>
       </View>
+
+      {outletBannerImage ? (
+        <Image
+          source={{ uri: outletBannerImage }}
+          style={{ width: '100%', height: 180 }}
+          resizeMode="cover"
+        />
+      ) : (
+        <View
+          style={{
+            width: '100%',
+            height: 150,
+            backgroundColor: colors.border,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Text style={{ color: colors.textSecondary }}>No outlet image</Text>
+        </View>
+      )}
 
       {/* Tab bar */}
       <View
@@ -1829,6 +2045,14 @@ export default function OutletDetailScreen() {
         onClose={() => setShowEditModal(false)}
         outletName={outletName ?? ''}
         outletId={outletId ?? ''}
+        outletBannerImage={outletBannerImage}
+        outletBannerImagePath={outletBannerImagePath}
+        outletData={outletData}
+        onUpdated={(newUrl, newPath) => {
+          if (newUrl) setOutletBannerImage(newUrl);
+          if (newPath) setOutletBannerImagePath(newPath);
+        }}
+        onSuccess={() => loadData()}
         colors={colors}
       />
 

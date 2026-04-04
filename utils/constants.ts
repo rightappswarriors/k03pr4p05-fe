@@ -16,7 +16,7 @@ function stripTrailingGraphQL(path: string) {
 async function initAPIBaseUrl() {
   // ✅ Production build — use real deployed API, skip all network detection
   if (!__DEV__) {
-    API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
+    API_BASE_URL = process.env.EXPO_PUBLIC_API_URL_ANDROID_EMULATOR;
     if (API_BASE_URL) {
       API_BASE_URL = stripTrailingSlash(stripTrailingGraphQL(API_BASE_URL));
     }
@@ -25,7 +25,7 @@ async function initAPIBaseUrl() {
 
   // ✅ Dev — web browser
   if (Platform.OS === 'web') {
-    API_BASE_URL = process.env.EXPO_PUBLIC_API_URL_WEB;
+    API_BASE_URL = process.env.EXPO_PUBLIC_API_URL_ANDROID_EMULATOR || process.env.EXPO_PUBLIC_API_URL_ANDROID_EMULATOR;
     if (API_BASE_URL) {
       API_BASE_URL = stripTrailingSlash(stripTrailingGraphQL(API_BASE_URL));
     }
@@ -36,14 +36,17 @@ async function initAPIBaseUrl() {
   if (Platform.OS === 'android' || Platform.OS === 'ios') {
     try {
       const state = await NetInfo.fetch();
-      //const isWifi = state.isConnected && state.type === 'wifi' && state.details?.ipAddress;
+      // Optionally could use `state` to choose emulator vs device routing in the future
+      // const isWifi = state.isConnected && state.type === 'wifi' && state.details?.ipAddress;
 
-      // No Wi-Fi → likely an emulator
-      API_BASE_URL = process.env.EXPO_PUBLIC_API_URL_ANDROID_EMULATOR;
+      API_BASE_URL =
+        process.env.EXPO_PUBLIC_API_URL_ANDROID_EMULATOR ||
+        process.env.EXPO_PUBLIC_API_URL;
     } catch (error) {
-      //console.error('Error getting network info:', error);
       // Safe fallback during dev
-      API_BASE_URL = process.env.EXPO_PUBLIC_API_URL_ANDROID_EMULATOR;
+      API_BASE_URL =
+        process.env.EXPO_PUBLIC_API_URL_ANDROID_EMULATOR ||
+        process.env.EXPO_PUBLIC_API_URL;
     }
 
     if (API_BASE_URL) {
@@ -64,7 +67,9 @@ export async function getGraphQLClient(): Promise<GraphQLClient> {
   }
 
   if (!API_BASE_URL) {
-    throw new Error('❌ Could not determine API_BASE_URL');
+    throw new Error(
+      '❌ Could not determine API_BASE_URL. Set EXPO_PUBLIC_API_URL (and/or EXPO_PUBLIC_API_URL_ANDROID_EMULATOR) in your .env file.',
+    );
   }
 
   const endpoint = API_BASE_URL.endsWith('/graphql')

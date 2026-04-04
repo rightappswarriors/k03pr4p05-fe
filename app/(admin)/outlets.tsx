@@ -8,7 +8,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, SafeAreaView, ScrollView,
   TouchableOpacity, RefreshControl, Modal, TextInput,
-  KeyboardAvoidingView, Platform, Switch,
+  KeyboardAvoidingView, Platform, Switch, Image,
 } from 'react-native';
 import {
   ArrowLeft, MapPin, PhilippinePeso, Users,
@@ -16,6 +16,7 @@ import {
 } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { AdminService } from '@/services/adminService';
+import { AuthService } from '@/services/authService';
 import { AdminOutlet, OutletRevenue } from '@/types';
 import { DateRangeFilter, getDateRange } from '@/utils/dateHelpers';
 import DateRangePickerModal from '@/components/DateRangePickerModal';
@@ -66,6 +67,7 @@ function SkeletonOutletCard({ colors }: { colors: any }) {
 //   }]]
 
 import { ActivityIndicator } from 'react-native';
+import { MediaService } from '@/services/mediaService';
 
 // Philippines default region — Iloilo City
 const PH_REGION = {
@@ -262,6 +264,7 @@ interface OutletFormData {
   latitude:      number | undefined;
   longitude:     number | undefined;
   bannerImage:   string;
+  bannerImagePath?: string;
 }
 
 function AddOutletModal({ visible, onClose, onAdd, colors, branchName }: {
@@ -276,6 +279,7 @@ function AddOutletModal({ visible, onClose, onAdd, colors, branchName }: {
     outletType: 'retail', status: 'open', isActive: true,
     governmentTax: '12', serviceCharge: '', wifiSSID: '',
     latitude: undefined, longitude: undefined, bannerImage: '',
+    bannerImagePath: '',
   });
   const [showMapPicker, setShowMapPicker] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -382,13 +386,62 @@ function AddOutletModal({ visible, onClose, onAdd, colors, branchName }: {
 
     const finalCode = form.code.trim() || autoCode(form.name);
     setLoading(true);
+
     try {
-      await onAdd({ ...form, code: finalCode });
-      setForm({ name: '', address: '', phone: '', code: '', outletType: 'retail', status: 'open', isActive: true, governmentTax: '12', serviceCharge: '', wifiSSID: '', latitude: undefined, longitude: undefined, bannerImage: '' });
+      let bannerImageUrl = form.bannerImage;
+      let bannerImagePath = form.bannerImagePath;
+
+      const isLocalImage = bannerImageUrl && !bannerImageUrl.startsWith('http');
+      if (isLocalImage) {
+        const user = await AuthService.getCurrentUser();
+        if (!user?.orgId) {
+          throw new Error('Organization identifier not found.');
+        }
+
+        const mediaResult = await MediaService.uploadMedia(
+          {
+            uri: bannerImageUrl,
+            name: `outlet_${Date.now()}.jpg`,
+            type: 'image/jpeg',
+          },
+          String(user.orgId),
+        );
+
+        bannerImageUrl = mediaResult.publicUrl;
+        bannerImagePath = mediaResult.filePath;
+      }
+
+      await onAdd({
+        ...form,
+        code: finalCode,
+        bannerImage: bannerImageUrl,
+        bannerImagePath,
+      });
+
+      setForm({
+        name: '',
+        address: '',
+        phone: '',
+        code: '',
+        outletType: 'retail',
+        status: 'open',
+        isActive: true,
+        governmentTax: '12',
+        serviceCharge: '',
+        wifiSSID: '',
+        latitude: undefined,
+        longitude: undefined,
+        bannerImage: '',
+        bannerImagePath: '',
+      });
       setError('');
       onClose();
-    } catch { setError('Failed to create outlet. Please try again.'); }
-    finally { setLoading(false); }
+    } catch (err: any) {
+      console.error('Outlet creation error:', err);
+      setError(err?.message || 'Failed to create outlet. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const inputStyle = { color: colors.text, backgroundColor: colors.background, borderColor: colors.border };
@@ -851,7 +904,13 @@ export default function OutletListScreen() {
         longitude: data.longitude,
         bannerImage: data.bannerImage,
       });
-      setOutlets(prev => [...prev, newOutlet]);
+      setOutlets(prev => [
+        ...prev,
+        {
+          ...newOutlet,
+          bannerImagePath: data.bannerImagePath,
+        },
+      ]);
     } catch (error) {
       console.error('Failed to create outlet:', error);
       throw error; // Re-throw to show error in modal
@@ -943,6 +1002,27 @@ export default function OutletListScreen() {
                   })}
                   activeOpacity={0.82}
                 >
+                  {outlet.bannerImage ? (
+                    <Image
+                      source={{ uri: outlet.bannerImage }}
+                      style={{ width: '100%', height: 140, borderRadius: 10, marginBottom: 10 }}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View
+                      style={{
+                        width: '100%',
+                        height: 140,
+                        borderRadius: 10,
+                        backgroundColor: colors.border,
+                        marginBottom: 10,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Text style={{ color: colors.textSecondary }}>No image</Text>
+                    </View>
+                  )}
                   <View style={ols.outletHeader}>
                     <View style={{ flex: 1 }}>
                       <Text style={[ols.outletName, { color: colors.text }]}>{outlet.name}</Text>

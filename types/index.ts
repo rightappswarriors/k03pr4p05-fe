@@ -240,7 +240,8 @@ export interface AdminOutlet {
   serviceCharge?: number | string
   latitude?: number | string,
   longitude?: number | string,
-  bannerImage?: string,
+  bannerImage?: string;
+  bannerImagePath?: string;
 
   name: string;
   status: 'open' | 'closed' | 'maintenance';

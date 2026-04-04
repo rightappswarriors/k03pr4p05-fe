@@ -1,16 +1,11 @@
 // screens/InventoryScreen.tsx
-// Full ERP Inventory Module:
-//   - Search by name / SKU
-//   - Filter: All / Low Stock / In Stock / by Category
-//   - Adjust stock modal
-//   - Add new item modal with cost breakdown builder
-//   - Item detail modal (mirrors the old ERP item screen — but readable)
-// rai-pos-app\screens\InventoryScreen.tsx
 import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Dimensions,
   FlatList,
+  Image,
   Modal,
   ScrollView,
   StyleSheet,
@@ -20,22 +15,28 @@ import {
   View,
 } from 'react-native';
 import {
+  Camera,
   Filter,
+  Image as ImageIcon,
   Minus,
   Package,
+  Pencil,
   Plus,
   Search,
   Trash2,
   X,
 } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '@/contexts/ThemeContext';
+import { AuthService } from '@/services/authService';
 import { InventoryService } from '@/services';
+import { MediaService } from '@/services/mediaService';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface CostLine {
-  id: string;
-  label: string; // e.g. "Purchase Cost", "Freight", "Packaging"
+  id: string; // local UI id only — not sent to backend
+  label: string;
   amount: number;
 }
 
@@ -46,14 +47,37 @@ export interface InventoryItem {
   stock: number;
   minStock: number;
   category: string;
-  sellingPrice: number; // selling price (retail)
+  sellingPrice: number;
   lowStock: boolean;
-  // New fields for cost breakdown
-  costLines?: CostLine[]; // itemized cost components
-  opExPct?: number; // OpEx contribution %
-  priceB?: number; // wholesale price
-  priceC?: number; // special price
+  imageUrl?: string;
+  imagePath?: string;
+  costLines?: CostLine[];
+  opExPct?: number;
+  priceB?: number;
+  priceC?: number;
   vatExempt?: boolean;
+}
+
+// What we send to InventoryService.updateItem — matches UpdateItemInput exactly
+interface UpdateItemPayload {
+  name?: string;
+  image?: string;
+  description?: string;
+  barcode?: string;
+  brand?: string;
+  sellingPrice: number; // nonNull in schema
+  categoryId?: number;
+  brandId?: number;
+  stock?: number;
+  skuNumber?: string;
+  vatExempt?: boolean;
+  assembly?: boolean;
+  ServiceCharge?: boolean;
+  opExPct?: number;
+  priceB?: number;
+  priceC?: number;
+  minQuantity?: number;
+  costLines?: Array<{ label: string; amount: number }>;
 }
 
 type StockFilter = 'All' | 'Low Stock' | 'In Stock';
@@ -69,9 +93,148 @@ const CATEGORIES = [
   'Personal',
 ];
 
-// ─── Cost Breakdown Builder ───────────────────────────────────────────────────
-// This is what Sir Andre described — add multiple cost lines that sum to total
-// contribution cost. Each line has a label and amount.
+// ─── ImagePickerSection ───────────────────────────────────────────────────────
+
+function ImagePickerSection({
+  imageUri,
+  onImageUri,
+  colors,
+  label = 'ITEM IMAGE (optional)',
+  hint = 'Shown as a thumbnail on the inventory card.',
+}: {
+  imageUri: string;
+  onImageUri: (uri: string) => void;
+  colors: any;
+  label?: string;
+  hint?: string;
+}) {
+  const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(
+        'Permission required',
+        'Please allow access to your photo library.',
+      );
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (!result.canceled) onImageUri(result.assets[0].uri);
+  };
+
+  const takePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission required', 'Please allow camera access.');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (!result.canceled) onImageUri(result.assets[0].uri);
+  };
+
+  const s = StyleSheet.create({
+    label: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.textSecondary,
+      letterSpacing: 0.8,
+      marginBottom: 8,
+      marginTop: 14,
+    },
+    hint: { fontSize: 11, color: colors.textSecondary, marginTop: 6 },
+    previewRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      backgroundColor: colors.background,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 10,
+    },
+    previewThumb: { width: 56, height: 56, borderRadius: 8 },
+    removeBtn: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: colors.error + '18',
+      borderWidth: 1,
+      borderColor: colors.error + '44',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    pickerRow: { flexDirection: 'row', gap: 10 },
+    pickerBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      paddingVertical: 11,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+    },
+    pickerBtnText: { fontSize: 13, fontWeight: '600', color: colors.primary },
+  });
+
+  return (
+    <>
+      <Text style={s.label}>{label}</Text>
+      {imageUri ? (
+        <View style={s.previewRow}>
+          <Image
+            source={{ uri: imageUri }}
+            style={s.previewThumb}
+            resizeMode="cover"
+          />
+          <View style={{ flex: 1 }}>
+            <Text
+              style={{ fontSize: 13, fontWeight: '600', color: colors.text }}
+            >
+              Image selected
+            </Text>
+            <Text
+              style={{
+                fontSize: 11,
+                color: colors.textSecondary,
+                marginTop: 2,
+              }}
+            >
+              Tap × to remove
+            </Text>
+          </View>
+          <TouchableOpacity style={s.removeBtn} onPress={() => onImageUri('')}>
+            <X size={14} color={colors.error} strokeWidth={2.5} />
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={s.pickerRow}>
+          <TouchableOpacity style={s.pickerBtn} onPress={pickImage}>
+            <ImageIcon size={18} color={colors.primary} strokeWidth={2} />
+            <Text style={s.pickerBtnText}>Gallery</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.pickerBtn} onPress={takePhoto}>
+            <Camera size={18} color={colors.primary} strokeWidth={2} />
+            <Text style={s.pickerBtnText}>Camera</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+      <Text style={s.hint}>{hint}</Text>
+    </>
+  );
+}
+
+// ─── CostBreakdownBuilder ─────────────────────────────────────────────────────
 
 function CostBreakdownBuilder({
   lines,
@@ -84,11 +247,10 @@ function CostBreakdownBuilder({
 }) {
   const total = lines.reduce((s, l) => s + (l.amount || 0), 0);
 
-  const addLine = () => {
+  const addLine = () =>
     onChange([...lines, { id: `cl_${Date.now()}`, label: '', amount: 0 }]);
-  };
 
-  const updateLine = (id: string, field: 'label' | 'amount', value: string) => {
+  const updateLine = (id: string, field: 'label' | 'amount', value: string) =>
     onChange(
       lines.map((l) =>
         l.id === id
@@ -99,11 +261,8 @@ function CostBreakdownBuilder({
           : l,
       ),
     );
-  };
 
-  const removeLine = (id: string) => {
-    onChange(lines.filter((l) => l.id !== id));
-  };
+  const removeLine = (id: string) => onChange(lines.filter((l) => l.id !== id));
 
   const s = StyleSheet.create({
     container: {
@@ -146,12 +305,6 @@ function CostBreakdownBuilder({
       borderTopWidth: 1,
       borderTopColor: colors.border,
     },
-    totalLabel: {
-      fontSize: 12,
-      fontWeight: '700',
-      color: colors.textSecondary,
-    },
-    totalAmt: { fontSize: 15, fontWeight: '800', color: colors.primary },
     hint: {
       fontSize: 11,
       color: colors.textSecondary,
@@ -214,8 +367,18 @@ function CostBreakdownBuilder({
       </TouchableOpacity>
       {lines.length > 0 && (
         <View style={s.totalRow}>
-          <Text style={s.totalLabel}>TOTAL CONTRIBUTION COST</Text>
-          <Text style={s.totalAmt}>
+          <Text
+            style={{
+              fontSize: 12,
+              fontWeight: '700',
+              color: colors.textSecondary,
+            }}
+          >
+            TOTAL CONTRIBUTION COST
+          </Text>
+          <Text
+            style={{ fontSize: 15, fontWeight: '800', color: colors.primary }}
+          >
             ₱{total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
           </Text>
         </View>
@@ -224,19 +387,546 @@ function CostBreakdownBuilder({
   );
 }
 
-// ─── Item Detail Modal ────────────────────────────────────────────────────────
+// ─── EditItemModal ────────────────────────────────────────────────────────────
+// Pre-fills all fields from the existing item and calls InventoryService.updateItem
+// on save. Also handles image replacement via the media server.
+
+function EditItemModal({
+  item,
+  visible,
+  onClose,
+  onSaved,
+  colors,
+}: {
+  item: InventoryItem | null;
+  visible: boolean;
+  onClose: () => void;
+  onSaved: (updated: InventoryItem) => void;
+  colors: any;
+}) {
+  // ── Pre-fill state from item ──────────────────────────────────────────────
+  const [name, setName] = useState('');
+  const [sku, setSku] = useState('');
+  const [stock, setStock] = useState('0');
+  const [minStock, setMinStock] = useState('10');
+  const [price, setPrice] = useState('');
+  const [opExPct, setOpExPct] = useState('10');
+  const [priceB, setPriceB] = useState('');
+  const [priceC, setPriceC] = useState('');
+  const [vatExempt, setVatExempt] = useState(false);
+  const [costLines, setCostLines] = useState<CostLine[]>([]);
+  const [imageUri, setImageUri] = useState(''); // local URI or existing http URL
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  // Populate fields whenever the modal opens with a new item
+  React.useEffect(() => {
+    if (!item || !visible) return;
+    setName(item.name);
+    setSku(item.sku);
+    setStock(String(item.stock));
+    setMinStock(String(item.minStock));
+    setPrice(String(item.sellingPrice));
+    setOpExPct(
+      item.opExPct != null ? String(Math.round(item.opExPct * 100)) : '10',
+    );
+    setPriceB(item.priceB != null ? String(item.priceB) : '');
+    setPriceC(item.priceC != null ? String(item.priceC) : '');
+    setVatExempt(item.vatExempt ?? false);
+    setCostLines(
+      (item.costLines ?? []).map((cl) => ({
+        ...cl,
+        // ensure every line has a stable local id
+        id: cl.id || `cl_${Math.random().toString(36).slice(2)}`,
+      })),
+    );
+    // Show the existing image (remote URL); local picker will override this
+    setImageUri(item.imageUrl ?? '');
+    setError('');
+  }, [item, visible]);
+
+  const totalCost = costLines.reduce((s, l) => s + (l.amount || 0), 0);
+
+  const handleSave = async () => {
+    if (!item) return;
+    if (!name.trim()) {
+      setError('Item name is required.');
+      return;
+    }
+    if (!price.trim()) {
+      setError('Selling price is required.');
+      return;
+    }
+
+    setIsLoading(true);
+    setError('');
+
+    try {
+      let finalImageUrl: string | undefined = item.imageUrl;
+      let finalImagePath: string | undefined = item.imagePath;
+
+      // If the user picked a new local image, upload / replace it on the media server
+      if (imageUri && !imageUri.startsWith('http')) {
+        const user = await AuthService.getCurrentUser();
+        if (!user?.orgId) throw new Error('Organization identifier not found.');
+
+        if (item.imagePath) {
+          // Replace existing file
+          const media = await MediaService.updateMedia(
+            {
+              uri: imageUri,
+              name: `item_${Date.now()}.jpg`,
+              type: 'image/jpeg',
+            },
+            item.imagePath,
+            String(user.orgId),
+          );
+          finalImageUrl = media?.publicUrl;
+          finalImagePath = media?.filePath;
+        } else {
+          // Upload new file
+          const media = await MediaService.uploadMedia(
+            {
+              uri: imageUri,
+              name: `item_${Date.now()}.jpg`,
+              type: 'image/jpeg',
+            },
+            String(user.orgId),
+          );
+          finalImageUrl = media.publicUrl;
+          finalImagePath = media.filePath;
+        }
+      } else if (!imageUri && item.imagePath) {
+        // User removed the image — delete from media server
+        await MediaService.deleteMedia(item.imagePath);
+        finalImageUrl = undefined;
+        finalImagePath = undefined;
+      }
+
+      // Build the UpdateItemInput payload
+      // sellingPrice is nonNull in the schema — always required
+      const payload: UpdateItemPayload = {
+        name: name.trim(),
+        skuNumber: sku.trim() || undefined,
+        barcode: sku.trim() || undefined,
+        stock: parseInt(stock) || 0,
+        minQuantity: parseInt(minStock) || 0,
+        sellingPrice: parseFloat(price),
+        opExPct: parseFloat(opExPct) / 100 || 0.1,
+        priceB: priceB ? parseFloat(priceB) : undefined,
+        priceC: priceC ? parseFloat(priceC) : undefined,
+        vatExempt,
+        image: finalImageUrl,
+        // Strip the local `id` field — backend only wants { label, amount }
+        costLines: costLines.map(({ label, amount }) => ({ label, amount })),
+      };
+
+      const updated = await InventoryService.updateItem(
+        Number(item.id),
+        payload,
+      );
+
+      if (updated) {
+        const updatedItem: InventoryItem = {
+          ...item,
+          name: updated.name ?? name.trim(),
+          sku: updated.skuNumber || updated.barcode || sku.trim(),
+          stock: Number(updated.stock ?? stock),
+          minStock: parseInt(minStock) || item.minStock,
+          sellingPrice: Number(updated.sellingPrice ?? price),
+          lowStock:
+            Number(updated.stock ?? stock) <
+            (parseInt(minStock) || item.minStock),
+          opExPct: Number(updated.opExPct ?? 0),
+          priceB: updated.priceB != null ? Number(updated.priceB) : undefined,
+          priceC: updated.priceC != null ? Number(updated.priceC) : undefined,
+          vatExempt: updated.vatExempt ?? vatExempt,
+          imageUrl: finalImageUrl,
+          imagePath: finalImagePath,
+          costLines: (updated.costLines ?? costLines).map(
+            (cl: any, i: number) => ({
+              id: cl.id || `cl_${i}`,
+              label: cl.label,
+              amount: cl.amount,
+            }),
+          ),
+        };
+        onSaved(updatedItem);
+        onClose();
+      }
+    } catch (err: any) {
+      console.error('Failed to update item:', err);
+      setError(err.message || 'Failed to update item. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const s = StyleSheet.create({
+    overlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'flex-end',
+    },
+    sheet: {
+      backgroundColor: colors.surface,
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      paddingBottom: 32,
+      maxHeight: '94%',
+    },
+    handle: {
+      width: 40,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: colors.border,
+      alignSelf: 'center',
+      marginTop: 12,
+      marginBottom: 4,
+    },
+    header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 20,
+      paddingVertical: 14,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    title: { fontSize: 16, fontWeight: '800', color: colors.text },
+    label: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.textSecondary,
+      letterSpacing: 0.8,
+      marginBottom: 6,
+      marginTop: 14,
+    },
+    input: {
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 11,
+      fontSize: 14,
+      color: colors.text,
+    },
+    row2: { flexDirection: 'row', gap: 10 },
+    vatRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: colors.background,
+      borderRadius: 10,
+      padding: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    saveBtn: {
+      backgroundColor: colors.primary,
+      borderRadius: 12,
+      paddingVertical: 15,
+      alignItems: 'center',
+      marginTop: 20,
+    },
+    errTxt: { fontSize: 12, color: colors.error, marginTop: 6 },
+  });
+
+  if (!item) return null;
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <View style={s.overlay}>
+        <TouchableOpacity
+          style={{ flex: 1 }}
+          activeOpacity={1}
+          onPress={onClose}
+        />
+        <View style={s.sheet}>
+          <View style={s.handle} />
+          <View style={s.header}>
+            <View>
+              <Text style={s.title}>Edit Item</Text>
+              <Text
+                style={{
+                  fontSize: 11,
+                  color: colors.textSecondary,
+                  marginTop: 2,
+                }}
+              >
+                {item.sku}
+              </Text>
+            </View>
+            <TouchableOpacity onPress={onClose}>
+              <X size={20} color={colors.textSecondary} strokeWidth={2} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            contentContainerStyle={{ padding: 20 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {/* ── Image ── */}
+            <ImagePickerSection
+              imageUri={imageUri}
+              onImageUri={setImageUri}
+              colors={colors}
+              label="ITEM IMAGE"
+              hint="Replace the existing image or remove it."
+            />
+
+            {/* ── Name & SKU ── */}
+            <Text style={s.label}>Item Name *</Text>
+            <TextInput
+              style={s.input}
+              value={name}
+              onChangeText={setName}
+              placeholderTextColor={colors.textSecondary}
+            />
+
+            <Text style={s.label}>SKU / Barcode</Text>
+            <TextInput
+              style={s.input}
+              value={sku}
+              onChangeText={setSku}
+              autoCapitalize="characters"
+              placeholderTextColor={colors.textSecondary}
+            />
+
+            {/* ── Stock ── */}
+            <View style={s.row2}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.label}>Stock</Text>
+                <TextInput
+                  style={s.input}
+                  value={stock}
+                  onChangeText={setStock}
+                  keyboardType="number-pad"
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.label}>Min / Reorder At</Text>
+                <TextInput
+                  style={s.input}
+                  value={minStock}
+                  onChangeText={setMinStock}
+                  keyboardType="number-pad"
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+            </View>
+
+            {/* ── Pricing ── */}
+            <View style={s.row2}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.label}>Selling Price ₱ *</Text>
+                <TextInput
+                  style={s.input}
+                  value={price}
+                  onChangeText={setPrice}
+                  keyboardType="decimal-pad"
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.label}>OpEx %</Text>
+                <TextInput
+                  style={s.input}
+                  value={opExPct}
+                  onChangeText={setOpExPct}
+                  keyboardType="decimal-pad"
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+            </View>
+
+            <View style={s.row2}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.label}>Price B (Wholesale) ₱</Text>
+                <TextInput
+                  style={s.input}
+                  value={priceB}
+                  onChangeText={setPriceB}
+                  keyboardType="decimal-pad"
+                  placeholder="—"
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.label}>Price C (Special) ₱</Text>
+                <TextInput
+                  style={s.input}
+                  value={priceC}
+                  onChangeText={setPriceC}
+                  keyboardType="decimal-pad"
+                  placeholder="—"
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+            </View>
+
+            {/* ── VAT ── */}
+            <Text style={s.label}>VAT Status</Text>
+            <View style={s.vatRow}>
+              <Text
+                style={{ fontSize: 13, fontWeight: '600', color: colors.text }}
+              >
+                {vatExempt ? 'VAT Exempt' : 'VAT Inclusive (12%)'}
+              </Text>
+              <TouchableOpacity
+                style={{
+                  paddingHorizontal: 14,
+                  paddingVertical: 7,
+                  borderRadius: 8,
+                  backgroundColor: vatExempt
+                    ? colors.accent + '20'
+                    : colors.primary + '20',
+                  borderWidth: 1,
+                  borderColor: vatExempt ? colors.accent : colors.primary,
+                }}
+                onPress={() => setVatExempt((v) => !v)}
+              >
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: '700',
+                    color: vatExempt ? colors.accent : colors.primary,
+                  }}
+                >
+                  {vatExempt ? 'Exempt' : 'VAT Incl.'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* ── Cost Breakdown ── */}
+            <Text style={s.label}>Cost Breakdown</Text>
+            <Text
+              style={{
+                fontSize: 11,
+                color: colors.textSecondary,
+                marginBottom: 8,
+              }}
+            >
+              Editing these will replace all existing cost lines for this item.
+            </Text>
+            <CostBreakdownBuilder
+              lines={costLines}
+              onChange={setCostLines}
+              colors={colors}
+            />
+
+            {/* ── Profit preview ── */}
+            {price && totalCost > 0 && (
+              <View
+                style={{
+                  backgroundColor: colors.background,
+                  borderRadius: 10,
+                  padding: 12,
+                  marginTop: 12,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                }}
+              >
+                {[
+                  ['Sell Price', parseFloat(price), colors.accent],
+                  ['Contrib. Cost', totalCost, colors.error],
+                  [
+                    'Gross Profit',
+                    parseFloat(price) - totalCost,
+                    parseFloat(price) - totalCost >= 0
+                      ? colors.success
+                      : colors.error,
+                  ],
+                ].map(([label, val, color], i, arr) => (
+                  <React.Fragment key={label as string}>
+                    <View style={{ alignItems: 'center' }}>
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          color: colors.textSecondary,
+                          marginBottom: 2,
+                        }}
+                      >
+                        {label as string}
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: 15,
+                          fontWeight: '800',
+                          color: color as string,
+                        }}
+                      >
+                        ₱{(val as number).toLocaleString()}
+                      </Text>
+                    </View>
+                    {i < arr.length - 1 && (
+                      <Text
+                        style={{
+                          fontSize: 18,
+                          color: colors.textSecondary,
+                          alignSelf: 'center',
+                        }}
+                      >
+                        {i === 0 ? '−' : '='}
+                      </Text>
+                    )}
+                  </React.Fragment>
+                ))}
+              </View>
+            )}
+
+            {error ? <Text style={s.errTxt}>{error}</Text> : null}
+
+            <TouchableOpacity
+              style={s.saveBtn}
+              onPress={handleSave}
+              activeOpacity={0.85}
+            >
+              {isLoading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text
+                  style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}
+                >
+                  Save Changes
+                </Text>
+              )}
+            </TouchableOpacity>
+            <View style={{ height: 8 }} />
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ─── ItemDetailModal ──────────────────────────────────────────────────────────
 
 function ItemDetailModal({
   item,
   visible,
   onClose,
   onAdjustStock,
+  onDelete,
+  onEdit,
   colors,
 }: {
   item: InventoryItem | null;
   visible: boolean;
   onClose: () => void;
   onAdjustStock: (id: string, delta: number) => void;
+  onDelete: (item: InventoryItem) => void;
+  onEdit: (item: InventoryItem) => void;
   colors: any;
 }) {
   if (!item) return null;
@@ -245,9 +935,7 @@ function ItemDetailModal({
   const ratio = Math.min(item.stock / maxStock, 1);
   const barColor = item.lowStock ? colors.error : colors.success;
 
-  const totalCost = item.costLines
-    ? item.costLines.reduce((s, l) => s + l.amount, 0)
-    : 0;
+  const totalCost = item.costLines?.reduce((s, l) => s + l.amount, 0) ?? 0;
   const profit = item.sellingPrice - totalCost;
   const margin = item.sellingPrice > 0 ? (profit / item.sellingPrice) * 100 : 0;
 
@@ -261,6 +949,40 @@ function ItemDetailModal({
       <View style={{ flex: 1, backgroundColor: colors.background }}>
         {/* Header */}
         <View style={[idm.header, { backgroundColor: colors.primary }]}>
+          {item.imageUrl ? (
+            <Image
+              source={{ uri: item.imageUrl }}
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: 10,
+                marginRight: 12,
+                borderWidth: 2,
+                borderColor: 'rgba(255,255,255,0.3)',
+              }}
+              resizeMode="cover"
+            />
+          ) : (
+            <View
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: 10,
+                marginRight: 12,
+                backgroundColor: 'rgba(255,255,255,0.15)',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderWidth: 2,
+                borderColor: 'rgba(255,255,255,0.2)',
+              }}
+            >
+              <Package
+                size={24}
+                color="rgba(255,255,255,0.7)"
+                strokeWidth={1.5}
+              />
+            </View>
+          )}
           <View style={{ flex: 1 }}>
             <Text style={idm.sku}>{item.sku}</Text>
             <Text style={idm.name}>{item.name}</Text>
@@ -293,6 +1015,19 @@ function ItemDetailModal({
               )}
             </View>
           </View>
+          {/* Edit button */}
+          <TouchableOpacity
+            style={[
+              idm.closeBtn,
+              { marginRight: 8, backgroundColor: 'rgba(255,255,255,0.18)' },
+            ]}
+            onPress={() => {
+              onClose();
+              onEdit(item);
+            }}
+          >
+            <Pencil size={15} color="#fff" strokeWidth={2} />
+          </TouchableOpacity>
           <TouchableOpacity style={idm.closeBtn} onPress={onClose}>
             <X size={16} color="#fff" strokeWidth={2.5} />
           </TouchableOpacity>
@@ -386,7 +1121,6 @@ function ItemDetailModal({
                 }}
               />
             </View>
-
             {/* Quick adjust */}
             <View
               style={{
@@ -498,39 +1232,32 @@ function ItemDetailModal({
             <Text style={[idm.sectionTitle, { color: colors.textSecondary }]}>
               PRICING
             </Text>
-            {[
-              ['Price A (Retail)', item.sellingPrice, colors.accent],
+            {(
               [
-                'Price B (Wholesale)',
-                item.priceB ?? item.sellingPrice * 0.9,
-                colors.primary,
-              ],
-              [
-                'Price C (Special)',
-                item.priceC ?? item.sellingPrice * 0.85,
-                colors.success,
-              ],
-            ].map(([label, val, color]) => (
+                ['Price A (Retail)', item.sellingPrice, colors.accent],
+                [
+                  'Price B (Wholesale)',
+                  item.priceB ?? item.sellingPrice * 0.9,
+                  colors.primary,
+                ],
+                [
+                  'Price C (Special)',
+                  item.priceC ?? item.sellingPrice * 0.85,
+                  colors.success,
+                ],
+              ] as [string, number, string][]
+            ).map(([label, val, color]) => (
               <View
-                key={label as string}
+                key={label}
                 style={[idm.detailRow, { borderBottomColor: colors.border }]}
               >
                 <Text
                   style={[idm.detailLabel, { color: colors.textSecondary }]}
                 >
-                  {label as string}
+                  {label}
                 </Text>
-                <Text
-                  style={{
-                    fontSize: 14,
-                    fontWeight: '700',
-                    color: color as string,
-                  }}
-                >
-                  ₱
-                  {(val as number).toLocaleString('en-PH', {
-                    minimumFractionDigits: 2,
-                  })}
+                <Text style={{ fontSize: 14, fontWeight: '700', color }}>
+                  ₱{val.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
                 </Text>
               </View>
             ))}
@@ -647,7 +1374,7 @@ function ItemDetailModal({
             </View>
           )}
 
-          {/* OpEx contribution */}
+          {/* OpEx */}
           {item.opExPct !== undefined && (
             <View
               style={[
@@ -682,6 +1409,36 @@ function ItemDetailModal({
               </View>
             </View>
           )}
+
+          {/* Delete */}
+          <View
+            style={{
+              marginTop: 20,
+              padding: 16,
+              backgroundColor: colors.error + '10',
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: colors.error + '30',
+            }}
+          >
+            <TouchableOpacity
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                paddingVertical: 12,
+              }}
+              onPress={() => onDelete(item)}
+            >
+              <Trash2 size={18} color={colors.error} strokeWidth={2} />
+              <Text
+                style={{ fontSize: 14, fontWeight: '700', color: colors.error }}
+              >
+                Delete Item
+              </Text>
+            </TouchableOpacity>
+          </View>
         </ScrollView>
       </View>
     </Modal>
@@ -732,7 +1489,7 @@ const idm = StyleSheet.create({
   detailValue: { fontSize: 13, fontWeight: '600', textAlign: 'right' },
 });
 
-// ─── Add Item Modal ───────────────────────────────────────────────────────────
+// ─── AddItemModal ─────────────────────────────────────────────────────────────
 
 function AddItemModal({
   visible,
@@ -754,6 +1511,7 @@ function AddItemModal({
   const [vatExempt, setVatExempt] = useState(false);
   const [opExPct, setOpExPct] = useState('10');
   const [isLoading, setIsLoading] = useState(false);
+  const [itemImageUri, setItemImageUri] = useState('');
   const [costLines, setCostLines] = useState<CostLine[]>([
     { id: 'cl_purchase', label: 'Purchase Cost', amount: 0 },
   ]);
@@ -761,42 +1519,69 @@ function AddItemModal({
 
   const totalCost = costLines.reduce((s, l) => s + l.amount, 0);
 
+  const resetForm = () => {
+    setName('');
+    setSku('');
+    setStock('0');
+    setMinStock('10');
+    setPrice('');
+    setOpExPct('10');
+    setVatExempt(false);
+    setItemImageUri('');
+    setCostLines([{ id: 'cl_purchase', label: 'Purchase Cost', amount: 0 }]);
+    setError('');
+  };
+
   const handleAdd = async () => {
-    setIsLoading(true);
     if (!name.trim()) {
       setError('Item name is required.');
-      setIsLoading(false);
       return;
     }
     if (!price.trim()) {
       setError('Selling price is required.');
-      setIsLoading(false);
       return;
     }
 
+    setIsLoading(true);
+    setError('');
+
     try {
-      setError('');
-      // First, create the item on the backend
+      let finalImageUrl: string | undefined;
+      let finalImagePath: string | undefined;
+
+      if (itemImageUri && !itemImageUri.startsWith('http')) {
+        const user = await AuthService.getCurrentUser();
+        if (!user?.orgId) throw new Error('Organization identifier not found.');
+        const media = await MediaService.uploadMedia(
+          {
+            uri: itemImageUri,
+            name: `item_${Date.now()}.jpg`,
+            type: 'image/jpeg',
+          },
+          String(user.orgId),
+        );
+        finalImageUrl = media.publicUrl;
+        finalImagePath = media.filePath;
+      } else if (itemImageUri) {
+        finalImageUrl = itemImageUri;
+      }
+
       const createdItem = await InventoryService.createItem({
         name: name.trim(),
         stock: parseInt(stock) || 0,
-        description: '',
         barcode: sku.trim() || `SKU-${Date.now().toString().slice(-6)}`,
-        brand: '',
-        categoryId: undefined,
         sellingPrice: parseFloat(price) || 0,
         vatExempt,
-        assembly: false,
-        skuNumber: sku.trim() || `SKU-${Date.now().toString().slice(-6)}`,
+        skuNumber: sku.trim() || undefined,
+        image: finalImageUrl,
         costLines:
           costLines.length > 0
-            ? costLines.map(({ id, ...rest }) => rest)
+            ? costLines.map(({ label, amount }) => ({ label, amount }))
             : undefined,
         opExPct: parseFloat(opExPct) / 100 || 0.1,
       });
 
-      // Then map it to local InventoryItem format
-      if (createdItem && createdItem.id) {
+      if (createdItem?.id) {
         const returnedStock = Number(createdItem.stock ?? 0);
         const newItem: InventoryItem = {
           id: String(createdItem.id),
@@ -813,18 +1598,18 @@ function AddItemModal({
           costLines,
           opExPct: parseFloat(opExPct) / 100 || 0.1,
           vatExempt,
+          imageUrl:
+            finalImageUrl ||
+            createdItem.image ||
+            createdItem?.media?.[0]?.url ||
+            '',
+          imagePath: finalImagePath || '',
         };
         onAdd(newItem);
       }
 
-      setName('');
-      setSku('');
-      setStock('0');
-      setMinStock('10');
-      setPrice('');
-      setCostLines([{ id: 'cl_purchase', label: 'Purchase Cost', amount: 0 }]);
+      resetForm();
       onClose();
-      setIsLoading(false);
     } catch (err: any) {
       console.error('Failed to create item:', err);
       setError(err.message || 'Failed to create item. Please try again.');
@@ -910,7 +1695,6 @@ function AddItemModal({
       alignItems: 'center',
       marginTop: 20,
     },
-    addTxt: { fontSize: 15, fontWeight: '700', color: '#fff' },
     errTxt: { fontSize: 12, color: colors.error, marginTop: 6 },
   });
 
@@ -940,6 +1724,12 @@ function AddItemModal({
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
+            <ImagePickerSection
+              imageUri={itemImageUri}
+              onImageUri={setItemImageUri}
+              colors={colors}
+            />
+
             <Text style={s.label}>Item Name *</Text>
             <TextInput
               style={s.input}
@@ -1030,7 +1820,6 @@ function AddItemModal({
               </View>
             </View>
 
-            {/* VAT toggle */}
             <Text style={s.label}>VAT Status</Text>
             <View style={s.vatRow}>
               <Text
@@ -1063,7 +1852,6 @@ function AddItemModal({
               </TouchableOpacity>
             </View>
 
-            {/* Cost breakdown builder */}
             <Text style={s.label}>Cost Breakdown</Text>
             <Text
               style={{
@@ -1072,9 +1860,8 @@ function AddItemModal({
                 marginBottom: 8,
               }}
             >
-              Break down the contribution cost into components — purchase price,
-              freight, handling, etc. These sum to the total contribution cost
-              used in Item Net Summary.
+              Break down the contribution cost — purchase price, freight,
+              handling, etc.
             </Text>
             <CostBreakdownBuilder
               lines={costLines}
@@ -1082,7 +1869,6 @@ function AddItemModal({
               colors={colors}
             />
 
-            {/* Profit preview */}
             {price && totalCost > 0 && (
               <View
                 style={{
@@ -1096,100 +1882,65 @@ function AddItemModal({
                   justifyContent: 'space-between',
                 }}
               >
-                <View style={{ alignItems: 'center' }}>
-                  <Text
-                    style={{
-                      fontSize: 11,
-                      color: colors.textSecondary,
-                      marginBottom: 2,
-                    }}
-                  >
-                    Sell Price
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: 15,
-                      fontWeight: '800',
-                      color: colors.accent,
-                    }}
-                  >
-                    ₱{parseFloat(price).toLocaleString()}
-                  </Text>
-                </View>
-                <Text
-                  style={{
-                    fontSize: 18,
-                    color: colors.textSecondary,
-                    alignSelf: 'center',
-                  }}
-                >
-                  −
-                </Text>
-                <View style={{ alignItems: 'center' }}>
-                  <Text
-                    style={{
-                      fontSize: 11,
-                      color: colors.textSecondary,
-                      marginBottom: 2,
-                    }}
-                  >
-                    Contrib. Cost
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: 15,
-                      fontWeight: '800',
-                      color: colors.error,
-                    }}
-                  >
-                    ₱{totalCost.toLocaleString()}
-                  </Text>
-                </View>
-                <Text
-                  style={{
-                    fontSize: 18,
-                    color: colors.textSecondary,
-                    alignSelf: 'center',
-                  }}
-                >
-                  =
-                </Text>
-                <View style={{ alignItems: 'center' }}>
-                  <Text
-                    style={{
-                      fontSize: 11,
-                      color: colors.textSecondary,
-                      marginBottom: 2,
-                    }}
-                  >
-                    Gross Profit
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: 15,
-                      fontWeight: '800',
-                      color:
-                        parseFloat(price) - totalCost >= 0
-                          ? colors.success
-                          : colors.error,
-                    }}
-                  >
-                    ₱{(parseFloat(price) - totalCost).toLocaleString()}
-                  </Text>
-                </View>
+                {(
+                  [
+                    ['Sell Price', parseFloat(price), colors.accent],
+                    ['Contrib. Cost', totalCost, colors.error],
+                    [
+                      'Gross Profit',
+                      parseFloat(price) - totalCost,
+                      parseFloat(price) - totalCost >= 0
+                        ? colors.success
+                        : colors.error,
+                    ],
+                  ] as [string, number, string][]
+                ).map(([label, val, color], i, arr) => (
+                  <React.Fragment key={label}>
+                    <View style={{ alignItems: 'center' }}>
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          color: colors.textSecondary,
+                          marginBottom: 2,
+                        }}
+                      >
+                        {label}
+                      </Text>
+                      <Text style={{ fontSize: 15, fontWeight: '800', color }}>
+                        ₱{val.toLocaleString()}
+                      </Text>
+                    </View>
+                    {i < arr.length - 1 && (
+                      <Text
+                        style={{
+                          fontSize: 18,
+                          color: colors.textSecondary,
+                          alignSelf: 'center',
+                        }}
+                      >
+                        {i === 0 ? '−' : '='}
+                      </Text>
+                    )}
+                  </React.Fragment>
+                ))}
               </View>
             )}
 
             {error ? <Text style={s.errTxt}>{error}</Text> : null}
-
             <TouchableOpacity
               style={s.addBtn}
               onPress={handleAdd}
               activeOpacity={0.85}
             >
-              <Text style={s.addTxt}>
-                {isLoading ? <ActivityIndicator /> : 'Add to Inventory'}
-              </Text>
+              {isLoading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text
+                  style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}
+                >
+                  Add to Inventory
+                </Text>
+              )}
             </TouchableOpacity>
             <View style={{ height: 8 }} />
           </ScrollView>
@@ -1211,48 +1962,53 @@ export default function InventoryScreen() {
   const [loadingItems, setLoadingItems] = useState(true);
 
   React.useEffect(() => {
-    const loadInventory = async () => {
+    (async () => {
       setLoadingItems(true);
       try {
         const inventory = await InventoryService.getOrgItems();
         setItems(
-          (inventory || []).map((it: any) => ({
-            id: String(it.id),
-            name: it.name || 'Unnamed item',
-            sku: it.barcode || it.sku || `SKU-${it.id}`,
-            stock: Number(it.stock || 0),
-            minStock: Number(it.minQuantity || 10),
-            category: it.categoryId ? String(it.categoryId) : 'General',
-            sellingPrice: Number(it.sellingPrice || 0), // <-- use it.sellingPrice
-            lowStock: Number(it.stock || 0) < Number(it.minQuantity || 10),
-            costLines: it.costLines || [],
-            opExPct: Number(it.opExPct || 0),
-            priceB:
-              it.priceB != null
-                ? Number(it.priceB)
-                : Number(it.sellingPrice || 0) * 0.9, // fallback
-            priceC:
-              it.priceC != null
-                ? Number(it.priceC)
-                : Number(it.sellingPrice || 0) * 0.85,
-            vatExempt: Boolean(it.vatExempt),
-          })),
+          (inventory || []).map(
+            (it: any): InventoryItem => ({
+              id: String(it.id),
+              name: it.name || 'Unnamed item',
+              sku: it.barcode || it.skuNumber || `SKU-${it.id}`,
+              stock: Number(it.stock || 0),
+              minStock: Number(it.minQuantity || 10),
+              category:
+                it.category?.name ||
+                (it.categoryId ? String(it.categoryId) : 'General'),
+              sellingPrice: Number(it.sellingPrice || 0),
+              lowStock: Number(it.stock || 0) < Number(it.minQuantity || 10),
+              imageUrl: it.image || it.media?.[0]?.url || undefined,
+              imagePath: it.media?.[0]?.path || undefined,
+              costLines: (it.costLines || []).map((cl: any, i: number) => ({
+                id: cl.id ? String(cl.id) : `cl_${i}`,
+                label: cl.label,
+                amount: cl.amount,
+              })),
+              opExPct: Number(it.opExPct || 0),
+              priceB: it.priceB != null ? Number(it.priceB) : undefined,
+              priceC: it.priceC != null ? Number(it.priceC) : undefined,
+              vatExempt: Boolean(it.vatExempt),
+            }),
+          ),
         );
       } catch (error) {
         console.warn('Unable to load inventory items', error);
       } finally {
         setLoadingItems(false);
       }
-    };
-
-    loadInventory();
+    })();
   }, []);
+
   const [stockFilter, setStockFilter] = useState<StockFilter>('All');
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('All');
   const [filterOpen, setFilterOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [detailVisible, setDetailVisible] = useState(false);
   const [addVisible, setAddVisible] = useState(false);
+  const [editItem, setEditItem] = useState<InventoryItem | null>(null);
+  const [editVisible, setEditVisible] = useState(false);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -1283,8 +2039,37 @@ export default function InventoryScreen() {
     );
   };
 
-  const handleAddItem = (item: InventoryItem) => {
+  const handleAddItem = (item: InventoryItem) =>
     setItems((prev) => [item, ...prev]);
+
+  const handleItemSaved = (updated: InventoryItem) => {
+    setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
+  };
+
+  const handleDeleteItem = async (item: InventoryItem) => {
+    Alert.alert(
+      'Delete Item',
+      `Are you sure you want to delete "${item.name}"? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await InventoryService.deleteItem(
+                Number(item.id),
+                item.imagePath,
+              );
+              setItems((prev) => prev.filter((i) => i.id !== item.id));
+              setDetailVisible(false);
+            } catch (error) {
+              Alert.alert('Error', 'Failed to delete item. Please try again.');
+            }
+          },
+        },
+      ],
+    );
   };
 
   const styles = StyleSheet.create({
@@ -1379,38 +2164,40 @@ export default function InventoryScreen() {
     card: {
       backgroundColor: colors.card,
       borderRadius: 12,
-      padding: 14,
       borderWidth: 1,
       borderColor: colors.border,
+      overflow: 'hidden',
     },
     cardLow: { borderColor: colors.error, borderWidth: 1.5 },
-    topRow: {
+    cardInner: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'flex-start',
-      marginBottom: 8,
+      alignItems: 'center',
+      padding: 12,
+      gap: 12,
     },
-    productName: {
-      fontSize: 15,
-      fontWeight: '700',
-      color: colors.text,
-      flex: 1,
-      marginRight: 8,
+    thumb: {
+      width: 54,
+      height: 54,
+      borderRadius: 8,
+      backgroundColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
     },
-    sku: {
+    thumbImg: { width: 54, height: 54, borderRadius: 8 },
+    cardBody: { flex: 1, gap: 3 },
+    productName: { fontSize: 14, fontWeight: '700', color: colors.text },
+    skuText: {
       fontSize: 11,
       color: colors.textSecondary,
       fontFamily: 'monospace',
-      letterSpacing: 0.4,
     },
-    stockRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    stockLabel: { fontSize: 12, color: colors.textSecondary },
-    stockValue: { fontSize: 20, fontWeight: '900' },
-    stockBar: {
-      height: 4,
+    stockBarWrap: {
+      height: 3,
       borderRadius: 2,
       backgroundColor: colors.border,
-      marginTop: 8,
+      marginHorizontal: 12,
+      marginBottom: 10,
       overflow: 'hidden',
     },
     metaRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
@@ -1457,49 +2244,39 @@ export default function InventoryScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        {/* Meta cards */}
         <View style={styles.metaRow}>
-          <View style={styles.metaCard}>
-            <Text style={styles.metaValue}>{filtered.length}</Text>
-            <Text style={styles.metaLabel}>Items</Text>
-          </View>
-          <View style={styles.metaCard}>
-            <Text style={[styles.metaValue, { color: colors.error }]}>
-              {lowStockCount}
-            </Text>
-            <Text style={styles.metaLabel}>Low Stock</Text>
-          </View>
-          <View style={styles.metaCard}>
-            <Text style={[styles.metaValue, { color: colors.success }]}>
-              {filtered.length - lowStockCount}
-            </Text>
-            <Text style={styles.metaLabel}>In Stock</Text>
-          </View>
-          <View style={styles.metaCard}>
-            <Text style={[styles.metaValue, { color: colors.accent }]}>
-              {
+          {(
+            [
+              [filtered.length, 'Items', colors.text],
+              [lowStockCount, 'Low Stock', colors.error],
+              [filtered.length - lowStockCount, 'In Stock', colors.success],
+              [
                 CATEGORIES.filter((c) => c !== 'All').filter((cat) =>
                   items.some((i) => i.category === cat),
-                ).length
-              }
-            </Text>
-            <Text style={styles.metaLabel}>Categories</Text>
-          </View>
+                ).length,
+                'Categories',
+                colors.accent,
+              ],
+            ] as [number, string, string][]
+          ).map(([val, label, color]) => (
+            <View key={label} style={styles.metaCard}>
+              <Text style={[styles.metaValue, { color }]}>{val}</Text>
+              <Text style={styles.metaLabel}>{label}</Text>
+            </View>
+          ))}
         </View>
 
-        {/* Alert banner */}
         {lowStockCount > 0 && (
           <View style={styles.alertBanner}>
             <Text style={{ fontSize: 16, marginRight: 8 }}>⚠️</Text>
             <Text style={styles.alertText}>
               {lowStockCount} item{lowStockCount > 1 ? 's' : ''} below reorder
-              threshold — restocking required
+              threshold
             </Text>
           </View>
         )}
       </View>
 
-      {/* Toolbar */}
       <View style={styles.toolbar}>
         <View style={styles.searchBox}>
           <Search size={13} color={colors.textSecondary} strokeWidth={2} />
@@ -1541,7 +2318,6 @@ export default function InventoryScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Filter panel */}
       {filterOpen && (
         <View style={styles.filterPanel}>
           <View>
@@ -1627,7 +2403,7 @@ export default function InventoryScreen() {
           const maxStock = Math.max(item.stock, item.minStock * 4, 200);
           const ratio = Math.min(item.stock / maxStock, 1);
           const barColor = item.lowStock ? colors.error : colors.success;
-          const hasCosts = item.costLines && item.costLines.length > 0;
+          const hasCosts = (item.costLines?.length ?? 0) > 0;
           const totalCost = hasCosts
             ? item.costLines!.reduce((s, l) => s + l.amount, 0)
             : 0;
@@ -1645,85 +2421,123 @@ export default function InventoryScreen() {
               }}
               activeOpacity={0.82}
             >
-              <View style={styles.topRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.productName}>{item.name}</Text>
-                  <Text style={styles.sku}>{item.sku}</Text>
-                </View>
-                <View style={{ alignItems: 'flex-end', gap: 4 }}>
+              <View style={styles.cardInner}>
+                {item.imageUrl ? (
+                  <Image
+                    source={{ uri: item.imageUrl }}
+                    style={styles.thumbImg}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={styles.thumb}>
+                    <Package
+                      size={24}
+                      color={colors.textSecondary}
+                      strokeWidth={1.5}
+                    />
+                  </View>
+                )}
+                <View style={styles.cardBody}>
+                  <Text style={styles.productName} numberOfLines={1}>
+                    {item.name}
+                  </Text>
+                  <Text style={styles.skuText}>{item.sku}</Text>
                   <View
                     style={{
-                      backgroundColor: item.lowStock
-                        ? colors.error + '20'
-                        : colors.success + '20',
-                      borderRadius: 20,
-                      paddingHorizontal: 8,
-                      paddingVertical: 3,
-                      borderWidth: 1,
-                      borderColor: item.lowStock
-                        ? colors.error
-                        : colors.success,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginTop: 4,
                     }}
                   >
                     <Text
                       style={{
-                        fontSize: 11,
+                        fontSize: 13,
                         fontWeight: '700',
-                        color: item.lowStock ? colors.error : colors.success,
+                        color: colors.accent,
                       }}
                     >
-                      {item.lowStock ? 'Low Stock' : 'In Stock'}
+                      ₱{item.sellingPrice.toLocaleString()}
                     </Text>
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 4,
+                      }}
+                    >
+                      <Text
+                        style={{ fontSize: 12, color: colors.textSecondary }}
+                      >
+                        Units:
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: 14,
+                          fontWeight: '900',
+                          color: item.lowStock ? colors.error : colors.text,
+                        }}
+                      >
+                        {item.stock}
+                      </Text>
+                    </View>
                   </View>
-                  {hasCosts && (
-                    <Text style={{ fontSize: 10, color: colors.textSecondary }}>
-                      Contrib: ₱{totalCost.toLocaleString()}
-                    </Text>
-                  )}
-                </View>
-              </View>
-              <View
-                style={{
-                  flexDirection: 'row',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                }}
-              >
-                <View>
-                  <Text style={styles.sku}>{item.category}</Text>
-                  <Text
+                  <View
                     style={{
-                      fontSize: 13,
-                      fontWeight: '700',
-                      color: colors.accent,
-                      marginTop: 2,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginTop: 3,
                     }}
                   >
-                    ₱{item.sellingPrice.toLocaleString()}{' '}
-                    <Text
+                    <Text style={[styles.skuText, { fontSize: 11 }]}>
+                      {item.category}
+                    </Text>
+                    <View
                       style={{
-                        fontSize: 11,
-                        fontWeight: '400',
-                        color: colors.textSecondary,
+                        flexDirection: 'row',
+                        gap: 4,
+                        alignItems: 'center',
                       }}
                     >
-                      retail
-                    </Text>
-                  </Text>
-                </View>
-                <View style={styles.stockRow}>
-                  <Text style={styles.stockLabel}>Units:</Text>
-                  <Text
-                    style={[
-                      styles.stockValue,
-                      { color: item.lowStock ? colors.error : colors.text },
-                    ]}
-                  >
-                    {item.stock}
-                  </Text>
+                      {hasCosts && (
+                        <Text
+                          style={{ fontSize: 10, color: colors.textSecondary }}
+                        >
+                          Cost ₱{totalCost.toLocaleString()}
+                        </Text>
+                      )}
+                      <View
+                        style={{
+                          backgroundColor: item.lowStock
+                            ? colors.error + '20'
+                            : colors.success + '20',
+                          borderRadius: 20,
+                          paddingHorizontal: 7,
+                          paddingVertical: 2,
+                          borderWidth: 1,
+                          borderColor: item.lowStock
+                            ? colors.error
+                            : colors.success,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            fontWeight: '700',
+                            color: item.lowStock
+                              ? colors.error
+                              : colors.success,
+                          }}
+                        >
+                          {item.lowStock ? 'Low' : 'OK'}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
                 </View>
               </View>
-              <View style={styles.stockBar}>
+              <View style={styles.stockBarWrap}>
                 <View
                   style={{
                     height: '100%',
@@ -1743,12 +2557,24 @@ export default function InventoryScreen() {
         visible={detailVisible}
         onClose={() => setDetailVisible(false)}
         onAdjustStock={handleAdjustStock}
+        onDelete={handleDeleteItem}
+        onEdit={(item) => {
+          setEditItem(item);
+          setEditVisible(true);
+        }}
         colors={colors}
       />
       <AddItemModal
         visible={addVisible}
         onClose={() => setAddVisible(false)}
         onAdd={handleAddItem}
+        colors={colors}
+      />
+      <EditItemModal
+        item={editItem}
+        visible={editVisible}
+        onClose={() => setEditVisible(false)}
+        onSaved={handleItemSaved}
         colors={colors}
       />
     </View>

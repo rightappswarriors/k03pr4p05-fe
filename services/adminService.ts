@@ -184,6 +184,7 @@ export class AdminService {
           address 
           branchId
           createdAt
+          bannerImage
           status
           staff {
             id
@@ -397,51 +398,59 @@ export class AdminService {
     }
   }
 
+ 
+
   static async getOutletById(outletId: string): Promise<AdminOutlet | null> {
     const GETOUTLET_ID = `
-    query GetOutletsByBranch($branchId: ID!) {
-      getOutletsByBranch(branchId: $branchId) {
+    query GetOutletById($outletId: ID!) {
+      getOutletById(id: $outletId) {
         id
         name
         outletType
-        address 
+        address
         branchId
         createdAt
         status
-        staff {
-          id
-          isPresent
-        }
+        phone
+        code
+        governmentTax
+        serviceCharge
+        latitude
+        longitude
+        c
+        staff { id isPresent }
       }
     }`
     try {
-      const { accessToken } = await AuthService.getTokens()
-      const client = await getGraphQLClient()
-      const res = (await client.request(GETOUTLET_ID, { getOutletByIdId: outletId }, {
-        Authorization: `Bearer ${accessToken}`
-      })) as any
-      console.log("Success getting outlet by id:\n", res.getOutletById)
-      const o = res.getOutletById
+      const { accessToken } = await AuthService.getTokens();
+      const client = await getGraphQLClient();
+      const res = (await client.request(GETOUTLET_ID, { outletId }, {
+        Authorization: `Bearer ${accessToken}`,
+      })) as any;
+      const o = res.getOutletById;
+      if (!o) return null;
+
       return {
         id: o.id,
         name: o.name,
-        status: o.status === null ? "open" : o.status,
+        status: o.status === null ? 'open' : o.status,
         outletType: o.outletType,
         branchId: o.branchId,
         address: o.address,
         phone: o.phone,
+        code: o.code,
+        governmentTax: o.governmentTax,
+        serviceCharge: o.serviceCharge,
+        latitude: o.latitude,
+        longitude: o.longitude,
+        bannerImage: o.bannerImage,
         createdAt: o.createdAt,
-        assignedCashierIds: o.staff.map((s: any) => s.id) ?? [],
-        currentCashiers: o.staffs.filter((s: any) => s.isPresent === true).map((s: any) => {
-          return {
-            id: s.id,
-            isPresent: s.isPresent
-          }
-        })
-      }
+        assignedCashierIds: o.staff?.map((s: any) => s.id) ?? [],
+        currentCashiers: o.staff?.filter((s: any) => s.isPresent).map((s: any) => ({ id: s.id, isPresent: s.isPresent })) ?? [],
+      };
     } catch (error) {
-      console.error("Failed to get outlet by id:", error)
-      return null
+      console.error('Failed to get outlet by id:', error);
+      return null;
     }
   }
 
@@ -655,6 +664,7 @@ export class AdminService {
     latitude?: number;
     longitude?: number;
     isActive?: boolean;
+    bannerImage?: string;
   }): Promise<AdminOutlet> {
     const UPDATE_OUTLET_MUTATION = gql`
       mutation UpdateOutlet(
@@ -670,6 +680,7 @@ export class AdminService {
         $latitude: Float
         $longitude: Float
         $isActive: Boolean
+        $bannerImage: String
       ) {
         updateOutlet(
           outletId: $outletId
@@ -684,6 +695,7 @@ export class AdminService {
           latitude: $latitude
           longitude: $longitude
           isActive: $isActive
+          bannerImage: $bannerImage
         ) {
           id
           name
@@ -873,6 +885,60 @@ export class AdminService {
       return res.getItemsByOutlet ?? [];
     } catch (error) {
       console.error("Failed to get outlet items:", error);
+      return [];
+    }
+  }
+
+  static async getBranchesMinimal(search?: string): Promise<{ id: number; name: string; address: string; isActive: boolean }[]> {
+    try {
+      const { accessToken } = await AuthService.getTokens();
+      const client = await getGraphQLClient();
+
+      const GET_BRANCHES_MINIMAL = gql`
+        query GetBranchesMinimal($search: String) {
+          getOwnedBranches(search: $search) {
+            id
+            name
+            address
+            isActive
+          }
+        }
+      `;
+
+      const res = await client.request(GET_BRANCHES_MINIMAL, { search }, {
+        Authorization: `Bearer ${accessToken}`
+      }) as any;
+      return res.getOwnedBranches ?? [];
+    } catch (error) {
+      console.error("Failed to get branches minimal:", error);
+      return [];
+    }
+  }
+
+  static async getOutletsByBranchMinimal(branchId: string, search?: string): Promise<{ id: number; name: string; address: string; latitude?: number; longitude?: number; status: string }[]> {
+    try {
+      const { accessToken } = await AuthService.getTokens();
+      const client = await getGraphQLClient();
+
+      const GET_OUTLETS_MINIMAL = gql`
+        query GetOutletsByBranchMinimal($branchId: ID!, $search: String) {
+          getOutletsByBranch(branchId: $branchId, search: $search) {
+            id
+            name
+            address
+            latitude
+            longitude
+            status
+          }
+        }
+      `;
+
+      const res = await client.request(GET_OUTLETS_MINIMAL, { branchId: parseInt(branchId), search }, {
+        Authorization: `Bearer ${accessToken}`
+      }) as any;
+      return res.getOutletsByBranch ?? [];
+    } catch (error) {
+      console.error("Failed to get outlets minimal:", error);
       return [];
     }
   }
