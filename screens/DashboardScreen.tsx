@@ -73,7 +73,7 @@ import {
   SkeletonTableRow,
   SummaryTable,
 } from '@/components/dashboardSummary/SummaryTable';
-import { DropdownField, s } from '@/app/(admin)';
+import { DropdownField, s } from '@/app/(erp)';
 import {
   ACCOUNT_TITLE_OPTIONS,
   VAT_TYPE_OPTIONS,

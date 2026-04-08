@@ -26,7 +26,7 @@ export class SalesService {
         }
       }
     `;
-
+    
     const response = await graphQLRequest<{ getTransactionsByStoreId: any[] }>(QUERY, {
       outletId,
       startDate,

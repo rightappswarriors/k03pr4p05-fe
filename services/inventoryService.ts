@@ -26,6 +26,8 @@ export class InventoryService {
               totalCost
               priceB
               priceC
+              categoryId              // ✅ add
+              category { id name } 
               item {
                 id
                 name
@@ -52,7 +54,7 @@ export class InventoryService {
     return response.getInventoryByOutletId;
   }
 
- 
+
   static getMediaServerUrl(): string {
     return (process.env.EXPO_PUBLIC_MEDIA_SERVER_URL || 'http://10.0.2.2:3001').replace(/\/$/, '');
   }
@@ -261,11 +263,13 @@ export class InventoryService {
     description?: string;
     barcode: string;
     brand?: string;
-    categoryId?: number;
+    categoryId?: number;        // global
+    orgCategoryId?: number;     // ✅ org
     stock: number;
     sellingPrice: number;
-    image?: string,
+    image?: string;
     vatExempt?: boolean;
+    vatTypeId?: number;         // ✅ add
     assembly?: boolean;
     skuNumber?: string;
     costLines?: Array<{ label: string; amount: number }>;
@@ -275,28 +279,29 @@ export class InventoryService {
     minQuantity?: number;
   }): Promise<any> {
     const MUTATION = gql`
-      mutation CreateItem($data: CreateItemInput!) {
-        createItem(data: $data) {
-          id
-          name
-          barcode
-          description
-          categoryId
-          stock
-          opExPct
-          sellingPrice
-          minQuantity
-          costLines { label amount }
-          category { id name }
-          vatExempt
-          assembly
-          skuNumber
-          brandId
-          brandDetails { id name }
-          media { id url type }
-        }
+    mutation CreateItem($data: CreateItemInput!) {
+      createItem(data: $data) {
+        id
+        name
+        barcode
+        description
+        categoryId
+        orgCategoryId
+        stock
+        opExPct
+        sellingPrice
+        minQuantity
+        costLines { label amount }
+        category { id name }
+        orgCategory { id name }
+        vatExempt
+        vatTypeId
+        assembly
+        skuNumber
+        media { id url type }
       }
-    `;
+    }
+  `;
 
     try {
       const { accessToken } = await AuthService.getTokens();
@@ -497,6 +502,7 @@ export class InventoryService {
     itemId: number;
     quantity: number;
     price: number;
+    categoryId: number | undefined,
     units?: Array<{
       unitName: string;
       unitLabel: string;

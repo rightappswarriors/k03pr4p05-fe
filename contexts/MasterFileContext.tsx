@@ -4,14 +4,38 @@
 // imports from here — so adding a new department in Master File
 // immediately updates the HR filter pills and Add Employee modal.
 
-import React, { createContext, useCallback, useContext, useState } from 'react';
+import { CenterService } from '@/services/centerService';
+import { DepartmentService } from '@/services/departMentService';
+import { MasterFileFinanceService } from '@/services/masterFileFinanceService';
+import { OrgCategoryService } from '@/services/orgCategoryService';
+import { PositionService } from '@/services/positionService';
+import { SubCenterService } from '@/services/subCenterService';
+import { VatTypeService } from '@/services/vatTypeService';
+import { useAuth } from '@/hooks/useAuth';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from 'react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface MasterItem {
   id: string;
   label: string;
+
+  isGlobal?: boolean; // ✅ new
   color?: string; // optional — used by dept/category color chips
+  description?: string;
+  permissions?: Array<{
+    pageId: string;
+    canView: boolean;
+    canCreate: boolean;
+    canEdit: boolean;
+    canDelete: boolean;
+  }>;
 }
 
 export interface MasterFileState {
@@ -22,6 +46,7 @@ export interface MasterFileState {
   centers: MasterItem[];
   subCenters: MasterItem[];
   accountTitles: MasterItem[];
+  positions: MasterItem[];
 }
 
 export type TableKey = keyof MasterFileState;
@@ -35,83 +60,14 @@ interface MasterFileContextType extends MasterFileState {
 // ─── Seed data ────────────────────────────────────────────────────────────────
 
 const INITIAL: MasterFileState = {
-  itemCategories: [
-    { id: 'cat1', label: 'Rice' },
-    { id: 'cat2', label: 'Canned Goods' },
-    { id: 'cat3', label: 'Beverages' },
-    { id: 'cat4', label: 'Snacks' },
-    { id: 'cat5', label: 'Dairy' },
-    { id: 'cat6', label: 'Personal Care' },
-    { id: 'cat7', label: 'Household' },
-    { id: 'cat8', label: 'Frozen' },
-  ],
-  vatTypes: [
-    { id: 'vat1', label: 'VAT Inclusive (12%)' },
-    { id: 'vat2', label: 'VAT Exclusive (12%)' },
-    { id: 'vat3', label: 'VAT Exempt' },
-    { id: 'vat4', label: 'Zero-Rated' },
-  ],
-  departments: [
-    { id: 'dep1', label: 'Engineering', color: '#3B82F6' },
-    { id: 'dep2', label: 'Sales', color: '#10B981' },
-    { id: 'dep3', label: 'Finance', color: '#F59E0B' },
-    { id: 'dep4', label: 'HR', color: '#06B6D4' },
-    { id: 'dep5', label: 'Product', color: '#8B5CF6' },
-    { id: 'dep6', label: 'Design', color: '#EC4899' },
-    { id: 'dep7', label: 'Marketing', color: '#EF4444' },
-    { id: 'dep8', label: 'Operations', color: '#78716C' },
-  ],
-  roles: [
-    { id: 'rol1', label: 'Branch Manager' },
-    { id: 'rol2', label: 'Senior Cashier' },
-    { id: 'rol3', label: 'Cashier' },
-    { id: 'rol4', label: 'Inventory Clerk' },
-    { id: 'rol5', label: 'Delivery Rider' },
-    { id: 'rol6', label: 'HR Officer' },
-    { id: 'rol7', label: 'Accountant' },
-    { id: 'rol8', label: 'IT Support' },
-    { id: 'rol9', label: 'Warehouse Staff' },
-    { id: 'rol10', label: 'Marketing Officer' },
-    { id: 'rol11', label: 'Senior Developer' },
-    { id: 'rol12', label: 'Finance Analyst' },
-    { id: 'rol13', label: 'Operations Head' },
-  ],
-  centers: [
-    { id: 'cen1', label: 'Head Office' },
-    { id: 'cen2', label: 'Main Branch' },
-    { id: 'cen3', label: 'Cebu Branch' },
-    { id: 'cen4', label: 'Davao Branch' },
-    { id: 'cen5', label: 'Finance Division' },
-    { id: 'cen6', label: 'HR Division' },
-    { id: 'cen7', label: 'Operations' },
-    { id: 'cen8', label: 'IT Department' },
-  ],
-  subCenters: [
-    { id: 'sub1', label: 'Accounting' },
-    { id: 'sub2', label: 'Payroll' },
-    { id: 'sub3', label: 'Procurement' },
-    { id: 'sub4', label: 'Sales Team' },
-    { id: 'sub5', label: 'Marketing' },
-    { id: 'sub6', label: 'Admin' },
-    { id: 'sub7', label: 'Audit' },
-    { id: 'sub8', label: 'Compliance' },
-  ],
-  accountTitles: [
-    { id: 'acc1', label: 'Salaries and Wages' },
-    { id: 'acc2', label: 'SSS / PhilHealth / Pag-IBIG' },
-    { id: 'acc3', label: 'Electricity' },
-    { id: 'acc4', label: 'Rent Expense' },
-    { id: 'acc5', label: 'Internet and Communication' },
-    { id: 'acc6', label: 'Fuel and Transportation' },
-    { id: 'acc7', label: 'Office Supplies' },
-    { id: 'acc8', label: 'Representation and Entertainment' },
-    { id: 'acc9', label: 'VAT Payable' },
-    { id: 'acc10', label: 'Depreciation' },
-    { id: 'acc11', label: 'Cost of Sales' },
-    { id: 'acc12', label: 'Delivery Fee' },
-    { id: 'acc13', label: 'Accounts Receivable' },
-    { id: 'acc14', label: 'Other Operating Expenses' },
-  ],
+  itemCategories: [], // ✅ empty — loaded from API
+  vatTypes: [],
+  departments: [],
+  roles: [],
+  centers: [],
+  subCenters: [],
+  accountTitles: [],
+  positions: [],
 };
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -126,6 +82,79 @@ export function MasterFileProvider({
   children: React.ReactNode;
 }) {
   const [state, setState] = useState<MasterFileState>(INITIAL);
+  const { user } = useAuth();
+
+  // Load all tables on mount from API
+  useEffect(() => {
+    const loadAll = async () => {
+      const orgId = Number(user?.orgId || 0);
+      const safeLoad = async (fn: () => Promise<any>, fallback: any) => {
+        try {
+          return await fn();
+        } catch (e) {
+          console.warn('MasterFile load failed:', e);
+          return fallback;
+        }
+      };
+
+      const [
+        categories,
+        vatTypes,
+        departments,
+        roles,
+        centers,
+        subCenters,
+        accountTitles,
+        positions,
+      ] = await Promise.all([
+        safeLoad(() => OrgCategoryService.getOrgCategories(), []),
+        safeLoad(() => VatTypeService.getAll(), []),
+        safeLoad(() => DepartmentService.getAll(), []),
+        safeLoad(() => PositionService.getAll(orgId), []),
+        safeLoad(() => CenterService.getAll(), []),
+        safeLoad(() => SubCenterService.getAll(), []),
+        safeLoad(() => MasterFileFinanceService.getAccountTitles(), []),
+        safeLoad(() => PositionService.getAll(orgId), []),
+      ]);
+
+      setState({
+        itemCategories: (categories || []).map((c: any) => ({
+          id: String(c.id),
+          label: c.name ?? c.globalCategory?.name,
+        })),
+        vatTypes: (vatTypes || []).map((v: any) => ({
+          id: String(v.id),
+          label: v.name,
+        })),
+        departments: (departments || []).map((d: any) => ({
+          id: String(d.id),
+          label: d.name,
+          color: d.color,
+        })),
+        roles: (roles || []).map((r: any) => ({
+          id: String(r.id),
+          label: r.name,
+        })),
+        centers: (centers || []).map((c: any) => ({
+          id: String(c.id),
+          label: c.name,
+        })),
+        subCenters: (subCenters || []).map((s: any) => ({
+          id: String(s.id),
+          label: s.name,
+        })),
+        accountTitles: (accountTitles || []).map((a: any) => ({
+          id: String(a.id),
+          label: a.name,
+        })),
+        positions: (positions || []).map((p: any) => ({
+          id: p.id,
+          label: p.name,
+        })),
+      });
+    };
+    loadAll();
+  }, [user?.orgId]);
 
   const addItem = useCallback((table: TableKey, item: MasterItem) => {
     setState((prev) => ({ ...prev, [table]: [...prev[table], item] }));

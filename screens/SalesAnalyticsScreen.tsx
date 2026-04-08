@@ -1,6 +1,6 @@
 // screens/SalesAnalyticsScreen.tsx
-// Full ERP Sales Analytics — searchable outlet dropdown with skeleton,
-// period filter, product detail modal, responsive layout
+// Always renders the full analytics UI — branches and items are fetched
+// independently so the layout is never empty even with zero sales data.
 
 import React, {
   useCallback,
@@ -10,182 +10,128 @@ import React, {
   useState,
 } from 'react';
 import {
-  ActivityIndicator,
   Animated,
   Dimensions,
-  FlatList,
   Modal,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 import {
-  ChevronDown,
-  Search,
   TrendingDown,
   TrendingUp,
+  AlertTriangle,
+  CheckCircle,
+  Package,
+  BarChart2,
+  Building2,
   X,
+  Calendar,
 } from 'lucide-react-native';
+import { gql } from 'graphql-request';
 import { useTheme } from '@/contexts/ThemeContext';
 import ChartCard from '@/components/erp/ChartCard';
-import { FinanceService, SalesService, MasterFileService } from '@/services';
+import DateRangePickerModal from '@/components/DateRangePickerModal';
+import { graphQLRequest } from '@/services/apiClient';
+import {
+  AnalyticsService,
+  type DateRangePreset,
+  type SalesAnalyticsPayload,
+  type BranchPerformance,
+  type ItemPerformance,
+} from '@/services/analyticsService';
+import { formatShortDate } from '@/utils/dateHelpers';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Period = 'Monthly' | 'Quarterly';
-type OutletKey = string;
-
-interface Outlet {
-  id: string;
+interface RawBranch {
+  id: number;
   name: string;
-  city: string;
+  address: string;
+  isActive: boolean;
 }
 
-interface SalesTrendData {
-  labels: string[];
-  data: number[];
-}
-
-interface TopProduct {
-  id: string;
+interface RawItem {
+  id: number;
   name: string;
-  revenue: number;
-  units: number;
+  image?: string | null;
+  sellingPrice: number;
+  totalCost: number;
+  orgCategory?: { name: string } | null;
 }
 
-interface DashboardStats {
-  totalSales: number;
-  totalOrders: number;
-  totalCustomers: number;
-}
+// ─── Constants ────────────────────────────────────────────────────────────────
 
-interface FinanceSummary {
-  revenue: number;
-  expenses: number;
-  profit: number;
-}
-
-const DEFAULT_SALES_TREND: SalesTrendData = {
-  labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-  data: [42, 48, 61, 67, 72, 79],
-};
-
-const DEFAULT_SALES_TREND_Q: SalesTrendData = {
-  labels: ['Q1', 'Q2', 'Q3', 'Q4'],
-  data: [160, 178, 190, 210],
-};
-
-const DEFAULT_TOP_PRODUCTS: TopProduct[] = [
-  { id: '1', name: 'Ganador Rice 25kg', revenue: 124000, units: 620 },
-  { id: '2', name: 'NFA Rice 25kg', revenue: 87000, units: 430 },
-  { id: '3', name: 'Century Tuna Flakes', revenue: 48000, units: 960 },
-  { id: '4', name: 'Sprite 1.5L', revenue: 59500, units: 730 },
-  { id: '5', name: 'Bear Brand 300g', revenue: 31000, units: 210 },
+const PRESETS: { key: DateRangePreset; label: string }[] = [
+  { key: 'today', label: 'Today' },
+  { key: 'this_week', label: 'This Week' },
+  { key: 'this_month', label: 'This Month' },
+  { key: 'all', label: 'All Time' },
+  { key: 'custom', label: 'Custom' },
 ];
 
-const DEFAULT_DASHBOARD_STATS: DashboardStats = {
-  totalSales: 850000,
-  totalOrders: 1438,
-  totalCustomers: 342,
+const STATUS_META: Record<
+  ItemPerformance['status'],
+  { label: string; bg: string; text: string }
+> = {
+  top_seller: { label: 'Top Seller', bg: '#D1FAE5', text: '#065F46' },
+  stable: { label: 'Stable', bg: '#DBEAFE', text: '#1E40AF' },
+  slow_mover: { label: 'Slow Mover', bg: '#FEF3C7', text: '#92400E' },
+  loss_item: { label: 'Loss Item', bg: '#FEE2E2', text: '#991B1B' },
 };
-
-// ─── Mock outlet database (simulates API) ─────────────────────────────────────
-
-const ALL_OUTLETS: Outlet[] = [
-  { id: 'all', name: 'All Outlets', city: '' },
-  { id: 'main', name: 'Main Branch', city: 'Iloilo' },
-  { id: 'cebu', name: 'Cebu Branch', city: 'Cebu City' },
-  { id: 'davao', name: 'Davao Branch', city: 'Davao City' },
-  { id: 'mnl', name: 'Manila Branch', city: 'Manila' },
-  { id: 'bohol', name: 'Bohol Outlet', city: 'Tagbilaran' },
-  { id: 'bacd', name: 'Bacolod Branch', city: 'Bacolod' },
-  { id: 'gensan', name: 'GenSan Outlet', city: 'General Santos' },
-  { id: 'cdo', name: 'Cagayan de Oro', city: 'Cagayan de Oro' },
-  { id: 'zam', name: 'Zamboanga Outlet', city: 'Zamboanga City' },
-  { id: 'iriga', name: 'Iriga City Outlet', city: 'Iriga' },
-  { id: 'lipa', name: 'Lipa Branch', city: 'Lipa City' },
-];
-
-const OUTLET_MULTIPLIERS: Record<OutletKey, number> = {
-  all: 1,
-  main: 0.52,
-  cebu: 0.31,
-  davao: 0.17,
-  mnl: 0.44,
-  bohol: 0.09,
-  bacd: 0.19,
-  gensan: 0.13,
-  cdo: 0.21,
-  zam: 0.08,
-  iriga: 0.06,
-  lipa: 0.15,
-};
-
-// Simulated search — filters locally but with a 1000ms delay to mimic API
-function simulateSearch(query: string): Promise<Outlet[]> {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const q = query.trim().toLowerCase();
-      const results = q
-        ? ALL_OUTLETS.filter(
-            (o) =>
-              o.name.toLowerCase().includes(q) ||
-              o.city.toLowerCase().includes(q),
-          )
-        : ALL_OUTLETS;
-      resolve(results);
-    }, 1000);
-  });
-}
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
 
-const fmtK = (n: number) => `₱${(n / 1000).toFixed(1)}K`;
 const fmtM = (n: number) =>
-  n >= 1_000_000
+  Math.abs(n) >= 1_000_000
     ? `₱${(n / 1_000_000).toFixed(2)}M`
-    : `₱${(n / 1_000).toFixed(0)}K`;
+    : Math.abs(n) >= 1_000
+      ? `₱${(n / 1_000).toFixed(0)}K`
+      : `₱${n.toFixed(0)}`;
+
 const fmtFull = (n: number) =>
-  '₱' + n.toLocaleString('en-PH', { minimumFractionDigits: 0 });
+  (n < 0 ? '-₱' : '₱') +
+  Math.abs(n).toLocaleString('en-PH', { minimumFractionDigits: 0 });
 
-// ─── Skeleton pulse ───────────────────────────────────────────────────────────
+const fmtPct = (n: number) => `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`;
 
-function SkeletonPulse({ style, colors }: { style: any; colors: any }) {
-  const anim = useRef(new Animated.Value(0.4)).current;
+// ─── Skeleton Pulse ───────────────────────────────────────────────────────────
+
+function SkeletonPulse({ style, color }: { style: any; color: string }) {
+  const anim = useRef(new Animated.Value(0.35)).current;
   useEffect(() => {
-    Animated.loop(
+    const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(anim, {
           toValue: 1,
-          duration: 700,
+          duration: 650,
           useNativeDriver: true,
         }),
         Animated.timing(anim, {
-          toValue: 0.4,
-          duration: 700,
+          toValue: 0.35,
+          duration: 650,
           useNativeDriver: true,
         }),
       ]),
-    ).start();
-    return () => anim.stopAnimation();
+    );
+    loop.start();
+    return () => loop.stop();
   }, []);
   return (
     <Animated.View
       style={[
-        { backgroundColor: colors.border, borderRadius: 6, opacity: anim },
+        { backgroundColor: color, borderRadius: 6, opacity: anim },
         style,
       ]}
     />
   );
 }
 
-// ─── Skeleton layouts ─────────────────────────────────────────────────────────
-
 function HeroSkeleton({ colors }: { colors: any }) {
+  const bone = 'rgba(255,255,255,0.18)';
   return (
     <View
       style={{
@@ -196,19 +142,19 @@ function HeroSkeleton({ colors }: { colors: any }) {
       }}
     >
       <SkeletonPulse
-        colors={{ border: 'rgba(255,255,255,0.15)' }}
-        style={{ width: 200, height: 14, marginBottom: 14 }}
+        color={bone}
+        style={{ width: 180, height: 12, marginBottom: 14 }}
       />
       <SkeletonPulse
-        colors={{ border: 'rgba(255,255,255,0.2)' }}
-        style={{ width: 150, height: 48, marginBottom: 12 }}
+        color={bone}
+        style={{ width: 140, height: 44, marginBottom: 12 }}
       />
       <SkeletonPulse
-        colors={{ border: 'rgba(255,255,255,0.15)' }}
-        style={{ width: 180, height: 14, marginBottom: 20 }}
+        color={bone}
+        style={{ width: 160, height: 12, marginBottom: 18 }}
       />
-      <View style={{ flexDirection: 'row', gap: 12 }}>
-        {[1, 2, 3].map((i) => (
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        {[1, 2, 3, 4].map((i) => (
           <View
             key={i}
             style={{
@@ -219,13 +165,10 @@ function HeroSkeleton({ colors }: { colors: any }) {
             }}
           >
             <SkeletonPulse
-              colors={{ border: 'rgba(255,255,255,0.18)' }}
-              style={{ width: '80%', height: 20, marginBottom: 6 }}
+              color={bone}
+              style={{ width: '75%', height: 18, marginBottom: 6 }}
             />
-            <SkeletonPulse
-              colors={{ border: 'rgba(255,255,255,0.12)' }}
-              style={{ width: '60%', height: 11 }}
-            />
+            <SkeletonPulse color={bone} style={{ width: '55%', height: 10 }} />
           </View>
         ))}
       </View>
@@ -233,400 +176,642 @@ function HeroSkeleton({ colors }: { colors: any }) {
   );
 }
 
-function SummaryCardsSkeleton({ colors }: { colors: any }) {
+function CardSkeleton({ colors }: { colors: any }) {
   return (
-    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
-      {[1, 2, 3].map((i) => (
-        <View
-          key={i}
-          style={{
-            flex: 1,
-            backgroundColor: colors.card,
-            borderRadius: 12,
-            padding: 14,
-            borderWidth: 1,
-            borderColor: colors.border,
-          }}
-        >
-          <SkeletonPulse
-            colors={colors}
-            style={{ width: '60%', height: 10, marginBottom: 8 }}
-          />
-          <SkeletonPulse colors={colors} style={{ width: '80%', height: 22 }} />
-        </View>
-      ))}
+    <View
+      style={{
+        backgroundColor: colors.card,
+        borderRadius: 14,
+        padding: 14,
+        borderWidth: 1,
+        borderColor: colors.border,
+      }}
+    >
+      <SkeletonPulse
+        color={colors.border}
+        style={{ width: '60%', height: 14, marginBottom: 8 }}
+      />
+      <SkeletonPulse
+        color={colors.border}
+        style={{ width: '40%', height: 11, marginBottom: 16 }}
+      />
+      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+        {[1, 2, 3, 4].map((i) => (
+          <View key={i} style={{ flex: 1 }}>
+            <SkeletonPulse
+              color={colors.border}
+              style={{ width: '70%', height: 9, marginBottom: 5 }}
+            />
+            <SkeletonPulse
+              color={colors.border}
+              style={{ width: '90%', height: 16 }}
+            />
+          </View>
+        ))}
+      </View>
+      <SkeletonPulse
+        color={colors.border}
+        style={{ width: '50%', height: 11 }}
+      />
     </View>
   );
 }
 
-function ProductCardSkeleton({ colors }: { colors: any }) {
+function ItemSkeleton({ colors }: { colors: any }) {
   return (
     <View
       style={{
         backgroundColor: colors.card,
         borderRadius: 12,
-        padding: 14,
+        padding: 13,
         marginBottom: 8,
         borderWidth: 1,
         borderColor: colors.border,
       }}
     >
       <View
-        style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}
+        style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}
       >
-        <SkeletonPulse colors={colors} style={{ width: 28, height: 18 }} />
         <SkeletonPulse
-          colors={colors}
-          style={{ flex: 1, height: 16, marginHorizontal: 8 }}
+          color={colors.border}
+          style={{ width: 26, height: 15 }}
         />
-        <SkeletonPulse colors={colors} style={{ width: 60, height: 16 }} />
+        <SkeletonPulse
+          color={colors.border}
+          style={{ flex: 1, height: 13, marginHorizontal: 8 }}
+        />
+        <SkeletonPulse
+          color={colors.border}
+          style={{ width: 54, height: 13 }}
+        />
       </View>
       <SkeletonPulse
-        colors={colors}
-        style={{ width: '100%', height: 6, borderRadius: 3, marginBottom: 8 }}
+        color={colors.border}
+        style={{ width: '100%', height: 5, borderRadius: 3 }}
       />
-      <SkeletonPulse colors={colors} style={{ width: 100, height: 11 }} />
     </View>
   );
 }
 
-function ChartSkeleton({
-  colors,
-  height = 220,
+// ─── Mini Sparkline ───────────────────────────────────────────────────────────
+
+function MiniSparkline({
+  data,
+  color,
+  width = 56,
+  height = 24,
 }: {
-  colors: any;
+  data: number[];
+  color: string;
+  width?: number;
   height?: number;
 }) {
+  const max = Math.max(...data, 1);
+  const barW = Math.max(
+    2,
+    Math.floor((width - (data.length - 1) * 2) / data.length),
+  );
   return (
     <View
       style={{
-        backgroundColor: colors.card,
-        borderRadius: 12,
-        padding: 16,
-        marginBottom: 12,
-        borderWidth: 1,
-        borderColor: colors.border,
+        flexDirection: 'row',
+        alignItems: 'flex-end',
+        width,
+        height,
+        gap: 2,
       }}
     >
-      <SkeletonPulse
-        colors={colors}
-        style={{ width: 160, height: 16, marginBottom: 6 }}
-      />
-      <SkeletonPulse
-        colors={colors}
-        style={{ width: 120, height: 11, marginBottom: 16 }}
-      />
-      <SkeletonPulse
-        colors={colors}
-        style={{ width: '100%', height, borderRadius: 8 }}
+      {data.map((v, i) => {
+        const h = v === 0 ? 2 : Math.max(2, Math.round((v / max) * height));
+        return (
+          <View
+            key={i}
+            style={{
+              width: barW,
+              height: h,
+              backgroundColor: color,
+              borderRadius: 2,
+              opacity:
+                v === 0 ? 0.18 : 0.5 + 0.5 * (i / Math.max(data.length - 1, 1)),
+            }}
+          />
+        );
+      })}
+    </View>
+  );
+}
+
+// ─── Date Filter Bar ──────────────────────────────────────────────────────────
+
+function DateFilterBar({
+  preset,
+  onPresetChange,
+  customStart,
+  customEnd,
+  onCustomApply,
+  colors,
+}: {
+  preset: DateRangePreset;
+  onPresetChange: (p: DateRangePreset) => void;
+  customStart?: Date;
+  customEnd?: Date;
+  onCustomApply: (s: Date, e: Date) => void;
+  colors: any;
+}) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const customLabel =
+    customStart && customEnd
+      ? `${formatShortDate(customStart)} – ${formatShortDate(customEnd)}`
+      : 'Custom';
+
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 6,
+        marginBottom: 16,
+      }}
+    >
+      {PRESETS.map((p) => {
+        const isActive = preset === p.key;
+        return (
+          <TouchableOpacity
+            key={p.key}
+            style={[
+              dfb.chip,
+              {
+                backgroundColor: isActive ? colors.primary : colors.card,
+                borderColor: isActive ? colors.primary : colors.border,
+              },
+            ]}
+            onPress={() => {
+              if (p.key === 'custom') setPickerOpen(true);
+              else onPresetChange(p.key);
+            }}
+            activeOpacity={0.8}
+          >
+            {p.key === 'custom' && (
+              <Calendar
+                size={11}
+                color={isActive ? '#fff' : colors.textSecondary}
+                strokeWidth={2}
+                style={{ marginRight: 4 }}
+              />
+            )}
+            <Text
+              style={[
+                dfb.chipText,
+                { color: isActive ? '#fff' : colors.textSecondary },
+              ]}
+            >
+              {p.key === 'custom' ? customLabel : p.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+      <DateRangePickerModal
+        visible={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onApply={(s, e) => {
+          onCustomApply(s, e);
+          setPickerOpen(false);
+          onPresetChange('custom');
+        }}
+        initialStart={customStart}
+        initialEnd={customEnd}
       />
     </View>
   );
 }
 
-// ─── Outlet Search Dropdown ───────────────────────────────────────────────────
+const dfb = StyleSheet.create({
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  chipText: { fontSize: 12, fontWeight: '600' },
+});
 
-function OutletDropdown({
-  selected,
-  onSelect,
+// ─── Branch Card ──────────────────────────────────────────────────────────────
+
+function BranchCard({
+  branch,
+  analytics,
   colors,
+  isTablet,
 }: {
-  selected: Outlet;
-  onSelect: (o: Outlet) => void;
+  branch: RawBranch;
+  analytics?: BranchPerformance;
   colors: any;
+  isTablet: boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  // Start with the full list — no loading on open
-  const [results, setResults] = useState<Outlet[]>(ALL_OUTLETS);
-  const [loading, setLoading] = useState(false);
-  const inputRef = useRef<TextInput>(null);
+  const hasData = !!analytics && analytics.totalRevenue > 0;
+  const profitable = hasData ? analytics!.isProfitable : false;
+  const up = hasData ? analytics!.deltaRevenue >= 0 : true;
 
-  // Only called when user taps the Search button or presses return
-  const doSearch = useCallback(async () => {
-    setLoading(true);
-    const res = await simulateSearch(query);
-    setResults(res);
-    setLoading(false);
-  }, [query]);
-
-  const handleOpen = () => {
-    setOpen(true);
-    setQuery('');
-    setResults(ALL_OUTLETS); // show full list immediately, no spinner
-    setTimeout(() => inputRef.current?.focus(), 80);
-  };
-
-  const handleClear = () => {
-    setQuery('');
-    setResults(ALL_OUTLETS); // reset to full list instantly
-  };
-
-  const handleSelect = (o: Outlet) => {
-    onSelect(o);
-    setOpen(false);
-    setQuery('');
-  };
+  // Potential margin even without sales, based on no data
+  const borderColor = hasData
+    ? profitable
+      ? '#10B98144'
+      : '#EF444444'
+    : colors.border;
 
   return (
-    <>
-      {/* Trigger button */}
-      <TouchableOpacity
-        style={[
-          odd.trigger,
-          { backgroundColor: colors.card, borderColor: colors.border },
-        ]}
-        onPress={handleOpen}
-        activeOpacity={0.8}
-      >
-        <View
-          style={[
-            odd.dot,
-            {
-              backgroundColor:
-                selected.id === 'all' ? colors.primary : colors.accent,
-            },
-          ]}
-        />
-        <Text
-          style={[odd.triggerText, { color: colors.text }]}
-          numberOfLines={1}
-        >
-          {selected.id === 'all' ? 'All Outlets' : selected.name}
-        </Text>
-        <ChevronDown size={14} color={colors.textSecondary} strokeWidth={2} />
-      </TouchableOpacity>
-
-      {/* Dropdown modal */}
-      <Modal
-        visible={open}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setOpen(false)}
-        statusBarTranslucent
-      >
-        <TouchableOpacity
-          style={odd.backdrop}
-          activeOpacity={1}
-          onPress={() => setOpen(false)}
-        >
-          <TouchableOpacity
-            style={[odd.sheet, { backgroundColor: colors.surface }]}
-            activeOpacity={1}
-            onPress={() => {}}
+    <View
+      style={[
+        brc.card,
+        {
+          backgroundColor: colors.card,
+          borderColor,
+          borderWidth: 1,
+          width: isTablet ? '48%' : '100%',
+        },
+      ]}
+    >
+      {/* Header row */}
+      <View style={brc.header}>
+        <View style={{ flex: 1 }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+              marginBottom: 2,
+            }}
           >
-            {/* Search row — input + Search button + clear */}
-            <View style={[odd.searchRow, { borderBottomColor: colors.border }]}>
-              <TextInput
-                ref={inputRef}
-                style={[odd.searchInput, { color: colors.text }]}
-                placeholder="Search outlet or city…"
-                placeholderTextColor={colors.textSecondary}
-                value={query}
-                onChangeText={setQuery}
-                autoCorrect={false}
-                returnKeyType="search"
-                onSubmitEditing={doSearch} // keyboard search key still works
-              />
-              {/* Clear button — only when there's text and not loading */}
-              {!loading && query.length > 0 && (
-                <TouchableOpacity
-                  onPress={handleClear}
-                  style={odd.clearBtn}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <X size={13} color={colors.textSecondary} strokeWidth={2} />
-                </TouchableOpacity>
-              )}
-              {/* Search button — tapping this is the main trigger */}
-              <TouchableOpacity
-                style={[
-                  odd.searchBtn,
-                  { backgroundColor: loading ? colors.border : colors.primary },
-                ]}
-                onPress={doSearch}
-                disabled={loading}
-                activeOpacity={0.85}
-              >
-                {loading ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
-                ) : (
-                  <Search size={14} color="#fff" strokeWidth={2.5} />
-                )}
-              </TouchableOpacity>
-            </View>
+            <Building2 size={13} color={colors.primary} strokeWidth={2} />
+            <Text style={[brc.name, { color: colors.text }]} numberOfLines={1}>
+              {branch.name}
+            </Text>
+          </View>
+          <Text
+            style={[brc.address, { color: colors.textSecondary }]}
+            numberOfLines={1}
+          >
+            {branch.address}
+          </Text>
+        </View>
 
-            {/* Hint text */}
-            {!loading && results.length === ALL_OUTLETS.length && (
-              <View
+        {hasData ? (
+          <View
+            style={[
+              brc.badge,
+              { backgroundColor: profitable ? '#D1FAE5' : '#FEE2E2' },
+            ]}
+          >
+            {profitable ? (
+              <CheckCircle size={11} color="#065F46" strokeWidth={2.5} />
+            ) : (
+              <AlertTriangle size={11} color="#991B1B" strokeWidth={2.5} />
+            )}
+            <Text
+              style={[
+                brc.badgeTxt,
+                { color: profitable ? '#065F46' : '#991B1B' },
+              ]}
+            >
+              {profitable ? 'Profitable' : 'At Risk'}
+            </Text>
+          </View>
+        ) : (
+          <View style={[brc.badge, { backgroundColor: colors.border + '55' }]}>
+            <Text style={[brc.badgeTxt, { color: colors.textSecondary }]}>
+              No data yet
+            </Text>
+          </View>
+        )}
+      </View>
+
+      {/* 4-stat row */}
+      <View style={brc.statsRow}>
+        {[
+          {
+            lbl: 'Revenue',
+            val: hasData ? fmtM(analytics!.totalRevenue) : '₱0',
+            color: hasData ? colors.text : colors.textSecondary,
+          },
+          {
+            lbl: 'Profit',
+            val: hasData ? fmtM(analytics!.grossProfit) : '₱0',
+            color: hasData
+              ? profitable
+                ? '#10B981'
+                : '#EF4444'
+              : colors.textSecondary,
+          },
+          {
+            lbl: 'Margin',
+            val: hasData ? `${analytics!.profitMargin.toFixed(1)}%` : '—',
+            color: hasData ? colors.text : colors.textSecondary,
+          },
+          {
+            lbl: 'Orders',
+            val: hasData ? analytics!.totalOrders.toLocaleString() : '0',
+            color: hasData ? colors.text : colors.textSecondary,
+          },
+        ].map((s) => (
+          <View key={s.lbl} style={brc.stat}>
+            <Text style={[brc.statLbl, { color: colors.textSecondary }]}>
+              {s.lbl}
+            </Text>
+            <Text style={[brc.statVal, { color: s.color }]}>{s.val}</Text>
+          </View>
+        ))}
+      </View>
+
+      {/* Footer */}
+      <View style={[brc.footer, { borderTopColor: colors.border }]}>
+        {hasData ? (
+          <>
+            <View
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+            >
+              {up ? (
+                <TrendingUp size={13} color="#10B981" strokeWidth={2} />
+              ) : (
+                <TrendingDown size={13} color="#EF4444" strokeWidth={2} />
+              )}
+              <Text
                 style={{
-                  paddingHorizontal: 14,
-                  paddingVertical: 6,
-                  backgroundColor: colors.background,
+                  fontSize: 12,
+                  fontWeight: '700',
+                  color: up ? '#10B981' : '#EF4444',
                 }}
               >
-                <Text style={{ fontSize: 11, color: colors.textSecondary }}>
-                  {query
-                    ? 'Tap Search to filter results'
-                    : `${ALL_OUTLETS.length} outlets · type to filter`}
-                </Text>
-              </View>
-            )}
-
-            {/* Result list */}
-            <FlatList
-              data={results}
-              keyExtractor={(item) => item.id}
-              style={{ maxHeight: 320 }}
-              keyboardShouldPersistTaps="handled"
-              renderItem={({ item }) => {
-                const isActive = selected.id === item.id;
-                return (
-                  <TouchableOpacity
-                    style={[
-                      odd.resultRow,
-                      { borderBottomColor: colors.border },
-                      isActive && { backgroundColor: colors.primary + '14' },
-                    ]}
-                    onPress={() => handleSelect(item)}
-                    activeOpacity={0.75}
-                  >
-                    <View
-                      style={[
-                        odd.resultDot,
-                        {
-                          backgroundColor:
-                            item.id === 'all' ? colors.primary : colors.accent,
-                        },
-                      ]}
-                    />
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={[
-                          odd.resultName,
-                          {
-                            color: isActive ? colors.primary : colors.text,
-                            fontWeight: isActive ? '700' : '500',
-                          },
-                        ]}
-                      >
-                        {item.name}
-                      </Text>
-                      {item.city ? (
-                        <Text
-                          style={[
-                            odd.resultCity,
-                            { color: colors.textSecondary },
-                          ]}
-                        >
-                          {item.city}
-                        </Text>
-                      ) : null}
-                    </View>
-                    {isActive && (
-                      <Text style={{ color: colors.primary, fontSize: 16 }}>
-                        ✓
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-                );
-              }}
-              ListEmptyComponent={
-                <View style={{ padding: 20, alignItems: 'center' }}>
-                  <Text style={{ color: colors.textSecondary, fontSize: 13 }}>
-                    No outlets found
-                  </Text>
-                </View>
-              }
+                {fmtPct(analytics!.deltaRevenue)} vs prev period
+              </Text>
+            </View>
+            <MiniSparkline
+              data={analytics!.trend}
+              color={up ? '#10B981' : '#EF4444'}
+              width={60}
+              height={22}
             />
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
-    </>
+          </>
+        ) : (
+          <>
+            <Text
+              style={{
+                fontSize: 11,
+                color: colors.textSecondary,
+                fontStyle: 'italic',
+              }}
+            >
+              No transactions recorded yet
+            </Text>
+            <MiniSparkline
+              data={[0, 0, 0, 0, 0, 0]}
+              color={colors.border}
+              width={60}
+              height={22}
+            />
+          </>
+        )}
+      </View>
+    </View>
   );
 }
 
-const odd = StyleSheet.create({
-  trigger: {
+const brc = StyleSheet.create({
+  card: { borderRadius: 14, padding: 14, marginBottom: 10 },
+  header: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12 },
+  name: { fontSize: 14, fontWeight: '700' },
+  address: { fontSize: 11, marginTop: 1 },
+  badge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    flex: 1,
-    maxWidth: 220,
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 20,
   },
-  dot: { width: 8, height: 8, borderRadius: 4, flexShrink: 0 },
-  triggerText: { fontSize: 13, fontWeight: '600', flex: 1 },
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'center',
-    padding: 24,
+  badgeTxt: { fontSize: 10, fontWeight: '700' },
+  statsRow: { flexDirection: 'row', marginBottom: 10, gap: 2 },
+  stat: { flex: 1 },
+  statLbl: {
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    marginBottom: 2,
   },
-  sheet: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 20,
-    elevation: 20,
-  },
-  searchRow: {
+  statVal: { fontSize: 14, fontWeight: '800' },
+  footer: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
+    paddingTop: 10,
+    borderTopWidth: 1,
   },
-  searchInput: { flex: 1, fontSize: 14, paddingVertical: 4 },
-  clearBtn: { padding: 4 },
-  searchBtn: {
-    width: 34,
-    height: 34,
+});
+
+// ─── Item Row ─────────────────────────────────────────────────────────────────
+
+function ItemRow({
+  item,
+  rank,
+  analytics,
+  maxRevenue,
+  colors,
+  onPress,
+}: {
+  item: RawItem;
+  rank: number;
+  analytics?: ItemPerformance;
+  maxRevenue: number;
+  colors: any;
+  onPress: () => void;
+}) {
+  const hasData = !!analytics && analytics.totalRevenue > 0;
+  const isLoss = hasData && analytics!.grossProfit < 0;
+  const meta = analytics ? STATUS_META[analytics.status] : null;
+  const barW =
+    hasData && maxRevenue > 0
+      ? (analytics!.totalRevenue / maxRevenue) * 100
+      : 0;
+
+  // Show potential margin using item prices even without sales
+  const potentialMarginPct =
+    item.sellingPrice > 0
+      ? ((item.sellingPrice - item.totalCost) / item.sellingPrice) * 100
+      : 0;
+
+  return (
+    <TouchableOpacity
+      style={[
+        itr.card,
+        {
+          backgroundColor: colors.card,
+          borderColor: isLoss ? '#EF444466' : colors.border,
+          borderWidth: isLoss ? 1.5 : 1,
+        },
+      ]}
+      onPress={onPress}
+      activeOpacity={0.82}
+    >
+      <View style={itr.topRow}>
+        {/* Rank badge */}
+        <View
+          style={[
+            itr.rankBadge,
+            {
+              backgroundColor:
+                hasData && rank <= 3
+                  ? colors.accent + '20'
+                  : colors.border + '40',
+            },
+          ]}
+        >
+          <Text
+            style={[
+              itr.rankTxt,
+              {
+                color:
+                  hasData && rank <= 3 ? colors.accent : colors.textSecondary,
+              },
+            ]}
+          >
+            #{rank}
+          </Text>
+        </View>
+
+        {/* Name + category */}
+        <View style={{ flex: 1, marginHorizontal: 10 }}>
+          <Text style={[itr.name, { color: colors.text }]} numberOfLines={1}>
+            {item.name}
+          </Text>
+          {item.orgCategory?.name && (
+            <Text style={[itr.cat, { color: colors.textSecondary }]}>
+              {item.orgCategory.name}
+            </Text>
+          )}
+        </View>
+
+        {/* Right side: revenue or price */}
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text
+            style={[
+              itr.revenue,
+              {
+                color: hasData
+                  ? isLoss
+                    ? '#EF4444'
+                    : colors.accent
+                  : colors.textSecondary,
+              },
+            ]}
+          >
+            {hasData ? fmtM(analytics!.totalRevenue) : fmtM(item.sellingPrice)}
+          </Text>
+          <Text style={[itr.sub, { color: colors.textSecondary }]}>
+            {hasData
+              ? `${analytics!.unitsSold.toLocaleString()} sold`
+              : 'selling price'}
+          </Text>
+        </View>
+      </View>
+
+      {/* Progress bar — shows empty track when no sales */}
+      <View style={[itr.track, { backgroundColor: colors.border + '55' }]}>
+        {barW > 0 && (
+          <View
+            style={[
+              itr.fill,
+              {
+                width: `${barW}%`,
+                backgroundColor: isLoss
+                  ? '#EF4444'
+                  : rank <= 3
+                    ? colors.accent
+                    : colors.primary,
+              },
+            ]}
+          />
+        )}
+      </View>
+
+      {/* Footer */}
+      <View style={itr.footer}>
+        <Text style={[itr.meta, { color: colors.textSecondary }]}>
+          {hasData
+            ? `Margin ${analytics!.profitMargin.toFixed(1)}%  ·  ${fmtM(analytics!.grossProfit)} profit`
+            : `Cost ${fmtM(item.totalCost)}  ·  Potential margin ${potentialMarginPct.toFixed(1)}%`}
+        </Text>
+        {hasData && meta ? (
+          <View style={[itr.badge, { backgroundColor: meta.bg }]}>
+            <Text style={[itr.badgeTxt, { color: meta.text }]}>
+              {meta.label}
+            </Text>
+          </View>
+        ) : (
+          <View style={[itr.badge, { backgroundColor: colors.border + '55' }]}>
+            <Text style={[itr.badgeTxt, { color: colors.textSecondary }]}>
+              No sales
+            </Text>
+          </View>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+const itr = StyleSheet.create({
+  card: { borderRadius: 12, padding: 13, marginBottom: 8 },
+  topRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 9 },
+  rankBadge: {
+    width: 30,
+    height: 30,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  resultRow: {
+  rankTxt: { fontSize: 13, fontWeight: '900' },
+  name: { fontSize: 13, fontWeight: '700' },
+  cat: { fontSize: 10, marginTop: 1 },
+  revenue: { fontSize: 13, fontWeight: '800' },
+  sub: { fontSize: 10, marginTop: 1 },
+  track: { height: 5, borderRadius: 3, overflow: 'hidden', marginBottom: 7 },
+  fill: { height: '100%', borderRadius: 3 },
+  footer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 13,
-    borderBottomWidth: 1,
+    justifyContent: 'space-between',
   },
-  resultDot: { width: 8, height: 8, borderRadius: 4, flexShrink: 0 },
-  resultName: { fontSize: 14 },
-  resultCity: { fontSize: 11, marginTop: 1 },
+  meta: { fontSize: 10, flex: 1, marginRight: 8 },
+  badge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 4 },
+  badgeTxt: { fontSize: 10, fontWeight: '700' },
 });
 
-// ─── Product Detail Modal ─────────────────────────────────────────────────────
+// ─── Item Detail Modal ────────────────────────────────────────────────────────
 
-function ProductDetailModal({
-  product,
+function ItemDetailModal({
+  item,
+  analytics,
   rank,
   visible,
   onClose,
   colors,
-  maxRevenue,
 }: {
-  product: (typeof topProducts)[0] | null;
+  item: RawItem | null;
+  analytics?: ItemPerformance;
   rank: number;
   visible: boolean;
   onClose: () => void;
   colors: any;
-  maxRevenue: number;
 }) {
-  if (!product) return null;
-  const share = maxRevenue > 0 ? (product.revenue / maxRevenue) * 100 : 0;
-  const revenuePerUnit =
-    product.units > 0 ? product.revenue / product.units : 0;
-  const isTop = rank === 1;
+  if (!item) return null;
+  const hasData = !!analytics && analytics.totalRevenue > 0;
+  const isLoss = hasData && analytics!.grossProfit < 0;
+  const meta = analytics ? STATUS_META[analytics.status] : STATUS_META.stable;
+  const potentialMargin =
+    item.sellingPrice > 0
+      ? ((item.sellingPrice - item.totalCost) / item.sellingPrice) * 100
+      : 0;
 
   return (
     <Modal
@@ -637,147 +822,174 @@ function ProductDetailModal({
       statusBarTranslucent
     >
       <TouchableOpacity
-        style={pdm.backdrop}
+        style={mdl.backdrop}
         activeOpacity={1}
         onPress={onClose}
       >
         <TouchableOpacity
-          style={[pdm.card, { backgroundColor: colors.surface }]}
+          style={[mdl.card, { backgroundColor: colors.surface ?? colors.card }]}
           activeOpacity={1}
           onPress={() => {}}
         >
-          <View style={[pdm.header, { borderBottomColor: colors.border }]}>
+          <View style={[mdl.header, { borderBottomColor: colors.border }]}>
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', gap: 6, marginBottom: 6 }}>
+                <View style={[mdl.badge, { backgroundColor: colors.primary }]}>
+                  <Text
+                    style={{ fontSize: 11, fontWeight: '800', color: '#fff' }}
+                  >
+                    #{rank}
+                  </Text>
+                </View>
                 <View
                   style={[
-                    pdm.badge,
-                    { backgroundColor: isTop ? colors.accent : colors.primary },
+                    mdl.badge,
+                    {
+                      backgroundColor: hasData ? meta.bg : colors.border + '55',
+                    },
                   ]}
                 >
-                  <Text style={pdm.badgeText}>#{rank}</Text>
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: '800',
+                      color: hasData ? meta.text : colors.textSecondary,
+                    }}
+                  >
+                    {hasData ? meta.label : 'No Sales Yet'}
+                  </Text>
                 </View>
-                {isTop && (
-                  <View style={[pdm.badge, { backgroundColor: '#F59E0B' }]}>
-                    <Text style={pdm.badgeText}>Top Seller</Text>
-                  </View>
-                )}
               </View>
-              <Text style={[pdm.name, { color: colors.text }]}>
-                {product.name}
+              <Text style={[mdl.name, { color: colors.text }]}>
+                {item.name}
               </Text>
+              {item.orgCategory?.name && (
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color: colors.textSecondary,
+                    marginTop: 2,
+                  }}
+                >
+                  {item.orgCategory.name}
+                </Text>
+              )}
             </View>
             <TouchableOpacity
-              style={[pdm.closeBtn, { backgroundColor: colors.background }]}
+              style={[mdl.closeBtn, { backgroundColor: colors.background }]}
               onPress={onClose}
             >
-              <X size={16} color={colors.text} strokeWidth={2.5} />
+              <X size={15} color={colors.text} strokeWidth={2.5} />
             </TouchableOpacity>
           </View>
 
-          <View style={pdm.grid}>
+          <View style={mdl.grid}>
             {[
               {
                 label: 'Total Revenue',
-                value: fmtFull(product.revenue),
-                color: colors.accent,
-                big: true,
+                value: hasData ? fmtFull(analytics!.totalRevenue) : '₱0',
+                color: hasData ? colors.accent : colors.textSecondary,
+              },
+              {
+                label: 'Gross Profit',
+                value: hasData ? fmtFull(analytics!.grossProfit) : '₱0',
+                color: hasData
+                  ? isLoss
+                    ? '#EF4444'
+                    : '#10B981'
+                  : colors.textSecondary,
+              },
+              {
+                label: 'Selling Price',
+                value: fmtFull(item.sellingPrice),
+                color: colors.text,
+              },
+              {
+                label: 'Unit Cost',
+                value: fmtFull(item.totalCost),
+                color: colors.text,
               },
               {
                 label: 'Units Sold',
-                value: product.units.toLocaleString(),
-                color: colors.text,
-                big: true,
+                value: hasData ? analytics!.unitsSold.toLocaleString() : '0',
+                color: hasData ? colors.text : colors.textSecondary,
               },
               {
-                label: 'Revenue / Unit',
-                value: fmtFull(revenuePerUnit),
-                color: colors.primary,
-                big: false,
+                label: 'Profit Margin',
+                value: hasData
+                  ? `${analytics!.profitMargin.toFixed(1)}%`
+                  : `${potentialMargin.toFixed(1)}%`,
+                color: isLoss ? '#EF4444' : '#10B981',
               },
-              {
-                label: 'Share of Top 5',
-                value: `${share.toFixed(1)}%`,
-                color: colors.success,
-                big: false,
-              },
-            ].map((stat) => (
+            ].map((s) => (
               <View
-                key={stat.label}
+                key={s.label}
                 style={[
-                  pdm.statCell,
+                  mdl.cell,
                   {
                     backgroundColor: colors.background,
                     borderColor: colors.border,
                   },
                 ]}
               >
-                <Text
-                  style={{
-                    fontSize: 10,
-                    fontWeight: '700',
-                    color: colors.textSecondary,
-                    letterSpacing: 0.5,
-                    marginBottom: 4,
-                  }}
-                >
-                  {stat.label.toUpperCase()}
+                <Text style={[mdl.cellLbl, { color: colors.textSecondary }]}>
+                  {s.label.toUpperCase()}
                 </Text>
-                <Text
-                  style={{
-                    fontSize: stat.big ? 20 : 16,
-                    fontWeight: '900',
-                    color: stat.color,
-                  }}
-                >
-                  {stat.value}
-                </Text>
+                <Text style={[mdl.cellVal, { color: s.color }]}>{s.value}</Text>
               </View>
             ))}
           </View>
 
-          <View style={{ paddingHorizontal: 20, paddingBottom: 8 }}>
-            <Text
-              style={{
-                fontSize: 10,
-                fontWeight: '700',
-                color: colors.textSecondary,
-                letterSpacing: 0.5,
-                marginBottom: 8,
-              }}
-            >
-              SHARE OF TOTAL TOP-5 REVENUE
-            </Text>
-            <View
-              style={{
-                height: 10,
-                backgroundColor: colors.border,
-                borderRadius: 5,
-                overflow: 'hidden',
-              }}
-            >
+          {hasData && (
+            <View style={{ paddingHorizontal: 18, paddingBottom: 4 }}>
               <View
-                style={{
-                  height: '100%',
-                  width: `${share}%`,
-                  backgroundColor: colors.accent,
-                  borderRadius: 5,
-                }}
-              />
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+              >
+                {analytics!.trend === 'up' ? (
+                  <TrendingUp size={14} color="#10B981" strokeWidth={2} />
+                ) : analytics!.trend === 'down' ? (
+                  <TrendingDown size={14} color="#EF4444" strokeWidth={2} />
+                ) : (
+                  <BarChart2
+                    size={14}
+                    color={colors.textSecondary}
+                    strokeWidth={2}
+                  />
+                )}
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontWeight: '700',
+                    color:
+                      analytics!.trend === 'up'
+                        ? '#10B981'
+                        : analytics!.trend === 'down'
+                          ? '#EF4444'
+                          : colors.textSecondary,
+                  }}
+                >
+                  {fmtPct(analytics!.trendPct)} vs previous period
+                </Text>
+              </View>
             </View>
-            <Text
-              style={{
-                fontSize: 11,
-                color: colors.textSecondary,
-                marginTop: 4,
-              }}
-            >
-              {share.toFixed(1)}% of top-5 revenue
-            </Text>
-          </View>
+          )}
+
+          {!hasData && (
+            <View style={{ paddingHorizontal: 18, paddingBottom: 4 }}>
+              <Text
+                style={{
+                  fontSize: 12,
+                  color: colors.textSecondary,
+                  fontStyle: 'italic',
+                }}
+              >
+                This item hasn't recorded any sales in the selected period.
+              </Text>
+            </View>
+          )}
 
           <TouchableOpacity
-            style={[pdm.closeFullBtn, { backgroundColor: colors.primary }]}
+            style={[mdl.closeFullBtn, { backgroundColor: colors.primary }]}
             onPress={onClose}
             activeOpacity={0.85}
           >
@@ -791,7 +1003,7 @@ function ProductDetailModal({
   );
 }
 
-const pdm = StyleSheet.create({
+const mdl = StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.55)',
@@ -799,45 +1011,101 @@ const pdm = StyleSheet.create({
     alignItems: 'center',
     padding: 24,
   },
-  card: { width: '100%', maxWidth: 440, borderRadius: 18, overflow: 'hidden' },
+  card: { width: '100%', maxWidth: 460, borderRadius: 18, overflow: 'hidden' },
   header: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    padding: 20,
+    padding: 18,
     borderBottomWidth: 1,
-    gap: 12,
+    gap: 10,
   },
   badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  badgeText: { fontSize: 11, fontWeight: '800', color: '#fff' },
-  name: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
+  name: { fontSize: 16, fontWeight: '800' },
   closeBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
-    padding: 20,
-    paddingBottom: 14,
+    gap: 8,
+    padding: 16,
+    paddingBottom: 10,
   },
-  statCell: {
+  cell: {
     flex: 1,
     minWidth: '44%',
     borderRadius: 10,
-    padding: 12,
+    padding: 11,
     borderWidth: 1,
   },
+  cellLbl: {
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  cellVal: { fontSize: 16, fontWeight: '900' },
   closeFullBtn: {
-    margin: 20,
-    marginTop: 12,
+    margin: 16,
+    marginTop: 10,
     borderRadius: 12,
     paddingVertical: 13,
     alignItems: 'center',
   },
+});
+
+// ─── Section Toggle ───────────────────────────────────────────────────────────
+
+function SectionToggle({
+  active,
+  onChange,
+  colors,
+}: {
+  active: 'top' | 'bottom';
+  onChange: (v: 'top' | 'bottom') => void;
+  colors: any;
+}) {
+  return (
+    <View
+      style={[
+        tog.wrap,
+        { backgroundColor: colors.card, borderColor: colors.border },
+      ]}
+    >
+      {(['top', 'bottom'] as const).map((v) => (
+        <TouchableOpacity
+          key={v}
+          style={[tog.btn, active === v && { backgroundColor: colors.primary }]}
+          onPress={() => onChange(v)}
+        >
+          <Text
+            style={[
+              tog.txt,
+              { color: active === v ? '#fff' : colors.textSecondary },
+            ]}
+          >
+            {v === 'top' ? '▲  Top Sellers' : '▼  Underperformers'}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
+const tog = StyleSheet.create({
+  wrap: {
+    flexDirection: 'row',
+    borderRadius: 10,
+    borderWidth: 1,
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  btn: { flex: 1, paddingVertical: 9, alignItems: 'center' },
+  txt: { fontSize: 12, fontWeight: '700' },
 });
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
@@ -846,175 +1114,164 @@ export default function SalesAnalyticsScreen() {
   const { colors, theme } = useTheme();
   const { width } = Dimensions.get('window');
   const isTablet = width >= 768;
-  const isDesktop = width >= 1024;
+  const isDesktop = width >= 1100;
 
   const chartWidth = isDesktop
-    ? Math.min((width - 320) * 0.47, 500)
+    ? Math.min((width - 340) * 0.46, 520)
     : isTablet
-      ? Math.min((width - 280) * 0.95, 560)
+      ? Math.min(width - 260, 580)
       : width - 48;
 
-  const [period, setPeriod] = useState<Period>('Monthly');
-  const [selectedOutlet, setSelectedOutlet] = useState<Outlet>(ALL_OUTLETS[0]);
-  const [loading, setLoading] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState<TopProduct | null>(null);
+  // ── State ─────────────────────────────────────────────────────────────────
+  const [preset, setPreset] = useState<DateRangePreset>('this_month');
+  const [customStart, setCustomStart] = useState<Date | undefined>();
+  const [customEnd, setCustomEnd] = useState<Date | undefined>();
+  const [heroLoading, setHeroLoading] = useState(true);
+  const [branchLoading, setBranchLoading] = useState(true);
+  const [itemLoading, setItemLoading] = useState(true);
+  const [rawBranches, setRawBranches] = useState<RawBranch[]>([]);
+  const [rawItems, setRawItems] = useState<RawItem[]>([]);
+  const [analytics, setAnalytics] = useState<SalesAnalyticsPayload | null>(
+    null,
+  );
+  const [itemSection, setItemSection] = useState<'top' | 'bottom'>('top');
+  const [selectedItem, setSelectedItem] = useState<RawItem | null>(null);
+  const [selectedAn, setSelectedAn] = useState<ItemPerformance | undefined>();
   const [selectedRank, setSelectedRank] = useState(1);
-  const [productModalOpen, setProductModalOpen] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
 
-  const [dashboardStats, setDashboardStats] = useState<DashboardStats>(DEFAULT_DASHBOARD_STATS);
-  const [salesTrend, setSalesTrend] = useState<SalesTrendData>(DEFAULT_SALES_TREND);
-  const [salesTrendByQuarter, setSalesTrendByQuarter] = useState<SalesTrendData>(DEFAULT_SALES_TREND_Q);
-  const [topProducts, setTopProducts] = useState<TopProduct[]>(DEFAULT_TOP_PRODUCTS);
-  const [financeData, setFinanceData] = useState<FinanceSummary>({ revenue: 0, expenses: 0, profit: 0 });
-
+  // ── One-time: load branches + items ───────────────────────────────────────
   useEffect(() => {
-    const loadAnalytics = async () => {
-      setLoading(true);
+    (async () => {
       try {
-        const outletId = 1;
-        const ss = await SalesService.getSalesAnalytics(outletId);
-        const tx = await SalesService.getTransactions(outletId);
-        const giro = await FinanceService.getSummaryRows();
-
-        const monthMap: Record<string, number> = {};
-        const quarterMap: Record<string, number> = { Q1: 0, Q2: 0, Q3: 0, Q4: 0 };
-        const productMap: Record<string, {name:string,revenue:number,units:number}> = {};
-
-        tx.forEach((t: any) => {
-          const date = new Date(t.createdAt);
-          const m = date.toLocaleString('en-US', { month: 'short' });
-          const v = Number(t.total ?? 0);
-          monthMap[m] = (monthMap[m] || 0) + v;
-          const quarter = `Q${Math.floor(date.getMonth() / 3) + 1}`;
-          quarterMap[quarter] = (quarterMap[quarter] || 0) + v;
-          (Array.isArray(t.itemsSold) ? t.itemsSold : []).forEach((item: any) => {
-            const key = String(item.itemId);
-            if (!productMap[key]) {
-              productMap[key] = { name: `Item ${item.itemId}`, revenue: 0, units: 0 };
+        setBranchLoading(true);
+        const BRANCHES_GQL = gql`
+          query GetOrgBranches {
+            getOrgBranches {
+              id
+              name
+              address
+              isActive
             }
-            productMap[key].revenue += Number(item.quantity || 0) * Number(item.price || 0);
-            productMap[key].units += Number(item.quantity || 0);
-          });
-        });
-
-        const selectedMonths = ['Jan','Feb','Mar','Apr','May','Jun'];
-        setSalesTrend({
-          labels: selectedMonths,
-          data: selectedMonths.map((m) => Math.round(monthMap[m] || 0)),
-        });
-        setSalesTrendByQuarter({
-          labels: ['Q1','Q2','Q3','Q4'],
-          data: ['Q1','Q2','Q3','Q4'].map((q) => Math.round(quarterMap[q] || 0)),
-        });
-
-        const tops = Object.values(productMap)
-          .sort((a, b) => b.revenue - a.revenue)
-          .slice(0, 6)
-          .map((item, index) => ({ id: `${index + 1}`, name: item.name, revenue: item.revenue, units: item.units }));
-
-        setTopProducts(tops.length > 0 ? tops : DEFAULT_TOP_PRODUCTS);
-
-        const totalSales = Number(ss?.totalSales ?? tx.reduce((s:any,t:any)=>s+Number(t.total||0),0));
-        const totalExpenses = Number(giro.reduce((s:any,row:any)=>s+Number(row.total||0),0) * -1);
-        setFinanceData({
-          revenue: totalSales,
-          expenses: totalExpenses,
-          profit: totalSales - totalExpenses,
-        });
-
-        setDashboardStats({
-          totalSales: Math.round(totalSales),
-          totalOrders: tx.length,
-          totalCustomers: new Set(tx.map((t: any) => t.customerName || t.customer || '')).size,
-        });
-      } catch (err) {
-        console.warn('Sales analytics load error', err);
+          }
+        `;
+        const bRes = await graphQLRequest<{ getOrgBranches: RawBranch[] }>(
+          BRANCHES_GQL,
+          {},
+        );
+        console.log(bRes);
+        setRawBranches(bRes.getOrgBranches ?? []);
+      } catch (e) {
+        console.warn('branch fetch error', e);
+        setRawBranches([]);
       } finally {
-        setLoading(false);
+        setBranchLoading(false);
       }
-    };
 
-    loadAnalytics();
+      try {
+        setItemLoading(true);
+        // Reuse the existing items query from item.query.ts
+        const ITEMS_GQL = gql`
+          query GetItemsForAnalytics {
+            items {
+              id
+              name
+              image
+              sellingPrice
+              totalCost
+              orgCategory {
+                name
+              }
+            }
+          }
+        `;
+        const iRes = await graphQLRequest<{ items: RawItem[] }>(ITEMS_GQL);
+        setRawItems(iRes.items ?? []);
+      } catch (e) {
+        console.warn('items fetch error', e);
+        setRawItems([]);
+      } finally {
+        setItemLoading(false);
+      }
+    })();
   }, []);
 
-  // Simulate loading when outlet or period changes
-  const prevOutlet = useRef(selectedOutlet.id);
-  const prevPeriod = useRef(period);
+  // ── Reload analytics on filter change ─────────────────────────────────────
+  const loadAnalytics = useCallback(async () => {
+    setHeroLoading(true);
+    try {
+      const dateRange =
+        preset === 'custom' && customStart && customEnd
+          ? {
+              startDate: customStart.toISOString(),
+              endDate: customEnd.toISOString(),
+            }
+          : undefined;
+      const result = await AnalyticsService.getSalesAnalytics(
+        preset,
+        dateRange,
+      );
+      setAnalytics(result);
+    } catch (e) {
+      console.warn('analytics load error', e);
+      setAnalytics(null);
+    } finally {
+      setHeroLoading(false);
+    }
+  }, [preset, customStart, customEnd]);
 
   useEffect(() => {
-    const outletChanged = prevOutlet.current !== selectedOutlet.id;
-    const periodChanged = prevPeriod.current !== period;
-    if (outletChanged || periodChanged) {
-      prevOutlet.current = selectedOutlet.id;
-      prevPeriod.current = period;
-      setLoading(true);
-      const t = setTimeout(() => setLoading(false), 1000);
-      return () => clearTimeout(t);
+    loadAnalytics();
+  }, [loadAnalytics]);
+
+  // ── Derived maps ──────────────────────────────────────────────────────────
+  const branchMap = useMemo(() => {
+    const m: Record<number, BranchPerformance> = {};
+    analytics?.branches.forEach((b) => (m[b.branchId] = b));
+    return m;
+  }, [analytics]);
+
+  const itemAnalyticsMap = useMemo(() => {
+    const m: Record<number, ItemPerformance> = {};
+    analytics?.topItems.forEach((i) => (m[i.itemId] = i));
+    analytics?.bottomItems.forEach((i) => (m[i.itemId] = i));
+    return m;
+  }, [analytics]);
+
+  // Ordered item list: if analytics exist order by revenue, else alphabetical
+  const displayItems = useMemo<RawItem[]>(() => {
+    if (!analytics || analytics.topItems.length === 0) {
+      return [...rawItems].sort((a, b) => a.name.localeCompare(b.name));
     }
-  }, [selectedOutlet.id, period]);
+    const sourceList =
+      itemSection === 'top' ? analytics.topItems : analytics.bottomItems;
+    const ordered = sourceList
+      .map((ai) => rawItems.find((r) => r.id === ai.itemId))
+      .filter(Boolean) as RawItem[];
+    const orderedIds = new Set(ordered.map((r) => r.id));
+    const rest = rawItems
+      .filter((r) => !orderedIds.has(r.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return [...ordered, ...rest];
+  }, [rawItems, analytics, itemSection]);
 
-  const multiplier = OUTLET_MULTIPLIERS[selectedOutlet.id] ?? 1;
-
-  // ── Derived chart data ──────────────────────────────────────────────────────
-  const chartData = useMemo(() => {
-    if (period === 'Quarterly') {
-      return {
-        labels: salesTrendByQuarter.labels,
-        data: salesTrendByQuarter.data.map((v) => (v * multiplier) / 1000),
-        subtitle: `Quarterly · ${selectedOutlet.name}`,
-      };
-    }
-    return {
-      labels: salesTrend.labels,
-      data: salesTrend.data.map((v) => (v * multiplier) / 1000),
-      subtitle: `Monthly · Jan–Jun · ${selectedOutlet.name}`,
-    };
-  }, [period, multiplier, selectedOutlet.name]);
-
-  const currentRevenue =
-    (period === 'Monthly'
-      ? salesTrend.data[salesTrend.data.length - 1]
-      : salesTrendByQuarter.data[salesTrendByQuarter.data.length - 1]) *
-    multiplier;
-
-  const prevRevenue =
-    (period === 'Monthly'
-      ? salesTrend.data[salesTrend.data.length - 2]
-      : salesTrendByQuarter.data[salesTrendByQuarter.data.length - 2]) *
-    multiplier;
-
-  const growth =
-    prevRevenue > 0 ? ((currentRevenue - prevRevenue) / prevRevenue) * 100 : 0;
-  const isGrowthUp = growth >= 0;
-
-  const adjustedProducts = useMemo(
+  const maxRevenue = useMemo(
     () =>
-      topProducts.map((p) => ({
-        ...p,
-        revenue: Math.round(p.revenue * multiplier),
-        units: Math.round(p.units * multiplier),
-      })),
-    [multiplier],
+      Math.max(...(analytics?.topItems.map((i) => i.totalRevenue) ?? []), 1),
+    [analytics],
   );
-  const maxRevenue = adjustedProducts[0]?.revenue ?? 1;
-  const totalRevenue = financeData.revenue * multiplier;
-  const totalExpenses = financeData.expenses * multiplier;
-  const netProfit = totalRevenue - totalExpenses;
-  const profitMargin =
-    totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : '0';
 
+  // ── Chart ─────────────────────────────────────────────────────────────────
   const chartConfig = useMemo(
     () => ({
       backgroundColor: colors.card,
       backgroundGradientFrom: colors.card,
       backgroundGradientTo: colors.card,
       decimalPlaces: 0,
-      color: (opacity = 1) =>
-        theme === 'dark'
-          ? `rgba(232, 119, 34, ${opacity})`
-          : `rgba(27, 58, 107, ${opacity})`,
+      color: (o = 1) =>
+        theme === 'dark' ? `rgba(232,119,34,${o})` : `rgba(27,58,107,${o})`,
       labelColor: () => colors.textSecondary,
-      propsForDots: { r: '5', strokeWidth: '2', stroke: colors.accent },
+      propsForDots: { r: '4', strokeWidth: '2', stroke: colors.accent },
       propsForBackgroundLines: {
         strokeDasharray: '4,4',
         stroke: colors.border,
@@ -1023,359 +1280,255 @@ export default function SalesAnalyticsScreen() {
     [colors, theme],
   );
 
-  const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: colors.background },
-    scroll: { padding: 16, paddingBottom: 40 },
-    sectionTitle: {
-      fontSize: 11,
-      fontWeight: '700',
-      color: colors.textSecondary,
-      letterSpacing: 1.2,
-      textTransform: 'uppercase',
-      marginBottom: 10,
-      marginTop: 8,
-    },
-    // Top controls row — period toggle + outlet dropdown on same line
-    controlsRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      marginBottom: 16,
-    },
-    segGroup: {
-      flexDirection: 'row',
-      backgroundColor: colors.card,
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: colors.border,
-      overflow: 'hidden',
-    },
-    segBtn: { paddingHorizontal: 14, paddingVertical: 8 },
-    segBtnActive: { backgroundColor: colors.primary },
-    segBtnText: {
-      fontSize: 13,
-      fontWeight: '600',
-      color: colors.textSecondary,
-    },
-    segBtnTextAct: { color: '#fff' },
-    // Hero
-    heroCard: {
-      backgroundColor: colors.primary,
-      borderRadius: 16,
-      padding: 20,
-      marginBottom: 16,
-    },
-    heroLabel: {
-      fontSize: 11,
-      fontWeight: '700',
-      color: 'rgba(255,255,255,0.6)',
-      letterSpacing: 1.2,
-      textTransform: 'uppercase',
-      marginBottom: 6,
-    },
-    heroValue: {
-      fontSize: isDesktop ? 48 : 40,
-      fontWeight: '900',
-      color: '#fff',
-      letterSpacing: -1.5,
-      marginBottom: 4,
-    },
-    heroDivider: {
-      height: 1,
-      backgroundColor: 'rgba(255,255,255,0.15)',
-      marginVertical: 14,
-    },
-    heroStatsRow: { flexDirection: 'row', gap: 12 },
-    heroStatBox: {
-      flex: 1,
-      backgroundColor: 'rgba(255,255,255,0.1)',
-      borderRadius: 10,
-      padding: 12,
-    },
-    heroStatVal: { fontSize: 18, fontWeight: '800', color: '#fff' },
-    heroStatLbl: { fontSize: 10, color: 'rgba(255,255,255,0.6)', marginTop: 2 },
-    // Summary
-    summaryRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
-    summaryCard: {
-      flex: 1,
-      backgroundColor: colors.card,
-      borderRadius: 12,
-      padding: 14,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    summaryLbl: {
-      fontSize: 10,
-      fontWeight: '700',
-      color: colors.textSecondary,
-      letterSpacing: 0.5,
-      marginBottom: 4,
-    },
-    summaryVal: { fontSize: 16, fontWeight: '900' },
-    // Products
-    productCard: {
-      backgroundColor: colors.card,
-      borderRadius: 12,
-      padding: 14,
-      marginBottom: 8,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    productRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      marginBottom: 10,
-    },
-    rank: {
-      fontSize: 16,
-      fontWeight: '900',
-      color: colors.textSecondary,
-      width: 28,
-    },
-    productName: {
-      fontSize: 14,
-      fontWeight: '700',
-      color: colors.text,
-      flex: 1,
-      marginHorizontal: 8,
-    },
-    productRev: { fontSize: 14, fontWeight: '700', color: colors.accent },
-    barTrack: {
-      height: 6,
-      backgroundColor: colors.border,
-      borderRadius: 3,
-      overflow: 'hidden',
-    },
-    barFill: { height: '100%', borderRadius: 3 },
-    unitText: { fontSize: 11, color: colors.textSecondary, marginTop: 4 },
-    // Desktop charts side by side
-    chartsRow: { flexDirection: isDesktop ? 'row' : 'column', gap: 12 },
-    chartFlex: { flex: isDesktop ? 1 : undefined },
-  });
+  const trendChart = useMemo(() => {
+    const pts = analytics?.trend ?? [];
+    if (!pts.length) return null;
+    const s =
+      pts.length > 8
+        ? pts.filter((_, i) => i % Math.ceil(pts.length / 8) === 0)
+        : pts;
+    return {
+      labels: s.map((p) => p.label),
+      datasets: [
+        {
+          data: s.map((p) => Math.round(p.revenue / 1000)),
+          color: (o = 1) => `rgba(27,58,107,${o})`,
+          strokeWidth: 2,
+        },
+        {
+          data: s.map((p) => Math.round(p.cost / 1000)),
+          color: (o = 1) => `rgba(232,119,34,${o})`,
+          strokeWidth: 2,
+        },
+      ],
+    };
+  }, [analytics]);
 
+  const s = analytics?.summary;
+  const periodLabel =
+    preset === 'today'
+      ? 'Today'
+      : preset === 'this_week'
+        ? 'This Week'
+        : preset === 'this_month'
+          ? 'This Month'
+          : preset === 'custom' && customStart && customEnd
+            ? `${formatShortDate(customStart)} – ${formatShortDate(customEnd)}`
+            : 'All Time';
+
+  // ── Layout ────────────────────────────────────────────────────────────────
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        container: { flex: 1, backgroundColor: colors.background },
+        scroll: {
+          padding: isDesktop ? 24 : 16,
+          paddingBottom: 56,
+          maxWidth: isDesktop ? 1200 : undefined,
+          alignSelf: isDesktop ? ('center' as const) : undefined,
+          width: isDesktop ? '100%' : undefined,
+        },
+        pageTitle: {
+          fontSize: isDesktop ? 26 : 20,
+          fontWeight: '900',
+          color: colors.text,
+          marginBottom: 14,
+          letterSpacing: -0.5,
+        },
+        sectionTitle: {
+          fontSize: 11,
+          fontWeight: '700',
+          color: colors.textSecondary,
+          letterSpacing: 1.1,
+          textTransform: 'uppercase' as const,
+          marginBottom: 10,
+          marginTop: 8,
+        },
+        heroCard: {
+          backgroundColor: colors.primary,
+          borderRadius: 16,
+          padding: 20,
+          marginBottom: 16,
+        },
+        heroLabel: {
+          fontSize: 11,
+          fontWeight: '700',
+          color: 'rgba(255,255,255,0.6)',
+          letterSpacing: 1.2,
+          textTransform: 'uppercase' as const,
+          marginBottom: 6,
+        },
+        heroValue: {
+          fontSize: isDesktop ? 48 : 38,
+          fontWeight: '900',
+          color: '#fff',
+          letterSpacing: -1.5,
+          marginBottom: 4,
+        },
+        heroDivider: {
+          height: 1,
+          backgroundColor: 'rgba(255,255,255,0.15)',
+          marginVertical: 12,
+        },
+        heroStatsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+        heroStatBox: {
+          flex: 1,
+          minWidth: isTablet ? 100 : '22%',
+          backgroundColor: 'rgba(255,255,255,0.1)',
+          borderRadius: 10,
+          padding: 11,
+        },
+        heroStatVal: { fontSize: 17, fontWeight: '800', color: '#fff' },
+        heroStatLbl: {
+          fontSize: 10,
+          color: 'rgba(255,255,255,0.6)',
+          marginTop: 2,
+        },
+        summaryRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+        summaryCard: {
+          flex: 1,
+          backgroundColor: colors.card,
+          borderRadius: 12,
+          padding: 13,
+          borderWidth: 1,
+          borderColor: colors.border,
+        },
+        summaryLbl: {
+          fontSize: 10,
+          fontWeight: '700',
+          color: colors.textSecondary,
+          letterSpacing: 0.5,
+          marginBottom: 4,
+        },
+        summaryVal: { fontSize: 15, fontWeight: '900' },
+        branchGrid: {
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          gap: 10,
+          marginBottom: 4,
+        },
+        chartsRow: { flexDirection: isDesktop ? 'row' : 'column', gap: 12 },
+        chartFlex: { flex: isDesktop ? 1 : undefined },
+      }),
+    [colors, isTablet, isDesktop],
+  );
+
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.scroll}
       showsVerticalScrollIndicator={false}
     >
-      {/* ── Controls: period toggle + outlet search dropdown ─────────────────── */}
-      <View style={styles.controlsRow}>
-        {/* Period toggle */}
-        <View style={styles.segGroup}>
-          {(['Monthly', 'Quarterly'] as Period[]).map((p) => (
-            <TouchableOpacity
-              key={p}
-              style={[styles.segBtn, period === p && styles.segBtnActive]}
-              onPress={() => setPeriod(p)}
-            >
-              <Text
-                style={[
-                  styles.segBtnText,
-                  period === p && styles.segBtnTextAct,
-                ]}
-              >
-                {p}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+      <Text style={styles.pageTitle}>Sales Analytics</Text>
 
-        {/* Outlet dropdown — single line, never wraps */}
-        <OutletDropdown
-          selected={selectedOutlet}
-          onSelect={(outlet) => setSelectedOutlet(outlet)}
-          colors={colors}
-        />
-      </View>
+      <DateFilterBar
+        preset={preset}
+        onPresetChange={setPreset}
+        customStart={customStart}
+        customEnd={customEnd}
+        onCustomApply={(s, e) => {
+          setCustomStart(s);
+          setCustomEnd(e);
+        }}
+        colors={colors}
+      />
 
-      {/* ── Loading state — skeleton everything ──────────────────────────────── */}
-      {loading ? (
-        <>
-          <HeroSkeleton colors={colors} />
-          <SummaryCardsSkeleton colors={colors} />
-          <SkeletonPulse
-            colors={colors}
-            style={{ width: 160, height: 11, marginBottom: 10 }}
-          />
-          {[1, 2, 3, 4, 5].map((i) => (
-            <ProductCardSkeleton key={i} colors={colors} />
-          ))}
-          <SkeletonPulse
-            colors={colors}
-            style={{ width: 140, height: 11, marginTop: 16, marginBottom: 10 }}
-          />
-          <ChartSkeleton colors={colors} />
-          <ChartSkeleton colors={colors} height={200} />
-        </>
+      {/* ── Hero ───────────────────────────────────────────────────────────── */}
+      {heroLoading ? (
+        <HeroSkeleton colors={colors} />
       ) : (
-        <>
-          {/* ── Hero card ─────────────────────────────────────────────────────── */}
-          <View style={styles.heroCard}>
-            <Text style={styles.heroLabel}>
-              {period === 'Monthly' ? 'This Month' : 'This Quarter'} Revenue ·{' '}
-              {selectedOutlet.name}
+        <View style={styles.heroCard}>
+          <Text style={styles.heroLabel}>{periodLabel} · Revenue</Text>
+          <Text style={styles.heroValue}>{fmtM(s?.totalRevenue ?? 0)}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {(s?.revenueChange ?? 0) >= 0 ? (
+              <TrendingUp size={15} color="#34D399" strokeWidth={2} />
+            ) : (
+              <TrendingDown size={15} color="#F87171" strokeWidth={2} />
+            )}
+            <Text
+              style={{
+                fontSize: 13,
+                fontWeight: '600',
+                color: (s?.revenueChange ?? 0) >= 0 ? '#34D399' : '#F87171',
+              }}
+            >
+              {s
+                ? `${fmtPct(s.revenueChange)} vs previous period`
+                : 'No comparison data yet'}
             </Text>
-            <Text style={styles.heroValue}>{fmtM(currentRevenue)}</Text>
-            <View
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
-            >
-              {isGrowthUp ? (
-                <TrendingUp size={16} color="#34D399" strokeWidth={2} />
-              ) : (
-                <TrendingDown size={16} color="#F87171" strokeWidth={2} />
-              )}
-              <Text
-                style={{
-                  fontSize: 14,
-                  fontWeight: '600',
-                  color: isGrowthUp ? '#34D399' : '#F87171',
-                }}
-              >
-                {isGrowthUp ? '▲' : '▼'} {Math.abs(growth).toFixed(1)}% vs
-                previous {period === 'Monthly' ? 'month' : 'quarter'}
-              </Text>
-            </View>
-            <View style={styles.heroDivider} />
-            <View style={styles.heroStatsRow}>
-              <View style={styles.heroStatBox}>
-                <Text style={styles.heroStatVal}>{fmtM(netProfit)}</Text>
-                <Text style={styles.heroStatLbl}>Net Profit</Text>
-              </View>
-              <View style={styles.heroStatBox}>
-                <Text style={styles.heroStatVal}>{profitMargin}%</Text>
-                <Text style={styles.heroStatLbl}>Profit Margin</Text>
-              </View>
-              <View style={styles.heroStatBox}>
-                <Text style={styles.heroStatVal}>{dashboardStats.totalOrders}</Text>
-                <Text style={styles.heroStatLbl}>Orders this period</Text>
-              </View>
-              <View style={styles.heroStatBox}>
-                <Text style={styles.heroStatVal}>{dashboardStats.totalCustomers}</Text>
-                <Text style={styles.heroStatLbl}>Customers</Text>
-              </View>
-              <View style={styles.heroStatBox}>
-                <Text style={styles.heroStatVal}>
-                  {period === 'Monthly'
-                    ? salesTrend.data.length
-                    : salesTrendByQuarter.data.length}
-                </Text>
-                <Text style={styles.heroStatLbl}>Periods tracked</Text>
-              </View>
-            </View>
           </View>
-
-          {/* ── Summary cards ─────────────────────────────────────────────────── */}
-          <View style={styles.summaryRow}>
-            <View style={styles.summaryCard}>
-              <Text style={styles.summaryLbl}>REVENUE</Text>
-              <Text style={[styles.summaryVal, { color: colors.success }]}>
-                {fmtM(totalRevenue)}
-              </Text>
-            </View>
-            <View style={styles.summaryCard}>
-              <Text style={styles.summaryLbl}>EXPENSES</Text>
-              <Text style={[styles.summaryVal, { color: colors.error }]}>
-                {fmtM(totalExpenses)}
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.summaryCard,
-                { backgroundColor: colors.primary, borderColor: 'transparent' },
-              ]}
-            >
-              <Text
-                style={[styles.summaryLbl, { color: 'rgba(255,255,255,0.6)' }]}
-              >
-                NET PROFIT
-              </Text>
-              <Text style={[styles.summaryVal, { color: '#fff' }]}>
-                {fmtM(netProfit)}
-              </Text>
-            </View>
+          <View style={styles.heroDivider} />
+          <View style={styles.heroStatsRow}>
+            {[
+              { val: fmtM(s?.grossProfit ?? 0), lbl: 'Gross Profit' },
+              {
+                val: `${(s?.profitMargin ?? 0).toFixed(1)}%`,
+                lbl: 'Profit Margin',
+              },
+              { val: (s?.totalOrders ?? 0).toLocaleString(), lbl: 'Orders' },
+              {
+                val: `${s?.profitableBranches ?? 0}/${s?.totalBranches ?? rawBranches.length}`,
+                lbl: 'Profitable Branches',
+              },
+            ].map((stat) => (
+              <View key={stat.lbl} style={styles.heroStatBox}>
+                <Text style={styles.heroStatVal}>{stat.val}</Text>
+                <Text style={styles.heroStatLbl}>{stat.lbl}</Text>
+              </View>
+            ))}
           </View>
+        </View>
+      )}
 
-          {/* ── Top 5 products ────────────────────────────────────────────────── */}
-          <Text style={styles.sectionTitle}>
-            Top 5 Products · {selectedOutlet.name}
-          </Text>
-          {adjustedProducts.map((product, idx) => {
-            const barW =
-              maxRevenue > 0 ? (product.revenue / maxRevenue) * 100 : 0;
-            const isFirst = idx === 0;
-            return (
-              <TouchableOpacity
-                key={product.name}
-                style={[
-                  styles.productCard,
-                  isFirst && { borderColor: colors.accent, borderWidth: 1.5 },
-                ]}
-                onPress={() => {
-                  setSelectedProduct(product);
-                  setSelectedRank(idx + 1);
-                  setProductModalOpen(true);
-                }}
-                activeOpacity={0.82}
-              >
-                <View style={styles.productRow}>
-                  <Text
-                    style={[styles.rank, isFirst && { color: colors.accent }]}
-                  >
-                    #{idx + 1}
-                  </Text>
-                  <Text style={styles.productName} numberOfLines={1}>
-                    {product.name}
-                  </Text>
-                  <Text style={styles.productRev}>{fmtK(product.revenue)}</Text>
-                </View>
-                <View style={styles.barTrack}>
-                  <View
-                    style={[
-                      styles.barFill,
-                      {
-                        width: `${barW}%`,
-                        backgroundColor: isFirst
-                          ? colors.accent
-                          : colors.primary,
-                      },
-                    ]}
-                  />
-                </View>
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    justifyContent: 'space-between',
-                    marginTop: 5,
-                  }}
-                >
-                  <Text style={styles.unitText}>
-                    {product.units.toLocaleString()} units sold
-                  </Text>
-                  <Text style={[styles.unitText, { color: colors.primary }]}>
-                    Tap for details →
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
+      {/* ── Summary cards ─────────────────────────────────────────────────── */}
+      {!heroLoading && (
+        <View style={styles.summaryRow}>
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryLbl}>REVENUE</Text>
+            <Text style={[styles.summaryVal, { color: '#10B981' }]}>
+              {fmtM(s?.totalRevenue ?? 0)}
+            </Text>
+          </View>
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryLbl}>COST</Text>
+            <Text style={[styles.summaryVal, { color: '#EF4444' }]}>
+              {fmtM(s?.totalCost ?? 0)}
+            </Text>
+          </View>
+          <View
+            style={[
+              styles.summaryCard,
+              { backgroundColor: colors.primary, borderColor: 'transparent' },
+            ]}
+          >
+            <Text
+              style={[styles.summaryLbl, { color: 'rgba(255,255,255,0.6)' }]}
+            >
+              NET PROFIT
+            </Text>
+            <Text style={[styles.summaryVal, { color: '#fff' }]}>
+              {fmtM(s?.grossProfit ?? 0)}
+            </Text>
+          </View>
+        </View>
+      )}
 
-          {/* ── Charts ────────────────────────────────────────────────────────── */}
-          <Text style={[styles.sectionTitle, { marginTop: 16 }]}>
-            Sales Trend · {selectedOutlet.name}
+      {/* ── Trend charts (only when data exists) ───────────────────────────── */}
+      {trendChart && (
+        <>
+          <Text style={[styles.sectionTitle, { marginTop: 20 }]}>
+            Revenue vs Cost Trend
           </Text>
           <View style={styles.chartsRow}>
             <View style={styles.chartFlex}>
               <ChartCard
-                title={`${period} Sales Performance`}
-                subtitle={chartData.subtitle}
+                title="Revenue vs Cost"
+                subtitle={`${periodLabel} · ₱ in thousands`}
               >
                 <LineChart
-                  data={{
-                    labels: chartData.labels,
-                    datasets: [{ data: chartData.data }],
-                  }}
+                  data={trendChart}
                   width={chartWidth}
                   height={220}
                   chartConfig={chartConfig}
@@ -1386,28 +1539,26 @@ export default function SalesAnalyticsScreen() {
                 />
               </ChartCard>
             </View>
-            {isDesktop && (
+            {isDesktop && analytics?.trend && (
               <View style={styles.chartFlex}>
                 <ChartCard
-                  title="Revenue vs Expenses"
-                  subtitle={`Overview · ${selectedOutlet.name}`}
+                  title="Gross Profit Trend"
+                  subtitle={`${periodLabel} · ₱ in thousands`}
                 >
                   <LineChart
                     data={{
-                      labels: financeData.revenueVsExpenses.labels,
+                      labels: trendChart.labels,
                       datasets: [
                         {
-                          data: financeData.revenueVsExpenses.revenue.map(
-                            (v) => (v * multiplier) / 1000,
-                          ),
-                          color: (o = 1) => `rgba(27, 58, 107, ${o})`,
-                          strokeWidth: 2,
-                        },
-                        {
-                          data: financeData.revenueVsExpenses.expenses.map(
-                            (v) => (v * multiplier) / 1000,
-                          ),
-                          color: (o = 1) => `rgba(232, 119, 34, ${o})`,
+                          data: (analytics.trend.length > 8
+                            ? analytics.trend.filter(
+                                (_, i) =>
+                                  i % Math.ceil(analytics.trend.length / 8) ===
+                                  0,
+                              )
+                            : analytics.trend
+                          ).map((p) => Math.round(p.profit / 1000)),
+                          color: (o = 1) => `rgba(16,185,129,${o})`,
                           strokeWidth: 2,
                         },
                       ],
@@ -1424,28 +1575,24 @@ export default function SalesAnalyticsScreen() {
               </View>
             )}
           </View>
-
-          {!isDesktop && (
+          {!isDesktop && analytics?.trend && (
             <ChartCard
-              title="Revenue vs Expenses"
-              subtitle={`6-month overview · ${selectedOutlet.name}`}
+              title="Gross Profit Trend"
+              subtitle={`${periodLabel} · ₱ in thousands`}
             >
               <LineChart
                 data={{
-                  labels: financeData.revenueVsExpenses.labels,
+                  labels: trendChart.labels,
                   datasets: [
                     {
-                      data: financeData.revenueVsExpenses.revenue.map(
-                        (v) => (v * multiplier) / 1000,
-                      ),
-                      color: (o = 1) => `rgba(27, 58, 107, ${o})`,
-                      strokeWidth: 2,
-                    },
-                    {
-                      data: financeData.revenueVsExpenses.expenses.map(
-                        (v) => (v * multiplier) / 1000,
-                      ),
-                      color: (o = 1) => `rgba(232, 119, 34, ${o})`,
+                      data: (analytics.trend.length > 8
+                        ? analytics.trend.filter(
+                            (_, i) =>
+                              i % Math.ceil(analytics.trend.length / 8) === 0,
+                          )
+                        : analytics.trend
+                      ).map((p) => Math.round(p.profit / 1000)),
+                      color: (o = 1) => `rgba(16,185,129,${o})`,
                       strokeWidth: 2,
                     },
                   ],
@@ -1463,14 +1610,111 @@ export default function SalesAnalyticsScreen() {
         </>
       )}
 
-      {/* Product detail modal */}
-      <ProductDetailModal
-        product={selectedProduct}
-        rank={selectedRank}
-        visible={productModalOpen}
-        onClose={() => setProductModalOpen(false)}
+      {/* ── Branches ──────────────────────────────────────────────────────── */}
+      <Text style={styles.sectionTitle}>Branch Performance</Text>
+      {branchLoading ? (
+        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
+          {[1, 2].map((i) => (
+            <View key={i} style={{ flex: 1 }}>
+              <CardSkeleton colors={colors} />
+            </View>
+          ))}
+        </View>
+      ) : rawBranches.length === 0 ? (
+        <View
+          style={{
+            backgroundColor: colors.card,
+            borderRadius: 12,
+            padding: 20,
+            alignItems: 'center',
+            marginBottom: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+          }}
+        >
+          <Building2 size={28} color={colors.border} strokeWidth={1.5} />
+          <Text
+            style={{
+              fontSize: 13,
+              color: colors.textSecondary,
+              marginTop: 8,
+              textAlign: 'center',
+            }}
+          >
+            No branches found. Add branches in your organization settings.
+          </Text>
+        </View>
+      ) : (
+        <View style={styles.branchGrid}>
+          {rawBranches.map((branch) => (
+            <BranchCard
+              key={branch.id}
+              branch={branch}
+              analytics={branchMap[branch.id]}
+              colors={colors}
+              isTablet={isTablet}
+            />
+          ))}
+        </View>
+      )}
+
+      {/* ── Items ─────────────────────────────────────────────────────────── */}
+      <Text style={[styles.sectionTitle, { marginTop: 14 }]}>
+        Item Performance
+      </Text>
+      <SectionToggle
+        active={itemSection}
+        onChange={setItemSection}
         colors={colors}
-        maxRevenue={maxRevenue}
+      />
+
+      {itemLoading ? (
+        [1, 2, 3, 4, 5].map((i) => <ItemSkeleton key={i} colors={colors} />)
+      ) : displayItems.length === 0 ? (
+        <View
+          style={{
+            backgroundColor: colors.card,
+            borderRadius: 12,
+            padding: 24,
+            alignItems: 'center',
+            borderWidth: 1,
+            borderColor: colors.border,
+          }}
+        >
+          <Package size={28} color={colors.border} strokeWidth={1.5} />
+          <Text
+            style={{ fontSize: 13, color: colors.textSecondary, marginTop: 8 }}
+          >
+            No items found in inventory.
+          </Text>
+        </View>
+      ) : (
+        displayItems.map((item, idx) => (
+          <ItemRow
+            key={item.id}
+            item={item}
+            rank={idx + 1}
+            analytics={itemAnalyticsMap[item.id]}
+            maxRevenue={maxRevenue}
+            colors={colors}
+            onPress={() => {
+              setSelectedItem(item);
+              setSelectedAn(itemAnalyticsMap[item.id]);
+              setSelectedRank(idx + 1);
+              setModalOpen(true);
+            }}
+          />
+        ))
+      )}
+
+      {/* Item modal */}
+      <ItemDetailModal
+        item={selectedItem}
+        analytics={selectedAn}
+        rank={selectedRank}
+        visible={modalOpen}
+        onClose={() => setModalOpen(false)}
+        colors={colors}
       />
     </ScrollView>
   );

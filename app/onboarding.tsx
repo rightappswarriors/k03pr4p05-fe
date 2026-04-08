@@ -91,7 +91,7 @@ export default function OnboardingScreen({
         console.log(
           '[Onboarding] User fully onboarded, redirecting to dashboard',
         );
-        router.replace('/(admin)/erp');
+        router.replace('/(erp)/erp');
       }
     }
   }, [user, initialStep, params.step, router, stepMap]);
@@ -112,12 +112,12 @@ export default function OnboardingScreen({
         console.log('[Onboarding] goToComplete: Onboarding states set');
       }
       console.log('[Onboarding] goToComplete: Navigating to admin dashboard...');
-      router.replace('/(admin)/erp');
+      router.replace('/(erp)/erp');
     } catch (error) {
       console.error('[Onboarding] goToComplete: Error during completion:', error);
       // Even if something fails, try to navigate - the admin layout will handle auth checks
       console.log('[Onboarding] goToComplete: Attempting navigation despite error...');
-      router.replace('/(admin)/erp');
+      router.replace('/(erp)/erp');
     }
   };
 

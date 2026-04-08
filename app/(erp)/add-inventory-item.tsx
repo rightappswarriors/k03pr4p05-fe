@@ -28,7 +28,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { InventoryService } from '@/services/inventoryService';
 import { CostLine } from '@/screens/InventoryScreen';
-
+import { GlobalCategoryPickerModal } from '@/components/GlobalCategoryPickerModal';
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
 interface CatalogItem {
@@ -57,7 +57,7 @@ interface UnitLine {
 
 // ─── Mock catalog search ───────────────────────────────────────────────────────
 // removed mock data and replaced with actual search function that calls backend API
-
+import { CategoryPickerModal } from '@/components/CategoryPickerModal';
 async function searchCatalog(q: string): Promise<CatalogItem[]> {
   try {
     const items = await InventoryService.getOrgItems(q, 50);
@@ -347,197 +347,9 @@ const csm = StyleSheet.create({
 });
 
 // ─── Category Search Modal ──────────────────────────────────────────────────────
-
-function CategorySearchModal({
-  visible,
-  onClose,
-  onSelect,
-  colors,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  onSelect: (category: string) => void;
-  colors: any;
-}) {
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
-
-  // Mock categories
-  const MOCK_CATEGORIES = [
-    'Rice',
-    'Canned Goods',
-    'Beverages',
-    'Snacks',
-    'Household',
-    'Dairy',
-    'Noodles',
-    'Bakery',
-    'Frozen',
-    'Personal Care',
-  ];
-
-  React.useEffect(() => {
-    if (visible && !hasSearched) {
-      setResults(MOCK_CATEGORIES);
-    }
-    if (!visible) {
-      setQuery('');
-      setResults([]);
-      setHasSearched(false);
-    }
-  }, [visible]);
-
-  const doSearch = async () => {
-    const q = query.trim();
-    setLoading(true);
-    setHasSearched(true);
-    setTimeout(() => {
-      const filtered = MOCK_CATEGORIES.filter((cat) =>
-        cat.toLowerCase().includes(q.toLowerCase()),
-      );
-      setResults(filtered);
-      setLoading(false);
-    }, 500);
-  };
-
-  const handleClear = () => {
-    setQuery('');
-    setResults(MOCK_CATEGORIES);
-    setHasSearched(false);
-  };
-
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: 'rgba(0,0,0,0.5)',
-          justifyContent: 'flex-end',
-        }}
-      >
-        <TouchableOpacity
-          style={{ flex: 1 }}
-          activeOpacity={1}
-          onPress={onClose}
-        />
-        <View style={[csm.sheet, { backgroundColor: colors.surface }]}>
-          <View style={[csm.handle, { backgroundColor: colors.border }]} />
-          <View style={[csm.header, { borderBottomColor: colors.border }]}>
-            <Text style={[csm.title, { color: colors.text }]}>
-              Search Category
-            </Text>
-            <TouchableOpacity onPress={onClose}>
-              <X size={20} color={colors.textSecondary} strokeWidth={2} />
-            </TouchableOpacity>
-          </View>
-          <View style={[csm.searchRow, { borderBottomColor: colors.border }]}>
-            <View
-              style={[
-                csm.searchBox,
-                {
-                  backgroundColor: colors.background,
-                  borderColor: colors.border,
-                },
-              ]}
-            >
-              <Search size={13} color={colors.textSecondary} strokeWidth={2} />
-              <TextInput
-                style={[csm.searchInput, { color: colors.text }]}
-                placeholder="Search category…"
-                placeholderTextColor={colors.textSecondary}
-                value={query}
-                onChangeText={setQuery}
-                returnKeyType="search"
-                onSubmitEditing={doSearch}
-                autoCorrect={false}
-              />
-              {query.length > 0 && (
-                <TouchableOpacity
-                  onPress={handleClear}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <X size={13} color={colors.textSecondary} strokeWidth={2} />
-                </TouchableOpacity>
-              )}
-            </View>
-            <TouchableOpacity
-              style={[
-                csm.searchBtn,
-                { backgroundColor: loading ? colors.border : colors.primary },
-              ]}
-              onPress={doSearch}
-              disabled={loading}
-              activeOpacity={0.85}
-            >
-              <Search size={13} color="#fff" strokeWidth={2.5} />
-              <Text style={{ fontSize: 11, fontWeight: '700', color: '#fff' }}>
-                {loading ? '…' : 'Search'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {!loading && (
-            <FlatList
-              data={results}
-              keyExtractor={(item) => item}
-              style={{ maxHeight: 320 }}
-              keyboardShouldPersistTaps="handled"
-              ListEmptyComponent={
-                <View style={{ padding: 28, alignItems: 'center' }}>
-                  <Package size={32} color={colors.border} strokeWidth={1.5} />
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      color: colors.textSecondary,
-                      marginTop: 10,
-                    }}
-                  >
-                    {query
-                      ? `No categories found for "${query}"`
-                      : 'No categories available.'}
-                  </Text>
-                </View>
-              }
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[csm.resultRow, { borderBottomColor: colors.border }]}
-                  onPress={() => {
-                    onSelect(item);
-                    onClose();
-                  }}
-                  activeOpacity={0.75}
-                >
-                  <View
-                    style={[
-                      csm.icon,
-                      { backgroundColor: colors.primary + '18' },
-                    ]}
-                  >
-                    <Package size={16} color={colors.primary} strokeWidth={2} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[csm.itemName, { color: colors.text }]}>
-                      {item}
-                    </Text>
-                  </View>
-                  <Text style={[csm.selectTxt, { color: colors.primary }]}>
-                    Select
-                  </Text>
-                </TouchableOpacity>
-              )}
-            />
-          )}
-        </View>
-      </View>
-    </Modal>
-  );
+interface CategoryOption {
+  id: number;
+  name: string;
 }
 
 // ─── Main Screen ───────────────────────────────────────────────────────────────
@@ -552,9 +364,14 @@ export default function AddInventoryItemScreen() {
   const { colors } = useTheme();
 
   const [catalogOpen, setCatalogOpen] = useState(false);
-  const [categoryOpen, setCategoryOpen] = useState(false);
+
+  const [categoryPickerVisible, setCategoryPickerVisible] = useState(false);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(
+    null,
+  );
+  const [selectedCategoryName, setSelectedCategoryName] = useState('');
+
   const [selectedItem, setSelectedItem] = useState<CatalogItem | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [displayToKompraph, setDisplayToKompraph] = useState(false);
   const [basePrice, setBasePrice] = useState('');
   const [baseQty, setBaseQty] = useState('0');
@@ -609,7 +426,7 @@ export default function AddInventoryItemScreen() {
     setUnits((prev) => prev.map((u) => ({ ...u, isDefault: u.id === id })));
   const resetForm = () => {
     setSelectedItem(null);
-    setSelectedCategory(null);
+    setSelectedCategoryId(null);
     setDisplayToKompraph(false);
     setBasePrice('');
     setBaseQty('0');
@@ -649,6 +466,8 @@ export default function AddInventoryItemScreen() {
         itemId: Number(selectedItem.id),
         price: parseFloat(basePrice),
         quantity: parseInt(baseQty) || 0,
+        categoryId: selectedCategoryId ?? undefined,
+        //!add new field
         units: units.map((u) => ({
           unitName: u.unitName,
           unitLabel: u.unitLabel,
@@ -667,7 +486,7 @@ export default function AddInventoryItemScreen() {
       setTimeout(() => {
         resetForm();
         router.push({
-          pathname: '/(admin)/outlet-detail',
+          pathname: '/(erp)/outlet-detail',
           params: {
             outletId,
             outletName,
@@ -702,7 +521,7 @@ export default function AddInventoryItemScreen() {
           style={[ais.backBtn, { backgroundColor: colors.card }]}
           onPress={() =>
             router.push({
-              pathname: '/(admin)/outlet-detail',
+              pathname: '/(erp)/outlet-detail',
               params: {
                 outletId,
                 outletName,
@@ -785,7 +604,6 @@ export default function AddInventoryItemScreen() {
               <Text style={{ color: colors.textSecondary }}>›</Text>
             )}
           </TouchableOpacity>
-
           {/* Item Info Card */}
           {selectedItem && (
             <View
@@ -840,18 +658,19 @@ export default function AddInventoryItemScreen() {
               </View>
             </View>
           )}
-
           {/* Category Search */}
-          {fieldLabel('CATEGORY')}
+          {fieldLabel('CATEGORY (Global)')}
           <TouchableOpacity
             style={[
               ais.itemPicker,
               {
                 backgroundColor: colors.card,
-                borderColor: colors.border,
+                borderColor: selectedCategoryId
+                  ? colors.primary
+                  : colors.border,
               },
             ]}
-            onPress={() => setCategoryOpen(true)}
+            onPress={() => setCategoryPickerVisible(true)}
             activeOpacity={0.82}
           >
             <View
@@ -863,13 +682,31 @@ export default function AddInventoryItemScreen() {
               }}
             >
               <Search size={16} color={colors.textSecondary} strokeWidth={2} />
-              <Text style={{ fontSize: 14, color: colors.textSecondary }}>
-                Search category…
+              <Text
+                style={{
+                  fontSize: 14,
+                  color: selectedCategoryName
+                    ? colors.text
+                    : colors.textSecondary,
+                }}
+              >
+                {selectedCategoryName || 'Select global category…'}
               </Text>
             </View>
-            <Text style={{ color: colors.textSecondary }}>›</Text>
+            {selectedCategoryId ? (
+              <TouchableOpacity
+                onPress={() => {
+                  setSelectedCategoryId(null);
+                  setSelectedCategoryName('');
+                }}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              >
+                <X size={14} color={colors.error} strokeWidth={2} />
+              </TouchableOpacity>
+            ) : (
+              <Text style={{ color: colors.textSecondary }}>›</Text>
+            )}
           </TouchableOpacity>
-
           {/* Display to Kompra.ph Switch */}
           <View
             style={{
@@ -907,7 +744,6 @@ export default function AddInventoryItemScreen() {
               />
             </TouchableOpacity>
           </View>
-
           {/* Base price + qty */}
           <View style={{ flexDirection: 'row', gap: 12 }}>
             <View style={{ flex: 1 }}>
@@ -955,7 +791,6 @@ export default function AddInventoryItemScreen() {
               />
             </View>
           </View>
-
           {fieldLabel('OPEX CONTRIBUTION %')}
           <TextInput
             style={[
@@ -973,7 +808,6 @@ export default function AddInventoryItemScreen() {
             onChangeText={setOpExPct}
             keyboardType="decimal-pad"
           />
-
           {/* Units section */}
           <View
             style={{
@@ -1007,7 +841,6 @@ export default function AddInventoryItemScreen() {
             Define how this item is sold — by piece, box, pack, etc. Each unit
             has its own price and quantity tracking.
           </Text>
-
           {units.map((unit, idx) => (
             <View
               key={unit.id}
@@ -1248,7 +1081,6 @@ export default function AddInventoryItemScreen() {
               />
             </View>
           ))}
-
           {/* Live profit preview */}
           {basePrice && units[0]?.price && (
             <View
@@ -1287,11 +1119,9 @@ export default function AddInventoryItemScreen() {
                 ))}
             </View>
           )}
-
           {error ? (
             <Text style={[ais.errTxt, { color: colors.error }]}>{error}</Text>
           ) : null}
-
           {success ? (
             <View
               style={[
@@ -1338,11 +1168,12 @@ export default function AddInventoryItemScreen() {
         colors={colors}
       />
 
-      <CategorySearchModal
-        visible={categoryOpen}
-        onClose={() => setCategoryOpen(false)}
-        onSelect={(category) => setSelectedCategory(category)}
+      <GlobalCategoryPickerModal
+        visible={categoryPickerVisible}
+        onClose={() => setCategoryPickerVisible(false)}
+        onSelect={(category) => setSelectedCategoryId(category)}
         colors={colors}
+        selectedId={null}
       />
     </SafeAreaView>
   );

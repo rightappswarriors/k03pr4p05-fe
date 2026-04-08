@@ -18,6 +18,7 @@ export type ERPScreen =
   | 'Dashboard'
   | 'Sales'
   | 'Inventory'
+  | 'RestockScheduling'
   | 'HR'
   | 'Finance'
   | 'SalesAnalytics';
@@ -33,6 +34,7 @@ const menuItems: { label: string; screen: ERPScreen; icon: string }[] = [
   { label: 'Dashboard', screen: 'Dashboard', icon: '📊' },
   { label: 'Sales', screen: 'Sales', icon: '🛒' },
   { label: 'Inventory', screen: 'Inventory', icon: '📦' },
+  { label: 'Restock Item', screen: 'RestockScheduling', icon: '📦' },
   { label: 'HR', screen: 'HR', icon: '👥' },
   { label: 'Finance', screen: 'Finance', icon: '💰' },
   { label: 'Sales Analytics', screen: 'SalesAnalytics', icon: '📈' },

@@ -3,7 +3,7 @@
 // The MasterFile "home" shows a menu of all 6 tables.
 // Tapping one navigates into that table's dedicated list with search.
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -35,7 +35,8 @@ import {
   TableKey,
   useMasterFile,
 } from '@/contexts/MasterFileContext';
-import { MasterFileService, FinanceService } from '@/services';
+import { TABLE_CONFIG } from '@/utils/masterfileTable';
+import { PositionService } from '@/services/positionService';
 
 // ─── Table meta ───────────────────────────────────────────────────────────────
 
@@ -77,14 +78,14 @@ const TABLES: TableMeta[] = [
     accent: '#3B82F6',
     placeholder: 'e.g. Logistics',
   },
-  {
-    key: 'roles',
-    label: 'Roles / Positions',
-    description: 'Used in HR — Add Employee role picker',
+   {
+    key: 'positions',
+    label: 'Positions',
+    description: 'RBAC positions with permissions used in HR',
     icon: UserCheck,
     hasColor: false,
-    accent: '#8B5CF6',
-    placeholder: 'e.g. Procurement Officer',
+    accent: '#6366F1',
+    placeholder: 'e.g. Manager',
   },
   {
     key: 'centers',
@@ -113,6 +114,7 @@ const TABLES: TableMeta[] = [
     accent: '#1B3A6B',
     placeholder: 'e.g. Transportation Allowance',
   },
+ 
 ];
 
 const DEPT_COLORS = [
@@ -130,8 +132,31 @@ const DEPT_COLORS = [
   '#84CC16',
 ];
 
-// ─── Add / Edit Modal ─────────────────────────────────────────────────────────
+type PermissionRow = {
+  canView: boolean;
+  canCreate: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+};
 
+type PermissionTemplateKey = 'Admin' | 'Staff' | 'Viewer';
+
+type PageItem = { id: string; key: string; label: string };
+
+const PERMISSION_TEMPLATES: Record<PermissionTemplateKey, PermissionRow> = {
+  Admin: { canView: true, canCreate: true, canEdit: true, canDelete: true },
+  Staff: { canView: true, canCreate: true, canEdit: true, canDelete: false },
+  Viewer: { canView: true, canCreate: false, canEdit: false, canDelete: false },
+};
+
+const PERMISSION_COLUMNS = [
+  { key: 'canView', label: 'View' },
+  { key: 'canCreate', label: 'Create' },
+  { key: 'canEdit', label: 'Edit' },
+  { key: 'canDelete', label: 'Delete' },
+] as const;
+
+// ─── Add / Edit Modal ─────────────────────────────────────────────────────────
 function ItemModal({
   visible,
   onClose,
@@ -142,7 +167,7 @@ function ItemModal({
 }: {
   visible: boolean;
   onClose: () => void;
-  onSave: (item: MasterItem) => void;
+  onSave: (item: MasterItem, extra?: Record<string, any>) => void; // ← 2 args
   existing: MasterItem | null;
   meta: TableMeta;
   colors: any;
@@ -150,25 +175,127 @@ function ItemModal({
   const [label, setLabel] = useState('');
   const [color, setColor] = useState(DEPT_COLORS[0]);
   const [error, setError] = useState('');
+  const [extraValues, setExtraValues] = useState<Record<string, string>>({});
+  const [template, setTemplate] = useState<'Admin' | 'Staff' | 'Viewer' | 'Custom'>('Staff');
+  const [pages, setPages] = useState<PageItem[]>([]);
+  const [permissions, setPermissions] = useState<Record<string, PermissionRow>>({});
 
+  const config = TABLE_CONFIG.find((t) => t.key === meta.key);
   React.useEffect(() => {
     if (visible) {
       setLabel(existing?.label ?? '');
       setColor(existing?.color ?? DEPT_COLORS[0]);
       setError('');
+      setExtraValues(
+        Object.fromEntries(
+          config?.extraFields?.map((f) => [
+            f.key,
+            String((existing as any)?.[f.key] ?? ''),
+          ]) ?? [],
+        ),
+      );
+      if (meta.key === 'positions') {
+        setTemplate(existing ? 'Custom' : 'Staff');
+      }
     }
-  }, [visible, existing]);
+  }, [visible, existing, config, meta.key]);
+
+  React.useEffect(() => {
+    if (!visible || meta.key !== 'positions') return;
+    let active = true;
+
+    const loadPages = async () => {
+      try {
+        const rawPages = await PositionService.getPages();
+        if (!active) return;
+        const normalized: PageItem[] = rawPages.map((page: any) => ({
+          id: String(page.id),
+          key: page.key,
+          label: page.label,
+        }));
+        setPages(normalized);
+
+        const existingPermissions = (existing as any)?.permissions?.reduce(
+          (acc: Record<string, PermissionRow>, perm: any) => ({
+            ...acc,
+            [perm.pageId]: {
+              canView: perm.canView,
+              canCreate: perm.canCreate,
+              canEdit: perm.canEdit,
+              canDelete: perm.canDelete,
+            },
+          }),
+          {} as Record<string, PermissionRow>,
+        );
+
+        const selected = existingPermissions && Object.keys(existingPermissions).length > 0
+          ? 'Custom'
+          : template;
+
+        setTemplate(selected as 'Admin' | 'Staff' | 'Viewer' | 'Custom');
+
+        setPermissions(
+          Object.fromEntries(
+            normalized.map((page: PageItem): [string, PermissionRow] => [
+              page.id,
+              existingPermissions?.[page.id] ??
+                (selected === 'Custom'
+                  ? {
+                      canView: true,
+                      canCreate: false,
+                      canEdit: false,
+                      canDelete: false,
+                    }
+                  : PERMISSION_TEMPLATES[selected as PermissionTemplateKey]),
+            ]),
+          ) as Record<string, PermissionRow>,
+        );
+      } catch (error) {
+        console.warn('Failed to load permission pages', error);
+      }
+    };
+
+    loadPages();
+    return () => {
+      active = false;
+    };
+  }, [visible, meta.key, existing, template]);
 
   const handleSave = () => {
     if (!label.trim()) {
       setError('Name is required.');
       return;
     }
-    onSave({
-      id: existing?.id ?? `mf_${Date.now()}`,
-      label: label.trim(),
-      ...(meta.hasColor ? { color } : {}),
-    });
+
+    let extra: Record<string, any> | undefined = config?.extraFields
+      ? Object.fromEntries(
+          config.extraFields.map((f) => [
+            f.key,
+            f.type === 'number'
+              ? parseFloat(extraValues[f.key] ?? '0') // ✅ send raw number, NO /100
+              : (extraValues[f.key] ?? ''),
+          ]),
+        )
+      : undefined;
+
+    if (meta.key === 'positions') {
+      extra = {
+        ...(extra ?? {}),
+        permissions: Object.entries(permissions).map(([pageId, perm]) => ({
+          pageId,
+          ...perm,
+        })),
+      };
+    }
+
+    onSave(
+      {
+        id: existing?.id ?? `mf_${Date.now()}`,
+        label: label.trim(),
+        ...(meta.hasColor ? { color } : {}),
+      },
+      extra,
+    );
     onClose();
   };
 
@@ -221,6 +348,123 @@ function ItemModal({
               returnKeyType="done"
               onSubmitEditing={handleSave}
             />
+            {config?.extraFields?.map((field) => (
+              <View key={field.key}>
+                <Text style={[im.fieldLabel, { color: colors.textSecondary }]}>
+                  {field.label.toUpperCase()} *
+                </Text>
+                <TextInput
+                  style={[
+                    im.input,
+                    {
+                      color: colors.text,
+                      backgroundColor: colors.background,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                  placeholder={field.placeholder}
+                  placeholderTextColor={colors.textSecondary}
+                  value={extraValues[field.key] ?? ''}
+                  onChangeText={(v) =>
+                    setExtraValues((prev) => ({ ...prev, [field.key]: v }))
+                  }
+                  keyboardType={
+                    field.type === 'number' ? 'decimal-pad' : 'default'
+                  }
+                />
+              </View>
+            ))}
+
+            {meta.key === 'positions' && (
+              <>
+                <Text style={[im.fieldLabel, { color: colors.textSecondary, marginTop: 16 }]}>STARTER TEMPLATE</Text>
+                <View style={im.templateRow}>
+                  {(['Admin', 'Staff', 'Viewer', 'Custom'] as const).map((option) => (
+                    <TouchableOpacity
+                      key={option}
+                      style={[
+                        im.templateButton,
+                        template === option && im.templateButtonActive,
+                      ]}
+                      onPress={() => {
+                        setTemplate(option);
+                        if (option !== 'Custom') {
+                          setPermissions(
+                            Object.fromEntries(
+                              pages.map((page: PageItem): [string, PermissionRow] => [
+                                page.id,
+                                PERMISSION_TEMPLATES[option as PermissionTemplateKey],
+                              ]),
+                            ) as Record<string, PermissionRow>,
+                          );
+                        }
+                      }}
+                    >
+                      <Text
+                        style={[
+                          im.templateLabel,
+                          template === option && { color: '#fff' },
+                        ]}
+                      >
+                        {option}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={[im.fieldLabel, { color: colors.textSecondary, marginTop: 16 }]}>PERMISSION MATRIX</Text>
+                <View style={[im.matrixRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}> 
+                  <Text style={[im.matrixPageLabel, { color: colors.textSecondary }]}>Page</Text>
+                  {PERMISSION_COLUMNS.map((column) => (
+                    <Text key={column.key} style={[im.matrixHeader, { color: colors.textSecondary }]}>
+                      {column.label}
+                    </Text>
+                  ))}
+                </View>
+                {pages.map((page) => {
+                  const row = permissions[page.id] ?? {
+                    canView: false,
+                    canCreate: false,
+                    canEdit: false,
+                    canDelete: false,
+                  };
+                  return (
+                    <View key={page.id} style={im.matrixRow}>
+                      <Text style={[im.matrixPageLabel, { color: colors.text }]}>
+                        {page.label}
+                      </Text>
+                      {PERMISSION_COLUMNS.map((column) => (
+                        <TouchableOpacity
+                          key={column.key}
+                          style={[
+                            im.matrixCell,
+                            row[column.key] && im.checkboxActive,
+                          ]}
+                          onPress={() =>
+                            setPermissions((prev) => ({
+                              ...prev,
+                              [page.id]: {
+                                ...row,
+                                [column.key]: !row[column.key],
+                              },
+                            }))
+                          }
+                        >
+                          <Text
+                            style={[
+                              im.matrixText,
+                              row[column.key] && { color: '#fff' },
+                            ]}
+                          >
+                            {row[column.key] ? '✓' : ''}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  );
+                })}
+              </>
+            )}
             {meta.hasColor && (
               <>
                 <Text
@@ -350,6 +594,52 @@ const im = StyleSheet.create({
     justifyContent: 'center',
   },
   swatchActive: { borderWidth: 3, borderColor: 'rgba(0,0,0,0.2)' },
+  templateRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 },
+  templateButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    backgroundColor: 'transparent',
+  },
+  templateButtonActive: {
+    backgroundColor: '#4F46E5',
+    borderColor: '#4F46E5',
+  },
+  templateLabel: { fontSize: 13, fontWeight: '700', color: '#4B5563' },
+  matrixRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+  },
+  matrixHeader: {
+    width: 70,
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  matrixPageLabel: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  matrixCell: {
+    width: 56,
+    height: 36,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+  checkboxActive: {
+    backgroundColor: '#4F46E5',
+    borderColor: '#4F46E5',
+  },
+  matrixText: { fontSize: 13, fontWeight: '700', color: '#374151' },
   error: { fontSize: 12, marginTop: 6 },
   saveBtn: {
     borderRadius: 12,
@@ -524,11 +814,11 @@ function TableDetailScreen({
   colors: any;
 }) {
   const mf = useMasterFile();
-  
+
   // Use local state for service-backed tables, context for others
   const [serviceItems, setServiceItems] = useState<MasterItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(true);
-  
+
   // Fallback to context if service data not available
   const contextItems = mf[meta.key] as MasterItem[];
   const items = serviceItems.length > 0 ? serviceItems : contextItems;
@@ -541,41 +831,27 @@ function TableDetailScreen({
   const [deleteTarget, setDeleteTarget] = useState<MasterItem | null>(null);
 
   // Load items from service (if available) or context
-  React.useEffect(() => {
+  useEffect(() => {
     const loadItems = async () => {
       try {
-        if (meta.key === 'itemCategories') {
-          const categories = await MasterFileService.getCategories();
-          setServiceItems(
-            categories.map((cat: any) => ({
-              id: String(cat.id),
-              label: cat.name,
-            }))
-          );
-        } else if (meta.key === 'accountTitles') {
-          const titles = await FinanceService.getAccountTitles();
-          setServiceItems(
-            titles.map((title: any) => ({
-              id: String(title.id),
-              label: title.name,
-            }))
-          );
+        const config = TABLE_CONFIG.find((t) => t.key === meta.key);
+
+        if (config?.service.getAll) {
+          const raw = await config.service.getAll();
+          setServiceItems(raw.map(config.toItem));
         } else {
-          // For tables without services, use context data
+          // table not in config yet — fall back to context
           setServiceItems(contextItems);
         }
       } catch (error) {
         console.error(`Failed to load ${meta.label}:`, error);
-        // Fallback to context on error
         setServiceItems(contextItems);
       } finally {
         setLoadingItems(false);
       }
     };
-
     loadItems();
-  }, [meta.key, contextItems]);
-
+  }, [meta.key]);
   // Simulate API search — only fires when user taps Search button or presses return
   const doSearch = React.useCallback(() => {
     if (query.trim() === search) return; // nothing changed, skip
@@ -603,47 +879,33 @@ function TableDetailScreen({
     const q = search.toLowerCase();
     return q ? items.filter((i) => i.label.toLowerCase().includes(q)) : items;
   }, [items, search]);
-
-  const handleSave = async (item: MasterItem) => {
+  const handleSave = async (item: MasterItem, extra?: Record<string, any>) => {
+    const config = TABLE_CONFIG.find((t) => t.key === meta.key);
     try {
-      if (meta.key === 'itemCategories') {
+      if (config) {
         if (editingItem) {
-          await MasterFileService.updateCategory(Number(editingItem.id), item.label);
+          await config.service.update?.(
+            Number(editingItem.id),
+            item.label,
+            extra,
+          ); // ✅
+          if (meta.key === 'positions' && extra?.permissions) {
+            await PositionService.setPermissions(editingItem.id, extra.permissions);
+          }
         } else {
-          await MasterFileService.createCategories([item.label]);
+          const created = await config.service.create?.(item.label, extra); // ✅
+          if (meta.key === 'positions' && created?.id && extra?.permissions) {
+            await PositionService.setPermissions(String(created.id), extra.permissions);
+          }
         }
-        // Reload items after successful save
-        const categories = await MasterFileService.getCategories();
-        setServiceItems(
-          categories.map((cat: any) => ({
-            id: String(cat.id),
-            label: cat.name,
-          }))
-        );
-      } else if (meta.key === 'accountTitles') {
-        if (editingItem) {
-          await FinanceService.updateAccountTitle(Number(editingItem.id), item.label, '');
-        } else {
-          await FinanceService.createAccountTitle(1, item.label, ''); // orgId defaults to 1
-        }
-        // Reload items after successful save
-        const titles = await FinanceService.getAccountTitles();
-        setServiceItems(
-          titles.map((title: any) => ({
-            id: String(title.id),
-            label: title.name,
-          }))
-        );
+        const raw = await config.service.getAll();
+        setServiceItems(raw.map(config.toItem));
       } else {
-        // For tables without services, use context
-        if (editingItem) mf.updateItem(meta.key, item);
-        else mf.addItem(meta.key, item);
+        if (editingItem) mf.updateItem(meta.key as TableKey, item);
+        else mf.addItem(meta.key as TableKey, item);
       }
     } catch (error) {
       console.error(`Failed to save ${meta.label}:`, error);
-      // Fallback to context update on error
-      if (editingItem) mf.updateItem(meta.key, item);
-      else mf.addItem(meta.key, item);
     }
   };
 
@@ -660,6 +922,19 @@ function TableDetailScreen({
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
       gap: 12,
+    },
+    globalBadge: {
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 8,
+      marginLeft: 8,
+      backgroundColor: colors.primary + '18',
+    },
+    globalBadgeTxt: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.primary,
+      letterSpacing: 0.5,
     },
     backBtn: {
       width: 36,
@@ -883,25 +1158,33 @@ function TableDetailScreen({
               <Text style={styles.itemLabel} numberOfLines={1}>
                 {item.label}
               </Text>
-              <View style={styles.actions}>
-                <TouchableOpacity
-                  style={styles.actionBtn}
-                  onPress={() => {
-                    setEditingItem(item);
-                    setModalVisible(true);
-                  }}
-                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                >
-                  <Edit2 size={13} color={colors.primary} strokeWidth={2} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.actionBtn}
-                  onPress={() => setDeleteTarget(item)}
-                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                >
-                  <Trash2 size={13} color={colors.error} strokeWidth={2} />
-                </TouchableOpacity>
-              </View>
+
+              {/* ✅ Global items — show badge only, no edit/delete */}
+              {item.isGlobal ? (
+                <View style={styles.globalBadge}>
+                  <Text style={styles.globalBadgeTxt}>Global</Text>
+                </View>
+              ) : (
+                <View style={styles.actions}>
+                  <TouchableOpacity
+                    style={styles.actionBtn}
+                    onPress={() => {
+                      setEditingItem(item);
+                      setModalVisible(true);
+                    }}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <Edit2 size={13} color={colors.primary} strokeWidth={2} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.actionBtn}
+                    onPress={() => setDeleteTarget(item)}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <Trash2 size={13} color={colors.error} strokeWidth={2} />
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
           ))}
         </ScrollView>
@@ -922,37 +1205,27 @@ function TableDetailScreen({
         visible={!!deleteTarget}
         label={deleteTarget?.label ?? ''}
         onCancel={() => setDeleteTarget(null)}
+        // In DeleteConfirm onConfirm
         onConfirm={async () => {
           if (deleteTarget) {
+            if ((deleteTarget as any).isGlobal) return; // ✅ safety guard
+            const id = String(deleteTarget.id);
+            if (!id || id === 'NaN' || id === 'undefined') {
+              console.error('Invalid delete id for position:', deleteTarget.id);
+              setDeleteTarget(null);
+              return;
+            }
+            const config = TABLE_CONFIG.find((t) => t.key === meta.key);
             try {
-              if (meta.key === 'itemCategories') {
-                await MasterFileService.deleteCategory(Number(deleteTarget.id));
-                // Reload items after successful delete
-                const categories = await MasterFileService.getCategories();
-                setServiceItems(
-                  categories.map((cat: any) => ({
-                    id: String(cat.id),
-                    label: cat.name,
-                  }))
-                );
-              } else if (meta.key === 'accountTitles') {
-                await FinanceService.deleteAccountTitle(Number(deleteTarget.id));
-                // Reload items after successful delete
-                const titles = await FinanceService.getAccountTitles();
-                setServiceItems(
-                  titles.map((title: any) => ({
-                    id: String(title.id),
-                    label: title.name,
-                  }))
-                );
+              if (config) {
+                await config.service.delete?.(id);
+                const raw = await config.service.getAll();
+                setServiceItems(raw.map(config.toItem));
               } else {
-                // For tables without services, use context
-                mf.deleteItem(meta.key, deleteTarget.id);
+                mf.deleteItem(meta.key as TableKey, id);
               }
             } catch (error) {
               console.error(`Failed to delete ${meta.label}:`, error);
-              // Fallback to context delete on error
-              mf.deleteItem(meta.key, deleteTarget.id);
             }
           }
           setDeleteTarget(null);

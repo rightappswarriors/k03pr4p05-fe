@@ -68,6 +68,27 @@ export class HrService {
     }
   }
 
+  static async updateUserPosition(userId: number, positionId?: string | null): Promise<any> {
+    const mutation = gql`
+      mutation UpdateUserPosition($id: ID!, $positionId: String) {
+        updateUser(id: $id, positionId: $positionId) {
+          id
+          fullname
+          username
+          email
+          role
+          positionId
+        }
+      }
+    `;
+
+    const res = await graphQLRequest<{ updateUser: any }>(mutation, {
+      id: userId,
+      positionId,
+    });
+    return res.updateUser;
+  }
+
   static async getAllStaffs(orgId?: number): Promise<any[]> {
     const QUERY = gql`
       query GetAllStaffs($orgId: Int) {
@@ -78,12 +99,56 @@ export class HrService {
           username
           role
           profilePhoto
+          positionId
+          department {
+            label
+          }
         }
       }
     `;
 
     const res = await graphQLRequest<{ getAllStaffs: any[] }>(QUERY, { orgId });
     return res.getAllStaffs;
+  }
+
+  static async createHRUser(payload: {
+    fullname: string;
+    email: string;
+    password: string;
+    role: string;
+    departmentId?: number;
+    positionId?: string;
+  }): Promise<any> {
+    const mutation = gql`
+      mutation CreateHRUser(
+        $fullname: String!
+        $email: String!
+        $password: String!
+        $role: Role
+        $departmentId: Int
+        $positionId: String
+      ) {
+        createHRUser(
+          fullname: $fullname
+          email: $email
+          password: $password
+          role: $role
+          departmentId: $departmentId
+          positionId: $positionId
+        ) {
+          id
+          fullname
+          email
+          role
+          positionId
+          departmentId
+          createdAt
+        }
+      }
+    `;
+
+    const res = await graphQLRequest<{ createHRUser: any }>(mutation, payload);
+    return res.createHRUser;
   }
 
   static async checkUserTimeInStatus(userId: string): Promise<{ hasTimeIn: boolean }> {

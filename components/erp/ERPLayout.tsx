@@ -30,6 +30,7 @@ import {
   Package,
   PackagePlus,
   ShoppingCart,
+  ShieldCheck,
   Users,
   Star,
 } from 'lucide-react-native';
@@ -44,6 +45,7 @@ import FinanceScreen from '@/screens/FinancesScreen';
 import SalesAnalyticsScreen from '@/screens/SalesAnalyticsScreen';
 import MasterFileScreen from '@/screens/MasterFileScreen';
 import RestockSchedulingScreen from '@/screens/RestockSchedulingScreen';
+import AuditLogScreen from '@/screens/AuditLogScreen';
 
 // ─── DEV: Plan Toggle FAB ─────────────────────────────────────────────────────
 // Floating badge for presentations and testing — tap to switch Basic ↔ Gold.
@@ -126,9 +128,11 @@ type ERPRoute =
   | 'Finance'
   | 'SalesAnalytics'
   | 'MasterFile'
-  | 'RestockScheduling';
-
-const DRAWER_WIDTH = 240;
+  | 'RestockScheduling'
+  | 'AuditLog';
+// ✅ Restore proper width
+const DRAWER_WIDTH = 240; // for mobile drawer
+const SIDEBAR_WIDTH = 250; // for tablet/web persistent sidebar
 
 // ─── Icon map (outside component — stable references) ─────────────────────────
 
@@ -144,6 +148,7 @@ const NAV_ICON_MAP: Record<
   Finance: PhilippinePeso,
   SalesAnalytics: BarChart2,
   MasterFile: Database,
+  AuditLog: ShieldCheck,
 };
 
 // ─── Nav structure ────────────────────────────────────────────────────────────
@@ -158,6 +163,7 @@ const FREE_NAV: NavItem[] = [
   { key: 'Dashboard', label: 'Dashboard' },
   { key: 'Sales', label: 'Sales' },
   { key: 'Inventory', label: 'Inventory' },
+  { key: 'AuditLog', label: 'Audit Log' },
 ];
 
 // Gold-only nav items — shown as LockedNavItem for Basic
@@ -244,15 +250,20 @@ const makeStyles = (colors: any, isTablet: boolean) =>
       fontWeight: '700',
       letterSpacing: 0.5,
     },
-    body: { flex: 1, flexDirection: isTablet ? 'row' : 'column' },
+    body: {
+      flex: 1,
+      flexDirection: isTablet ? 'row' : 'column',
+      overflow: 'hidden',
+    },
     sidebar: {
-      width: DRAWER_WIDTH,
+      width: SIDEBAR_WIDTH,
       backgroundColor: colors.surface,
       borderRightWidth: 1,
       borderRightColor: colors.border,
       paddingTop: 8,
+      flexGrow: 0
     },
-    content: { flex: 1 },
+    content: { flex: 1, overflow: 'hidden' },
     drawerOverlay: {
       position: 'absolute',
       top: 0,
@@ -524,7 +535,6 @@ const SidebarContent = memo(function SidebarContent({
                 'Item Categories',
                 'VAT Types',
                 'Departments',
-                'Roles / Positions',
                 'Centers',
                 'Sub-Centers',
                 'Account Titles',
@@ -625,6 +635,7 @@ export default function ERPLayout() {
       ) : (
         <LockedScreen featureName="Master File" />
       ),
+      AuditLog: <AuditLogScreen />,
     }),
     [limits],
   );

@@ -30,6 +30,7 @@ import {
   MasterItem,
   useDepartments,
   useRoleLabels,
+  useMasterFile,
 } from '@/contexts/MasterFileContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -45,6 +46,7 @@ interface Employee {
   salary: number;
   hireDate: string;
   email: string;
+  position?: string; // RBAC position
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -97,14 +99,18 @@ function EmployeeDetailModal({
   visible,
   onClose,
   onUpdateStatus,
+  onUpdatePosition,
   deptMap,
+  positions,
   colors,
 }: {
   employee: Employee | null;
   visible: boolean;
   onClose: () => void;
   onUpdateStatus: (id: string, status: EmployeeStatus) => void;
+  onUpdatePosition: (id: string, positionId: string) => void;
   deptMap: Record<string, string>;
+  positions: MasterItem[];
   colors: any;
 }) {
   if (!employee) return null;
@@ -162,10 +168,11 @@ function EmployeeDetailModal({
               EMPLOYEE INFORMATION
             </Text>
             {[
-              ['Employee ID', employee.id],
+//              ['Employee ID', employee.id],
               ['Email', employee.email],
               ['Department', employee.department],
               ['Role', employee.role],
+              ['Position', employee.position || 'No position'],
               ['Hire Date', formatDate(employee.hireDate)],
               ['Tenure', yearsOfService(employee.hireDate)],
             ].map(([label, value], i, arr) => (
@@ -222,6 +229,35 @@ function EmployeeDetailModal({
                 {formatPeso(employee.salary)}
               </Text>
             </View>
+          </View>
+
+          {/* Position update */}
+          <View
+            style={[
+              edm.section,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                marginTop: 12,
+              },
+            ]}
+          >
+            <Text style={[edm.sectionTitle, { color: colors.textSecondary }]}>
+              POSITION ASSIGNMENT
+            </Text>
+            <SearchableDropdown
+              label="Assign Position"
+              value={employee.position || 'No position'}
+              options={positions.map(p => ({ label: p.label }))}
+              onSelect={(pos) => {
+                const posItem = positions.find(p => p.label === pos);
+                if (posItem) {
+                  onUpdatePosition(employee.id, posItem.id);
+                }
+              }}
+              colors={colors}
+              placeholder="Select position…"
+            />
           </View>
 
           {/* Status update */}
@@ -524,7 +560,7 @@ function SearchableDropdown({
               </View>
               <FlatList
                 data={filteredOpts}
-                keyExtractor={(item) => item.label}
+                keyExtractor={(item, index) => `${item.label}-${index}`}
                 keyboardShouldPersistTaps="handled"
                 ListEmptyComponent={
                   <View style={{ padding: 24, alignItems: 'center' }}>
@@ -613,6 +649,7 @@ function AddEmployeeModal({
   colors,
   deptObjects,
   roleOptions,
+  positions,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -620,16 +657,20 @@ function AddEmployeeModal({
   colors: any;
   deptObjects: MasterItem[];
   roleOptions: string[];
+  positions: MasterItem[];
 }) {
   const [name, setName] = useState('');
   const [role, setRole] = useState('');
   const [department, setDepartment] = useState('');
+  const [position, setPosition] = useState('');
   const [salary, setSalary] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [status, setStatus] = useState<EmployeeStatus>('Active');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     // Name
     if (!name.trim() || name.trim().length < 2) {
       setError('Full name must be at least 2 characters.');
@@ -646,15 +687,19 @@ function AddEmployeeModal({
       return;
     }
 
-    // Department
-    if (!department.trim()) {
-      setError('Please select a department.');
+    // Department is optional for now
+
+    // Position is optional for now
+
+    // Email
+    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())) {
+      setError('A valid email address is required.');
       return;
     }
 
-    // Email (optional but validate if filled)
-    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())) {
-      setError('Enter a valid email address.');
+    // Password
+    if (!password.trim() || password.trim().length < 6) {
+      setError('Password must be at least 6 characters long.');
       return;
     }
 
@@ -668,6 +713,59 @@ function AddEmployeeModal({
       setError('Salary amount seems too high. Please check.');
       return;
     }
+
+    // Create employee object
+    const departmentIdRaw = deptObjects.find((d) => d.label === department)?.id;
+    const departmentId = departmentIdRaw
+      ? Number(departmentIdRaw)
+      : undefined;
+    const positionId = positions.find((p) => p.label === position)?.id;
+
+    setLoading(true);
+    try {
+      const createdUser = await HrService.createHRUser({
+        fullname: name.trim(),
+        email: email.trim(),
+        password: password.trim(),
+        role: role.trim() as any,
+        departmentId,
+        positionId,
+      });
+
+      const newEmployee: Employee = {
+        id: String(createdUser.id),
+        name: createdUser.fullname,
+        role: createdUser.role || role.trim(),
+        department: department.trim() || 'Unassigned',
+        status: status,
+        salary: salaryNum,
+        hireDate: createdUser.createdAt || new Date().toISOString(),
+        email: createdUser.email,
+        ...(position.trim() && { position: position.trim() }),
+      };
+
+      // Add to local state via callback
+      onAdd(newEmployee);
+    } catch (err: any) {
+      setError(
+        err?.message || 'Failed to create employee. Please try again.',
+      );
+      return;
+    } finally {
+      setLoading(false);
+    }
+
+    // Reset form
+    setName('');
+    setRole('');
+    setDepartment('');
+    setPosition('');
+    setEmail('');
+    setPassword('');
+    setSalary('');
+    setStatus('Active');
+    setError('');
+    onClose();
   };
 
   const s = StyleSheet.create({
@@ -794,6 +892,17 @@ function AddEmployeeModal({
               autoCapitalize="none"
               autoCorrect={false}
             />
+            <Text style={s.label}>PASSWORD *</Text>
+            <TextInput
+              style={s.input}
+              placeholder="Enter a password"
+              placeholderTextColor={colors.textSecondary}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              autoCorrect={false}
+              autoCapitalize="none"
+            />
 
             <SearchableDropdown
               label="Role"
@@ -811,6 +920,15 @@ function AddEmployeeModal({
               onSelect={setDepartment}
               colors={colors}
               placeholder="Select department…"
+            />
+
+            <SearchableDropdown
+              label="Position"
+              value={position}
+              options={positions.map((p) => ({ label: p.label }))}
+              onSelect={setPosition}
+              colors={colors}
+              placeholder="Select position…"
             />
 
             <Text style={s.label}>MONTHLY SALARY ₱ *</Text>
@@ -857,11 +975,14 @@ function AddEmployeeModal({
             {error ? <Text style={s.errTxt}>{error}</Text> : null}
 
             <TouchableOpacity
-              style={s.addBtn}
+              style={[s.addBtn, loading && { opacity: 0.7 }]}
               onPress={handleAdd}
               activeOpacity={0.85}
+              disabled={loading}
             >
-              <Text style={s.addTxt}>Add Employee</Text>
+              <Text style={s.addTxt}>
+                {loading ? 'Creating employee…' : 'Add Employee'}
+              </Text>
             </TouchableOpacity>
             <View style={{ height: 8 }} />
           </ScrollView>
@@ -943,6 +1064,13 @@ function EmployeeCard({
             <Text style={ecard.deptText}>{item.department}</Text>
           </View>
           <View
+            style={[ecard.statusBadge, { backgroundColor: colors.primary + '20' }]}
+          >
+            <Text style={[ecard.statusText, { color: colors.primary }]}>
+              {item.position || 'No position'}
+            </Text>
+          </View>
+          <View
             style={[ecard.statusBadge, { backgroundColor: statusStyle.bg }]}
           >
             <Text style={[ecard.statusText, { color: statusStyle.text }]}>
@@ -1013,6 +1141,8 @@ export default function HRScreen() {
   // ── MasterFile context — live data ─────────────────────────────────────────
   const deptObjects = useDepartments();
   const ROLE_OPTIONS = useRoleLabels();
+  const mf = useMasterFile();
+  const positions = mf.positions;
   const DEPARTMENTS = ['All', ...deptObjects.map((d) => d.label)];
   const deptMap = Object.fromEntries(
     deptObjects.map((d) => [d.label, d.color ?? colors.primary]),
@@ -1036,7 +1166,7 @@ export default function HRScreen() {
               id: String(u.id),
               name: u.fullname || u.name || 'Unknown',
               role: u.role || 'Staff',
-              department: u.department || 'General',
+              department: u.department?.label || 'General',
               status: 'Active',
               salary: Number(u.salary || 0),
               hireDate: u.createdAt || new Date().toISOString(),
@@ -1083,10 +1213,18 @@ export default function HRScreen() {
   const totalSalary = filtered.reduce((s, e) => s + e.salary, 0);
   const uniqueDepts = [...new Set(filtered.map((e) => e.department))].length;
 
+  const handleUpdatePosition = (id: string, positionId: string) => {
+    setEmployees((prev) =>
+      prev.map((e) => (e.id === id ? { ...e, position: positions.find(p => p.id === positionId)?.label || 'No position' } : e)),
+    );
+    // TODO: call API to update user position
+  };
+
   const handleUpdateStatus = (id: string, status: EmployeeStatus) => {
     setEmployees((prev) =>
       prev.map((e) => (e.id === id ? { ...e, status } : e)),
     );
+    // TODO: call API to update employee status
   };
 
   const handleAddEmployee = (emp: Employee) => {
@@ -1433,6 +1571,8 @@ export default function HRScreen() {
         deptMap={deptMap}
         onClose={() => setDetailVisible(false)}
         onUpdateStatus={handleUpdateStatus}
+        onUpdatePosition={handleUpdatePosition}
+        positions={positions}
         colors={colors}
       />
       <AddEmployeeModal
@@ -1441,6 +1581,7 @@ export default function HRScreen() {
         onAdd={handleAddEmployee}
         deptObjects={deptObjects}
         roleOptions={ROLE_OPTIONS}
+        positions={positions}
         colors={colors}
       />
     </View>

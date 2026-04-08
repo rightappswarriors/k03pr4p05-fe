@@ -16,7 +16,7 @@ import {
   TrendingDown,
   Minus,
 } from 'lucide-react-native';
-import { SkeletonPulse } from '@/app/(admin)';
+import { SkeletonPulse } from '@/app/(erp)';
 import {
   formatPeso,
   formatPesoCompact,

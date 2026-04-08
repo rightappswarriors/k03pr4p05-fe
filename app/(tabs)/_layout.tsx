@@ -29,7 +29,9 @@ export default function TabLayout() {
     if (!isLoading && !isAuthenticated) {
       router.replace('/login')
     } else if (!isLoading && isAuthenticated && user?.role !== "CASHIER" && user?.role !== "STAFF") {
-      router.replace('/(admin)')
+      router.replace('/(erp)')
+    } else if (!isLoading && isAuthenticated && user?.role !== "ADMIN") {
+      router.replace('/(admin)/index')
     }
   }, [isAuthenticated])
 

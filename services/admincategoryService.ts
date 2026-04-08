@@ -1,27 +1,48 @@
 import { gql } from 'graphql-request';
 import { graphQLRequest } from './apiClient';
 
-export class MasterFileService {
+export class AdminCategoryService {
 
+  // Browse all global categories (for orgs to pick from)
   static async getCategories(query?: string, size?: number, orderBy?: string): Promise<any[]> {
     const GQL = gql`
-      query GetAllCategory($query: String, $pageSize: Int, $orderBy: String) {
-        getAllCategory(query: $query, pageSize: $pageSize, orderBy: $orderBy) {
+      query GetAllCategories($query: String, $pageSize: Int, $orderBy: String) {
+        getAllCategories(query: $query, pageSize: $pageSize, orderBy: $orderBy) {
           id
           name
           createdAt
         }
       }
     `;
-
-    const res = await graphQLRequest<{ getAllCategory: any[] }>(GQL, {
-      query,
-      pageSize: size,
-      orderBy,
-    });
-    return res.getAllCategory;
+    try {
+      const res = await graphQLRequest<{ getAllCategories: any[] }>(GQL, {
+        query,
+        pageSize: size,
+        orderBy,
+      });
+      console.log('raw res:', JSON.stringify(res)); // ← add this
+      return res.getAllCategories;
+    } catch (error) {
+      console.log('full error:', JSON.stringify(error)); // ← and this
+      throw error;
+    }
   }
 
+  static async getCategoryById(id: number): Promise<any> {
+    const GQL = gql`
+      query GetCategoryById($id: ID!) {
+        getCategoryById(id: $id) {
+          id
+          name
+          createdAt
+        }
+      }
+    `;
+    const res = await graphQLRequest<{ getCategoryById: any }>(GQL, { id });
+    return res.getCategoryById;
+  }
+
+  // Super admin only
   static async createCategories(categories: string[]): Promise<any[]> {
     if (!categories.length) throw new Error('categories must be non-empty');
     const mutation = gql`
@@ -29,19 +50,27 @@ export class MasterFileService {
         createCategories(categories: $categories) {
           id
           name
+          createdAt
         }
       }
     `;
-    const res = await graphQLRequest<{ createCategories: any[] }>(mutation, { categories });
-    return res.createCategories;
+    try {
+      const res = await graphQLRequest<{ createCategories: any[] }>(mutation, { categories });
+      return res.createCategories;
+    } catch (error) {
+      console.log(error)
+      return []
+    }
   }
 
+  // Super admin only
   static async updateCategory(id: number, name: string): Promise<any> {
     const mutation = gql`
       mutation UpdateCategory($id: ID!, $name: String!) {
         updateCategory(id: $id, name: $name) {
           id
           name
+          createdAt
         }
       }
     `;
@@ -49,11 +78,13 @@ export class MasterFileService {
     return res.updateCategory;
   }
 
+  // Super admin only
   static async deleteCategory(id: number): Promise<any> {
     const mutation = gql`
       mutation DeleteCategory($id: ID!) {
         deleteCategory(id: $id) {
           id
+          name
         }
       }
     `;

@@ -26,6 +26,10 @@ export default function SplashScreen() {
       }
 
       // Check onboarding state and redirect accordingly
+      if (user.role === "ADMIN") {
+        router.replace('/(admin)')
+        return
+      }
       if (!user.isVerified) {
         router.replace('/onboarding?step=verify');
         return;
@@ -46,10 +50,11 @@ export default function SplashScreen() {
         router.replace('/(tabs)');
       } else if (
         user.role === 'OWNER' ||
-        user.role === 'MANAGER' ||
-        user.role === 'ADMIN'
+        user.role === 'MANAGER'
       ) {
-        router.replace('/(admin)');
+        router.replace('/(erp)');
+      } else if (user.role === "ADMIN") {
+        router.replace('/(admin)')
       } else {
         router.replace('/login');
       }

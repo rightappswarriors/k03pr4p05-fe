@@ -31,6 +31,8 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { AuthService } from '@/services/authService';
 import { InventoryService } from '@/services';
 import { MediaService } from '@/services/mediaService';
+import { VatTypeService } from '@/services/vatTypeService';
+import { CategoryPickerModal } from '@/components/CategoryPickerModal';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -66,7 +68,9 @@ interface UpdateItemPayload {
   barcode?: string;
   brand?: string;
   sellingPrice: number; // nonNull in schema
-  categoryId?: number;
+  categoryId?: number; // global
+  orgCategoryId?: number; // ✅ org
+  vatTypeId?: number;
   brandId?: number;
   stock?: number;
   skuNumber?: string;
@@ -418,6 +422,25 @@ function EditItemModal({
   const [imageUri, setImageUri] = useState(''); // local URI or existing http URL
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [categoryPickerVisible, setCategoryPickerVisible] = useState(false);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(
+    null,
+  );
+  const [selectedCategoryIsGlobal, setSelectedCategoryIsGlobal] =
+    useState(false);
+  const [selectedCategoryName, setSelectedCategoryName] = useState('');
+  const [vatTypes, setVatTypes] = useState<
+    { id: number; name: string; rate: number }[]
+  >([]);
+  const [selectedVatTypeId, setSelectedVatTypeId] = useState<number | null>(
+    null,
+  );
+
+  React.useEffect(() => {
+    VatTypeService.getAll()
+      .then(setVatTypes)
+      .catch(() => {});
+  }, []);
 
   // Populate fields whenever the modal opens with a new item
   React.useEffect(() => {
@@ -515,10 +538,16 @@ function EditItemModal({
         opExPct: parseFloat(opExPct) / 100 || 0.1,
         priceB: priceB ? parseFloat(priceB) : undefined,
         priceC: priceC ? parseFloat(priceC) : undefined,
-        vatExempt,
+        vatExempt: !selectedVatTypeId ? vatExempt : undefined,
+        vatTypeId: selectedVatTypeId ?? undefined, // ✅
         image: finalImageUrl,
-        // Strip the local `id` field — backend only wants { label, amount }
         costLines: costLines.map(({ label, amount }) => ({ label, amount })),
+        // ✅ mutually exclusive
+        ...(selectedCategoryId && !selectedCategoryIsGlobal
+          ? { orgCategoryId: selectedCategoryId, categoryId: undefined }
+          : selectedCategoryId && selectedCategoryIsGlobal
+            ? { categoryId: selectedCategoryId, orgCategoryId: undefined }
+            : {}),
       };
 
       const updated = await InventoryService.updateItem(
@@ -568,6 +597,16 @@ function EditItemModal({
       backgroundColor: 'rgba(0,0,0,0.5)',
       justifyContent: 'flex-end',
     },
+
+    catRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+    catPill: {
+      paddingHorizontal: 11,
+      paddingVertical: 6,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    catAct: { borderColor: colors.primary, backgroundColor: colors.primary },
     sheet: {
       backgroundColor: colors.surface,
       borderTopLeftRadius: 20,
@@ -690,7 +729,85 @@ function EditItemModal({
               onChangeText={setName}
               placeholderTextColor={colors.textSecondary}
             />
+            <Text style={s.label}>Category</Text>
+            <TouchableOpacity
+              style={[
+                s.input,
+                {
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                },
+              ]}
+              onPress={() => setCategoryPickerVisible(true)}
+              activeOpacity={0.8}
+            >
+              <Text
+                style={{
+                  fontSize: 14,
+                  color: selectedCategoryName
+                    ? colors.text
+                    : colors.textSecondary,
+                }}
+              >
+                {selectedCategoryName || 'Select a category…'}
+              </Text>
+              {selectedCategoryName ? (
+                <View
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                >
+                  {selectedCategoryIsGlobal && (
+                    <View
+                      style={{
+                        backgroundColor: colors.primary + '18',
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                        borderRadius: 5,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 10,
+                          fontWeight: '700',
+                          color: colors.primary,
+                        }}
+                      >
+                        Global
+                      </Text>
+                    </View>
+                  )}
+                  <TouchableOpacity
+                    onPress={() => {
+                      setSelectedCategoryId(null);
+                      setSelectedCategoryName('');
+                    }}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <X size={14} color={colors.textSecondary} strokeWidth={2} />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <Search
+                  size={14}
+                  color={colors.textSecondary}
+                  strokeWidth={2}
+                />
+              )}
+            </TouchableOpacity>
 
+            {/* Add modal at bottom of sheet */}
+            <CategoryPickerModal
+              visible={categoryPickerVisible}
+              onClose={() => setCategoryPickerVisible(false)}
+              onSelect={(id, isGlobal, name) => {
+                setSelectedCategoryId(id);
+                setSelectedCategoryIsGlobal(isGlobal);
+                setSelectedCategoryName(name);
+              }}
+              selectedId={selectedCategoryId}
+              selectedIsGlobal={selectedCategoryIsGlobal}
+              colors={colors}
+            />
             <Text style={s.label}>SKU / Barcode</Text>
             <TextInput
               style={s.input}
@@ -774,37 +891,68 @@ function EditItemModal({
             </View>
 
             {/* ── VAT ── */}
-            <Text style={s.label}>VAT Status</Text>
-            <View style={s.vatRow}>
-              <Text
-                style={{ fontSize: 13, fontWeight: '600', color: colors.text }}
-              >
-                {vatExempt ? 'VAT Exempt' : 'VAT Inclusive (12%)'}
-              </Text>
-              <TouchableOpacity
-                style={{
-                  paddingHorizontal: 14,
-                  paddingVertical: 7,
-                  borderRadius: 8,
-                  backgroundColor: vatExempt
-                    ? colors.accent + '20'
-                    : colors.primary + '20',
-                  borderWidth: 1,
-                  borderColor: vatExempt ? colors.accent : colors.primary,
-                }}
-                onPress={() => setVatExempt((v) => !v)}
-              >
+            <Text style={s.label}>VAT TYPE</Text>
+            {vatTypes.length > 0 ? (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {vatTypes.map((vat) => (
+                  <TouchableOpacity
+                    key={vat.id}
+                    style={[
+                      s.catPill,
+                      selectedVatTypeId === vat.id && s.catAct,
+                    ]}
+                    onPress={() => setSelectedVatTypeId(vat.id)}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: '600',
+                        color:
+                          selectedVatTypeId === vat.id ? '#fff' : colors.text,
+                      }}
+                    >
+                      {vat.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : (
+              // ✅ fallback if org hasn't set up VAT types yet
+              <View style={s.vatRow}>
                 <Text
                   style={{
-                    fontSize: 12,
-                    fontWeight: '700',
-                    color: vatExempt ? colors.accent : colors.primary,
+                    fontSize: 13,
+                    fontWeight: '600',
+                    color: colors.text,
                   }}
                 >
-                  {vatExempt ? 'Exempt' : 'VAT Incl.'}
+                  {vatExempt ? 'VAT Exempt' : 'VAT Inclusive (12%)'}
                 </Text>
-              </TouchableOpacity>
-            </View>
+                <TouchableOpacity
+                  style={{
+                    paddingHorizontal: 14,
+                    paddingVertical: 7,
+                    borderRadius: 8,
+                    backgroundColor: vatExempt
+                      ? colors.accent + '20'
+                      : colors.primary + '20',
+                    borderWidth: 1,
+                    borderColor: vatExempt ? colors.accent : colors.primary,
+                  }}
+                  onPress={() => setVatExempt((v) => !v)}
+                >
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontWeight: '700',
+                      color: vatExempt ? colors.accent : colors.primary,
+                    }}
+                  >
+                    {vatExempt ? 'Exempt' : 'VAT Incl.'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             {/* ── Cost Breakdown ── */}
             <Text style={s.label}>Cost Breakdown</Text>
@@ -1515,6 +1663,25 @@ function AddItemModal({
   const [costLines, setCostLines] = useState<CostLine[]>([
     { id: 'cl_purchase', label: 'Purchase Cost', amount: 0 },
   ]);
+  const [vatTypes, setVatTypes] = useState<
+    { id: number; name: string; rate: number }[]
+  >([]);
+  const [selectedVatTypeId, setSelectedVatTypeId] = useState<number | null>(
+    null,
+  );
+  const [categoryPickerVisible, setCategoryPickerVisible] = useState(false);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(
+    null,
+  );
+  const [selectedCategoryIsGlobal, setSelectedCategoryIsGlobal] =
+    useState(false);
+  const [selectedCategoryName, setSelectedCategoryName] = useState('');
+  React.useEffect(() => {
+    VatTypeService.getAll()
+      .then(setVatTypes)
+      .catch(() => {});
+  }, []);
+
   const [error, setError] = useState('');
 
   const totalCost = costLines.reduce((s, l) => s + l.amount, 0);
@@ -1571,7 +1738,8 @@ function AddItemModal({
         stock: parseInt(stock) || 0,
         barcode: sku.trim() || `SKU-${Date.now().toString().slice(-6)}`,
         sellingPrice: parseFloat(price) || 0,
-        vatExempt,
+        vatExempt: !selectedVatTypeId ? vatExempt : undefined,
+        vatTypeId: selectedVatTypeId ?? undefined, // ✅ from VAT picker
         skuNumber: sku.trim() || undefined,
         image: finalImageUrl,
         costLines:
@@ -1579,6 +1747,12 @@ function AddItemModal({
             ? costLines.map(({ label, amount }) => ({ label, amount }))
             : undefined,
         opExPct: parseFloat(opExPct) / 100 || 0.1,
+        // ✅ mutually exclusive category
+        ...(selectedCategoryId && !selectedCategoryIsGlobal
+          ? { orgCategoryId: selectedCategoryId }
+          : selectedCategoryId && selectedCategoryIsGlobal
+            ? { categoryId: selectedCategoryId }
+            : {}),
       });
 
       if (createdItem?.id) {
@@ -1750,25 +1924,84 @@ function AddItemModal({
             />
 
             <Text style={s.label}>Category</Text>
-            <View style={s.catRow}>
-              {CATEGORIES.filter((c) => c !== 'All').map((cat) => (
-                <TouchableOpacity
-                  key={cat}
-                  style={[s.catPill, category === cat && s.catAct]}
-                  onPress={() => setCategory(cat)}
+            <TouchableOpacity
+              style={[
+                s.input,
+                {
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                },
+              ]}
+              onPress={() => setCategoryPickerVisible(true)}
+              activeOpacity={0.8}
+            >
+              <Text
+                style={{
+                  fontSize: 14,
+                  color: selectedCategoryName
+                    ? colors.text
+                    : colors.textSecondary,
+                }}
+              >
+                {selectedCategoryName || 'Select a category…'}
+              </Text>
+              {selectedCategoryName ? (
+                <View
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
                 >
-                  <Text
-                    style={{
-                      fontSize: 12,
-                      fontWeight: '600',
-                      color: category === cat ? '#fff' : colors.text,
+                  {selectedCategoryIsGlobal && (
+                    <View
+                      style={{
+                        backgroundColor: colors.primary + '18',
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                        borderRadius: 5,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 10,
+                          fontWeight: '700',
+                          color: colors.primary,
+                        }}
+                      >
+                        Global
+                      </Text>
+                    </View>
+                  )}
+                  <TouchableOpacity
+                    onPress={() => {
+                      setSelectedCategoryId(null);
+                      setSelectedCategoryName('');
                     }}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                   >
-                    {cat}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+                    <X size={14} color={colors.textSecondary} strokeWidth={2} />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <Search
+                  size={14}
+                  color={colors.textSecondary}
+                  strokeWidth={2}
+                />
+              )}
+            </TouchableOpacity>
+
+            {/* Add modal at bottom of sheet */}
+            <CategoryPickerModal
+              visible={categoryPickerVisible}
+              onClose={() => setCategoryPickerVisible(false)}
+              onSelect={(id, isGlobal, name) => {
+                setSelectedCategoryId(id);
+                setSelectedCategoryIsGlobal(isGlobal);
+                setSelectedCategoryName(name);
+              }}
+              selectedId={selectedCategoryId}
+              selectedIsGlobal={selectedCategoryIsGlobal}
+              colors={colors}
+            />
 
             <View style={s.row2}>
               <View style={{ flex: 1 }}>
@@ -1820,37 +2053,68 @@ function AddItemModal({
               </View>
             </View>
 
-            <Text style={s.label}>VAT Status</Text>
-            <View style={s.vatRow}>
-              <Text
-                style={{ fontSize: 13, fontWeight: '600', color: colors.text }}
-              >
-                {vatExempt ? 'VAT Exempt' : 'VAT Inclusive (12%)'}
-              </Text>
-              <TouchableOpacity
-                style={{
-                  paddingHorizontal: 14,
-                  paddingVertical: 7,
-                  borderRadius: 8,
-                  backgroundColor: vatExempt
-                    ? colors.accent + '20'
-                    : colors.primary + '20',
-                  borderWidth: 1,
-                  borderColor: vatExempt ? colors.accent : colors.primary,
-                }}
-                onPress={() => setVatExempt((v) => !v)}
-              >
+            <Text style={s.label}>VAT TYPE</Text>
+            {vatTypes.length > 0 ? (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {vatTypes.map((vat) => (
+                  <TouchableOpacity
+                    key={vat.id}
+                    style={[
+                      s.catPill,
+                      selectedVatTypeId === vat.id && s.catAct,
+                    ]}
+                    onPress={() => setSelectedVatTypeId(vat.id)}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: '600',
+                        color:
+                          selectedVatTypeId === vat.id ? '#fff' : colors.text,
+                      }}
+                    >
+                      {vat.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : (
+              // ✅ fallback if org hasn't set up VAT types yet
+              <View style={s.vatRow}>
                 <Text
                   style={{
-                    fontSize: 12,
-                    fontWeight: '700',
-                    color: vatExempt ? colors.accent : colors.primary,
+                    fontSize: 13,
+                    fontWeight: '600',
+                    color: colors.text,
                   }}
                 >
-                  {vatExempt ? 'Exempt' : 'VAT Incl.'}
+                  {vatExempt ? 'VAT Exempt' : 'VAT Inclusive (12%)'}
                 </Text>
-              </TouchableOpacity>
-            </View>
+                <TouchableOpacity
+                  style={{
+                    paddingHorizontal: 14,
+                    paddingVertical: 7,
+                    borderRadius: 8,
+                    backgroundColor: vatExempt
+                      ? colors.accent + '20'
+                      : colors.primary + '20',
+                    borderWidth: 1,
+                    borderColor: vatExempt ? colors.accent : colors.primary,
+                  }}
+                  onPress={() => setVatExempt((v) => !v)}
+                >
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontWeight: '700',
+                      color: vatExempt ? colors.accent : colors.primary,
+                    }}
+                  >
+                    {vatExempt ? 'Exempt' : 'VAT Incl.'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             <Text style={s.label}>Cost Breakdown</Text>
             <Text
@@ -1960,7 +2224,7 @@ export default function InventoryScreen() {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [search, setSearch] = useState('');
   const [loadingItems, setLoadingItems] = useState(true);
-
+  Promise.all;
   React.useEffect(() => {
     (async () => {
       setLoadingItems(true);
