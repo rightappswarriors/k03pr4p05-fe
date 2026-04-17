@@ -1,4 +1,4 @@
-import { CartItem, Category, Item, Outlet } from '@/types';
+import { CartItem, Category, Item, ItemUnit, Outlet } from '@/types';
 import { AuthService } from '@/services/authService';
 
 import React, {
@@ -35,7 +35,7 @@ interface POSContextType {
   setSidebarOpen: (open: boolean) => void;
   searchQuery: string;
   selectedCategory: string | null;
-  addToCart: (item: Item, quantity?: number) => void;
+  addToCart: (item: Item, quantity?: number, unit?: ItemUnit) => void;
   sidebarOpen: boolean;
 
   cartItems: CartItem[];
@@ -59,129 +59,198 @@ export const CartProvider = ({ children }: CartProviderProps) => {
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     const getItems = async () => {
-      if (
-        user?.role === 'CASHIER' ||
-        user?.role === 'MANAGER' ||
-        user?.role === 'STAFF'
-      ) {
-        const GETOUTLETITEM_MUTATION = gql`
-          query GetOutletItems {
-            getOutletItems {
+      if (!user || !isAuthenticated) {
+        setLoading(false);
+        return;
+      }
+
+      // Staff users in attendance mode may not be assigned to an outlet,
+      // so do not attempt to fetch outlet items for them.
+      const assignment = await AuthService.getMyOutletAssignment();
+      if (!assignment) {
+        // Not assigned to any outlet — skip fetching (attendance-only staff)
+        setLoading(false);
+        return;
+      }
+
+      const GETOUTLETITEM_MUTATION = gql`
+        query GetOutletItems {
+          getOutletItems {
+            id
+            name
+            address
+            code
+            governmentTax
+            serviceCharge
+            phone
+            bannerImage
+            hasKey
+            outletType
+            isVatRegistered
+            vatZeroSale
+            tin
+            ptu
+            bir
+            vatType {
               id
               name
-              address
-              code
-              governmentTax
-              serviceCharge
-              phone
-              hasKey
-              outletType
-              items {
+              rate
+            }
+            outletPromos {
+              id
+              promoTypeId
+              discount
+              isActive
+              promoType {
                 id
+                name
+                description
+              }
+            }
+            items {
+              id
+              price
+              quantity
+              units {
+                id
+                unitName
+                unitLabel
                 price
-                item {
-                  id
+                quantity
+                conversionFactor
+                baseUnit
+                isDefault
+                barcode
+              }
+              item {
+                id
+                name
+                image
+                description
+                barcode
+                brand
+                categoryId
+                color {
                   name
-                  image
-                  description
-                  barcode
-                  brand
-                  categoryId
-                  color {
-                    name
-                    id
-                  }
+                  id
                 }
               }
             }
           }
-        `;
-        try {
-          const { accessToken } = await AuthService.getTokens();
-          const client = await getGraphQLClient();
-          const response = (await client.request(
-            GETOUTLETITEM_MUTATION,
-            {},
-            {
-              Authorization: `Bearer ${accessToken}`,
-            },
-          )) as any;
-          const {
-            id,
-            branchId,
-            items,
-            name,
-            phone,
-            code,
-            isActive,
-            address,
-            governmentTax,
-            hasKey,
-            serviceCharge,
-            discountOptions,
-          } = response.getOutletItems;
-          setOutlet({
-            id: id,
-            name: name,
-            phone: phone,
-            branchId: branchId,
-            governmentTax: governmentTax,
-            serviceCharge: serviceCharge,
-            hasKey: hasKey,
-            code: code,
-            address: address,
-            isActive: isActive,
-            discountOption: discountOptions,
-          });
-          console.log('Items:', items);
-          setItems(
-            items.map((itemField: any) => ({
-              id: itemField.item.id.toString(),
-              name: itemField.item.name,
-              price: itemField.price,
-              image: itemField.item.image,
-              categoryId: itemField.item.categoryId?.toString(),
-              barcode: itemField.item.barcode,
-              description: itemField.item.description,
-              brand: itemField.item.brand,
-              vatable: itemField.item.vatable,
-              // If color is an array, you can join into a string or adjust type
-              color: Array.isArray(itemField.item.color)
-                ? itemField.item.color.map((c: any) => c.name).join(', ')
-                : itemField.item.color,
-            })),
-          );
-
-          console.log('ITEMS SET:', storedItems);
-          const derivedCategories: Category[] = [];
-          const seenIds = new Set<string>();
-
-          items.forEach((itemField: any) => {
-            const catId = itemField.item.categoryId?.toString();
-            const brand = itemField.item.brand?.trim() || 'Unbranded';
-            const colorName = Array.isArray(itemField.item.color)
-              ? itemField.item.color[0]?.name || ''
-              : itemField.item.color || '';
-
-            if (catId && !seenIds.has(catId)) {
-              seenIds.add(catId);
-              derivedCategories.push({
-                id: catId,
-                name: brand, // ✅ A-Z sorts by this
-                color: colorName, // ✅ Color tab uses this
-                brand: brand, // ✅ Brand tab uses this
-              });
-            }
-          });
-
-          setCategories(derivedCategories);
-        } catch (error) {
-          console.error('Error getting Outlet items:', error);
-          throw new Error('Error getting Outlet items');
-        } finally {
-          setLoading(false);
         }
-      } else {
+      `;
+      try {
+        const { accessToken } = await AuthService.getTokens();
+        const client = await getGraphQLClient();
+        const response = (await client.request(
+          GETOUTLETITEM_MUTATION,
+          {},
+          {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        )) as any;
+
+        const outletData = response?.getOutletItems;
+        if (!outletData) {
+          console.warn(
+            'No outlet items returned; skipping POS inventory setup.',
+          );
+          setLoading(false);
+          return;
+        }
+
+        const {
+          id,
+          branchId,
+          items,
+          name,
+          phone,
+          code,
+          isActive,
+          address,
+          governmentTax,
+          hasKey,
+          serviceCharge,
+          bannerImage,
+        } = outletData;
+
+        const discountOption: Record<string, number> = {};
+        outletData.outletPromos?.forEach((p: any) => {
+          if (p.isActive) {
+            discountOption[p.promoType.name.toUpperCase().replace(/\s+/g, '_')] = p.discount;
+          }
+        });
+        // Defaults for senior/pwd
+        discountOption['SENIOR'] = discountOption['SENIOR'] ?? 0.20;
+        discountOption['PWD'] = discountOption['PWD'] ?? 0.20;
+
+        setOutlet({
+          id: outletData.id,
+          name: outletData.name,
+          phone: outletData.phone,
+          bannerImage: outletData.bannerImage,
+          branchId: outletData.branchId,
+          governmentTax: outletData.governmentTax,
+          serviceCharge: outletData.serviceCharge,
+          hasKey: outletData.hasKey,
+          code: outletData.code,
+          address: outletData.address,
+          isActive: outletData.isActive,
+          isVatRegistered: outletData.isVatRegistered,
+          vatZeroSale: outletData.vatZeroSale,
+          tin: outletData.tin,
+          ptu: outletData.ptu,
+          bir: outletData.bir,
+          vatType: outletData.vatType,
+          outletPromos: outletData.outletPromos,
+          discountOption,
+        });
+        console.log('Items:', items);
+        setItems(
+          items.map((itemField: any) => ({
+            id: itemField.item.id.toString(),
+            name: itemField.item.name,
+            price: itemField.price,
+            image: itemField.item.image,
+            categoryId: itemField.item.categoryId?.toString(),
+            barcode: itemField.item.barcode,
+            description: itemField.item.description,
+            brand: itemField.item.brand,
+            vatable: itemField.item.vatable,
+            color: Array.isArray(itemField.item.color)
+              ? itemField.item.color.map((c: any) => c.name).join(', ')
+              : itemField.item.color,
+            units: itemField.units ?? [], // ← new
+          })),
+        );
+
+        console.log('ITEMS SET:', storedItems);
+        const derivedCategories: Category[] = [];
+        const seenIds = new Set<string>();
+
+        items.forEach((itemField: any) => {
+          const catId = itemField.item.categoryId?.toString();
+          const brand = itemField.item.brand?.trim() || 'Unbranded';
+          const colorName = Array.isArray(itemField.item.color)
+            ? itemField.item.color[0]?.name || ''
+            : itemField.item.color || '';
+
+          if (catId && !seenIds.has(catId)) {
+            seenIds.add(catId);
+            derivedCategories.push({
+              id: catId,
+              name: brand, // ✅ A-Z sorts by this
+              color: colorName, // ✅ Color tab uses this
+              brand: brand, // ✅ Brand tab uses this
+            });
+          }
+        });
+
+        setCategories(derivedCategories);
+      } catch (error) {
+        console.error('Error getting Outlet items:', error);
+      } finally {
+        setLoading(false);
       }
     };
     getItems();
@@ -192,7 +261,7 @@ export const CartProvider = ({ children }: CartProviderProps) => {
     //  setCategories(mockCategories);
     //  setLoading(false);
     //}, 1500);
-  }, [isAuthenticated]);
+  }, [isAuthenticated, user]);
 
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
 
@@ -222,17 +291,34 @@ export const CartProvider = ({ children }: CartProviderProps) => {
     return () => subscription?.remove();
   }, []);
 
-  const addToCart = (item: Item, quantity: number = 1) => {
+  const addToCart = (
+    item: Item,
+    quantity: number = 1,
+    unit?: ItemUnit, // ← new optional param
+  ) => {
+    const priceAtSale = unit ? unit.price : item.price;
+    const cartKey = unit ? `${item.id}_${unit.id}` : item.id;
+    // ↑ allows same item in different units as separate cart rows
+
     setCartItems((prev) => {
-      const existingItem = prev.find((cartItem) => cartItem.id === item.id);
+      const existingItem = prev.find((c) => c.id === cartKey);
       if (existingItem) {
-        return prev.map((cartItem) =>
-          cartItem.id === item.id
-            ? { ...cartItem, quantity: cartItem.quantity + quantity }
-            : cartItem,
+        return prev.map((c) =>
+          c.id === cartKey ? { ...c, quantity: c.quantity + quantity } : c,
         );
       }
-      return [...prev, { ...item, quantity }];
+      return [
+        ...prev,
+        {
+          ...item,
+          id: cartKey,
+          quantity,
+          unitId: unit?.id,
+          unitName: unit?.unitName,
+          unitLabel: unit?.unitLabel,
+          priceAtSale,
+        },
+      ];
     });
   };
 

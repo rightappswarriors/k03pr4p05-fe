@@ -7,14 +7,15 @@ import { OrgCategoryService } from '@/services/orgCategoryService';
 import { PositionService } from '@/services/positionService';
 import { SubCenterService } from '@/services/subCenterService';
 import { VatTypeService } from '@/services/vatTypeService';
+import { ContactService } from '@/services/contactService';
 import {
   BookOpen,
   FolderOpen,
   LayoutGrid,
   PhilippinePeso,
-  UserCheck,
+  UserCheck, AtSign, Tag
 } from 'lucide-react-native';
-
+import { PromoTypeService } from '@/services/promoTypeService';
 export interface TableConfig {
   key: string;
   label: string;
@@ -62,14 +63,46 @@ export const TABLE_CONFIG: TableConfig[] = [
         ];
       },
       create: (name) => OrgCategoryService.createOrgCategory({ name }),
-      update: (id, name) => OrgCategoryService.updateOrgCategory({ id, name }),
-      delete: (id) => OrgCategoryService.deleteOrgCategory(id),
+      update: (id, name) => OrgCategoryService.updateOrgCategory({ id: Number(id), name }),
+      delete: (id) => OrgCategoryService.deleteOrgCategory(Number(id)),
     },
     toItem: (raw) => ({
       id: String(raw.id),
       label: raw.name,
       isGlobal: raw.isGlobal ?? false, // ✅ carry through
     }),
+  },
+  {
+    key: 'promoTypes',
+    label: 'Promo Types',
+    description: 'Discount types used on POS — Senior, PWD, Promo, etc.',
+    icon: Tag,
+    hasColor: false,
+    accent: '#F43F5E',
+    placeholder: 'e.g. Senior Citizen',
+    service: {
+      getAll: () => PromoTypeService.getAll(),
+      create: (name, extra) => PromoTypeService.create(name, extra?.description),
+      update: (id, name, extra) => PromoTypeService.update(Number(id), name, extra?.description),
+      delete: async (id) => {
+        await PromoTypeService.delete(Number(id));
+        return { id }; // tableConfig expects a return value
+      },
+    },
+    toItem: (raw) => ({
+      id: String(raw.id),
+      label: raw.name,
+      description: raw.description ?? undefined,
+      isGlobal: false,
+    }),
+    extraFields: [
+      {
+        key: 'description',
+        label: 'Description',
+        placeholder: 'e.g. 20% off for senior citizens',
+        type: 'text' as const,
+      },
+    ],
   },
   {
     key: 'vatTypes',
@@ -82,8 +115,8 @@ export const TABLE_CONFIG: TableConfig[] = [
     service: {
       getAll: () => VatTypeService.getAll(),
       create: (name, extra) => VatTypeService.create(name, extra?.rate ?? 12), // ✅ send 12, not 0.12
-      update: (id, name, extra) => VatTypeService.update(id, name, extra?.rate ?? 12), // ✅
-      delete: (id) => VatTypeService.delete(id),
+      update: (id, name, extra) => VatTypeService.update(Number(id), name, extra?.rate ?? 12), // ✅
+      delete: (id) => VatTypeService.delete(Number(id)),
     },
     toItem: (raw) => {
       console.log('vatType raw:', raw); // ✅ check what id and rate look like
@@ -111,9 +144,9 @@ export const TABLE_CONFIG: TableConfig[] = [
     placeholder: 'e.g. Logistics',
     service: {
       getAll: () => DepartmentService.getAll(),
-      create: (name, extra) => DepartmentService.create(name, ),
-      update: (id, name) => DepartmentService.update(id, name),
-      delete: (id) => DepartmentService.delete(id),
+      create: (name, extra) => DepartmentService.create(name,),
+      update: (id, name) => DepartmentService.update(Number(id), name),
+      delete: (id) => DepartmentService.delete(Number(id)),
     },
     toItem: (raw) => ({ id: String(raw.id), label: raw.name, color: raw.color }),
   },
@@ -126,10 +159,10 @@ export const TABLE_CONFIG: TableConfig[] = [
     accent: '#06B6D4',
     placeholder: 'e.g. Iriga Outlet',
     service: {
-      getAll: () => CenterService.getAll(),
+      getAll: () => CenterService.getCenters(),
       create: (name) => CenterService.create(name),
-      update: (id, name) => CenterService.update(id, name),
-      delete: (id) => CenterService.delete(id),
+      update: (id, name) => CenterService.update(Number(id), name),
+      delete: (id) => CenterService.delete(Number(id)),
     },
     toItem: (raw) => ({ id: String(raw.id), label: raw.name }),
   },
@@ -144,8 +177,8 @@ export const TABLE_CONFIG: TableConfig[] = [
     service: {
       getAll: () => SubCenterService.getAll(),
       create: (name) => SubCenterService.create(name),
-      update: (id, name) => SubCenterService.update(id, name),
-      delete: (id) => SubCenterService.delete(id),
+      update: (id, name) => SubCenterService.update(Number(id), name),
+      delete: (id) => SubCenterService.delete(Number(id)),
     },
     toItem: (raw) => ({ id: String(raw.id), label: raw.name }),
   },
@@ -160,8 +193,8 @@ export const TABLE_CONFIG: TableConfig[] = [
     service: {
       getAll: () => MasterFileFinanceService.getAccountTitles(),
       create: (name) => MasterFileFinanceService.createAccountTitle(name),
-      update: (id, name) => MasterFileFinanceService.updateAccountTitle(id, name),
-      delete: (id) => MasterFileFinanceService.deleteAccountTitle(id),
+      update: (id, name) => MasterFileFinanceService.updateAccountTitle(Number(id), name),
+      delete: (id) => MasterFileFinanceService.deleteAccountTitle(Number(id)),
     },
     toItem: (raw) => ({ id: String(raw.id), label: raw.name }),
   },
@@ -197,6 +230,91 @@ export const TABLE_CONFIG: TableConfig[] = [
         label: 'Description',
         placeholder: 'Optional description',
         type: 'text',
+      },
+    ],
+  },
+  {
+    key: 'contacts',
+    label: 'Contacts',
+    description: 'Global or branch-specific email contacts for Restock Scheduling',
+    icon: AtSign,
+    hasColor: false,
+    accent: '#0EA5E9',
+    placeholder: 'e.g. Main Supplier – Cebu',
+    service: {
+      getAll: async (query?: string) => {
+        // TODO: pass real orgId from context; branchId = null → returns all
+        return ContactService.getContacts(null, query)
+      },
+      create: async (name: string, extra?: any) => {
+        return ContactService.createContact({
+          branchId: extra?.branchId ?? null,  // null = global
+          label: name,                       // label is the primary "name" field
+          name: extra?.fullName ?? name,
+          email: extra?.email ?? '',
+          phone: extra?.phone ?? null,
+          position: extra?.position ?? null,
+          department: extra?.department ?? null,
+          notes: extra?.notes ?? null,
+        })
+      },
+      update: async (id: number | string, name: string, extra?: any) => {
+        return ContactService.updateContact(Number(id), {
+          label: name,
+          branchId: extra?.branchId ?? undefined,
+          name: extra?.fullName ?? undefined,
+          email: extra?.email ?? undefined,
+          phone: extra?.phone ?? undefined,
+          position: extra?.position ?? undefined,
+          department: extra?.department ?? undefined,
+          notes: extra?.notes ?? undefined,
+        })
+      },
+      delete: (id: number | string) => ContactService.deleteContact(Number(id)),
+    },
+    toItem: (raw: any) => ({
+      id: String(raw.id),
+      label: raw.label,                              // shown in the list
+      isGlobal: raw.branchId === null || raw.branchId === undefined,
+      // carry extra fields so the edit modal can pre-fill them
+      email: raw.email,
+      fullName: raw.name,
+      phone: raw.phone,
+      position: raw.position,
+      department: raw.department,
+      branchId: raw.branchId,
+      notes: raw.notes,
+    }),
+    extraFields: [
+      {
+        key: 'email',
+        label: 'Email address',
+        placeholder: 'supplier@example.com',
+        type: 'text' as const,
+      },
+      {
+        key: 'fullName',
+        label: 'Full name',
+        placeholder: 'e.g. Juan dela Cruz',
+        type: 'text' as const,
+      },
+      {
+        key: 'phone',
+        label: 'Phone (optional)',
+        placeholder: '+63 912 345 6789',
+        type: 'text' as const,
+      },
+      {
+        key: 'position',
+        label: 'Position / title (optional)',
+        placeholder: 'e.g. Purchasing Manager',
+        type: 'text' as const,
+      },
+      {
+        key: 'department',
+        label: 'Department (optional)',
+        placeholder: 'e.g. Logistics',
+        type: 'text' as const,
       },
     ],
   },

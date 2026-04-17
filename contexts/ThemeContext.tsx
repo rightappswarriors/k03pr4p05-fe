@@ -10,7 +10,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useColorScheme } from 'react-native';
 
 export type Theme = 'light' | 'dark';
-
+// contexts/ThemeContext.tsx { colors } = useTheme() => colors.primary, colors.background, etc. for consistent theming across the app
 interface ThemeContextType {
   theme: Theme;
   toggleTheme: () => void;

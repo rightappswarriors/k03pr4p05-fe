@@ -3,6 +3,7 @@
   * Used to fetch items available in the organization that can be added to outlets
   * Note: Items don't have prices at org level - prices are set per inventory/outlet
   */
+ // @/services/itemService.ts
 export class MediaService {
     static getMediaServerUrl(): string {
         return (process.env.EXPO_PUBLIC_MEDIA_SERVER_URL || 'http://10.0.2.2:3001').replace(/\/$/, '');

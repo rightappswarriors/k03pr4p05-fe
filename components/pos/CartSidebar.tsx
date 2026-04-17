@@ -1,4 +1,4 @@
-import { styles } from '@/styles/cartSidebarStyle'
+import { styles } from '@/styles/cartSidebarStyle';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
@@ -11,41 +11,52 @@ import {
   Animated,
   Dimensions,
 } from 'react-native';
-import { Trash2, ShoppingCart, CreditCard, X } from 'lucide-react-native';
+import {
+  Trash2,
+  ShoppingCart,
+  CreditCard,
+  X,
+  Store,
+  Package2,
+  Package,
+} from 'lucide-react-native';
 import { ReceiptModal } from './ReceiptModal';
-import { ReceiptModalBigScreen} from './ReceiptModalBigScreen'
-import { useTheme } from '@/contexts/ThemeContext'
+import { ReceiptModalBigScreen } from './ReceiptModalBigScreen';
+import { useTheme } from '@/contexts/ThemeContext';
 import { useTransactionSync } from '@/hooks/useTransactionSync';
 import { useResponsive } from '@/hooks/useResponsive';
-import { usePOS } from '@/contexts/POSContext'
+import { usePOS } from '@/contexts/POSContext';
 
 const { width: screenWidth } = Dimensions.get('window');
-
 
 interface CartSidebarProps {
   onClose: () => void;
 
   screenWidth?: number;
 }
+const WEIGHT_UNITS = ['kg', 'gram', 'g', 'grams', 'kilo', 'kilos'];
 
 export function CartSidebar({
   onClose,
   screenWidth: currentScreenWidth = screenWidth,
 }: CartSidebarProps) {
-
   const {
     cartItems: items,
     sidebarOpen: isOpen,
     updateQuantity,
     removeFromCart,
     clearCart: onClearCart,
-  } = usePOS()
-  const { isDesktop, isMobile } = useResponsive()
+  } = usePOS();
+  const { isDesktop, isMobile } = useResponsive();
   const SIDEBAR_WIDTH = isDesktop
-    ? currentScreenWidth * 0.3  // 30% on desktop
+    ? currentScreenWidth * 0.3 // 30% on desktop
     : currentScreenWidth * 0.8; // 80% on mobile
-  const { colors } = useTheme()
-  const slideAnim = useRef(new Animated.Value(isOpen ? 0 : -SIDEBAR_WIDTH)).current;
+
+  const { outlet } = usePOS();
+  const { colors } = useTheme();
+  const slideAnim = useRef(
+    new Animated.Value(isOpen ? 0 : -SIDEBAR_WIDTH),
+  ).current;
   const overlayOpacity = useRef(new Animated.Value(isOpen ? 1 : 0)).current;
   const [receiptModalVisible, setReceiptModalVisible] = React.useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -69,15 +80,18 @@ export function CartSidebar({
         useNativeDriver: true,
       }),
       Animated.timing(overlayOpacity, {
-        toValue: (isOpen && !isDesktop) ? 0.5 : 0,
+        toValue: isOpen && !isDesktop ? 0.5 : 0,
         duration: 300,
         useNativeDriver: true,
       }),
     ]).start();
   }, [isOpen]);
 
-  const total = items.reduce((sum, data) => sum + (data.price * data.quantity), 0);
-  const { isTablet } = useResponsive()
+  const total = items.reduce(
+    (sum, data) => sum + data.priceAtSale * data.quantity,
+    0,
+  );
+  const { isTablet } = useResponsive();
   const handleCheckout = () => {
     if (items.length === 0) {
       Alert.alert('Cart Empty', 'Please add items to cart before checkout.');
@@ -100,12 +114,7 @@ export function CartSidebar({
     <>
       {/* Overlay */}
       {!isDesktop && (
-        <Animated.View
-          style={[
-            styles.overlay,
-            { opacity: overlayOpacity }
-          ]}
-        >
+        <Animated.View style={[styles.overlay, { opacity: overlayOpacity }]}>
           <TouchableOpacity
             style={styles.overlayTouchable}
             onPress={onClose}
@@ -116,73 +125,175 @@ export function CartSidebar({
       {/* Sidebar */}
       <Animated.View
         style={[
-          isDesktop ? [styles.desktopSidebar, { borderColor: colors.border }] : styles.mobileSidebar,
+          isDesktop
+            ? [styles.desktopSidebar, { borderColor: colors.border }]
+            : styles.mobileSidebar,
           {
             width: SIDEBAR_WIDTH,
-            transform: isDesktop ? [] : [{
-              translateX: slideAnim
-            }],
+            transform: isDesktop
+              ? []
+              : [
+                  {
+                    translateX: slideAnim,
+                  },
+                ],
           },
         ]}
       >
         {/* Header */}
-        <View style={[styles.header, { backgroundColor: colors.surface, borderColor: colors.border }]} >
+        <View
+          style={[
+            styles.header,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}
+        >
           {!isDesktop && (
-            <TouchableOpacity onPress={onClose} style={[styles.closeButton, { backgroundColor: colors.surface }]}>
+            <TouchableOpacity
+              onPress={onClose}
+              style={[styles.closeButton, { backgroundColor: colors.surface }]}
+            >
               <X size={24} color={colors.text} />
             </TouchableOpacity>
           )}
           <View style={styles.headerCenter}>
-            <Image
-              source={{ uri: 'https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop' }}
-              style={styles.logo}
-            />
+            {outlet?.bannerImage ? (
+              <Image source={{ uri: outlet.bannerImage }} style={styles.logo} />
+            ) : (
+              <Store size={8} color={colors.accent} style={styles.logo} />
+            )}
             {/* Brand Name */}
-            <Text style={[styles.companyName, { color: colors.text }]}>POS Vine</Text>
+            <Text style={[styles.companyName, { color: colors.text }]}>
+              {outlet?.name ?? 'Store'}
+            </Text>
           </View>
         </View>
         {/* Cart Items */}
-        <ScrollView style={[styles.itemsList, { backgroundColor: colors.background, borderBottomColor: colors.border }]} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={[
+            styles.itemsList,
+            {
+              backgroundColor: colors.background,
+              borderBottomColor: colors.border,
+            },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
           {items.length === 0 ? (
             <View style={styles.emptyCart}>
               <ShoppingCart size={48} color={colors.text} />
-              <Text style={[styles.emptyText, { color: colors.text }]}>Cart is empty</Text>
-              <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>Add items to get started</Text>
+              <Text style={[styles.emptyText, { color: colors.text }]}>
+                Cart is empty
+              </Text>
+              <Text
+                style={[styles.emptySubtext, { color: colors.textSecondary }]}
+              >
+                Add items to get started
+              </Text>
             </View>
           ) : (
             items.map((data) => (
-              <View key={data.id} style={[styles.cartItem, { borderColor: colors.border }]}>
-                <Image source={{ uri: data.image }} style={styles.itemImage} />
+              <View
+                key={data.id}
+                style={[styles.cartItem, { borderColor: colors.border }]}
+              >
+                {data.image ? (
+                  <Image
+                    source={{ uri: data.image }}
+                    style={styles.itemImage}
+                  />
+                ) : (
+                  <View
+                    style={[
+                      styles.itemImage,
+                      {
+                        backgroundColor: colors.border,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      },
+                    ]}
+                  >
+                    <Package size={4} color={colors.textSecondary} strokeWidth={1.5} />
+                  </View>
+                )}
                 <View style={styles.itemDetails}>
-                  <Text style={[styles.itemName, { color: colors.text }]} numberOfLines={2}>{data.name}</Text>
-                  <Text style={[styles.itemPrice, { color: colors.text }]}>₱{data.price.toFixed(2)}</Text>
+                  <Text
+                    style={[styles.itemName, { color: colors.text }]}
+                    numberOfLines={2}
+                  >
+                    {data.name}
+                  </Text>
+                  {/* Show unit label if present */}
+                  {data.unitLabel && (
+                    <Text
+                      style={[styles.itemUnit, { color: colors.textSecondary }]}
+                    >
+                      {data.unitLabel}
+                    </Text>
+                  )}
+                  <Text style={[styles.itemPrice, { color: colors.text }]}>
+                    ₱{data.priceAtSale.toFixed(2)} / {data.unitName ?? 'pc'}
+                  </Text>
+
                   <View style={styles.quantityContainer}>
-                    <TouchableOpacity
-                      onPress={() => updateQuantity(data.id, data.quantity - 1)}
-                      style={[styles.quantityButton, { backgroundColor: colors.card }]}
-                    >
-                      <Text style={[styles.quantityButtonText, { color: colors.textSecondary }]}>-</Text>
-                    </TouchableOpacity>
-                    <TextInput
-                      style={[styles.quantityInput, { backgroundColor: colors.card, borderColor: colors.border, color: colors.textSecondary }, isDesktop && { outline: 'none' }, isTablet && { outline: 'none' }]}
-                      value={data.quantity.toString()}
-                      onChangeText={(text) => {
-                        const num = parseInt(text) || 0;
-                        updateQuantity(data.id, num);
-                      }}
-                      keyboardType="numeric"
-                      selectTextOnFocus
-                    />
-                    <TouchableOpacity
-                      onPress={() => updateQuantity(data.id, data.quantity + 1)}
-                      style={[styles.quantityButton, { backgroundColor: colors.card }]}
-                    >
-                      <Text style={[styles.quantityButtonText, { color: colors.textSecondary }]}>+</Text>
-                    </TouchableOpacity>
+                    {/* Hide +/- for weight items — weight is fixed at time of add */}
+                    {data.unitName &&
+                    WEIGHT_UNITS.includes(data.unitName.toLowerCase()) ? (
+                      <Text
+                        style={[styles.weightDisplay, { color: colors.text }]}
+                      >
+                        {data.quantity.toFixed(3)} {data.unitName}
+                      </Text>
+                    ) : (
+                      <>
+                        <TouchableOpacity
+                          onPress={() =>
+                            updateQuantity(data.id, data.quantity - 1)
+                          }
+                          style={[
+                            styles.quantityButton,
+                            { backgroundColor: colors.card },
+                          ]}
+                        >
+                          <Text style={{ color: colors.textSecondary }}>-</Text>
+                        </TouchableOpacity>
+                        <TextInput
+                          style={[
+                            styles.quantityInput,
+                            {
+                              backgroundColor: colors.card,
+                              borderColor: colors.border,
+                              color: colors.textSecondary,
+                            },
+                            isDesktop && { outline: 'none' },
+                            isTablet && { outline: 'none' },
+                          ]}
+                          value={data.quantity.toString()}
+                          onChangeText={(text) => {
+                            const num = parseInt(text) || 0;
+                            updateQuantity(data.id, num);
+                          }}
+                          keyboardType="numeric"
+                          selectTextOnFocus
+                        />
+                        <TouchableOpacity
+                          onPress={() =>
+                            updateQuantity(data.id, data.quantity + 1)
+                          }
+                          style={[
+                            styles.quantityButton,
+                            { backgroundColor: colors.card },
+                          ]}
+                        >
+                          <Text style={{ color: colors.textSecondary }}>+</Text>
+                        </TouchableOpacity>
+                      </>
+                    )}
                   </View>
                 </View>
                 <View style={styles.itemRight}>
-                  <Text style={[styles.subtotal, { color: colors.text }]}>₱{(data.price * data.quantity).toFixed(2)}</Text>
+                  <Text style={[styles.subtotal, { color: colors.text }]}>
+                    ₱{(data.priceAtSale * data.quantity).toFixed(2)}
+                  </Text>
                   <TouchableOpacity
                     onPress={() => removeFromCart(data.id)}
                     style={styles.removeButton}
@@ -195,25 +306,46 @@ export function CartSidebar({
           )}
         </ScrollView>
         {/* Footer */}
-        <View style={[styles.footer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View
+          style={[
+            styles.footer,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}
+        >
           <View style={styles.totalContainer}>
-            <Text style={[styles.totalLabel, { color: colors.text }]}>Total</Text>
-            <Text style={[styles.totalAmount, { color: colors.accent}]}>₱ {total.toFixed(2)}</Text>
+            <Text style={[styles.totalLabel, { color: colors.text }]}>
+              Total
+            </Text>
+            <Text style={[styles.totalAmount, { color: colors.accent }]}>
+              ₱ {total.toFixed(2)}
+            </Text>
           </View>
           <View style={styles.buttonContainer}>
             <TouchableOpacity
               onPress={onClearCart}
-              style={[styles.actionButton, styles.clearButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+              style={[
+                styles.actionButton,
+                styles.clearButton,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
               disabled={items.length === 0}
             >
-              <Trash2 size={18} color={items.length === 0 ? '#9CA3AF' : '#EF4444'} />
-              <Text style={[styles.actionButtonText, { color: items.length === 0 ? '#9CA3AF' : '#EF4444' }]}>
+              <Trash2
+                size={18}
+                color={items.length === 0 ? '#9CA3AF' : '#EF4444'}
+              />
+              <Text
+                style={[
+                  styles.actionButtonText,
+                  { color: items.length === 0 ? '#9CA3AF' : '#EF4444' },
+                ]}
+              >
                 Clear
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleCheckout}
-              style={[styles.actionButton, {backgroundColor: colors.accent}]}
+              style={[styles.actionButton, { backgroundColor: colors.accent }]}
               disabled={items.length === 0}
             >
               <CreditCard size={18} color="white" />
@@ -223,13 +355,12 @@ export function CartSidebar({
         </View>
       </Animated.View>
 
-        <ReceiptModal
-          visible={receiptModalVisible}
-          onClose={() => setReceiptModalVisible(false)}
-          onPrintReceipt={handlePrintReceipt}
-          onOrderPlaced={() => setRefreshTrigger(prev => prev + 1)} // ✅ Triggers reload
-        />
+      <ReceiptModal
+        visible={receiptModalVisible}
+        onClose={() => setReceiptModalVisible(false)}
+        onPrintReceipt={handlePrintReceipt}
+        onOrderPlaced={() => setRefreshTrigger((prev) => prev + 1)} // ✅ Triggers reload
+      />
     </>
   );
 }
-

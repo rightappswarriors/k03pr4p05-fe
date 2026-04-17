@@ -4,6 +4,10 @@
 //   - Search/filter on expense summary
 //   - Delete entry from journal
 //   - CSV export
+//   - Persisted last-used period (AsyncStorage)
+//   - Custom date range via DateRangePickerModal
+//   - Compact period picker + New Entry button on web
+//   - Item Net Summary new entry with CatalogSearchModal
 
 import React, {
   useCallback,
@@ -13,6 +17,7 @@ import React, {
   useState,
 } from 'react';
 import {
+  ActivityIndicator,
   Animated,
   Dimensions,
   KeyboardAvoidingView,
@@ -35,9 +40,14 @@ import {
   Search,
   Trash2,
   X,
+  Bell,
+  Package,
 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { gql } from 'graphql-request';
+import { getGraphQLClient } from '@/utils/constants';
+import { AuthService } from '@/services/authService';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { Lock } from 'lucide-react-native';
@@ -73,7 +83,7 @@ import {
   SkeletonTableRow,
   SummaryTable,
 } from '@/components/dashboardSummary/SummaryTable';
-import { DropdownField, s } from '@/app/(erp)';
+import { DropdownField } from '@/app/(erp)';
 import {
   ACCOUNT_TITLE_OPTIONS,
   VAT_TYPE_OPTIONS,
@@ -85,10 +95,51 @@ import {
   useAccountTitleLabels,
 } from '@/contexts/MasterFileContext';
 import { useAuth } from '@/contexts/AuthContext';
+import DateRangePickerModal from '@/components/DateRangePickerModal';
+import { CatalogSearchModal } from '@/components/CatalogSearchModal';
+import type { CatalogItem } from '@/types';
+import { useResponsive } from '@/hooks/useResponsive';
+import { CenterService } from '@/services/centerService';
+import { SubCenterService } from '@/services/subCenterService';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-// CENTER_DEPT_OPTIONS and SUB_CENTER_OPTIONS are now live from MasterFileContext
-// so changes in Master File → Centers / Sub-Centers appear here immediately.
+function getDateRange(
+  preset: DatePreset,
+  customStart?: Date | null,
+  customEnd?: Date | null,
+): { startDate: string; endDate: string } {
+  const now = new Date();
+  const endDate = new Date(now);
+  endDate.setHours(23, 59, 59, 999);
+  let startDate = new Date(now);
+
+  switch (preset) {
+    case 'This Month':
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      break;
+    case 'Last Month':
+      startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      endDate.setTime(new Date(now.getFullYear(), now.getMonth(), 0).getTime());
+      break;
+    case 'Last 3 Months':
+      startDate = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+      break;
+    case 'Last 6 Months':
+      startDate = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+      break;
+    case 'This Year':
+      startDate = new Date(now.getFullYear(), 0, 1);
+      break;
+    case 'Custom Range':
+      return {
+        startDate: (customStart ?? startDate).toISOString(),
+        endDate: (customEnd ?? endDate).toISOString(),
+      };
+  }
+  startDate.setHours(0, 0, 0, 0);
+  return { startDate: startDate.toISOString(), endDate: endDate.toISOString() };
+}
+const DATE_PERIOD_KEY = 'dashboard_selected_period';
 
 const DATE_PRESETS = [
   'This Month',
@@ -96,11 +147,12 @@ const DATE_PRESETS = [
   'Last 3 Months',
   'Last 6 Months',
   'This Year',
+  'Custom Range',
 ] as const;
 type DatePreset = (typeof DATE_PRESETS)[number];
 
 const CHART_RANGE_LABELS: Record<
-  DatePreset,
+  Exclude<DatePreset, 'Custom Range'>,
   { labels: string[]; salesIdx: number[] }
 > = {
   'This Month': { labels: ['W1', 'W2', 'W3', 'W4'], salesIdx: [0, 1, 2, 3] },
@@ -144,81 +196,171 @@ const EMPTY_FORM: FormState = {
   accountTitle: '',
 };
 
+// ─── Item Net Summary Form State ──────────────────────────────────────────────
+
+interface ItemNetFormState {
+  selectedItem: CatalogItem | null;
+  itemName: string;
+  accountTitleId: string;
+  amount: string;
+  description: string;
+}
+
+const EMPTY_ITEM_NET_FORM: ItemNetFormState = {
+  selectedItem: null,
+  itemName: '',
+  accountTitleId: '',
+  amount: '',
+  description: '',
+};
+
 // ─── Date Range Picker ────────────────────────────────────────────────────────
 
 function DateRangePicker({
   selected,
   onSelect,
   colors,
+  customLabel,
+  isTablet,
 }: {
   selected: DatePreset;
   onSelect: (p: DatePreset) => void;
   colors: any;
+  customLabel?: string;
+  isTablet: boolean;
 }) {
   const [open, setOpen] = useState(false);
+
+  const displayLabel =
+    selected === 'Custom Range' && customLabel ? customLabel : selected;
+
   return (
-    <View>
+    <View style={{ position: 'relative', zIndex: 999 }}>
       <TouchableOpacity
         style={[
           drp.trigger,
+          isTablet && drp.triggerCompact,
           { backgroundColor: colors.card, borderColor: colors.border },
         ]}
-        onPress={() => setOpen(true)}
+        onPress={() => setOpen((v) => !v)}
         activeOpacity={0.8}
       >
-        <Calendar size={13} color={colors.primary} strokeWidth={2} />
-        <Text style={[drp.triggerText, { color: colors.text }]}>
-          {selected}
-        </Text>
-        <Text style={{ color: colors.textSecondary, fontSize: 11 }}>▾</Text>
-      </TouchableOpacity>
-      <Modal
-        visible={open}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setOpen(false)}
-      >
-        <TouchableOpacity
-          style={drp.backdrop}
-          activeOpacity={1}
-          onPress={() => setOpen(false)}
+        <Calendar
+          size={isTablet ? 11 : 13}
+          color={colors.primary}
+          strokeWidth={2}
+        />
+        <Text
+          style={[
+            drp.triggerText,
+            isTablet && drp.triggerTextCompact,
+            { color: colors.text },
+          ]}
+          numberOfLines={1}
         >
-          <View style={[drp.sheet, { backgroundColor: colors.surface }]}>
-            <Text style={[drp.sheetTitle, { color: colors.textSecondary }]}>
-              SELECT PERIOD
-            </Text>
-            {DATE_PRESETS.map((p) => (
-              <TouchableOpacity
-                key={p}
+          {displayLabel}
+        </Text>
+        <Text
+          style={{
+            color: colors.textSecondary,
+            fontSize: isTablet ? 9 : 11,
+          }}
+        >
+          ▾
+        </Text>
+      </TouchableOpacity>
+
+      {open && isTablet ? (
+        <View
+          style={[
+            drp.inlineSheet,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}
+        >
+          <Text style={[drp.sheetTitle, { color: colors.textSecondary }]}>
+            SELECT PERIOD
+          </Text>
+          {DATE_PRESETS.map((p) => (
+            <TouchableOpacity
+              key={p}
+              style={[
+                drp.option,
+                { borderBottomColor: colors.border },
+                selected === p && { backgroundColor: colors.primary + '14' },
+              ]}
+              onPress={() => {
+                onSelect(p);
+                setOpen(false);
+              }}
+            >
+              <Text
                 style={[
-                  drp.option,
-                  { borderBottomColor: colors.border },
-                  selected === p && { backgroundColor: colors.primary + '14' },
+                  drp.optionText,
+                  {
+                    color: selected === p ? colors.primary : colors.text,
+                    fontWeight: selected === p ? '700' : '500',
+                  },
                 ]}
-                onPress={() => {
-                  onSelect(p);
-                  setOpen(false);
-                }}
               >
-                <Text
+                {p}
+              </Text>
+              {selected === p && (
+                <Text style={{ color: colors.primary, fontSize: 11 }}>✓</Text>
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : open && !isTablet ? (
+        <Modal
+          visible={open}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setOpen(false)}
+        >
+          <TouchableOpacity
+            style={drp.backdrop}
+            activeOpacity={1}
+            onPress={() => setOpen(false)}
+          >
+            <View style={[drp.sheet, { backgroundColor: colors.surface }]}>
+              <Text style={[drp.sheetTitle, { color: colors.textSecondary }]}>
+                SELECT PERIOD
+              </Text>
+              {DATE_PRESETS.map((p) => (
+                <TouchableOpacity
+                  key={p}
                   style={[
-                    drp.optionText,
-                    {
-                      color: selected === p ? colors.primary : colors.text,
-                      fontWeight: selected === p ? '700' : '500',
+                    drp.option,
+                    { borderBottomColor: colors.border },
+                    selected === p && {
+                      backgroundColor: colors.primary + '14',
                     },
                   ]}
+                  onPress={() => {
+                    onSelect(p);
+                    setOpen(false);
+                  }}
                 >
-                  {p}
-                </Text>
-                {selected === p && (
-                  <Text style={{ color: colors.primary }}>✓</Text>
-                )}
-              </TouchableOpacity>
-            ))}
-          </View>
-        </TouchableOpacity>
-      </Modal>
+                  <Text
+                    style={[
+                      drp.optionText,
+                      {
+                        color: selected === p ? colors.primary : colors.text,
+                        fontWeight: selected === p ? '700' : '500',
+                      },
+                    ]}
+                  >
+                    {p}
+                  </Text>
+                  {selected === p && (
+                    <Text style={{ color: colors.primary }}>✓</Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      ) : null}
     </View>
   );
 }
@@ -233,7 +375,15 @@ const drp = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
   },
+  triggerCompact: {
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 6,
+    gap: 4,
+    maxWidth: 140,
+  },
   triggerText: { fontSize: 13, fontWeight: '600' },
+  triggerTextCompact: { fontSize: 11, fontWeight: '600' },
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
@@ -241,26 +391,41 @@ const drp = StyleSheet.create({
     padding: 32,
   },
   sheet: { borderRadius: 14, overflow: 'hidden' },
+  inlineSheet: {
+    position: 'absolute',
+    top: '100%',
+    right: 0,
+    marginTop: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    minWidth: 160,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 10,
+    zIndex: 1000,
+  },
   sheetTitle: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     letterSpacing: 1,
-    padding: 16,
-    paddingBottom: 8,
+    padding: 12,
+    paddingBottom: 6,
   },
   option: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     borderBottomWidth: 1,
   },
-  optionText: { fontSize: 14 },
+  optionText: { fontSize: 13 },
 });
 
 // ─── Delete confirm ───────────────────────────────────────────────────────────
-
 function DeleteConfirmModal({
   visible,
   onCancel,
@@ -381,39 +546,71 @@ function exportSummaryToCSV(rows: SummaryRow[]): string {
   return header + body;
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatShortDate(d: Date): string {
+  return d.toLocaleDateString('en-PH', {
+    month: 'short',
+    day: 'numeric',
+    year: '2-digit',
+  });
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function DashboardScreen() {
   const { colors, theme } = useTheme();
   const { width } = Dimensions.get('window');
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showNotifications, setShowNotifications] = useState(false);
 
-  // ── Live from Master File — updates instantly when Master File changes ──────
-  const CENTER_DEPT_OPTIONS = useCenterLabels();
-  const SUB_CENTER_OPTIONS = useSubCenterLabels();
-  // VAT types and Account Titles also live from Master File
-  // Falls back to the imported constants if context returns empty (first load safety)
-  const vatTypesFromCtx = useVatTypeLabels();
-  const accountTitlesFromCtx = useAccountTitleLabels();
-  const VAT_TYPES_LIVE =
-    vatTypesFromCtx.length > 0 ? vatTypesFromCtx : VAT_TYPE_OPTIONS;
-  const ACCT_TITLES_LIVE =
-    accountTitlesFromCtx.length > 0
-      ? accountTitlesFromCtx
-      : ACCOUNT_TITLE_OPTIONS;
   const isTablet = width >= 768;
 
-  // ── Subscription limits ──────────────────────────────────────────────────────
   const { limits } = useSubscription();
 
-  // ── State ────────────────────────────────────────────────────────────────────
-  // Basic users can only see itemnet tab — redirect if they somehow land on expense
+  const [datePreset, setDatePreset] = useState<DatePreset>('Last 6 Months');
+  const [customStartDate, setCustomStartDate] = useState<Date | null>(null);
+  const [customEndDate, setCustomEndDate] = useState<Date | null>(null);
+  const [showCustomPicker, setShowCustomPicker] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem(DATE_PERIOD_KEY)
+      .then((saved) => {
+        if (saved && DATE_PRESETS.includes(saved as DatePreset)) {
+          setDatePreset(saved as DatePreset);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handlePeriodSelect = (p: DatePreset) => {
+    if (p === 'Custom Range') {
+      setShowCustomPicker(true);
+      return;
+    }
+    setDatePreset(p);
+    AsyncStorage.setItem(DATE_PERIOD_KEY, p).catch(() => {});
+  };
+
+  const handleCustomApply = (start: Date, end: Date) => {
+    setCustomStartDate(start);
+    setCustomEndDate(end);
+    setDatePreset('Custom Range');
+    AsyncStorage.setItem(DATE_PERIOD_KEY, 'Custom Range').catch(() => {});
+  };
+
+  const customLabel =
+    customStartDate && customEndDate
+      ? `${formatShortDate(customStartDate)} – ${formatShortDate(customEndDate)}`
+      : 'Custom Range';
+
   const [activeTab, setActiveTab] = useState<TabKey>(
     limits.canAccessExpenseSummary ? 'expense' : 'itemnet',
   );
   const [viewMode, setViewMode] = useState<ViewMode>('card');
   const [gisRows, setGisRows] = useState<GISRow[]>([]);
   const [summaryRows, setSummaryRows] = useState<SummaryRow[]>([]);
-  const [datePreset, setDatePreset] = useState<DatePreset>('Last 6 Months');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -429,10 +626,12 @@ export default function DashboardScreen() {
   });
 
   const [inventoryDistribution, setInventoryDistribution] = useState({
-    labels: [] as string[],
-    data: [] as number[],
+    labels: [] as any[],
+    data: [] as any[],
   });
-
+  const [accountTitles, setAccountTitles] = useState<
+    { id: string; label: string }[]
+  >([]);
   const [financeData, setFinanceData] = useState({
     revenue: 0,
     expenses: 0,
@@ -446,9 +645,22 @@ export default function DashboardScreen() {
   const [salesTrendData, setSalesTrendData] = useState<number[]>([]);
   const [isLoadingDashboardData, setIsLoadingDashboardData] = useState(true);
 
+  // ── Expense Entry modal ───────────────────────────────────────────────────
   const [modalVisible, setModalVisible] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+
+  // ── Item Net Summary modal ─────────────────────────────────────────────────
+  const [itemNetModalVisible, setItemNetModalVisible] = useState(false);
+  const [itemNetSubmitSuccess, setItemNetSubmitSuccess] = useState(false);
+  const [itemNetForm, setItemNetForm] =
+    useState<ItemNetFormState>(EMPTY_ITEM_NET_FORM);
+  const [showCatalogSearch, setShowCatalogSearch] = useState(false);
+  const itemNetModalAnim = useRef(new Animated.Value(0)).current;
+  const [centers, setCenters] = useState<{ id: string; label: string }[]>([]);
+  const [subCenters, setSubCenters] = useState<{ id: string; label: string }[]>(
+    [],
+  );
   const [deleteTarget, setDeleteTarget] = useState<GISRow | null>(null);
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [selectedCard, setSelectedCard] = useState<FinancialCardData | null>(
@@ -463,7 +675,6 @@ export default function DashboardScreen() {
     ? Math.min((width - 280) * 0.95, 560)
     : width - 48;
 
-  // ── Load persisted view mode ────────────────────────────────────────────────
   useEffect(() => {
     AsyncStorage.getItem(VIEW_MODE_KEY)
       .then((saved) => {
@@ -502,112 +713,165 @@ export default function DashboardScreen() {
         .reduce((sum, tx) => sum + Number(tx.total ?? tx.amount ?? 0), 0);
     });
   };
+
   const { user } = useAuth();
   if (!user?.orgId) {
     return null;
   }
+
+  const loadDashboardData = useCallback(async () => {
+    if (!user?.orgId) return;
+    setIsLoadingDashboardData(true);
+
+    const { startDate, endDate } = getDateRange(
+      datePreset,
+      customStartDate,
+      customEndDate,
+    );
+
+    try {
+      const { accessToken } = await AuthService.getTokens();
+      const client = await getGraphQLClient();
+      const notifData = await client
+        .request(
+          GET_NOTIFICATIONS,
+          {},
+          { Authorization: `Bearer ${accessToken}` },
+        )
+        .catch(() => ({ getNotifications: [], getUnreadCount: 0 }));
+
+      setNotifications(notifData.getNotifications ?? []);
+      setUnreadCount(notifData.getUnreadCount ?? 0);
+
+      const [
+        transactions,
+        accountTitles,
+        centers,
+        subCenter,
+        gisData,
+        summaryData,
+        inventoryStats,
+        staffData,
+      ] = await Promise.all([
+        SalesService.getTransactionsByOrgId(startDate, endDate).catch(() => []),
+        FinanceService.getAccountTitles(),
+        CenterService.getCenters(),
+        SubCenterService.getAll(),
+        FinanceService.getGISRows(startDate, endDate).catch(() => []),
+        FinanceService.getSummaryRows(startDate, endDate).catch(() => []),
+        InventoryService.getDashboardInventoryStats().catch(() => ({
+          skuCount: 0,
+          totalUnits: 0,
+          categoryBreakdown: [],
+        })),
+        HrService.getAllStaffs(user.orgId).catch(() => []),
+      ]);
+
+      const totalSales = transactions.reduce(
+        (sum, tx) => sum + Number(tx.total ?? 0),
+        0,
+      );
+      const expenses = gisData.reduce(
+        (sum: number, row: any) => sum + Number(row.amount ?? 0),
+        0,
+      );
+
+      setDashboardStats({
+        totalSales,
+        salesGrowth: 0,
+        inventoryItems: inventoryStats.skuCount,
+        inventoryChange: 0,
+        employees: staffData?.length ?? 0,
+        employeeChange: 0,
+        monthlyProfit: totalSales - expenses,
+        profitGrowth: 0,
+      });
+      setAccountTitles(
+        accountTitles.map((c: any) => ({
+          id: c.id,
+          label: c.name, // or c.label depending on API
+        })),
+      );
+      setInventoryDistribution({
+        labels: inventoryStats.categoryBreakdown.map((c: any) => c.name),
+        data: inventoryStats.categoryBreakdown.map((c: any) => c.totalStock),
+      });
+
+      setFinanceData({
+        revenue: totalSales,
+        expenses,
+        profit: totalSales - expenses,
+        revenueVsExpenses: {
+          revenue: buildSalesTrend(transactions),
+          expenses: gisData.map((row: any) => Number(row.amount ?? 0)),
+        },
+      });
+
+      setSalesTrendData(buildSalesTrend(transactions));
+
+      setGisRows(
+        (gisData ?? []).map((row: any, index: number) => ({
+          id: String(row.id ?? `g-${index}`),
+          main: row.main ?? 'Expenses',
+          group: row.group ?? 'Finance',
+          code: row.code ?? `GIS-${row.id ?? index}`,
+          description: row.description ?? row.accountTitle ?? '',
+          debit: Number(row.debit ?? row.amount ?? 0),
+          credit: Number(row.credit ?? 0),
+          total: Number(row.total ?? row.amount ?? 0),
+        })),
+      );
+
+      setSummaryRows(
+        (summaryData ?? []).map((row: any, index: number) => ({
+          id: String(row.id ?? `s-${index}`),
+          itemCode: row.itemCode ?? row.itemId ?? `S-${row.id ?? index}`,
+          description:
+            row.itemName ?? row.description ?? `Summary ${row.id ?? index}`,
+          opExPct: 0,
+          computedCost: Number(row.amount ?? 0),
+          costContribution: Number(row.amount ?? 0) * 0.7,
+          sellingPrice: Number(row.amount ?? 0) * 1.4,
+        })),
+      );
+    } catch (error) {
+      console.error('Dashboard load error:', error);
+    } finally {
+      setIsLoadingDashboardData(false);
+    }
+  }, [datePreset, customStartDate, customEndDate, user?.orgId]);
+
   useEffect(() => {
-    const loadDashboardData = async () => {
-      // Type guard to ensure orgId is defined
-      if (!user?.orgId) {
-        return;
-      }
-      setIsLoadingDashboardData(true);
-      try {
-        const outletId = 1;
-
-        // Fetch data with individual error handling
-        const [transactions, gisData, summaryData, inventoryData, staffData] = await Promise.all([
-          SalesService.getTransactionsByOrgId(user.orgId).catch(() => []),
-          FinanceService.getGISRows(user.orgId).catch(() => []),
-          FinanceService.getSummaryRows(user.orgId).catch(() => []),
-          InventoryService.getInventory(outletId).catch(() => null),
-          HrService.getAllStaffs(user.orgId).catch(() => []),
-        ]);
-
-        const totalSales = transactions.reduce(
-          (sum, tx) => sum + Number(tx.total ?? 0),
-          0,
-        );
-        const expenses = gisData.reduce(
-          (sum: number, row: any) => sum + Number(row.amount ?? 0),
-          0,
-        );
-        const profits = totalSales - expenses;
-        const itemCount =
-          inventoryData?.inventory?.inventoryItems?.length ??
-          inventoryData?.inventoryItems?.length ??
-          0;
-        const employeesCount = staffData?.length ?? 0;
-
-        setDashboardStats({
-          totalSales,
-          salesGrowth: 0,
-          inventoryItems: itemCount,
-          inventoryChange: 0,
-          employees: employeesCount,
-          employeeChange: 0,
-          monthlyProfit: profits,
-          profitGrowth: 0,
-        });
-
-        setInventoryDistribution({
-          labels: ['Category A', 'Category B', 'Category C'],
-          data: [inventoryData?.inventory?.inventoryItems?.length ?? 0, 0, 0],
-        });
-
-        setFinanceData({
-          revenue: totalSales,
-          expenses,
-          profit: profits,
-          revenueVsExpenses: {
-            revenue: buildSalesTrend(transactions),
-            expenses:
-              gisData.length > 0
-                ? gisData.map((row: any) => Number(row.amount ?? 0))
-                : [],
-          },
-        });
-
-        setSalesTrendData(buildSalesTrend(transactions));
-
-        setGisRows(
-          (gisData ?? []).map((row: any, index: number) => ({
-            id: String(row.id ?? `g-${index}`),
-            main: row.main ?? 'Expenses',
-            group: row.group ?? 'Finance',
-            code: row.code ?? `GIS-${row.id ?? index}`,
-            description: row.description ?? row.accountTitle ?? '',
-            debit: Number(row.debit ?? row.amount ?? 0),
-            credit: Number(row.credit ?? 0),
-            total: Number(row.total ?? row.amount ?? 0),
-          })),
-        );
-
-        setSummaryRows(
-          (summaryData ?? []).map((row: any, index: number) => ({
-            id: String(row.id ?? `s-${index}`),
-            itemCode: row.itemCode ?? `S-${row.id ?? index}`,
-            description: row.description ?? `Summary ${row.id ?? index}`,
-            opExPct: 0,
-            computedCost: Number(row.amount ?? 0),
-            costContribution: Number(row.amount ?? 0) * 0.7,
-            sellingPrice: Number(row.amount ?? 0) * 1.4,
-          })),
-        );
-      } catch (error) {
-        console.error('Dashboard load error:', error);
-      } finally {
-        setIsLoadingDashboardData(false);
-      }
-    };
-
     loadDashboardData();
-  }, []);
+  }, [loadDashboardData]);
 
-  // ── Chart data driven by date preset ─────────────────────────────────────────
+  const GET_NOTIFICATIONS = gql`
+    query {
+      getNotifications(limit: 20) {
+        id
+        type
+        title
+        message
+        isRead
+        createdAt
+        outlet {
+          id
+          name
+        }
+        item {
+          id
+          name
+        }
+      }
+      getUnreadCount
+    }
+  `;
+
   const chartData = useMemo(() => {
-    const range = CHART_RANGE_LABELS[datePreset];
+    const presetKey =
+      datePreset === 'Custom Range' ? 'Last 6 Months' : datePreset;
+    const range =
+      CHART_RANGE_LABELS[presetKey as Exclude<DatePreset, 'Custom Range'>];
     const allSales = salesTrendData.length ? salesTrendData : Array(6).fill(0);
     const allFinRev = financeData.revenueVsExpenses.revenue.length
       ? financeData.revenueVsExpenses.revenue
@@ -616,7 +880,6 @@ export default function DashboardScreen() {
       ? financeData.revenueVsExpenses.expenses
       : Array(6).fill(0);
 
-    // Slice or derive based on preset
     const idxs = range.salesIdx;
     const salesData = idxs.map(
       (i) => (allSales[i] ?? allSales[allSales.length - 1]) / 1000,
@@ -631,7 +894,6 @@ export default function DashboardScreen() {
     return { labels: range.labels, salesData, revData, expData };
   }, [datePreset, salesTrendData, financeData]);
 
-  // ── Filtered dataset (search) ─────────────────────────────────────────────
   const activeDataset: FinancialCardData[] = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (activeTab === 'expense') {
@@ -664,7 +926,6 @@ export default function DashboardScreen() {
     setSearchQuery('');
   };
 
-  // When search changes, reset to page 1
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery]);
@@ -710,8 +971,13 @@ export default function DashboardScreen() {
   // ── Delete ────────────────────────────────────────────────────────────────
   const handleDelete = (row: GISRow) => setDeleteTarget(row);
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!deleteTarget) return;
+    try {
+      await FinanceService.deleteGISRow(deleteTarget.id);
+    } catch (e) {
+      console.error('Delete failed', e);
+    }
     setGisRows((prev) => prev.filter((r) => r.id !== deleteTarget.id));
     setDeleteTarget(null);
   };
@@ -722,10 +988,6 @@ export default function DashboardScreen() {
       activeTab === 'expense'
         ? exportGISToCSV(gisRows)
         : exportSummaryToCSV(summaryRows);
-
-    // In a real app use expo-file-system + expo-sharing:
-    // await FileSystem.writeAsStringAsync(uri, csv);
-    // await Sharing.shareAsync(uri);
     console.log('[CSV EXPORT]', csv);
     setExportSuccess(true);
     setTimeout(() => setExportSuccess(false), 2000);
@@ -737,7 +999,7 @@ export default function DashboardScreen() {
     setDetailModalVisible(true);
   };
 
-  // ── Entry modal ───────────────────────────────────────────────────────────
+  // ── Expense Entry modal ───────────────────────────────────────────────────
   const openModal = () => {
     setSubmitSuccess(false);
     setModalVisible(true);
@@ -760,12 +1022,12 @@ export default function DashboardScreen() {
     });
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const rawAmount = parseFloat(form.amount) || 0;
     const { net } = calcVatAndNet(rawAmount, form.vatType);
     const isIncome = form.accountTitle.startsWith('ACCOUNTS RECEIVABLE');
-    const newRow: GISRow = {
-      id: `g${Date.now()}`,
+
+    const payload = {
       main: isIncome ? 'Income' : 'Expenses',
       group: form.centerDept || 'General',
       code: form.orInvoice || `TXN-${Date.now().toString().slice(-5)}`,
@@ -774,10 +1036,98 @@ export default function DashboardScreen() {
       credit: isIncome ? net : 0,
       total: isIncome ? net : -net,
     };
-    setGisRows((prev) => [newRow, ...prev]);
-    setSubmitSuccess(true);
-    setTimeout(() => closeModal(), 1400);
+
+    try {
+      const saved = await FinanceService.createGISRow(payload);
+      const newRow: GISRow = { id: saved.id, ...payload };
+      setGisRows((prev) => [newRow, ...prev]);
+      setSubmitSuccess(true);
+      setTimeout(() => closeModal(), 1400);
+    } catch (error) {
+      console.error('Failed to add GIS row', error);
+    }
   };
+
+  // ── Item Net Summary modal ─────────────────────────────────────────────────
+  const openItemNetModal = () => {
+    setItemNetSubmitSuccess(false);
+    setItemNetForm(EMPTY_ITEM_NET_FORM);
+    setItemNetModalVisible(true);
+    Animated.spring(itemNetModalAnim, {
+      toValue: 1,
+      tension: 65,
+      friction: 11,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const closeItemNetModal = () => {
+    Animated.timing(itemNetModalAnim, {
+      toValue: 0,
+      duration: 220,
+      useNativeDriver: true,
+    }).start(() => {
+      setItemNetModalVisible(false);
+      setItemNetForm(EMPTY_ITEM_NET_FORM);
+    });
+  };
+
+  const handleItemNetSubmit = async () => {
+    const amount = parseFloat(itemNetForm.amount) || 0;
+    const itemId = itemNetForm.selectedItem
+      ? parseInt(itemNetForm.selectedItem.id, 10)
+      : undefined;
+    const itemName = itemNetForm.selectedItem
+      ? itemNetForm.selectedItem.name
+      : itemNetForm.itemName.trim() || undefined;
+    const accountTitleId = itemNetForm.accountTitleId
+      ? parseInt(itemNetForm.accountTitleId, 10)
+      : undefined;
+
+    try {
+      const saved = await FinanceService.createSummaryRow(
+        accountTitleId,
+        amount,
+        itemNetForm.description,
+        itemId,
+        itemName,
+      );
+
+      const newRow: SummaryRow = {
+        id: String(saved.id),
+        itemCode: saved.itemId ? String(saved.itemId) : `S-${saved.id}`,
+        description:
+          saved.itemName ?? itemNetForm.description ?? `Summary ${saved.id}`,
+        opExPct: 0,
+        computedCost: amount,
+        costContribution: amount * 0.7,
+        sellingPrice: amount * 1.4,
+      };
+      setSummaryRows((prev) => [newRow, ...prev]);
+      setItemNetSubmitSuccess(true);
+      setTimeout(() => closeItemNetModal(), 1400);
+    } catch (error) {
+      console.error('Failed to add summary row', error);
+    }
+  };
+
+  const handleCatalogItemSelect = (item: CatalogItem) => {
+    setItemNetForm((f) => ({
+      ...f,
+      selectedItem: item,
+      itemName: item.name,
+      amount: item.sellingPrice ? String(item.sellingPrice) : f.amount,
+    }));
+  };
+
+  const itemNetModalTranslate = itemNetModalAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [80, 0],
+  });
+  const itemNetModalOpacity = itemNetModalAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
 
   const modalTranslate = modalAnim.interpolate({
     inputRange: [0, 1],
@@ -788,7 +1138,6 @@ export default function DashboardScreen() {
     outputRange: [0, 1],
   });
 
-  // ── Chart config ──────────────────────────────────────────────────────────
   const chartConfig = useMemo(
     () => ({
       backgroundColor: colors.card,
@@ -826,17 +1175,30 @@ export default function DashboardScreen() {
     legend: ['Revenue (K)', 'Expenses (K)'],
   };
 
+  const periodDisplayLabel =
+    datePreset === 'Custom Range' ? customLabel : datePreset;
+
   // ─── Styles ────────────────────────────────────────────────────────────────
   const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     scroll: { padding: 16, paddingBottom: 32 },
-    // header row: section label + date picker
     rowBetween: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
       marginBottom: 10,
       marginTop: 4,
+      zIndex: 999,
+      position: 'relative',
+    },
+    rowBetweenAnalytics: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 10,
+      marginTop: 4,
+      zIndex: 1,
+      position: 'relative',
     },
     sectionTitle: {
       fontSize: 11,
@@ -850,6 +1212,7 @@ export default function DashboardScreen() {
       flexWrap: 'wrap',
       gap: 10,
       marginBottom: 20,
+      zIndex: 1,
     },
     statWrap: {
       width: isTablet ? undefined : '47.5%',
@@ -884,15 +1247,17 @@ export default function DashboardScreen() {
       marginTop: 3,
       textAlign: 'center',
     },
-    // search row inside toolbar
+    // ── FIXED: toolbar is full-width with no overflow ──────────────────────
     toolbarFull: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
-      padding: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
       paddingBottom: 8,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
+      width: '100%',
     },
     searchBox: {
       flex: 1,
@@ -905,8 +1270,9 @@ export default function DashboardScreen() {
       borderColor: colors.border,
       paddingHorizontal: 10,
       paddingVertical: 6,
+      minWidth: 0, // allow shrinking on tablet
     },
-    searchInput: { flex: 1, fontSize: 13, color: colors.text },
+    searchInput: { flex: 1, fontSize: 13, color: colors.text, minWidth: 0 },
     iconBtn: {
       padding: 6,
       borderRadius: 8,
@@ -925,6 +1291,44 @@ export default function DashboardScreen() {
       borderRadius: 20,
     },
     exportSuccessText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+    newEntryBtn: isTablet
+      ? {
+          flexDirection: 'row' as const,
+          alignItems: 'center' as const,
+          justifyContent: 'center' as const,
+          gap: 6,
+          marginTop: 16,
+          alignSelf: 'flex-end' as const,
+          paddingVertical: 10,
+          paddingHorizontal: 20,
+          borderRadius: 10,
+        }
+      : {
+          flexDirection: 'row' as const,
+          alignItems: 'center' as const,
+          justifyContent: 'center' as const,
+          gap: 8,
+          marginTop: 16,
+          paddingVertical: 14,
+          borderRadius: 12,
+        },
+    // ── Table wrapper: stretch full width ──────────────────────────────────
+    tableScrollWrapper: {
+      flex: 1,
+      minHeight: 300,
+      borderRadius: 12,
+      marginTop: 4,
+      overflow: 'hidden',
+      width: '100%',
+    },
+    tableContentPad: {
+      width: '100%',
+      paddingBottom: 100,
+    },
+    tableInner: {
+      paddingHorizontal: 12,
+      width: '100%',
+    },
   });
 
   // ─── Render ────────────────────────────────────────────────────────────────
@@ -937,63 +1341,106 @@ export default function DashboardScreen() {
       {/* KEY METRICS */}
       <View style={styles.rowBetween}>
         <Text style={styles.sectionTitle}>Key Metrics</Text>
-        <DateRangePicker
-          selected={datePreset}
-          onSelect={setDatePreset}
-          colors={colors}
-        />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <TouchableOpacity
+            onPress={() => setShowNotifications(true)}
+            style={{ position: 'relative' }}
+          >
+            <Bell size={20} color={colors.text} strokeWidth={2} />
+            {unreadCount > 0 && (
+              <View
+                style={{
+                  position: 'absolute',
+                  top: -4,
+                  right: -4,
+                  backgroundColor: '#EF4444',
+                  borderRadius: 8,
+                  minWidth: 16,
+                  height: 16,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  paddingHorizontal: 3,
+                }}
+              >
+                <Text style={{ color: '#fff', fontSize: 9, fontWeight: '700' }}>
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          <DateRangePicker
+            selected={datePreset}
+            onSelect={handlePeriodSelect}
+            colors={colors}
+            customLabel={customLabel}
+            isTablet={isTablet}
+          />
+        </View>
       </View>
+
       <View style={styles.statsGrid}>
-        <View style={styles.statWrap}>
-          <StatCard
-            label="Total Sales"
-            value={fmt(dashboardStats.totalSales)}
-            icon="sales"
-            trend={dashboardStats.salesGrowth}
-            trendUp
-            accent
-          />
-        </View>
-        <View style={styles.statWrap}>
-          <StatCard
-            label="Inventory Items"
-            value={dashboardStats.inventoryItems}
-            icon="inventory"
-            trend={Number(dashboardStats.inventoryChange)}
-            trendUp={false}
-          />
-        </View>
-        <View style={styles.statWrap}>
-          <StatCard
-            label="Employees"
-            value={dashboardStats.employees}
-            icon="hr"
-            trend={dashboardStats.employeeChange}
-            trendUp
-          />
-        </View>
-        <View style={styles.statWrap}>
-          <StatCard
-            label="Monthly Profit"
-            value={fmt(dashboardStats.monthlyProfit)}
-            icon="profit"
-            trend={dashboardStats.profitGrowth}
-            trendUp
-          />
-        </View>
+        {isLoadingDashboardData ? (
+          [0, 1, 2, 3].map((i) => (
+            <View key={i} style={styles.statWrap}>
+              <SkeletonTableRow colors={colors} />
+            </View>
+          ))
+        ) : (
+          <>
+            <View style={styles.statWrap}>
+              <StatCard
+                label="Total Sales"
+                value={fmt(dashboardStats.totalSales)}
+                icon="sales"
+                trend={dashboardStats.salesGrowth}
+                trendUp
+                accent
+              />
+            </View>
+            <View style={styles.statWrap}>
+              <StatCard
+                label="Inventory Items"
+                value={dashboardStats.inventoryItems}
+                icon="inventory"
+                trend={Number(dashboardStats.inventoryChange)}
+                trendUp={false}
+              />
+            </View>
+            <View style={styles.statWrap}>
+              <StatCard
+                label="Employees"
+                value={dashboardStats.employees}
+                icon="hr"
+                trend={dashboardStats.employeeChange}
+                trendUp
+              />
+            </View>
+            <View style={styles.statWrap}>
+              <StatCard
+                label="Monthly Profit"
+                value={fmt(dashboardStats.monthlyProfit)}
+                icon="profit"
+                trend={dashboardStats.profitGrowth}
+                trendUp
+              />
+            </View>
+          </>
+        )}
       </View>
+
       {/* CHARTS */}
-      <View style={styles.rowBetween}>
+      <View style={styles.rowBetweenAnalytics}>
         <Text style={styles.sectionTitle}>Analytics</Text>
-        <Text style={{ fontSize: 11, color: colors.textSecondary }}>
-          {datePreset}
+        <Text style={{ fontSize: 11, zIndex: 1, color: colors.textSecondary }}>
+          {periodDisplayLabel}
         </Text>
       </View>
       <View style={styles.chartsRow}>
         <View style={styles.chartFlex}>
           <ChartCard
             title="Sales Trend"
-            subtitle={`Monthly revenue · ${datePreset}`}
+            subtitle={`Monthly revenue · ${periodDisplayLabel}`}
           >
             <LineChart
               data={{
@@ -1041,25 +1488,47 @@ export default function DashboardScreen() {
       </Text>
       <View style={styles.summaryRow}>
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryValue}>{fmt(financeData.revenue)}</Text>
-          <Text style={styles.summaryLabel}>Total Revenue</Text>
+          {isLoadingDashboardData ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <>
+              <Text style={styles.summaryValue}>
+                {fmt(financeData.revenue)}
+              </Text>
+              <Text style={styles.summaryLabel}>Total Revenue</Text>
+            </>
+          )}
         </View>
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryValue}>{fmt(financeData.expenses)}</Text>
-          <Text style={styles.summaryLabel}>Total Expenses</Text>
+          {isLoadingDashboardData ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <>
+              <Text style={styles.summaryValue}>
+                {fmt(financeData.expenses)}
+              </Text>
+              <Text style={styles.summaryLabel}>Total Expenses</Text>
+            </>
+          )}
         </View>
         <View style={styles.summaryCard}>
-          <Text style={[styles.summaryValue, { color: colors.success }]}>
-            {fmt(financeData.profit)}
-          </Text>
-          <Text style={styles.summaryLabel}>Net Profit</Text>
+          {isLoadingDashboardData ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <>
+              <Text style={[styles.summaryValue, { color: colors.success }]}>
+                {fmt(financeData.profit)}
+              </Text>
+              <Text style={styles.summaryLabel}>Net Profit</Text>
+            </>
+          )}
         </View>
       </View>
 
       {/* REVENUE VS EXPENSES */}
       <ChartCard
         title="Revenue vs Expenses"
-        subtitle={`6-month financial overview · ${datePreset}`}
+        subtitle={`6-month financial overview · ${periodDisplayLabel}`}
       >
         <LineChart
           data={revData}
@@ -1080,7 +1549,6 @@ export default function DashboardScreen() {
           { backgroundColor: colors.surface, borderBottomColor: colors.border },
         ]}
       >
-        {/* Expense Summary tab — Gold only */}
         {limits.canAccessExpenseSummary ? (
           <TouchableOpacity
             style={[
@@ -1118,12 +1586,8 @@ export default function DashboardScreen() {
             </Text>
           </TouchableOpacity>
         ) : (
-          // Locked tab — tapping shows the upgrade modal via LockedNavItem pattern
           <TouchableOpacity
             style={[s.tab, { opacity: 0.5 }]}
-            onPress={() => {
-              /* UpgradeModal shown via LockedNavItem in sidebar */
-            }}
             activeOpacity={0.7}
           >
             <Lock size={13} color={colors.textSecondary} strokeWidth={2} />
@@ -1146,7 +1610,6 @@ export default function DashboardScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Item Net Summary tab — always visible */}
         <TouchableOpacity
           style={[
             s.tab,
@@ -1184,14 +1647,9 @@ export default function DashboardScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* TABLE / CARD AREA */}
-      <ScrollView
-        style={[s.tableArea, { backgroundColor: colors.background }]}
-        showsVerticalScrollIndicator={false}
-        nestedScrollEnabled
-        contentContainerStyle={{ paddingBottom: 100 }}
-      >
-        {/* TOOLBAR: search + view toggle + export (export locked for Basic) */}
+      {/* ── TABLE / CARD AREA — fixed to stretch full width ── */}
+      <View style={styles.tableScrollWrapper}>
+        {/* TOOLBAR */}
         <View style={styles.toolbarFull}>
           <View style={styles.searchBox}>
             <Search size={13} color={colors.textSecondary} strokeWidth={2} />
@@ -1218,7 +1676,6 @@ export default function DashboardScreen() {
             colors={colors}
           />
 
-          {/* Export button — locked for Basic */}
           {limits.canExport ? (
             <TouchableOpacity
               style={[
@@ -1245,9 +1702,6 @@ export default function DashboardScreen() {
                 styles.iconBtn,
                 { borderColor: colors.border, opacity: 0.45 },
               ]}
-              onPress={() => {
-                /* Upgrade modal — use LockedScreen pattern */
-              }}
               activeOpacity={0.7}
             >
               <Lock size={15} color={colors.textSecondary} strokeWidth={2} />
@@ -1266,16 +1720,38 @@ export default function DashboardScreen() {
           </Text>
         </View>
 
-        <View style={{ padding: 12 }}>
-          {viewMode === 'table' ? (
-            activeTab === 'expense' ? (
-              <GISTable
-                rows={pagedGISRows}
-                colors={colors}
-                onDeleteRow={handleDelete}
-              />
+        {/* ── Table / Card content — full-width ── */}
+        <View style={styles.tableInner}>
+          {isLoadingDashboardData ? (
+            viewMode === 'table' ? (
+              [0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+                <SkeletonTableRow key={i} colors={colors} />
+              ))
             ) : (
-              <SummaryTable rows={pagedSummaryRows} colors={colors} />
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {[0, 1, 2, 3].map((i) => (
+                  <SkeletonFinancialCard
+                    key={i}
+                    colors={colors}
+                    cardWidth={cardWidth}
+                  />
+                ))}
+              </View>
+            )
+          ) : viewMode === 'table' ? (
+            activeTab === 'expense' ? (
+              // ── GISTable gets full width via parent View ──
+              <View style={{ width: '100%' }}>
+                <GISTable
+                  rows={pagedGISRows}
+                  colors={colors}
+                  onDeleteRow={handleDelete}
+                />
+              </View>
+            ) : (
+              <View style={{ width: '100%' }}>
+                <SummaryTable rows={pagedSummaryRows} colors={colors} />
+              </View>
             )
           ) : (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
@@ -1305,16 +1781,20 @@ export default function DashboardScreen() {
           onNext={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
           colors={colors}
         />
-      </ScrollView>
+      </View>
 
-      {/* NEW ENTRY BUTTON */}
+      {/* ── NEW ENTRY BUTTON — label changes per active tab ── */}
       <TouchableOpacity
-        style={[s.newEntryBtn, { backgroundColor: colors.primary }]}
-        onPress={openModal}
+        style={[styles.newEntryBtn, { backgroundColor: colors.primary }]}
+        onPress={activeTab === 'expense' ? openModal : openItemNetModal}
         activeOpacity={0.88}
       >
-        <FileText size={16} color="#fff" strokeWidth={2} />
-        <Text style={s.newEntryBtnText}>New Entry</Text>
+        <FileText size={isTablet ? 14 : 16} color="#fff" strokeWidth={2} />
+        <Text style={[s.newEntryBtnText, isTablet && { fontSize: 13 }]}>
+          {activeTab === 'expense'
+            ? 'New Expense Entry'
+            : 'New Item Net Summary'}
+        </Text>
       </TouchableOpacity>
 
       {/* EXPORT SUCCESS TOAST */}
@@ -1341,7 +1821,16 @@ export default function DashboardScreen() {
         description={deleteTarget?.description ?? ''}
       />
 
-      {/* ENTRY MODAL */}
+      {/* CUSTOM DATE RANGE PICKER */}
+      <DateRangePickerModal
+        visible={showCustomPicker}
+        onClose={() => setShowCustomPicker(false)}
+        onApply={handleCustomApply}
+        initialStart={customStartDate ?? undefined}
+        initialEnd={customEndDate ?? undefined}
+      />
+
+      {/* ── EXPENSE ENTRY MODAL ── */}
       <Modal
         visible={modalVisible}
         transparent
@@ -1362,6 +1851,7 @@ export default function DashboardScreen() {
             <Animated.View
               style={[
                 s.modalSheet,
+                isTablet && s.modalSheetTablet,
                 { backgroundColor: colors.surface },
                 {
                   opacity: modalOpacity,
@@ -1376,7 +1866,7 @@ export default function DashboardScreen() {
                 style={[s.modalHeader, { borderBottomColor: colors.border }]}
               >
                 <Text style={[s.modalTitle, { color: colors.text }]}>
-                  New Journal Entry
+                  New Expense Entry
                 </Text>
                 <TouchableOpacity
                   onPress={closeModal}
@@ -1437,9 +1927,9 @@ export default function DashboardScreen() {
                       <DropdownField
                         label="Center / Dept"
                         value={form.centerDept}
-                        options={CENTER_DEPT_OPTIONS}
+                        options={centers}
                         onSelect={(v) =>
-                          setForm((f) => ({ ...f, centerDept: v }))
+                          setForm((f) => ({ ...f, centerDept: v.id }))
                         }
                         colors={colors}
                       />
@@ -1448,9 +1938,9 @@ export default function DashboardScreen() {
                       <DropdownField
                         label="Sub Center"
                         value={form.subCenter}
-                        options={SUB_CENTER_OPTIONS}
+                        options={subCenters}
                         onSelect={(v) =>
-                          setForm((f) => ({ ...f, subCenter: v }))
+                          setForm((f) => ({ ...f, subCenter: v.id }))
                         }
                         colors={colors}
                       />
@@ -1460,8 +1950,8 @@ export default function DashboardScreen() {
                   <DropdownField
                     label="VAT Type"
                     value={form.vatType}
-                    options={VAT_TYPES_LIVE}
-                    onSelect={(v) => setForm((f) => ({ ...f, vatType: v }))}
+                    options={accountTitles}
+                    onSelect={(v) => setForm((f) => ({ ...f, vatType: v.id }))}
                     colors={colors}
                   />
 
@@ -1580,9 +2070,9 @@ export default function DashboardScreen() {
                   <DropdownField
                     label="Account Title"
                     value={form.accountTitle}
-                    options={ACCT_TITLES_LIVE}
+                    options={accountTitles}
                     onSelect={(v) =>
-                      setForm((f) => ({ ...f, accountTitle: v }))
+                      setForm((f) => ({ ...f, accountTitle: v.id }))
                     }
                     colors={colors}
                     placeholder="Select account title…"
@@ -1614,6 +2104,759 @@ export default function DashboardScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* ── ITEM NET SUMMARY MODAL ── */}
+      <Modal
+        visible={itemNetModalVisible}
+        transparent
+        animationType="none"
+        statusBarTranslucent
+        onRequestClose={closeItemNetModal}
+      >
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={s.modalBackdrop}>
+            <TouchableOpacity
+              style={{ flex: 1 }}
+              activeOpacity={1}
+              onPress={closeItemNetModal}
+            />
+            <Animated.View
+              style={[
+                s.modalSheet,
+                isTablet && s.modalSheetTablet,
+                { backgroundColor: colors.surface },
+                {
+                  opacity: itemNetModalOpacity,
+                  transform: [{ translateY: itemNetModalTranslate }],
+                },
+              ]}
+            >
+              <View
+                style={[s.modalHandle, { backgroundColor: colors.border }]}
+              />
+              <View
+                style={[s.modalHeader, { borderBottomColor: colors.border }]}
+              >
+                <Text style={[s.modalTitle, { color: colors.text }]}>
+                  New Item Net Summary
+                </Text>
+                <TouchableOpacity
+                  onPress={closeItemNetModal}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                >
+                  <X size={20} color={colors.textSecondary} strokeWidth={2} />
+                </TouchableOpacity>
+              </View>
+
+              {itemNetSubmitSuccess ? (
+                <View style={s.successState}>
+                  <CheckCircle2
+                    size={52}
+                    color={colors.success}
+                    strokeWidth={1.5}
+                  />
+                  <Text style={[s.successText, { color: colors.text }]}>
+                    Item Summary Added
+                  </Text>
+                  <Text style={[s.successSub, { color: colors.textSecondary }]}>
+                    The entry has been posted to the Item Net Summary.
+                  </Text>
+                </View>
+              ) : (
+                <ScrollView
+                  style={{ flex: 1 }}
+                  contentContainerStyle={s.modalBody}
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {/* ── Item Selection ── */}
+                  <Text style={[s.fieldLabel, { color: colors.textSecondary }]}>
+                    Select Item (Optional)
+                  </Text>
+                  <TouchableOpacity
+                    style={[
+                      ins.itemPickerBtn,
+                      {
+                        backgroundColor: colors.background,
+                        borderColor: itemNetForm.selectedItem
+                          ? colors.primary
+                          : colors.border,
+                      },
+                    ]}
+                    onPress={() => setShowCatalogSearch(true)}
+                    activeOpacity={0.8}
+                  >
+                    {itemNetForm.selectedItem ? (
+                      <View
+                        style={{
+                          flex: 1,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 10,
+                        }}
+                      >
+                        <View
+                          style={[
+                            ins.itemIconWrap,
+                            { backgroundColor: colors.primary + '18' },
+                          ]}
+                        >
+                          <Package
+                            size={16}
+                            color={colors.primary}
+                            strokeWidth={2}
+                          />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text
+                            style={{
+                              fontSize: 14,
+                              fontWeight: '600',
+                              color: colors.text,
+                            }}
+                            numberOfLines={1}
+                          >
+                            {itemNetForm.selectedItem.name}
+                          </Text>
+                          {itemNetForm.selectedItem.category && (
+                            <Text
+                              style={{
+                                fontSize: 11,
+                                color: colors.textSecondary,
+                                marginTop: 1,
+                              }}
+                            >
+                              {itemNetForm.selectedItem.category}
+                              {itemNetForm.selectedItem.barcode
+                                ? ` · ${itemNetForm.selectedItem.barcode}`
+                                : ''}
+                            </Text>
+                          )}
+                        </View>
+                        <TouchableOpacity
+                          onPress={() =>
+                            setItemNetForm((f) => ({
+                              ...f,
+                              selectedItem: null,
+                              itemName: '',
+                            }))
+                          }
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <X
+                            size={14}
+                            color={colors.textSecondary}
+                            strokeWidth={2}
+                          />
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 8,
+                        }}
+                      >
+                        <Search
+                          size={14}
+                          color={colors.textSecondary}
+                          strokeWidth={2}
+                        />
+                        <Text
+                          style={{ fontSize: 13, color: colors.textSecondary }}
+                        >
+                          Search item catalog…
+                        </Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                  <Text
+                    style={[
+                      s.fieldLabel,
+                      { color: colors.textSecondary, marginTop: 4 },
+                    ]}
+                  >
+                    Item Name{' '}
+                    {itemNetForm.selectedItem
+                      ? '(from catalog)'
+                      : '(manual if not in catalog)'}
+                  </Text>
+                  <TextInput
+                    style={[
+                      s.input,
+                      {
+                        color: colors.text,
+                        backgroundColor: itemNetForm.selectedItem
+                          ? colors.border + '40'
+                          : colors.background,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                    placeholder="e.g. Premium Coffee Blend"
+                    placeholderTextColor={colors.textSecondary}
+                    value={
+                      itemNetForm.selectedItem
+                        ? itemNetForm.selectedItem.name
+                        : itemNetForm.itemName
+                    }
+                    onChangeText={(v) => {
+                      if (!itemNetForm.selectedItem) {
+                        setItemNetForm((f) => ({ ...f, itemName: v }));
+                      }
+                    }}
+                    editable={!itemNetForm.selectedItem}
+                  />
+                  <View
+                    style={{
+                      flexDirection: isTablet ? 'row' : 'column',
+                      gap: 12,
+                    }}
+                  >
+                    <View
+                      style={{
+                        flex: 1,
+                      }}
+                    >
+                      <DropdownField
+                        label="Center / Dept"
+                        value={form.centerDept}
+                        options={centers}
+                        onSelect={(v) =>
+                          setForm((f) => ({ ...f, centerDept: v.id }))
+                        }
+                        colors={colors}
+                      />
+                    </View>
+                    <View
+                      style={{
+                        flex: 1,
+                      }}
+                    >
+                      <DropdownField
+                        label="Sub Center"
+                        value={form.subCenter}
+                        options={subCenters}
+                        onSelect={(v) =>
+                          setForm((f) => ({ ...f, subCenter: v.id }))
+                        }
+                        colors={colors}
+                      />
+                    </View>
+                  </View>
+                  {/* ── Item Name (manual fallback or override) ── */}
+
+                  {/* ── Account Title ── */}
+                  <DropdownField
+                    label="Account Title"
+                    value={itemNetForm.accountTitleId}
+                    options={accountTitles}
+                    onSelect={(v) =>
+                      setItemNetForm((f) => ({ ...f, accountTitleId: v.id }))
+                    }
+                    colors={colors}
+                    placeholder="Select account title…"
+                  />
+
+                  {/* ── Amount ── */}
+                  <Text style={[s.fieldLabel, { color: colors.textSecondary }]}>
+                    Amount (₱)
+                  </Text>
+                  <TextInput
+                    style={[
+                      s.input,
+                      {
+                        color: colors.text,
+                        backgroundColor: colors.background,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                    placeholder="0.00"
+                    placeholderTextColor={colors.textSecondary}
+                    value={itemNetForm.amount}
+                    onChangeText={(v) =>
+                      setItemNetForm((f) => ({ ...f, amount: v }))
+                    }
+                    keyboardType="decimal-pad"
+                  />
+
+                  {/* ── Description ── */}
+                  <Text style={[s.fieldLabel, { color: colors.textSecondary }]}>
+                    Description
+                  </Text>
+                  <TextInput
+                    style={[
+                      s.input,
+                      s.textarea,
+                      {
+                        color: colors.text,
+                        backgroundColor: colors.background,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                    placeholder="Optional description…"
+                    placeholderTextColor={colors.textSecondary}
+                    value={itemNetForm.description}
+                    onChangeText={(v) =>
+                      setItemNetForm((f) => ({ ...f, description: v }))
+                    }
+                    multiline
+                    numberOfLines={3}
+                    textAlignVertical="top"
+                  />
+
+                  <TouchableOpacity
+                    style={[
+                      s.submitBtn,
+                      {
+                        backgroundColor: colors.primary,
+                        opacity: !itemNetForm.amount ? 0.5 : 1,
+                      },
+                    ]}
+                    onPress={handleItemNetSubmit}
+                    disabled={!itemNetForm.amount}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={s.submitBtnText}>Add Item Summary</Text>
+                  </TouchableOpacity>
+                  <View style={{ height: 20 }} />
+                </ScrollView>
+              )}
+            </Animated.View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ── CATALOG SEARCH MODAL (rendered at root level to avoid z-index issues) ── */}
+      <CatalogSearchModal
+        visible={showCatalogSearch}
+        onClose={() => setShowCatalogSearch(false)}
+        onSelect={handleCatalogItemSelect}
+        colors={colors}
+      />
+
+      {/* NOTIFICATIONS MODAL */}
+      <Modal visible={showNotifications} transparent animationType="fade">
+        <TouchableOpacity
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' }}
+          activeOpacity={1}
+          onPress={() => setShowNotifications(false)}
+        />
+        <View
+          style={{
+            position: 'absolute',
+            top: 60,
+            right: 16,
+            width: 320,
+            maxHeight: 480,
+            backgroundColor: colors.surface,
+            borderRadius: 14,
+            overflow: 'hidden',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.2,
+            shadowRadius: 12,
+            elevation: 8,
+          }}
+        >
+          <View
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: 16,
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border,
+            }}
+          >
+            <Text
+              style={{ fontSize: 15, fontWeight: '800', color: colors.text }}
+            >
+              Notifications
+            </Text>
+            {unreadCount > 0 && (
+              <TouchableOpacity
+                onPress={async () => {
+                  const { accessToken } = await AuthService.getTokens();
+                  const client = await getGraphQLClient();
+                  await client.request(
+                    gql`
+                      mutation {
+                        markAllNotificationsRead
+                      }
+                    `,
+                    {},
+                    { Authorization: `Bearer ${accessToken}` },
+                  );
+                  setUnreadCount(0);
+                  setNotifications((prev) =>
+                    prev.map((n) => ({ ...n, isRead: true })),
+                  );
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color: colors.primary,
+                    fontWeight: '600',
+                  }}
+                >
+                  Mark all read
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          <ScrollView>
+            {notifications.length === 0 ? (
+              <View style={{ padding: 32, alignItems: 'center' }}>
+                <Bell size={32} color={colors.border} strokeWidth={1.5} />
+                <Text
+                  style={{
+                    color: colors.textSecondary,
+                    marginTop: 10,
+                    fontSize: 13,
+                  }}
+                >
+                  No notifications
+                </Text>
+              </View>
+            ) : (
+              notifications.map((n) => (
+                <TouchableOpacity
+                  key={n.id}
+                  style={{
+                    padding: 14,
+                    borderBottomWidth: 1,
+                    borderBottomColor: colors.border,
+                    backgroundColor: n.isRead
+                      ? 'transparent'
+                      : colors.primary + '10',
+                  }}
+                  onPress={async () => {
+                    if (!n.isRead) {
+                      const { accessToken } = await AuthService.getTokens();
+                      const client = await getGraphQLClient();
+                      await client.request(
+                        gql`
+                          mutation MarkRead($id: Int!) {
+                            markNotificationRead(id: $id) {
+                              id
+                            }
+                          }
+                        `,
+                        { id: n.id },
+                        { Authorization: `Bearer ${accessToken}` },
+                      );
+                      setNotifications((prev) =>
+                        prev.map((x) =>
+                          x.id === n.id ? { ...x, isRead: true } : x,
+                        ),
+                      );
+                      setUnreadCount((prev) => Math.max(0, prev - 1));
+                    }
+                  }}
+                >
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'flex-start',
+                      gap: 10,
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: 4,
+                        marginTop: 4,
+                        backgroundColor:
+                          n.type === 'ORG_CRITICAL_STOCK'
+                            ? '#EF4444'
+                            : n.type === 'OUTLET_LOW_STOCK'
+                              ? '#F59E0B'
+                              : '#10B981',
+                      }}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          fontWeight: '700',
+                          color: colors.text,
+                        }}
+                      >
+                        {n.title}
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          color: colors.textSecondary,
+                          marginTop: 2,
+                          lineHeight: 17,
+                        }}
+                      >
+                        {n.message}
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: 10,
+                          color: colors.textSecondary,
+                          marginTop: 4,
+                        }}
+                      >
+                        {new Date(n.createdAt).toLocaleString()}
+                      </Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              ))
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
+
+// ─── Item Net Summary modal styles ────────────────────────────────────────────
+const ins = StyleSheet.create({
+  itemPickerBtn: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    marginBottom: 14,
+    minHeight: 46,
+    justifyContent: 'center',
+  },
+  itemIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
+
+export const s = StyleSheet.create({
+  container: { flex: 1 },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+  },
+  title: { fontSize: 20, fontWeight: '800', letterSpacing: -0.4 },
+  subtitle: { fontSize: 13, marginTop: 2 },
+  logoutButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#DC2626',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  filterContainer: {
+    flexDirection: 'row',
+    marginTop: 12,
+    borderRadius: 10,
+    padding: 3,
+    gap: 3,
+  },
+  filterTab: {
+    flex: 1,
+    paddingVertical: 7,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  filterTabText: { fontSize: 12, fontWeight: '600' },
+  summaryContainer: { flexDirection: 'row', paddingVertical: 12, gap: 10 },
+  summaryCard: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    elevation: 2,
+  },
+  summaryValue: { fontSize: 16, fontWeight: '800', marginTop: 6 },
+  summaryLabel: { fontSize: 10, marginTop: 3, textAlign: 'center' },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+    marginTop: 4,
+  },
+  sectionTitle: { fontSize: 15, fontWeight: '700', letterSpacing: -0.2 },
+  branchCard: {
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    elevation: 2,
+    flex: 1,
+  },
+  branchHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  branchInfo: { flex: 1 },
+  branchName: { fontSize: 15, fontWeight: '700', marginBottom: 4 },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  branchStats: { alignItems: 'flex-end' },
+  revenueAmount: { fontSize: 16, fontWeight: '800' },
+  transactionCount: { fontSize: 11, marginTop: 2 },
+  outletCount: { fontSize: 12 },
+  branchFooter: { paddingTop: 10, borderTopWidth: 1 },
+  viewDetails: { fontSize: 13, fontWeight: '600' },
+  fab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.48)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    height: '70%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    elevation: 20,
+    alignSelf: 'center',
+  },
+  modalSheetTablet: {
+    alignSelf: 'center',
+    width: 520,
+    borderRadius: 16,
+    height: '80%',
+    marginBottom: 40,
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+  },
+  modalTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
+  modalBody: { paddingHorizontal: 20, paddingTop: 16 },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 5,
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    fontSize: 14,
+    marginBottom: 14,
+  },
+  textarea: { minHeight: 80, paddingTop: 10 },
+  submitBtn: {
+    borderRadius: 10,
+    paddingVertical: 15,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  submitBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  tabBar: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    marginTop: 16,
+    marginBottom: 4,
+  },
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 11,
+    borderBottomWidth: 2.5,
+    borderBottomColor: 'transparent',
+  },
+  tabLabel: { fontSize: 13 },
+  tableArea: {
+    flex: 1,
+    minHeight: 300,
+    borderRadius: 12,
+    marginTop: 4,
+    overflow: 'hidden',
+  },
+  newEntryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  newEntryBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  successState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+    gap: 12,
+  },
+  successText: { fontSize: 17, fontWeight: '800', textAlign: 'center' },
+  successSub: { fontSize: 13, textAlign: 'center', lineHeight: 18 },
+  vatPreview: {
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 12,
+    marginBottom: 14,
+    gap: 6,
+  },
+  vatLabel: { fontSize: 13 },
+  vatValue: { fontSize: 14, fontWeight: '700' },
+  vatRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+});

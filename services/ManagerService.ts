@@ -1,84 +1,94 @@
-import { Branch, Outlet, Cashier, Transaction, BranchRevenue, OutletRevenue, AdminOutlet, AdminTransaction } from '@/types';
+// @/services/adminService.ts
+import { Branch, Cashier, BranchRevenue, OutletRevenue, AdminOutlet, AdminTransaction, Outlet } from '@/types';
 
 import { getGraphQLClient } from '@/utils/constants';
 import { gql } from 'graphql-request';
 import { AuthService } from './authService';
+import { OutletPromoInput } from '@/types';
+function mapTransaction(raw: any): AdminTransaction {
+  return {
+    id: String(raw.id),
+    branchId: '',
+    outletId: String(raw.outletId),
+    cashierId: String(raw.cashierId),
+    cashier: raw.cashier ?? null,
 
+    total: raw.total,
+    subtotal: raw.subtotal,
 
+    tax: raw.vatAmount,
+    vatAmount: raw.vatAmount,
 
-const MOCK_TRANSACTIONS: AdminTransaction[] = [
-  // Branch 001 transactions
-  {
-    id: '1',
-    branchId: '1',
-    outletId: '1',
-    cashierId: '1',
-    items: [
-      { id: '1', name: 'Coffee', price: 4.50, quantity: 2, category: 'Beverages' },
-      { id: '2', name: 'Sandwich', price: 8.99, quantity: 1, category: 'Food' }
-    ],
-    subtotal: 17.99,
-    tax: 1.44,
-    total: 19.43,
-    paymentMethod: 'card',
-    status: 'completed',
-    createdAt: '2024-12-19T10:30:00Z',
-    completedAt: '2024-12-19T10:31:00Z'
-  },
-  {
-    id: '2',
-    branchId: '1',
-    outletId: '2',
-    cashierId: '3',
-    items: [
-      { id: '3', name: 'Soda', price: 2.99, quantity: 3, category: 'Beverages' }
-    ],
-    subtotal: 8.97,
-    tax: 0.72,
-    total: 9.69,
-    paymentMethod: 'cash',
-    status: 'completed',
-    createdAt: '2024-12-19T11:15:00Z',
-    completedAt: '2024-12-19T11:16:00Z'
-  },
-  // Branch 002 transactions
-  {
-    id: '3',
-    branchId: '2',
-    outletId: '4',
-    cashierId: '5',
-    items: [
-      { id: '4', name: 'Pizza Slice', price: 6.50, quantity: 2, category: 'Food' },
-      { id: '5', name: 'Drink', price: 3.25, quantity: 2, category: 'Beverages' }
-    ],
-    subtotal: 19.50,
-    tax: 1.56,
-    total: 21.06,
-    paymentMethod: 'card',
-    status: 'completed',
-    createdAt: '2024-12-19T12:00:00Z',
-    completedAt: '2024-12-19T12:01:00Z'
-  },
-  // Branch 003 transactions
-  {
-    id: '4',
-    branchId: '3',
-    outletId: '6',
-    cashierId: '7',
-    items: [
-      { id: '6', name: 'Travel Mug', price: 15.99, quantity: 1, category: 'Merchandise' },
-      { id: '7', name: 'Coffee', price: 5.50, quantity: 1, category: 'Beverages' }
-    ],
-    subtotal: 21.49,
-    tax: 1.72,
-    total: 23.21,
-    paymentMethod: 'card',
-    status: 'completed',
-    createdAt: '2024-12-19T13:45:00Z',
-    completedAt: '2024-12-19T13:46:00Z'
+    cashReceived: raw.cashReceived ?? null,
+    change: raw.change ?? null,
+
+    paymentMethod: raw.paymentMethod?.toLowerCase() ?? 'cash',
+    status: raw.status?.toLowerCase() ?? 'completed',
+
+    createdAt: raw.createdAt,
+    completedAt: raw.syncedAt ?? undefined,
+
+    customerDetails: raw.customerDetails ?? null,
+
+    items: (raw.items ?? []).map((ci: any) => ({
+      id: `${ci.transactionId}-${ci.itemId}`, // composite-safe id
+
+      quantity: ci.quantity,
+      price: ci.priceAtSale,
+
+      // item name comes from direct relation now
+      name: ci.item?.name ?? 'Unknown Item',
+
+      // unit info comes from ci.unit (NOT inventoryItemUnit)
+      unitName: ci.unitName ?? ci.unit?.unitName ?? '',
+      unitLabel: ci.unit?.unitLabel ?? '',
+
+      stockLabel: ci.item?.stockLabel ?? 'pcs',
+      image: ci.item?.image ?? null,
+    })),
+  };
+}
+const TXN_FIELDS = `
+  id
+  outletId
+  cashierId
+  cashier { id fullname email }
+  total
+  subtotal
+  vatAmount
+  cashReceived
+  change
+  paymentMethod
+  status
+  createdAt
+  syncedAt
+  customerDetails {
+    id
+    fullname
   }
-];
+  items {
+    transactionId
+    itemId
+    quantity
+    priceAtSale
+    unitId
+    unitName
 
+    item {
+      id
+      name
+      stockLabel
+      image
+    }
+
+    unit {
+      id
+      unitName
+      unitLabel
+      price
+    }
+  }
+`;
 export class AdminService {
 
   static async getBranches(): Promise<Branch[]> {
@@ -225,15 +235,15 @@ export class AdminService {
 
   static async getOutletRevenue(outletId: string, startDate: Date, endDate: Date): Promise<OutletRevenue> {
     const GET_OUTLETREVENUE = gql`
-    query GetOutletTransactions($outletId: ID!, $startDate: DateTime, $endDate: DateTime) {
-      getOutletTransactions(outletId: $outletId, startDate: $startDate, endDate: $endDate) {
+    query GetOutletTransactionsMoney($outletId: ID!, $startDate: DateTime, $endDate: DateTime) {
+      getOutletTransactionsMoney(outletId: $outletId, startDate: $startDate, endDate: $endDate) {
         id
         total
         status
         createdAt
+        }
       }
-    }
-  `
+    `
     try {
       const { accessToken } = await AuthService.getTokens()
       const client = await getGraphQLClient()
@@ -245,7 +255,7 @@ export class AdminService {
         Authorization: `Bearer ${accessToken}`
       })) as any
 
-      const transactions = res.getOutletTransactions
+      const transactions = res.getOutletTransactionsMoney
 
       // ✅ compute total from real data
       const totalRevenue = transactions.reduce(
@@ -349,14 +359,69 @@ export class AdminService {
     }
   }
 
-  static async getRecentTransactions(outletId: string, limit: number = 20): Promise<AdminTransaction[]> {
-
-
-    return MOCK_TRANSACTIONS
-      .filter(txn => txn.outletId === outletId)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, limit);
+  static async getRecentTransactions(
+  outletId: string,
+  limit: number = 50,
+  offset: number = 0,
+  startDate?: Date,
+  endDate?: Date,
+): Promise<AdminTransaction[]> {
+  const QUERY = gql`
+    query GetOutletTransactions(
+      $outletId: ID!,
+      $limit: Int,
+      $offset: Int,
+      $startDate: DateTime,
+      $endDate: DateTime
+    ) {
+      getOutletTransactions(
+        outletId: $outletId,
+        limit: $limit,
+        offset: $offset,
+        startDate: $startDate,
+        endDate: $endDate
+      ) {
+        ${TXN_FIELDS}
+      }
+    }
+  `;
+  try {
+    const { accessToken } = await AuthService.getTokens();
+    const client = await getGraphQLClient();
+    const res = await client.request(
+      QUERY,
+      { outletId: parseInt(outletId), limit, offset, startDate, endDate },
+      { Authorization: `Bearer ${accessToken}` },
+    ) as any;
+    return (res.getOutletTransactions ?? []).map(mapTransaction);
+  } catch (error) {
+    console.error('Failed to get transactions query getRecentTransactions:', error);
+    return [];
   }
+}
+  static async getTransactionById(id: string): Promise<AdminTransaction | null> {
+    const QUERY = gql`
+    query GetTransactionById($id: Int!) {
+      getTransactionById(id: $id) {
+        ${TXN_FIELDS}
+      }
+    }
+  `;
+    try {
+      const { accessToken } = await AuthService.getTokens();
+      const client = await getGraphQLClient();
+      const res = await client.request(
+        QUERY,
+        { id: parseInt(id) },
+        { Authorization: `Bearer ${accessToken}` },
+      ) as any;
+      return res.getTransactionById ? mapTransaction(res.getTransactionById) : null;
+    } catch (error) {
+      console.error('Failed to get transaction detail:', error);
+      return null;
+    }
+  }
+
 
   static async getBranchById(branchId: string): Promise<Branch | null> {
     const GETBRANCH_ID = `
@@ -398,29 +463,36 @@ export class AdminService {
     }
   }
 
- 
 
-  static async getOutletById(outletId: string): Promise<AdminOutlet | null> {
+
+  static async getOutletById(outletId: string): Promise<Outlet | null> {
     const GETOUTLET_ID = `
-    query GetOutletById($outletId: ID!) {
-      getOutletById(id: $outletId) {
-        id
-        name
-        outletType
-        address
-        branchId
-        createdAt
-        status
-        phone
-        code
-        governmentTax
-        serviceCharge
-        latitude
-        longitude
-        c
-        staff { id isPresent }
-      }
-    }`
+      query GetOutletById($outletId: ID!) {
+        getOutletById(id: $outletId) {
+          id
+          name
+          outletType
+          address
+          branchId
+          createdAt
+          status
+          phone
+          code
+          governmentTax
+          serviceCharge
+          latitude
+          longitude
+          bannerImage
+          wifiSSID
+          tin
+          ptu
+          bir
+          isVatRegistered
+          vatZeroSale
+          vatTypeId
+          staff { id isPresent }
+        }
+      }`
     try {
       const { accessToken } = await AuthService.getTokens();
       const client = await getGraphQLClient();
@@ -447,6 +519,12 @@ export class AdminService {
         createdAt: o.createdAt,
         assignedCashierIds: o.staff?.map((s: any) => s.id) ?? [],
         currentCashiers: o.staff?.filter((s: any) => s.isPresent).map((s: any) => ({ id: s.id, isPresent: s.isPresent })) ?? [],
+        tin: o.tin,
+        ptu: o.ptu,
+        bir: o.bir,
+        isVatRegistered: o.isVatRegistered,
+        vatZeroSale: o.vatZeroSale,
+        vatTypeId: o.vatTypeId,
       };
     } catch (error) {
       console.error('Failed to get outlet by id:', error);
@@ -517,57 +595,66 @@ export class AdminService {
     latitude?: number;
     longitude?: number;
     bannerImage?: string;
+    tin?: string;
+    ptu?: string;
+    bir?: string;
+    isVatRegistered?: boolean;
+    vatZeroSale?: number;
+    vatTypeId?: number;
+    outletPromos?: OutletPromoInput[];
   }): Promise<AdminOutlet> {
     const CREATE_OUTLET_MUTATION = gql`
-      mutation CreateOutlet(
-        $branchId: ID!
-        $name: String!
-        $address: String!
-        $phone: String
-        $outletType: OutletType!
-        $status: OutletStatus!
-        $code: String!
-        $governmentTax: Float!
-        $serviceCharge: Float!
-        $latitude: Float
-        $longitude: Float
-        $bannerImage: String
+    mutation CreateOutlet(
+      $branchId: ID!
+      $name: String!
+      $address: String!
+      $phone: String
+      $outletType: OutletType!
+      $status: OutletStatus!
+      $code: String!
+      $governmentTax: Float!
+      $serviceCharge: Float!
+      $latitude: Float
+      $longitude: Float
+      $bannerImage: String
+      $tin: String
+      $ptu: String
+      $bir: String
+      $isVatRegistered: Boolean
+      $vatZeroSale: Float
+      $vatTypeId: Int
+      $outletPromos: [OutletPromoInput!]
+    ) {
+      createOutlet(
+        branchId: $branchId
+        name: $name
+        address: $address
+        phone: $phone
+        outletType: $outletType
+        status: $status
+        code: $code
+        governmentTax: $governmentTax
+        serviceCharge: $serviceCharge
+        latitude: $latitude
+        longitude: $longitude
+        bannerImage: $bannerImage
+        tin: $tin
+        ptu: $ptu
+        bir: $bir
+        isVatRegistered: $isVatRegistered
+        vatZeroSale: $vatZeroSale
+        vatTypeId: $vatTypeId
+        outletPromos: $outletPromos
       ) {
-        createOutlet(
-          branchId: $branchId
-          name: $name
-          address: $address
-          phone: $phone
-          outletType: $outletType
-          status: $status
-          code: $code
-          governmentTax: $governmentTax
-          serviceCharge: $serviceCharge
-          latitude: $latitude
-          longitude: $longitude
-          bannerImage: $bannerImage
-        ) {
-          id
-          name
-          address
-          phone
-          outletType
-          status
-          code
-          governmentTax
-          serviceCharge
-          latitude
-          longitude
-          bannerImage
-          branchId
-          createdAt
-          staff {
-            id
-            isPresent
-          }
-        }
+        id name address phone outletType status code
+        governmentTax serviceCharge latitude longitude bannerImage
+        tin ptu bir isVatRegistered vatZeroSale vatTypeId
+        branchId createdAt
+        staff { id isPresent }
+        outletPromos { id promoTypeId discount isActive }
       }
-    `;
+    }
+  `;
 
     try {
       const { accessToken } = await AuthService.getTokens();
@@ -665,6 +752,13 @@ export class AdminService {
     longitude?: number;
     isActive?: boolean;
     bannerImage?: string;
+    tin?: string;
+    ptu?: string;
+    bir?: string;
+    isVatRegistered?: boolean;
+    vatZeroSale?: number;
+    vatTypeId?: number;
+    outletPromos?: OutletPromoInput[];
   }): Promise<AdminOutlet> {
     const UPDATE_OUTLET_MUTATION = gql`
       mutation UpdateOutlet(
@@ -681,6 +775,13 @@ export class AdminService {
         $longitude: Float
         $isActive: Boolean
         $bannerImage: String
+        $tin: String
+        $ptu: String
+        $bir: String
+        $isVatRegistered: Boolean
+        $vatZeroSale: Float
+        $vatTypeId: Int
+        $outletPromos: [OutletPromoInput!]
       ) {
         updateOutlet(
           outletId: $outletId
@@ -696,6 +797,13 @@ export class AdminService {
           longitude: $longitude
           isActive: $isActive
           bannerImage: $bannerImage
+          tin: $tin
+          ptu: $ptu
+          bir: $bir
+          isVatRegistered: $isVatRegistered
+          vatZeroSale: $vatZeroSale
+          vatTypeId: $vatTypeId
+          outletPromos: $outletPromos
         ) {
           id
           name
@@ -709,6 +817,13 @@ export class AdminService {
           latitude
           longitude
           bannerImage
+          tin
+          ptu
+          bir
+          isVatRegistered
+          vatZeroSale
+          vatTypeId  
+          outletPromos { id promoTypeId discount isActive }
           branchId
           createdAt
           staff { id isPresent }
@@ -818,26 +933,35 @@ export class AdminService {
     }
   }
 
-  static async assignStaffToOutlet(outletId: string, userIds: string[]): Promise<void> {
+  // adminService.ts
+  static async assignStaffToOutlet(
+    outletId: string,
+    users: { userId: number; role: string }[]
+  ): Promise<void> {
     const ASSIGN_STAFF_MUTATION = gql`
-      mutation AssignStaffToOutlet($outletId: ID!, $userIds: [ID!]!) {
-        assignStaffToOutlet(outletId: $outletId, userIds: $userIds) {
-          success
+    mutation AddOutletStaff($outletId: ID!, $users: [OutletStaffInput!]!) {
+      AddOutletStaff(outletId: $outletId, users: $users) {
+        id
+        name
+        staff {
+          id
+          fullname
         }
       }
-    `;
-
-    try {
-      const { accessToken } = await AuthService.getTokens();
-      const client = await getGraphQLClient();
-      await client.request(ASSIGN_STAFF_MUTATION, { outletId, userIds }, {
-        Authorization: `Bearer ${accessToken}`
-      });
-      console.log("Success assigning staff to outlet");
-    } catch (error) {
-      console.error("Failed to assign staff to outlet:", error);
-      throw error;
     }
+  `;
+    const { accessToken } = await AuthService.getTokens();
+    const client = await getGraphQLClient();
+    await client.request(
+      ASSIGN_STAFF_MUTATION,
+      {
+        outletId, users: users.map(u => ({
+          userId: Number(u.userId),
+          role: u.role
+        }))
+      },
+      { Authorization: `Bearer ${accessToken}` }
+    );
   }
 
   static async getItemsByOutlet(outletId: string): Promise<any[]> {

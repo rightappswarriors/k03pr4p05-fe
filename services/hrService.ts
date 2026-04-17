@@ -115,7 +115,6 @@ export class HrService {
     fullname: string;
     email: string;
     password: string;
-    role: string;
     departmentId?: number;
     positionId?: string;
   }): Promise<any> {
@@ -124,7 +123,6 @@ export class HrService {
         $fullname: String!
         $email: String!
         $password: String!
-        $role: Role
         $departmentId: Int
         $positionId: String
       ) {
@@ -132,7 +130,6 @@ export class HrService {
           fullname: $fullname
           email: $email
           password: $password
-          role: $role
           departmentId: $departmentId
           positionId: $positionId
         ) {
@@ -146,9 +143,13 @@ export class HrService {
         }
       }
     `;
+    try {
+      const res = await graphQLRequest<{ createHRUser: any }>(mutation, payload);
+      return res.createHRUser;
 
-    const res = await graphQLRequest<{ createHRUser: any }>(mutation, payload);
-    return res.createHRUser;
+    } catch (error) {
+      throw new Error(`Failed to create HR user: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   static async checkUserTimeInStatus(userId: string): Promise<{ hasTimeIn: boolean }> {

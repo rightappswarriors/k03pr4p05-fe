@@ -19,6 +19,8 @@ import React, {
   useEffect,
   useState,
 } from 'react';
+import { PromoTypeService } from '@/services/promoTypeService';
+import { ContactService } from '@/services/contactService';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -47,6 +49,8 @@ export interface MasterFileState {
   subCenters: MasterItem[];
   accountTitles: MasterItem[];
   positions: MasterItem[];
+  contacts: MasterItem[];
+  promoTypes: MasterItem[];
 }
 
 export type TableKey = keyof MasterFileState;
@@ -68,6 +72,8 @@ const INITIAL: MasterFileState = {
   subCenters: [],
   accountTitles: [],
   positions: [],
+  promoTypes: [],
+  contacts: [],
 };
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -106,15 +112,19 @@ export function MasterFileProvider({
         subCenters,
         accountTitles,
         positions,
+        contact,
+        promoTypes,
       ] = await Promise.all([
         safeLoad(() => OrgCategoryService.getOrgCategories(), []),
         safeLoad(() => VatTypeService.getAll(), []),
         safeLoad(() => DepartmentService.getAll(), []),
-        safeLoad(() => PositionService.getAll(orgId), []),
+        safeLoad(() => PositionService.getAll(), []),
         safeLoad(() => CenterService.getAll(), []),
         safeLoad(() => SubCenterService.getAll(), []),
         safeLoad(() => MasterFileFinanceService.getAccountTitles(), []),
-        safeLoad(() => PositionService.getAll(orgId), []),
+        safeLoad(() => PositionService.getAll(), []),
+        safeLoad(() => ContactService.getContacts(orgId), []), // ✅ new Contacts table, branch-agnostic for now
+        safeLoad(() => PromoTypeService.getAll(), []),
       ]);
 
       setState({
@@ -150,6 +160,15 @@ export function MasterFileProvider({
         positions: (positions || []).map((p: any) => ({
           id: p.id,
           label: p.name,
+        })),
+        contacts: (contact || []).map((c: any) => ({
+          id: String(c.id),
+          label: c.label,
+        })),
+        promoTypes: (promoTypes || []).map((p: any) => ({
+          id: String(p.id),
+          label: p.name,
+          description: p.description,
         })),
       });
     };
@@ -216,4 +235,14 @@ export function useSubCenterLabels() {
 }
 export function useAccountTitleLabels() {
   return useMasterFile().accountTitles.map((i) => i.label);
+}
+export function useContactLabels() {
+  return useMasterFile().contacts.map((i) => i.label);
+}
+
+export function usePromoTypes() {
+  return useMasterFile().promoTypes;
+}
+export function usePromoTypeLabels() {
+  return useMasterFile().promoTypes.map((i) => i.label);
 }

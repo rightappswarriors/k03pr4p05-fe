@@ -15,7 +15,7 @@ export class SalesService {
           cashReceived
           change
           paymentMethod
-          paymentType
+          
           status
           createdAt
           itemsSold {
@@ -26,7 +26,7 @@ export class SalesService {
         }
       }
     `;
-    
+
     const response = await graphQLRequest<{ getTransactionsByStoreId: any[] }>(QUERY, {
       outletId,
       startDate,
@@ -35,39 +35,40 @@ export class SalesService {
     return response.getTransactionsByStoreId;
   }
 
-  static async getTransactionsByOrgId(orgId: number, startDate?: string, endDate?: string): Promise<any[]> {
+  static async getTransactionsByOrgId(startDate?: string, endDate?: string): Promise<any[]> {
     const QUERY = gql`
-      query GetTransactionsByOrgId($orgId: Int!, $startDate: String, $endDate: String) {
-        getTransactionsByOrgId(orgId: $orgId, startDate: $startDate, endDate: $endDate) {
-          id
-          outletId
-          cashierId
-          total
-          subtotal
-          vatAmount
-          cashReceived
-          change
-          paymentMethod
-          paymentType
-          status
-          createdAt
-          itemsSold {
-            itemId
-            quantity
-            price
-          }
+    query GetTransactionsByOrgId($startDate: String, $endDate: String) {
+      getTransactionsByOrgId(startDate: $startDate, endDate: $endDate) {
+        id
+        outletId
+        cashierId
+        total
+        subtotal
+        vatAmount
+        cashReceived
+        change
+        paymentMethod
+        status
+        createdAt
+        items {
+          itemId
+          quantity
+          priceAtSale
         }
       }
-    `;
-
-    const response = await graphQLRequest<{ getTransactionsByOrgId: any[] }>(QUERY, {
-      orgId,
-      startDate,
-      endDate,
-    });
-    return response.getTransactionsByOrgId;
+    }
+  `;
+    try {
+      const response = await graphQLRequest<{ getTransactionsByOrgId: any[] }>(QUERY, {
+        startDate,
+        endDate,
+      });
+      return response.getTransactionsByOrgId;
+    } catch (error) {
+      console.error('Failed to get transactions query getTransactionsByOrgId:', error);
+      return [];
+    }
   }
-
   static async createTransaction(data: {
     outletId: number;
     cashierId: number;
@@ -77,10 +78,14 @@ export class SalesService {
     paymentMethod: string;
     status: string;
     createdAt: string;
-    itemsSold: Array<{ itemId: number; quantity: number; price: number }>;
+    itemsSold: Array<{ itemId: number; quantity: number; price: number; priceAtSale: number; unitId?: number; unitName?: string }>;
     cashReceived?: number;
     change?: number;
     paymentType?: string;
+    discountType?: string;
+    discountAmount?: number;
+    outletPromoId?: number;
+    promoDiscountAmt?: number;
   }): Promise<any> {
     const MUTATION = gql`
       mutation CreateTransaction(
@@ -96,6 +101,10 @@ export class SalesService {
         $cashReceived: Float
         $change: Float
         $paymentType: String
+        $discountType: String
+        $discountAmount: Float
+        $outletPromoId: Int
+        $promoDiscountAmt: Float
       ) {
         createTransaction(
           outletId: $outletId
@@ -110,6 +119,10 @@ export class SalesService {
           cashReceived: $cashReceived
           change: $change
           paymentType: $paymentType
+          discountType: $discountType
+          discountAmount: $discountAmount
+          outletPromoId: $outletPromoId
+          promoDiscountAmt: $promoDiscountAmt
         ) {
           id
           outletId
@@ -133,6 +146,11 @@ export class SalesService {
         status: data.status,
         createdAt: data.createdAt,
         itemsSold: data.itemsSold,
+        discountType: data.discountType,
+        discountAmount: data.discountAmount,
+        outletPromoId: data.outletPromoId,
+        promoDiscountAmt: data.promoDiscountAmt,
+
         cashReceived: data.cashReceived,
         change: data.change,
         paymentType: data.paymentType,

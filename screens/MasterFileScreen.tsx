@@ -1,32 +1,32 @@
 // screens/MasterFileScreen.tsx
-// Master File — each sub-table is its own focused screen.
-// The MasterFile "home" shows a menu of all 6 tables.
-// Tapping one navigates into that table's dedicated list with search.
-
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import {
+  AtSign,
   BookOpen,
   ChevronRight,
-  PhilippinePeso,
   Edit2,
   FolderOpen,
   LayoutGrid,
+  PhilippinePeso,
   Plus,
   Search,
+  Tag,
   Trash2,
   UserCheck,
-  Users,
   X,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -37,6 +37,8 @@ import {
 } from '@/contexts/MasterFileContext';
 import { TABLE_CONFIG } from '@/utils/masterfileTable';
 import { PositionService } from '@/services/positionService';
+import { AdminService } from '@/services/ManagerService';
+import { useResponsiveGrid } from '@/hooks/useResponsiveGrid';
 
 // ─── Table meta ───────────────────────────────────────────────────────────────
 
@@ -61,6 +63,15 @@ const TABLES: TableMeta[] = [
     placeholder: 'e.g. Frozen Foods',
   },
   {
+    key: 'promoTypes',
+    label: 'Promo Types',
+    description: 'Discount types used on POS — Senior, PWD, Promo, etc.',
+    icon: Tag, // import Tag from lucide-react-native
+    hasColor: false,
+    accent: '#F43F5E',
+    placeholder: 'e.g. Senior Citizen',
+  },
+  {
     key: 'vatTypes',
     label: 'VAT Types',
     description: 'Used in Inventory + Dashboard entry modal',
@@ -78,15 +89,17 @@ const TABLES: TableMeta[] = [
     accent: '#3B82F6',
     placeholder: 'e.g. Logistics',
   },
-   {
-    key: 'positions',
-    label: 'Positions',
-    description: 'RBAC positions with permissions used in HR',
-    icon: UserCheck,
+  {
+    key: 'contacts',
+    label: 'Contacts',
+    description:
+      'Global or branch-specific email contacts for Restock Scheduling',
+    icon: AtSign,
     hasColor: false,
-    accent: '#6366F1',
-    placeholder: 'e.g. Manager',
+    accent: '#0EA5E9',
+    placeholder: 'e.g. Main Supplier Cebu',
   },
+  
   {
     key: 'centers',
     label: 'Centers',
@@ -95,6 +108,15 @@ const TABLES: TableMeta[] = [
     hasColor: false,
     accent: '#06B6D4',
     placeholder: 'e.g. Iriga Outlet',
+  },
+  {
+    key: 'positions',
+    label: 'Positions',
+    description: 'RBAC positions with permissions used in HR',
+    icon: UserCheck,
+    hasColor: false,
+    accent: '#6366F1',
+    placeholder: 'e.g. Manager',
   },
   {
     key: 'subCenters',
@@ -114,7 +136,7 @@ const TABLES: TableMeta[] = [
     accent: '#1B3A6B',
     placeholder: 'e.g. Transportation Allowance',
   },
- 
+  
 ];
 
 const DEPT_COLORS = [
@@ -138,9 +160,7 @@ type PermissionRow = {
   canEdit: boolean;
   canDelete: boolean;
 };
-
 type PermissionTemplateKey = 'Admin' | 'Staff' | 'Viewer';
-
 type PageItem = { id: string; key: string; label: string };
 
 const PERMISSION_TEMPLATES: Record<PermissionTemplateKey, PermissionRow> = {
@@ -156,7 +176,660 @@ const PERMISSION_COLUMNS = [
   { key: 'canDelete', label: 'Delete' },
 ] as const;
 
-// ─── Add / Edit Modal ─────────────────────────────────────────────────────────
+interface BranchOption {
+  id: number;
+  name: string;
+  address: string;
+  isActive: boolean;
+}
+
+// ─── Branch Selector Modal ────────────────────────────────────────────────────
+
+function BranchSelectorModal({
+  visible,
+  onClose,
+  onSelect,
+  colors,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onSelect: (branch: BranchOption) => void;
+  colors: any;
+}) {
+  const [branches, setBranches] = useState<BranchOption[]>([]);
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const load = async (q = '') => {
+    setLoading(true);
+    try {
+      setBranches(await AdminService.getBranchesMinimal(q));
+    } catch (e) {
+      console.error('Failed to load branches', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!visible) return;
+    setSearch('');
+    load('');
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    const t = setTimeout(() => load(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search, visible]);
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            paddingTop: Platform.OS === 'ios' ? 56 : 20,
+            paddingBottom: 16,
+            paddingHorizontal: 20,
+            backgroundColor: '#0EA5E9',
+          }}
+        >
+          <TouchableOpacity onPress={onClose}>
+            <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 15 }}>
+              Cancel
+            </Text>
+          </TouchableOpacity>
+          <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>
+            Select Branch
+          </Text>
+          <View style={{ width: 60 }} />
+        </View>
+        <View style={{ padding: 12 }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              backgroundColor: colors.surface,
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: colors.border,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+            }}
+          >
+            <Search size={14} color={colors.textSecondary} strokeWidth={2} />
+            <TextInput
+              style={{ flex: 1, fontSize: 14, color: colors.text }}
+              placeholder="Search branch…"
+              placeholderTextColor={colors.textSecondary}
+              value={search}
+              onChangeText={setSearch}
+            />
+            {search.length > 0 && (
+              <TouchableOpacity onPress={() => setSearch('')}>
+                <X size={14} color={colors.textSecondary} />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+        {loading ? (
+          <View
+            style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <ActivityIndicator color="#0EA5E9" />
+          </View>
+        ) : branches.length === 0 ? (
+          <View
+            style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Text style={{ color: colors.textSecondary }}>
+              No branches found.
+            </Text>
+          </View>
+        ) : (
+          <ScrollView
+            contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 40 }}
+          >
+            {branches.map((b) => (
+              <TouchableOpacity
+                key={b.id}
+                style={{
+                  padding: 14,
+                  borderRadius: 12,
+                  marginBottom: 8,
+                  backgroundColor: colors.card,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}
+                onPress={() => {
+                  onSelect(b);
+                  onClose();
+                }}
+              >
+                <View
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                >
+                  <View
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      backgroundColor: b.isActive ? '#10B981' : colors.border,
+                    }}
+                  />
+                  <Text
+                    style={{
+                      fontSize: 15,
+                      fontWeight: '700',
+                      color: colors.text,
+                      flex: 1,
+                    }}
+                    numberOfLines={1}
+                  >
+                    {b.name}
+                  </Text>
+                  {!b.isActive && (
+                    <View
+                      style={{
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                        borderRadius: 6,
+                        backgroundColor: colors.border,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 10,
+                          fontWeight: '700',
+                          color: colors.textSecondary,
+                        }}
+                      >
+                        INACTIVE
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color: colors.textSecondary,
+                    marginTop: 4,
+                    marginLeft: 16,
+                  }}
+                >
+                  {b.address}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
+      </View>
+    </Modal>
+  );
+}
+
+// ─── Contact Form Modal (full page sheet) ────────────────────────────────────
+
+function ContactFormModal({
+  visible,
+  onClose,
+  onSave,
+  existing,
+  colors,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onSave: (item: MasterItem, extra: Record<string, any>) => void;
+  existing: MasterItem | null;
+  colors: any;
+}) {
+  const ACCENT = '#0EA5E9';
+
+  const [scope, setScope] = useState<'global' | 'branch'>('global');
+  const [branch, setBranch] = useState<BranchOption | null>(null);
+  const [label, setLabel] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [position, setPosition] = useState('');
+  const [department, setDepartment] = useState('');
+  const [notes, setNotes] = useState('');
+  const [isActive, setIsActive] = useState(true);
+  const [error, setError] = useState('');
+  const [branchOpen, setBranchOpen] = useState(false);
+
+  useEffect(() => {
+    if (!visible) return;
+    const ex = existing as any;
+    setScope(ex?.branchId ? 'branch' : 'global');
+    setBranch(ex?.branch ?? null);
+    setLabel(ex?.label ?? '');
+    setFullName(ex?.fullName ?? ex?.name ?? '');
+    setEmail(ex?.email ?? '');
+    setPhone(ex?.phone ?? '');
+    setPosition(ex?.position ?? '');
+    setDepartment(ex?.department ?? '');
+    setNotes(ex?.notes ?? '');
+    setIsActive(ex?.isActive !== false);
+    setError('');
+  }, [visible, existing]);
+
+  const handleSave = () => {
+    if (!label.trim()) {
+      setError('Label is required.');
+      return;
+    }
+    if (!email.trim()) {
+      setError('Email address is required.');
+      return;
+    }
+    if (scope === 'branch' && !branch) {
+      setError('Select a branch.');
+      return;
+    }
+    onSave(
+      { id: existing?.id ?? `mf_${Date.now()}`, label: label.trim() },
+      {
+        branchId: scope === 'branch' ? branch!.id : null,
+        fullName: fullName.trim() || null,
+        email: email.trim(),
+        phone: phone.trim() || null,
+        position: position.trim() || null,
+        department: department.trim() || null,
+        notes: notes.trim() || null,
+        isActive,
+      },
+    );
+    onClose();
+  };
+
+  const inputStyle = {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14 as const,
+    color: colors.text,
+  };
+  const FL = ({
+    t,
+    req,
+    hint,
+  }: {
+    t: string;
+    req?: boolean;
+    hint?: string;
+  }) => (
+    <View style={{ marginBottom: 4 }}>
+      <Text
+        style={{
+          fontSize: 11,
+          fontWeight: '700',
+          letterSpacing: 0.8,
+          color: colors.textSecondary,
+          marginBottom: hint ? 2 : 6,
+        }}
+      >
+        {t}
+        {req ? ' *' : ''}
+      </Text>
+      {hint ? (
+        <Text
+          style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 6 }}
+        >
+          {hint}
+        </Text>
+      ) : null}
+    </View>
+  );
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1, backgroundColor: colors.background }}
+      >
+        {/* Header */}
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            paddingTop: Platform.OS === 'ios' ? 56 : 20,
+            paddingBottom: 16,
+            paddingHorizontal: 20,
+            backgroundColor: ACCENT,
+          }}
+        >
+          <TouchableOpacity
+            onPress={onClose}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 15 }}>
+              Cancel
+            </Text>
+          </TouchableOpacity>
+          <Text style={{ color: '#fff', fontSize: 16, fontWeight: '800' }}>
+            {existing ? 'Edit Contact' : 'Add Contact'}
+          </Text>
+          <AtSign size={20} color="rgba(255,255,255,0.75)" strokeWidth={2} />
+        </View>
+
+        <ScrollView
+          contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {/* ── Scope ── */}
+          <FL
+            t="SCOPE"
+            hint="Global = all branches · Branch-specific = one branch only"
+          />
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 20 }}>
+            {(['global', 'branch'] as const).map((opt) => (
+              <TouchableOpacity
+                key={opt}
+                onPress={() => {
+                  setScope(opt);
+                  if (opt === 'global') setBranch(null);
+                }}
+                style={{
+                  flex: 1,
+                  paddingVertical: 11,
+                  borderRadius: 10,
+                  borderWidth: 1.5,
+                  alignItems: 'center',
+                  borderColor: scope === opt ? ACCENT : colors.border,
+                  backgroundColor:
+                    scope === opt ? ACCENT + '18' : colors.surface,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontWeight: '700',
+                    color: scope === opt ? ACCENT : colors.textSecondary,
+                  }}
+                >
+                  {opt === 'global' ? '🌐  Global' : '🏢  Branch-specific'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* ── Branch picker ── */}
+          {scope === 'branch' && (
+            <View style={{ marginBottom: 20 }}>
+              <FL t="BRANCH" req />
+              <TouchableOpacity
+                onPress={() => setBranchOpen(true)}
+                style={[
+                  inputStyle,
+                  {
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 10,
+                    borderColor: branch ? ACCENT : colors.error + '80',
+                  },
+                ]}
+              >
+                <View
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: 4,
+                    flexShrink: 0,
+                    backgroundColor: branch?.isActive
+                      ? '#10B981'
+                      : colors.border,
+                  }}
+                />
+                <Text
+                  style={{
+                    flex: 1,
+                    fontSize: 14,
+                    color: branch ? colors.text : colors.textSecondary,
+                  }}
+                  numberOfLines={1}
+                >
+                  {branch ? branch.name : 'Tap to select a branch…'}
+                </Text>
+                {branch ? (
+                  <TouchableOpacity
+                    onPress={() => setBranch(null)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <X size={14} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                ) : (
+                  <ChevronRight size={14} color={colors.textSecondary} />
+                )}
+              </TouchableOpacity>
+              {branch && (
+                <Text
+                  style={{
+                    fontSize: 11,
+                    color: colors.textSecondary,
+                    marginTop: 4,
+                  }}
+                >
+                  {branch.address}
+                </Text>
+              )}
+            </View>
+          )}
+
+          {/* ── Divider ── */}
+          <View
+            style={{
+              height: 1,
+              backgroundColor: colors.border,
+              marginBottom: 20,
+            }}
+          />
+
+          {/* ── Label ── */}
+          <View style={{ marginBottom: 16 }}>
+            <FL
+              t="LABEL"
+              req
+              hint='Short display name, e.g. "Main Supplier – Cebu"'
+            />
+            <TextInput
+              style={inputStyle}
+              placeholder="e.g. Main Supplier Cebu"
+              placeholderTextColor={colors.textSecondary}
+              value={label}
+              onChangeText={setLabel}
+              returnKeyType="next"
+            />
+          </View>
+
+          {/* ── Full name ── */}
+          <View style={{ marginBottom: 16 }}>
+            <FL t="FULL NAME" />
+            <TextInput
+              style={inputStyle}
+              placeholder="e.g. Juan dela Cruz"
+              placeholderTextColor={colors.textSecondary}
+              value={fullName}
+              onChangeText={setFullName}
+              returnKeyType="next"
+            />
+          </View>
+
+          {/* ── Email ── */}
+          <View style={{ marginBottom: 16 }}>
+            <FL t="EMAIL ADDRESS" req />
+            <TextInput
+              style={inputStyle}
+              placeholder="supplier@example.com"
+              placeholderTextColor={colors.textSecondary}
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              returnKeyType="next"
+            />
+          </View>
+
+          {/* ── Phone ── */}
+          <View style={{ marginBottom: 16 }}>
+            <FL t="PHONE" />
+            <TextInput
+              style={inputStyle}
+              placeholder="+63 912 345 6789"
+              placeholderTextColor={colors.textSecondary}
+              value={phone}
+              onChangeText={setPhone}
+              keyboardType="phone-pad"
+              returnKeyType="next"
+            />
+          </View>
+
+          {/* ── Position & Department ── */}
+          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
+            <View style={{ flex: 1 }}>
+              <FL t="POSITION" />
+              <TextInput
+                style={inputStyle}
+                placeholder="e.g. Purchasing Mgr"
+                placeholderTextColor={colors.textSecondary}
+                value={position}
+                onChangeText={setPosition}
+                returnKeyType="next"
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <FL t="DEPARTMENT" />
+              <TextInput
+                style={inputStyle}
+                placeholder="e.g. Logistics"
+                placeholderTextColor={colors.textSecondary}
+                value={department}
+                onChangeText={setDepartment}
+                returnKeyType="next"
+              />
+            </View>
+          </View>
+
+          {/* ── Notes ── */}
+          <View style={{ marginBottom: 16 }}>
+            <FL t="NOTES" />
+            <TextInput
+              style={[
+                inputStyle,
+                { minHeight: 80, textAlignVertical: 'top', paddingTop: 12 },
+              ]}
+              placeholder="Any additional notes…"
+              placeholderTextColor={colors.textSecondary}
+              value={notes}
+              onChangeText={setNotes}
+              multiline
+            />
+          </View>
+
+          {/* ── isActive ── */}
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              backgroundColor: colors.surface,
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: colors.border,
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              marginBottom: 16,
+            }}
+          >
+            <View>
+              <Text
+                style={{ fontSize: 14, fontWeight: '600', color: colors.text }}
+              >
+                Active
+              </Text>
+              <Text
+                style={{
+                  fontSize: 12,
+                  color: colors.textSecondary,
+                  marginTop: 2,
+                }}
+              >
+                Inactive contacts won't appear in pickers
+              </Text>
+            </View>
+            <Switch
+              value={isActive}
+              onValueChange={setIsActive}
+              trackColor={{ false: colors.border, true: ACCENT + '80' }}
+              thumbColor={isActive ? ACCENT : colors.textSecondary}
+            />
+          </View>
+
+          {/* ── Error ── */}
+          {error ? (
+            <View
+              style={{
+                backgroundColor: '#EF444415',
+                borderWidth: 1,
+                borderColor: '#EF4444',
+                borderRadius: 10,
+                padding: 12,
+                marginBottom: 12,
+              }}
+            >
+              <Text style={{ fontSize: 13, color: '#EF4444' }}>{error}</Text>
+            </View>
+          ) : null}
+
+          {/* ── Save ── */}
+          <TouchableOpacity
+            style={{
+              backgroundColor: ACCENT,
+              borderRadius: 12,
+              paddingVertical: 15,
+              alignItems: 'center',
+            }}
+            onPress={handleSave}
+            activeOpacity={0.85}
+          >
+            <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>
+              {existing ? 'Save Changes' : 'Add Contact'}
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+
+        <BranchSelectorModal
+          visible={branchOpen}
+          onClose={() => setBranchOpen(false)}
+          onSelect={(b) => setBranch(b)}
+          colors={colors}
+        />
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+// ─── Generic ItemModal (all non-contact tables) ───────────────────────────────
+
 function ItemModal({
   visible,
   onClose,
@@ -167,7 +840,7 @@ function ItemModal({
 }: {
   visible: boolean;
   onClose: () => void;
-  onSave: (item: MasterItem, extra?: Record<string, any>) => void; // ← 2 args
+  onSave: (item: MasterItem, extra?: Record<string, any>) => void;
   existing: MasterItem | null;
   meta: TableMeta;
   colors: any;
@@ -176,47 +849,46 @@ function ItemModal({
   const [color, setColor] = useState(DEPT_COLORS[0]);
   const [error, setError] = useState('');
   const [extraValues, setExtraValues] = useState<Record<string, string>>({});
-  const [template, setTemplate] = useState<'Admin' | 'Staff' | 'Viewer' | 'Custom'>('Staff');
+  const [template, setTemplate] = useState<
+    'Admin' | 'Staff' | 'Viewer' | 'Custom'
+  >('Staff');
   const [pages, setPages] = useState<PageItem[]>([]);
-  const [permissions, setPermissions] = useState<Record<string, PermissionRow>>({});
-
+  const [permissions, setPermissions] = useState<Record<string, PermissionRow>>(
+    {},
+  );
   const config = TABLE_CONFIG.find((t) => t.key === meta.key);
+
   React.useEffect(() => {
-    if (visible) {
-      setLabel(existing?.label ?? '');
-      setColor(existing?.color ?? DEPT_COLORS[0]);
-      setError('');
-      setExtraValues(
-        Object.fromEntries(
-          config?.extraFields?.map((f) => [
-            f.key,
-            String((existing as any)?.[f.key] ?? ''),
-          ]) ?? [],
-        ),
-      );
-      if (meta.key === 'positions') {
-        setTemplate(existing ? 'Custom' : 'Staff');
-      }
-    }
-  }, [visible, existing, config, meta.key]);
+    if (!visible) return;
+    setLabel(existing?.label ?? '');
+    setColor(existing?.color ?? DEPT_COLORS[0]);
+    setError('');
+    setExtraValues(
+      Object.fromEntries(
+        config?.extraFields?.map((f) => [
+          f.key,
+          String((existing as any)?.[f.key] ?? ''),
+        ]) ?? [],
+      ),
+    );
+    if (meta.key === 'positions') setTemplate(existing ? 'Custom' : 'Staff');
+  }, [visible, existing]);
 
   React.useEffect(() => {
     if (!visible || meta.key !== 'positions') return;
     let active = true;
-
-    const loadPages = async () => {
+    const run = async () => {
       try {
         const rawPages = await PositionService.getPages();
         if (!active) return;
-        const normalized: PageItem[] = rawPages.map((page: any) => ({
-          id: String(page.id),
-          key: page.key,
-          label: page.label,
+        const normalized: PageItem[] = rawPages.map((p: any) => ({
+          id: String(p.id),
+          key: p.key,
+          label: p.label,
         }));
         setPages(normalized);
-
-        const existingPermissions = (existing as any)?.permissions?.reduce(
-          (acc: Record<string, PermissionRow>, perm: any) => ({
+        const ep = (existing as any)?.permissions?.reduce(
+          (acc: any, perm: any) => ({
             ...acc,
             [perm.pageId]: {
               canView: perm.canView,
@@ -225,60 +897,52 @@ function ItemModal({
               canDelete: perm.canDelete,
             },
           }),
-          {} as Record<string, PermissionRow>,
+          {},
         );
-
-        const selected = existingPermissions && Object.keys(existingPermissions).length > 0
-          ? 'Custom'
-          : template;
-
-        setTemplate(selected as 'Admin' | 'Staff' | 'Viewer' | 'Custom');
-
+        const sel = ep && Object.keys(ep).length > 0 ? 'Custom' : template;
+        setTemplate(sel as any);
         setPermissions(
           Object.fromEntries(
-            normalized.map((page: PageItem): [string, PermissionRow] => [
-              page.id,
-              existingPermissions?.[page.id] ??
-                (selected === 'Custom'
+            normalized.map((p): [string, PermissionRow] => [
+              p.id,
+              ep?.[p.id] ??
+                (sel === 'Custom'
                   ? {
                       canView: true,
                       canCreate: false,
                       canEdit: false,
                       canDelete: false,
                     }
-                  : PERMISSION_TEMPLATES[selected as PermissionTemplateKey]),
+                  : PERMISSION_TEMPLATES[sel as PermissionTemplateKey]),
             ]),
-          ) as Record<string, PermissionRow>,
+          ),
         );
-      } catch (error) {
-        console.warn('Failed to load permission pages', error);
+      } catch {
+        console.warn('Failed to load permission pages');
       }
     };
-
-    loadPages();
+    run();
     return () => {
       active = false;
     };
-  }, [visible, meta.key, existing, template]);
+  }, [visible, meta.key, existing]);
 
   const handleSave = () => {
     if (!label.trim()) {
       setError('Name is required.');
       return;
     }
-
     let extra: Record<string, any> | undefined = config?.extraFields
       ? Object.fromEntries(
           config.extraFields.map((f) => [
             f.key,
             f.type === 'number'
-              ? parseFloat(extraValues[f.key] ?? '0') // ✅ send raw number, NO /100
+              ? parseFloat(extraValues[f.key] ?? '0')
               : (extraValues[f.key] ?? ''),
           ]),
         )
       : undefined;
-
-    if (meta.key === 'positions') {
+    if (meta.key === 'positions')
       extra = {
         ...(extra ?? {}),
         permissions: Object.entries(permissions).map(([pageId, perm]) => ({
@@ -286,8 +950,6 @@ function ItemModal({
           ...perm,
         })),
       };
-    }
-
     onSave(
       {
         id: existing?.id ?? `mf_${Date.now()}`,
@@ -306,18 +968,29 @@ function ItemModal({
       animationType="slide"
       onRequestClose={onClose}
     >
-      <View style={im.overlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={im.overlay}
+      >
         <TouchableOpacity
           style={{ flex: 1 }}
           activeOpacity={1}
           onPress={onClose}
         />
-        <View style={[im.sheet, { backgroundColor: colors.surface }]}>
+        <View
+          style={[
+            im.sheet,
+            {
+              backgroundColor: colors.surface,
+              maxHeight: meta.key === 'positions' ? '90%' : '75%',
+            },
+          ]}
+        >
           <View style={[im.handle, { backgroundColor: colors.border }]} />
           <View style={[im.header, { borderBottomColor: colors.border }]}>
             <Text style={[im.title, { color: colors.text }]}>
               {existing
-                ? `Edit ${meta.label.replace(/s$/, '').replace(/ \/ Positions/, '')}`
+                ? `Edit ${meta.label.replace(/s$/, '')}`
                 : `Add to ${meta.label}`}
             </Text>
             <TouchableOpacity
@@ -327,7 +1000,12 @@ function ItemModal({
               <X size={20} color={colors.textSecondary} strokeWidth={2} />
             </TouchableOpacity>
           </View>
-          <View style={im.body}>
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={im.body}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             <Text style={[im.fieldLabel, { color: colors.textSecondary }]}>
               NAME *
             </Text>
@@ -349,7 +1027,7 @@ function ItemModal({
               onSubmitEditing={handleSave}
             />
             {config?.extraFields?.map((field) => (
-              <View key={field.key}>
+              <View key={field.key} style={{ marginTop: 4 }}>
                 <Text style={[im.fieldLabel, { color: colors.textSecondary }]}>
                   {field.label.toUpperCase()} *
                 </Text>
@@ -374,50 +1052,80 @@ function ItemModal({
                 />
               </View>
             ))}
-
             {meta.key === 'positions' && (
               <>
-                <Text style={[im.fieldLabel, { color: colors.textSecondary, marginTop: 16 }]}>STARTER TEMPLATE</Text>
+                <Text
+                  style={[
+                    im.fieldLabel,
+                    { color: colors.textSecondary, marginTop: 16 },
+                  ]}
+                >
+                  STARTER TEMPLATE
+                </Text>
                 <View style={im.templateRow}>
-                  {(['Admin', 'Staff', 'Viewer', 'Custom'] as const).map((option) => (
-                    <TouchableOpacity
-                      key={option}
-                      style={[
-                        im.templateButton,
-                        template === option && im.templateButtonActive,
-                      ]}
-                      onPress={() => {
-                        setTemplate(option);
-                        if (option !== 'Custom') {
-                          setPermissions(
-                            Object.fromEntries(
-                              pages.map((page: PageItem): [string, PermissionRow] => [
-                                page.id,
-                                PERMISSION_TEMPLATES[option as PermissionTemplateKey],
-                              ]),
-                            ) as Record<string, PermissionRow>,
-                          );
-                        }
-                      }}
-                    >
-                      <Text
+                  {(['Admin', 'Staff', 'Viewer', 'Custom'] as const).map(
+                    (opt) => (
+                      <TouchableOpacity
+                        key={opt}
                         style={[
-                          im.templateLabel,
-                          template === option && { color: '#fff' },
+                          im.templateButton,
+                          template === opt && im.templateButtonActive,
                         ]}
+                        onPress={() => {
+                          setTemplate(opt);
+                          if (opt !== 'Custom')
+                            setPermissions(
+                              Object.fromEntries(
+                                pages.map((p): [string, PermissionRow] => [
+                                  p.id,
+                                  PERMISSION_TEMPLATES[
+                                    opt as PermissionTemplateKey
+                                  ],
+                                ]),
+                              ),
+                            );
+                        }}
                       >
-                        {option}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                        <Text
+                          style={[
+                            im.templateLabel,
+                            template === opt && { color: '#fff' },
+                          ]}
+                        >
+                          {opt}
+                        </Text>
+                      </TouchableOpacity>
+                    ),
+                  )}
                 </View>
-
-                <Text style={[im.fieldLabel, { color: colors.textSecondary, marginTop: 16 }]}>PERMISSION MATRIX</Text>
-                <View style={[im.matrixRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}> 
-                  <Text style={[im.matrixPageLabel, { color: colors.textSecondary }]}>Page</Text>
-                  {PERMISSION_COLUMNS.map((column) => (
-                    <Text key={column.key} style={[im.matrixHeader, { color: colors.textSecondary }]}>
-                      {column.label}
+                <Text
+                  style={[
+                    im.fieldLabel,
+                    { color: colors.textSecondary, marginTop: 16 },
+                  ]}
+                >
+                  PERMISSION MATRIX
+                </Text>
+                <View
+                  style={[
+                    im.matrixRow,
+                    { borderBottomWidth: 1, borderBottomColor: colors.border },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      im.matrixPageLabel,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
+                    Page
+                  </Text>
+                  {PERMISSION_COLUMNS.map((col) => (
+                    <Text
+                      key={col.key}
+                      style={[im.matrixHeader, { color: colors.textSecondary }]}
+                    >
+                      {col.label}
                     </Text>
                   ))}
                 </View>
@@ -430,33 +1138,32 @@ function ItemModal({
                   };
                   return (
                     <View key={page.id} style={im.matrixRow}>
-                      <Text style={[im.matrixPageLabel, { color: colors.text }]}>
+                      <Text
+                        style={[im.matrixPageLabel, { color: colors.text }]}
+                      >
                         {page.label}
                       </Text>
-                      {PERMISSION_COLUMNS.map((column) => (
+                      {PERMISSION_COLUMNS.map((col) => (
                         <TouchableOpacity
-                          key={column.key}
+                          key={col.key}
                           style={[
                             im.matrixCell,
-                            row[column.key] && im.checkboxActive,
+                            row[col.key] && im.checkboxActive,
                           ]}
                           onPress={() =>
                             setPermissions((prev) => ({
                               ...prev,
-                              [page.id]: {
-                                ...row,
-                                [column.key]: !row[column.key],
-                              },
+                              [page.id]: { ...row, [col.key]: !row[col.key] },
                             }))
                           }
                         >
                           <Text
                             style={[
                               im.matrixText,
-                              row[column.key] && { color: '#fff' },
+                              row[col.key] && { color: '#fff' },
                             ]}
                           >
-                            {row[column.key] ? '✓' : ''}
+                            {row[col.key] ? '✓' : ''}
                           </Text>
                         </TouchableOpacity>
                       ))}
@@ -500,28 +1207,26 @@ function ItemModal({
                     </TouchableOpacity>
                   ))}
                 </View>
-                {meta.hasColor && (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
+                    marginTop: 10,
+                  }}
+                >
                   <View
                     style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 8,
-                      marginTop: 10,
+                      width: 28,
+                      height: 28,
+                      borderRadius: 14,
+                      backgroundColor: color,
                     }}
-                  >
-                    <View
-                      style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: 14,
-                        backgroundColor: color,
-                      }}
-                    />
-                    <Text style={{ fontSize: 13, color: colors.textSecondary }}>
-                      Preview badge color
-                    </Text>
-                  </View>
-                )}
+                  />
+                  <Text style={{ fontSize: 13, color: colors.textSecondary }}>
+                    Preview badge color
+                  </Text>
+                </View>
               </>
             )}
             {error ? (
@@ -536,9 +1241,10 @@ function ItemModal({
                 {existing ? 'Save Changes' : 'Add Entry'}
               </Text>
             </TouchableOpacity>
-          </View>
+            <View style={{ height: 20 }} />
+          </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -549,11 +1255,7 @@ const im = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.45)',
     justifyContent: 'flex-end',
   },
-  sheet: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingBottom: 32,
-  },
+  sheet: { borderTopLeftRadius: 20, borderTopRightRadius: 20 },
   handle: {
     width: 40,
     height: 4,
@@ -577,6 +1279,7 @@ const im = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.8,
     marginBottom: 6,
+    marginTop: 10,
   },
   input: {
     borderWidth: 1,
@@ -594,7 +1297,12 @@ const im = StyleSheet.create({
     justifyContent: 'center',
   },
   swatchActive: { borderWidth: 3, borderColor: 'rgba(0,0,0,0.2)' },
-  templateRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 },
+  templateRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 8,
+  },
   templateButton: {
     paddingVertical: 10,
     paddingHorizontal: 14,
@@ -603,10 +1311,7 @@ const im = StyleSheet.create({
     borderColor: '#D1D5DB',
     backgroundColor: 'transparent',
   },
-  templateButtonActive: {
-    backgroundColor: '#4F46E5',
-    borderColor: '#4F46E5',
-  },
+  templateButtonActive: { backgroundColor: '#4F46E5', borderColor: '#4F46E5' },
   templateLabel: { fontSize: 13, fontWeight: '700', color: '#4B5563' },
   matrixRow: {
     flexDirection: 'row',
@@ -620,11 +1325,7 @@ const im = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
-  matrixPageLabel: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '500',
-  },
+  matrixPageLabel: { flex: 1, fontSize: 13, fontWeight: '500' },
   matrixCell: {
     width: 56,
     height: 36,
@@ -635,12 +1336,9 @@ const im = StyleSheet.create({
     justifyContent: 'center',
     marginLeft: 8,
   },
-  checkboxActive: {
-    backgroundColor: '#4F46E5',
-    borderColor: '#4F46E5',
-  },
+  checkboxActive: { backgroundColor: '#4F46E5', borderColor: '#4F46E5' },
   matrixText: { fontSize: 13, fontWeight: '700', color: '#374151' },
-  error: { fontSize: 12, marginTop: 6 },
+  error: { fontSize: 12, marginTop: 8 },
   saveBtn: {
     borderRadius: 12,
     paddingVertical: 14,
@@ -731,7 +1429,7 @@ const dc = StyleSheet.create({
   btnTxt: { fontSize: 14, fontWeight: '700' },
 });
 
-// ─── Skeleton pulse ───────────────────────────────────────────────────────────
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
 
 function SkeletonPulse({ style, colors }: { style: any; colors: any }) {
   const anim = React.useRef(new Animated.Value(0.35)).current;
@@ -763,8 +1461,7 @@ function SkeletonPulse({ style, colors }: { style: any; colors: any }) {
 }
 
 function SkeletonRow({ colors, hasColor }: { colors: any; hasColor: boolean }) {
-  const widths = [160, 120, 200, 140, 100, 180];
-  const w = widths[Math.floor(Math.random() * widths.length)];
+  const w = [160, 120, 200, 140, 100, 180][Math.floor(Math.random() * 6)];
   return (
     <View
       style={{
@@ -802,6 +1499,165 @@ function SkeletonRow({ colors, hasColor }: { colors: any; hasColor: boolean }) {
   );
 }
 
+// ─── Contact Row ──────────────────────────────────────────────────────────────
+
+function ContactRow({
+  item,
+  colors,
+  onEdit,
+  onDelete,
+}: {
+  item: MasterItem;
+  colors: any;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const ex = item as any;
+  const isGlobal = !ex.branchId;
+  return (
+    <View
+      style={{
+        backgroundColor: colors.card,
+        borderRadius: 12,
+        padding: 14,
+        marginBottom: 8,
+        borderWidth: 1,
+        borderColor: colors.border,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+        <View
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: 4,
+            marginRight: 10,
+            marginTop: 5,
+            flexShrink: 0,
+            backgroundColor: isGlobal ? '#0EA5E9' : '#10B981',
+          }}
+        />
+        <View style={{ flex: 1 }}>
+          <Text
+            style={{ fontSize: 15, fontWeight: '700', color: colors.text }}
+            numberOfLines={1}
+          >
+            {item.label}
+          </Text>
+          {ex.email && (
+            <Text
+              style={{
+                fontSize: 12,
+                color: colors.textSecondary,
+                marginTop: 2,
+              }}
+              numberOfLines={1}
+            >
+              {ex.email}
+            </Text>
+          )}
+          {ex.phone && (
+            <Text
+              style={{
+                fontSize: 12,
+                color: colors.textSecondary,
+                marginTop: 1,
+              }}
+              numberOfLines={1}
+            >
+              {ex.phone}
+            </Text>
+          )}
+          {ex.position && (
+            <Text
+              style={{
+                fontSize: 11,
+                color: colors.textSecondary,
+                marginTop: 1,
+              }}
+              numberOfLines={1}
+            >
+              {ex.position}
+            </Text>
+          )}
+        </View>
+        <View style={{ alignItems: 'flex-end', gap: 4 }}>
+          <View
+            style={{
+              paddingHorizontal: 8,
+              paddingVertical: 2,
+              borderRadius: 6,
+              backgroundColor: (isGlobal ? '#0EA5E9' : '#10B981') + '18',
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 10,
+                fontWeight: '800',
+                color: isGlobal ? '#0EA5E9' : '#10B981',
+              }}
+            >
+              {isGlobal ? 'GLOBAL' : 'BRANCH'}
+            </Text>
+          </View>
+          {ex.isActive === false && (
+            <View
+              style={{
+                paddingHorizontal: 8,
+                paddingVertical: 2,
+                borderRadius: 6,
+                backgroundColor: colors.border,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 10,
+                  fontWeight: '800',
+                  color: colors.textSecondary,
+                }}
+              >
+                INACTIVE
+              </Text>
+            </View>
+          )}
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+            <TouchableOpacity
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: colors.border,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              onPress={onEdit}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            >
+              <Edit2 size={13} color={colors.primary} strokeWidth={2} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: colors.border,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              onPress={onDelete}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            >
+              <Trash2 size={13} color={colors.error} strokeWidth={2} />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 // ─── Table Detail Screen ──────────────────────────────────────────────────────
 
 function TableDetailScreen({
@@ -814,47 +1670,45 @@ function TableDetailScreen({
   colors: any;
 }) {
   const mf = useMasterFile();
-
-  // Use local state for service-backed tables, context for others
   const [serviceItems, setServiceItems] = useState<MasterItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(true);
-
-  // Fallback to context if service data not available
   const contextItems = mf[meta.key] as MasterItem[];
   const items = serviceItems.length > 0 ? serviceItems : contextItems;
-
-  const [query, setQuery] = useState(''); // what user types
-  const [search, setSearch] = useState(''); // committed query (on button tap)
-  const [searching, setSearching] = useState(false); // skeleton visible
+  const [query, setQuery] = useState('');
+  const [search, setSearch] = useState('');
+  const [searching, setSearching] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingItem, setEditingItem] = useState<MasterItem | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<MasterItem | null>(null);
+  const isContacts = meta.key === 'contacts';
 
-  // Load items from service (if available) or context
+  const reloadItems = async () => {
+    const config = TABLE_CONFIG.find((t) => t.key === meta.key);
+    if (config) {
+      const raw = await config.service.getAll();
+      setServiceItems(raw.map(config.toItem));
+    }
+  };
+
   useEffect(() => {
-    const loadItems = async () => {
+    (async () => {
       try {
         const config = TABLE_CONFIG.find((t) => t.key === meta.key);
-
         if (config?.service.getAll) {
           const raw = await config.service.getAll();
           setServiceItems(raw.map(config.toItem));
-        } else {
-          // table not in config yet — fall back to context
-          setServiceItems(contextItems);
-        }
-      } catch (error) {
-        console.error(`Failed to load ${meta.label}:`, error);
+        } else setServiceItems(contextItems);
+      } catch (e) {
+        console.error(`Failed to load ${meta.label}:`, e);
         setServiceItems(contextItems);
       } finally {
         setLoadingItems(false);
       }
-    };
-    loadItems();
+    })();
   }, [meta.key]);
-  // Simulate API search — only fires when user taps Search button or presses return
+
   const doSearch = React.useCallback(() => {
-    if (query.trim() === search) return; // nothing changed, skip
+    if (query.trim() === search) return;
     setSearching(true);
     const t = setTimeout(() => {
       setSearch(query.trim());
@@ -867,11 +1721,10 @@ function TableDetailScreen({
     setQuery('');
     if (search !== '') {
       setSearching(true);
-      const t = setTimeout(() => {
+      setTimeout(() => {
         setSearch('');
         setSearching(false);
       }, 500);
-      return () => clearTimeout(t);
     }
   };
 
@@ -879,6 +1732,7 @@ function TableDetailScreen({
     const q = search.toLowerCase();
     return q ? items.filter((i) => i.label.toLowerCase().includes(q)) : items;
   }, [items, search]);
+
   const handleSave = async (item: MasterItem, extra?: Record<string, any>) => {
     const config = TABLE_CONFIG.find((t) => t.key === meta.key);
     try {
@@ -888,30 +1742,33 @@ function TableDetailScreen({
             Number(editingItem.id),
             item.label,
             extra,
-          ); // ✅
-          if (meta.key === 'positions' && extra?.permissions) {
-            await PositionService.setPermissions(editingItem.id, extra.permissions);
-          }
+          );
+          if (meta.key === 'positions' && extra?.permissions)
+            await PositionService.setPermissions(
+              editingItem.id,
+              extra.permissions,
+            );
         } else {
-          const created = await config.service.create?.(item.label, extra); // ✅
-          if (meta.key === 'positions' && created?.id && extra?.permissions) {
-            await PositionService.setPermissions(String(created.id), extra.permissions);
-          }
+          const created = await config.service.create?.(item.label, extra);
+          if (meta.key === 'positions' && created?.id && extra?.permissions)
+            await PositionService.setPermissions(
+              String(created.id),
+              extra.permissions,
+            );
         }
-        const raw = await config.service.getAll();
-        setServiceItems(raw.map(config.toItem));
+        await reloadItems();
       } else {
         if (editingItem) mf.updateItem(meta.key as TableKey, item);
         else mf.addItem(meta.key as TableKey, item);
       }
-    } catch (error) {
-      console.error(`Failed to save ${meta.label}:`, error);
+    } catch (e) {
+      console.error(`Failed to save ${meta.label}:`, e);
     }
   };
 
   const isLoading = loadingItems || searching;
 
-  const styles = StyleSheet.create({
+  const s = StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     headerBar: {
       flexDirection: 'row',
@@ -922,19 +1779,6 @@ function TableDetailScreen({
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
       gap: 12,
-    },
-    globalBadge: {
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 8,
-      marginLeft: 8,
-      backgroundColor: colors.primary + '18',
-    },
-    globalBadgeTxt: {
-      fontSize: 11,
-      fontWeight: '700',
-      color: colors.primary,
-      letterSpacing: 0.5,
     },
     backBtn: {
       width: 36,
@@ -959,7 +1803,6 @@ function TableDetailScreen({
       backgroundColor: meta.accent,
     },
     addBtnTxt: { fontSize: 13, fontWeight: '700', color: '#fff' },
-    // Search row
     searchOuter: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -1026,12 +1869,26 @@ function TableDetailScreen({
       alignItems: 'center',
       justifyContent: 'center',
     },
+    globalBadge: {
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 8,
+      marginLeft: 8,
+      backgroundColor: colors.primary + '18',
+    },
+    globalBadgeTxt: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.primary,
+      letterSpacing: 0.5,
+    },
     emptyWrap: { alignItems: 'center', paddingTop: 60 },
     emptyIcon: { fontSize: 40, marginBottom: 12 },
     emptyTxt: {
       fontSize: 14,
       color: colors.textSecondary,
       textAlign: 'center',
+      paddingHorizontal: 32,
     },
     emptyBtn: {
       marginTop: 16,
@@ -1045,22 +1902,21 @@ function TableDetailScreen({
   });
 
   return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.headerBar}>
+    <View style={s.container}>
+      <View style={s.headerBar}>
         <TouchableOpacity
-          style={styles.backBtn}
+          style={s.backBtn}
           onPress={onBack}
           activeOpacity={0.7}
         >
           <Text style={{ fontSize: 16, color: colors.text }}>‹</Text>
         </TouchableOpacity>
-        <View style={styles.headerInfo}>
-          <Text style={styles.headerTitle}>{meta.label}</Text>
-          <Text style={styles.headerDesc}>{meta.description}</Text>
+        <View style={s.headerInfo}>
+          <Text style={s.headerTitle}>{meta.label}</Text>
+          <Text style={s.headerDesc}>{meta.description}</Text>
         </View>
         <TouchableOpacity
-          style={styles.addBtn}
+          style={s.addBtn}
           onPress={() => {
             setEditingItem(null);
             setModalVisible(true);
@@ -1068,16 +1924,15 @@ function TableDetailScreen({
           activeOpacity={0.85}
         >
           <Plus size={14} color="#fff" strokeWidth={2.5} />
-          <Text style={styles.addBtnTxt}>Add</Text>
+          <Text style={s.addBtnTxt}>Add</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Search row — input + Search button */}
-      <View style={styles.searchOuter}>
-        <View style={styles.searchBox}>
+      <View style={s.searchOuter}>
+        <View style={s.searchBox}>
           <Search size={13} color={colors.textSecondary} strokeWidth={2} />
           <TextInput
-            style={styles.searchInput}
+            style={s.searchInput}
             placeholder={`Search ${meta.label.toLowerCase()}…`}
             placeholderTextColor={colors.textSecondary}
             value={query}
@@ -1096,122 +1951,176 @@ function TableDetailScreen({
           )}
         </View>
         <TouchableOpacity
-          style={styles.searchBtn}
+          style={s.searchBtn}
           onPress={doSearch}
           disabled={searching}
           activeOpacity={0.85}
         >
           <Search size={14} color="#fff" strokeWidth={2.5} />
-          <Text style={styles.searchBtnTxt}>
+          <Text style={s.searchBtnTxt}>
             {searching ? 'Searching…' : 'Search'}
           </Text>
         </TouchableOpacity>
       </View>
 
-      {/* Count — shows committed search term, not live query */}
       {!isLoading && (
-        <Text style={styles.countTxt}>
+        <Text style={s.countTxt}>
           {filtered.length} {filtered.length === 1 ? 'entry' : 'entries'}
           {search ? ` matching "${search}"` : ''}
         </Text>
       )}
 
-      {/* Skeleton OR real list */}
+      {/* Contacts legend */}
+      {isContacts && !isLoading && filtered.length > 0 && (
+        <View
+          style={{
+            flexDirection: 'row',
+            gap: 16,
+            paddingHorizontal: 14,
+            paddingBottom: 8,
+          }}
+        >
+          {[
+            { color: '#0EA5E9', label: 'Global' },
+            { color: '#10B981', label: 'Branch-specific' },
+          ].map((l) => (
+            <View
+              key={l.label}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
+            >
+              <View
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  backgroundColor: l.color,
+                }}
+              />
+              <Text style={{ fontSize: 11, color: colors.textSecondary }}>
+                {l.label}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+
       {isLoading ? (
-        <View style={styles.skeletonWrap}>
+        <View style={s.skeletonWrap}>
           {Array.from({ length: 6 }).map((_, i) => (
             <SkeletonRow key={i} colors={colors} hasColor={meta.hasColor} />
           ))}
         </View>
       ) : filtered.length === 0 ? (
-        <View style={styles.emptyWrap}>
-          <Text style={styles.emptyIcon}>📋</Text>
-          <Text style={styles.emptyTxt}>
+        <View style={s.emptyWrap}>
+          <Text style={s.emptyIcon}>{isContacts ? '📇' : '📋'}</Text>
+          <Text style={s.emptyTxt}>
             {search
               ? `No entries matching "${search}"`
               : `No ${meta.label.toLowerCase()} yet.`}
           </Text>
           {!search && (
             <TouchableOpacity
-              style={styles.emptyBtn}
+              style={s.emptyBtn}
               onPress={() => {
                 setEditingItem(null);
                 setModalVisible(true);
               }}
             >
-              <Text style={styles.emptyBtnTxt}>Add First Entry</Text>
+              <Text style={s.emptyBtnTxt}>Add First Entry</Text>
             </TouchableOpacity>
           )}
         </View>
       ) : (
         <ScrollView
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={s.listContent}
           showsVerticalScrollIndicator={false}
         >
-          {filtered.map((item) => (
-            <View key={item.id} style={styles.itemRow}>
-              {meta.hasColor && item.color && (
-                <View
-                  style={[styles.colorDot, { backgroundColor: item.color }]}
-                />
-              )}
-              <Text style={styles.itemLabel} numberOfLines={1}>
-                {item.label}
-              </Text>
-
-              {/* ✅ Global items — show badge only, no edit/delete */}
-              {item.isGlobal ? (
-                <View style={styles.globalBadge}>
-                  <Text style={styles.globalBadgeTxt}>Global</Text>
-                </View>
-              ) : (
-                <View style={styles.actions}>
-                  <TouchableOpacity
-                    style={styles.actionBtn}
-                    onPress={() => {
-                      setEditingItem(item);
-                      setModalVisible(true);
-                    }}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                  >
-                    <Edit2 size={13} color={colors.primary} strokeWidth={2} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.actionBtn}
-                    onPress={() => setDeleteTarget(item)}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                  >
-                    <Trash2 size={13} color={colors.error} strokeWidth={2} />
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-          ))}
+          {filtered.map((item) =>
+            isContacts ? (
+              <ContactRow
+                key={item.id}
+                item={item}
+                colors={colors}
+                onEdit={() => {
+                  setEditingItem(item);
+                  setModalVisible(true);
+                }}
+                onDelete={() => setDeleteTarget(item)}
+              />
+            ) : (
+              <View key={item.id} style={s.itemRow}>
+                {meta.hasColor && item.color && (
+                  <View style={[s.colorDot, { backgroundColor: item.color }]} />
+                )}
+                <Text style={s.itemLabel} numberOfLines={1}>
+                  {item.label}
+                </Text>
+                {item.isGlobal ? (
+                  <View style={s.globalBadge}>
+                    <Text style={s.globalBadgeTxt}>Global</Text>
+                  </View>
+                ) : (
+                  <View style={s.actions}>
+                    <TouchableOpacity
+                      style={s.actionBtn}
+                      onPress={() => {
+                        setEditingItem(item);
+                        setModalVisible(true);
+                      }}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    >
+                      <Edit2 size={13} color={colors.primary} strokeWidth={2} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={s.actionBtn}
+                      onPress={() => setDeleteTarget(item)}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    >
+                      <Trash2 size={13} color={colors.error} strokeWidth={2} />
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            ),
+          )}
         </ScrollView>
       )}
 
-      <ItemModal
-        visible={modalVisible}
-        onClose={() => {
-          setModalVisible(false);
-          setEditingItem(null);
-        }}
-        onSave={handleSave}
-        existing={editingItem}
-        meta={meta}
-        colors={colors}
-      />
+      {/* Contacts → full page sheet; everything else → bottom sheet */}
+      {isContacts ? (
+        <ContactFormModal
+          visible={modalVisible}
+          onClose={() => {
+            setModalVisible(false);
+            setEditingItem(null);
+          }}
+          onSave={handleSave}
+          existing={editingItem}
+          colors={colors}
+        />
+      ) : (
+        <ItemModal
+          visible={modalVisible}
+          onClose={() => {
+            setModalVisible(false);
+            setEditingItem(null);
+          }}
+          onSave={handleSave}
+          existing={editingItem}
+          meta={meta}
+          colors={colors}
+        />
+      )}
+
       <DeleteConfirm
         visible={!!deleteTarget}
         label={deleteTarget?.label ?? ''}
         onCancel={() => setDeleteTarget(null)}
-        // In DeleteConfirm onConfirm
         onConfirm={async () => {
           if (deleteTarget) {
-            if ((deleteTarget as any).isGlobal) return; // ✅ safety guard
+            if ((deleteTarget as any).isGlobal) return;
             const id = String(deleteTarget.id);
             if (!id || id === 'NaN' || id === 'undefined') {
-              console.error('Invalid delete id for position:', deleteTarget.id);
               setDeleteTarget(null);
               return;
             }
@@ -1219,13 +2128,10 @@ function TableDetailScreen({
             try {
               if (config) {
                 await config.service.delete?.(id);
-                const raw = await config.service.getAll();
-                setServiceItems(raw.map(config.toItem));
-              } else {
-                mf.deleteItem(meta.key as TableKey, id);
-              }
-            } catch (error) {
-              console.error(`Failed to delete ${meta.label}:`, error);
+                await reloadItems();
+              } else mf.deleteItem(meta.key as TableKey, id);
+            } catch (e) {
+              console.error(`Failed to delete ${meta.label}:`, e);
             }
           }
           setDeleteTarget(null);
@@ -1236,7 +2142,7 @@ function TableDetailScreen({
   );
 }
 
-// ─── Master File Home — menu of all tables ────────────────────────────────────
+// ─── Master File Home ─────────────────────────────────────────────────────────
 
 function MasterFileHome({
   onSelect,
@@ -1246,10 +2152,18 @@ function MasterFileHome({
   colors: any;
 }) {
   const mf = useMasterFile();
+  const { cols, screenPadding } = useResponsiveGrid();
 
-  const styles = StyleSheet.create({
+  // Use 2-col grid on tablet+, 1-col on phone
+  const gridCols = cols >= 2 ? 2 : 1;
+  const isGrid = gridCols > 1;
+
+  const s = StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    content: { padding: 16, paddingBottom: 40 },
+    content: {
+      padding: screenPadding,
+      paddingBottom: 40,
+    },
     pageLabel: {
       fontSize: 11,
       fontWeight: '700',
@@ -1263,15 +2177,28 @@ function MasterFileHome({
       lineHeight: 19,
       marginBottom: 20,
     },
+    // ── Grid container ────────────────────────────────────────────────
+    grid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      marginHorizontal: isGrid ? -6 : 0,
+    },
+    // ── Each grid cell ────────────────────────────────────────────────
+    cell: {
+      width: isGrid ? '50%' : '100%',
+      paddingHorizontal: isGrid ? 6 : 0,
+      marginBottom: 12,
+    },
+    // ── Card (fills the cell) ─────────────────────────────────────────
     card: {
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: colors.card,
       borderRadius: 14,
       padding: 16,
-      marginBottom: 10,
       borderWidth: 1,
       borderColor: colors.border,
+      flex: 1,
     },
     iconWrap: {
       width: 44,
@@ -1301,62 +2228,65 @@ function MasterFileHome({
 
   return (
     <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
+      style={s.container}
+      contentContainerStyle={s.content}
       showsVerticalScrollIndicator={false}
     >
-      <Text style={styles.pageLabel}>MASTER FILE</Text>
-      <Text style={styles.pageDesc}>
+      <Text style={s.pageLabel}>MASTER FILE</Text>
+      <Text style={s.pageDesc}>
         Reference data used across all ERP modules. Tap a category to view,
         search, add, or edit entries.
       </Text>
 
-      {TABLES.map((meta) => {
-        const count = (mf[meta.key] as MasterItem[]).length;
-        const Icon = meta.icon;
-        return (
-          <TouchableOpacity
-            key={meta.key}
-            style={styles.card}
-            onPress={() => onSelect(meta)}
-            activeOpacity={0.8}
-          >
-            <View
-              style={[styles.iconWrap, { backgroundColor: meta.accent + '1A' }]}
-            >
-              <Icon size={20} color={meta.accent} strokeWidth={2} />
+      {/* ── Grid wrapper ── */}
+      <View style={s.grid}>
+        {TABLES.map((meta) => {
+          const count = (mf[meta.key] as MasterItem[]).length;
+          const Icon = meta.icon;
+          return (
+            <View key={meta.key} style={s.cell}>
+              <TouchableOpacity
+                style={s.card}
+                onPress={() => onSelect(meta)}
+                activeOpacity={0.8}
+              >
+                <View
+                  style={[s.iconWrap, { backgroundColor: meta.accent + '1A' }]}
+                >
+                  <Icon size={20} color={meta.accent} strokeWidth={2} />
+                </View>
+                <View style={s.info}>
+                  <Text style={s.cardTitle}>{meta.label}</Text>
+                  <Text style={s.cardDesc}>{meta.description}</Text>
+                </View>
+                <View
+                  style={[s.badge, { backgroundColor: meta.accent + '1A' }]}
+                >
+                  <Text style={[s.badgeCount, { color: meta.accent }]}>
+                    {count}
+                  </Text>
+                </View>
+                <ChevronRight
+                  size={16}
+                  color={colors.textSecondary}
+                  strokeWidth={2}
+                  style={{ marginLeft: 4 }}
+                />
+              </TouchableOpacity>
             </View>
-            <View style={styles.info}>
-              <Text style={styles.cardTitle}>{meta.label}</Text>
-              <Text style={styles.cardDesc}>{meta.description}</Text>
-            </View>
-            <View
-              style={[styles.badge, { backgroundColor: meta.accent + '1A' }]}
-            >
-              <Text style={[styles.badgeCount, { color: meta.accent }]}>
-                {count}
-              </Text>
-            </View>
-            <ChevronRight
-              size={16}
-              color={colors.textSecondary}
-              strokeWidth={2}
-              style={{ marginLeft: 4 }}
-            />
-          </TouchableOpacity>
-        );
-      })}
+          );
+        })}
+      </View>
     </ScrollView>
   );
 }
 
-// ─── Main Export — router between Home and Detail ─────────────────────────────
+// ─── Main Export ──────────────────────────────────────────────────────────────
 
 export default function MasterFileScreen() {
   const { colors } = useTheme();
   const [activeMeta, setActiveMeta] = useState<TableMeta | null>(null);
-
-  if (activeMeta) {
+  if (activeMeta)
     return (
       <TableDetailScreen
         meta={activeMeta}
@@ -1364,8 +2294,6 @@ export default function MasterFileScreen() {
         colors={colors}
       />
     );
-  }
-
   return (
     <MasterFileHome onSelect={(meta) => setActiveMeta(meta)} colors={colors} />
   );

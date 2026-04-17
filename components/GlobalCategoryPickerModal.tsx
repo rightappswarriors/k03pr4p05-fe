@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { Search, X } from 'lucide-react-native';
 import { AdminCategoryService } from '@/services/admincategoryService';
-
+import { useResponsive } from '@/hooks/useResponsive';
 interface Props {
   visible: boolean;
   onClose: () => void;
@@ -28,6 +28,7 @@ export function GlobalCategoryPickerModal({
   selectedId,
   colors,
 }: Props) {
+  const { isMobile, width } = useResponsive();
   const [query, setQuery] = useState('');
   const [categories, setCategories] = useState<{ id: number; name: string }[]>(
     [],
@@ -54,7 +55,12 @@ export function GlobalCategoryPickerModal({
     overlay: {
       flex: 1,
       backgroundColor: 'rgba(0,0,0,0.5)',
-      justifyContent: 'flex-end',
+      justifyContent: isMobile ? 'flex-end' : 'center',
+      ...(isMobile
+        ? {}
+        : {
+            alignItems: 'center',
+          }),
     },
     sheet: {
       backgroundColor: colors.surface,
@@ -140,12 +146,33 @@ export function GlobalCategoryPickerModal({
     >
       <View style={s.overlay}>
         <TouchableOpacity
-          style={{ flex: 1 }}
+          style={StyleSheet.absoluteFillObject}
           activeOpacity={1}
           onPress={onClose}
         />
-        <View style={s.sheet}>
-          <View style={s.handle} />
+        <View
+          style={[
+            s.sheet,
+            {
+              width: isMobile ? '100%' : Math.min(500, width * 0.6),
+              maxHeight: isMobile ? '75%' : '70%',
+              borderTopLeftRadius: isMobile ? 20 : 16,
+              borderTopRightRadius: isMobile ? 20 : 16,
+              borderRadius: isMobile ? 0 : 16,
+              alignSelf: 'center',
+
+              ...(isMobile
+                ? {}
+                : {
+                    shadowColor: '#000',
+                    shadowOpacity: 0.2,
+                    shadowRadius: 20,
+                    elevation: 10,
+                  }),
+            },
+          ]}
+        >
+          {isMobile && <View style={s.handle} />}
           <View style={s.header}>
             <Text style={s.title}>Select Global Category</Text>
             <TouchableOpacity

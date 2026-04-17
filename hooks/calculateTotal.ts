@@ -1,11 +1,8 @@
 import { CalculationResult, CartItem, DiscountOptions, Outlet } from '@/types';
 
-
-
 function toCents(amount: number) {
   return Math.round(amount * 100);
 }
-
 function fromCents(cents: number) {
   return cents / 100;
 }
@@ -16,25 +13,29 @@ export function calculateTotal(
   discount: DiscountOptions,
 ): CalculationResult {
   const subtotalCents = items.reduce(
-    (sum, item) => sum + toCents(item.price) * item.quantity,
-    0
+    (sum, item) =>
+      sum + toCents(item.priceAtSale ?? item.price) * item.quantity,
+    0,
   );
 
+  const discountOptionRate = store.discountOption ?? {};
   let discountCents = 0;
   let vatCents = 0;
-  const discountOptionRate = store.discountOption
   let totalCents = subtotalCents;
-  let discountRate = 0
+  let discountRate = 0;
+
+  const isSeniorOrPwd =
+    discount.type === 'SENIOR' || discount.type === 'PWD';
+
   if (!store.isVatRegistered) {
-    // Non-VAT store
-    if (discount.type === 'SENIOR' || discount.type === 'PWD') {
-      discountCents = Math.round(subtotalCents * discountOptionRate[discount.type]);
-      discountRate = discountOptionRate[discount.type]
-    } else if (discount.type === 'PROMO') {
-      discountCents = Math.round(
-        subtotalCents * ((discountOptionRate[discount.type] ?? 0) / 100)
-      );
-      discountRate = discountOptionRate[discount.type]
+    // ── Non-VAT store ────────────────────────────────────────────────────────
+    if (isSeniorOrPwd) {
+      discountRate = discountOptionRate[discount.type] ?? 0.20;
+      discountCents = Math.round(subtotalCents * discountRate);
+    } else if (discount.type !== 'NONE') {
+      // PROMO or custom — rate stored as decimal in discountOption
+      discountRate = discountOptionRate[discount.type] ?? 0;
+      discountCents = Math.round(subtotalCents * discountRate);
     }
     totalCents = subtotalCents - discountCents;
     return {
@@ -46,22 +47,26 @@ export function calculateTotal(
     };
   }
 
-  // VAT-registered store
-  if (discount.type === 'SENIOR' || discount.type === 'PWD') {
-    // 20% off and VAT exempt
-    discountCents = Math.round(subtotalCents * discountOptionRate[discount.type]);
-    discountRate = discountOptionRate[discount.type]
-    vatCents = 0;
-    totalCents = subtotalCents - discountCents;
-  } else if (discount.type === 'PROMO') {
-    discountCents = Math.round(
-      subtotalCents * ((discountOptionRate[discount.type] ?? 0) / 100)
-    );
-    discountRate = discountOptionRate[discount.type]
+  // ── VAT-registered store ─────────────────────────────────────────────────
+  if (isSeniorOrPwd) {
+    // BIR-compliant order:
+    // 1. Strip VAT first  →  vatExclusivePrice = subtotal / 1.12
+    // 2. Apply 20% on VAT-exclusive price
+    // 3. VAT = 0 (exempt)
+    const vatExclusiveCents = Math.round(subtotalCents / 1.12);
+    discountRate = discountOptionRate[discount.type] ?? 0.20;
+    discountCents = Math.round(vatExclusiveCents * discountRate);
+    vatCents = 0;                                          // VAT exempt
+    totalCents = vatExclusiveCents - discountCents;
+  } else if (discount.type !== 'NONE') {
+    // PROMO: discount on VAT-inclusive, then compute VAT on discounted amount
+    discountRate = discountOptionRate[discount.type] ?? 0;
+    discountCents = Math.round(subtotalCents * discountRate);
     const afterPromo = subtotalCents - discountCents;
-    vatCents = Math.round(afterPromo * 0.12); // VAT on discounted amount
+    vatCents = Math.round(afterPromo * 0.12);
     totalCents = afterPromo + vatCents;
   } else {
+    // No discount — normal VAT
     vatCents = Math.round(subtotalCents * 0.12);
     totalCents = subtotalCents + vatCents;
   }

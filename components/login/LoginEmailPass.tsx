@@ -9,6 +9,7 @@ import {
   SafeAreaView,
   Image,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { useResponsive } from '@/hooks/useResponsive';
 import { Fingerprint, Eye, EyeOff } from 'lucide-react-native';
@@ -41,8 +42,31 @@ export default function LoginScreenDefault({ isDesktop }: Props) {
       // Don't redirect here - let the navigation logic in index.tsx handle routing
       // based on user onboarding state
       router.replace('/');
-    } catch (error) {
-      Alert.alert('Login Failed', (error as Error).message);
+    } catch (error: any) {
+      const message = (error as Error).message || 'Something went wrong';
+
+      const showAlert = () => {
+        if (Platform.OS === 'web') {
+          alert('Login Failed: ' + message);
+        } else {
+          Alert.alert('Login Failed', message);
+        }
+      };
+
+      // Check if user needs email verification
+      if (message.toLowerCase().includes('verify your email')) {
+        showAlert(); // 👈 show alert FIRST
+
+        router.replace({
+          pathname: '/onboarding',
+          params: { step: 'verify', email },
+        });
+
+        return; // 👈 stop further execution
+      }
+
+      // Default case
+      showAlert();
     } finally {
       setLoading(false);
     }

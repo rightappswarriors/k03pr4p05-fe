@@ -3,16 +3,49 @@ export interface Item {
   name: string;
   price: number;
   image?: string;
-  categoryId?: string;
-  category?: object;
-  barcode?: string;
   description?: string;
-  brand?: string; // ✅ already added
-  vatable?: boolean,
-  color?: string; // ✅ add this if you want to sort/filter by item color
+  barcode?: string;
+  brand?: string;
+  categoryId?: string;
+  color?: string;
+  vatable?: boolean;
+  units?: ItemUnit[];      // ← new
 }
-export interface CartItem extends Item {
+export interface CartItem {
+  id: string;
+  name: string;
+  price: number;
+  image?: string;
+  quantity: number;        // stays number (Float in JS is just number)
+  unitId?: number;         // ← new
+  unitName?: string;       // ← new — display label e.g. "kg"
+  unitLabel?: string;      // ← new — full label e.g. "Per Kilo"
+  priceAtSale: number;     // ← new — unit price at time of add
+  vatable?: boolean;       // ← add this
+  barcode?: string;
+}
+
+export type OutletPromoInput = {
+  promoTypeId: number;
+  discount: number;
+  isActive?: boolean;
+};
+
+export interface ItemUnit {
+  id: number;
+  inventoryItemId: number;
+  unitName: string;       // "kg", "sack", "dozen", "piece"
+  unitLabel: string;      // "Per Kilo", "25kg Sack", "Per Dozen"
+  price: number;          // price for this unit
   quantity: number;
+  conversionFactor: number; // 1 sack = 25kg → 25
+  baseUnit: string;         // "kg", "piece", "liter"
+  barcode?: string;
+  isDefault: boolean;
+  isActive: boolean;
+  minOrderQty?: number;
+  maxOrderQty?: number;
+  reorderPoint?: number;
 }
 
 export interface Category {
@@ -52,12 +85,26 @@ export type EWalletMethod = "PH_GCASH" | "PH_PAYMAYA";
 export type PaymentMethod = 'cash' | 'e-wallet' | 'card';
 
 export interface Outlet {
+  status: 'open' | 'closed' | 'maintenance';
   id: string;
   branchId?: string;
   name: string;
   address: string;
+  vatZeroSale?: number;
+  vatType?: {
+    id: number;
+    name: string;
+    rate: number; // e.g. 0.12 for 12%
+  };
+  longitude?: number;
+  latitude?: number;
+  createdAt?: string;
+  currentCashiers?: any,
+  vatTypeId: any,
+  assignedCashierIds?: any
   phone?: string;
   code: string;
+  bannerImage?: string;
   governmentTax?: number;
   serviceCharge?: number;
   outletType?: 'retail' | 'wholesale' | 'service';
@@ -71,15 +118,33 @@ export interface Outlet {
   ptu?: string,
   bir?: string,
   hasKey?: boolean
-  discountOption: Record<DiscountType, number>;
+  outletPromos?: Array<{
+    id: number;
+    promoTypeId: number;
+    discount: number;
+    isActive: boolean;
+    promoType: {
+      id: number;
+      name: string;
+      description?: string;
+    };
+  }>;
+  discountOption?: {
+    SENIOR?: number;   // e.g. 0.20
+    PWD?: number;      // e.g. 0.20
+    PROMO?: number;    // e.g. 15 (percent, divided by 100 in calculateTotal)
+    [key: string]: number | undefined;
+  };
 }
+// Keep a constant for the only truly fixed value:
+export const NO_DISCOUNT: DiscountType = 'NONE';
+
+// Update DiscountType to include SC/PWD:
+export type DiscountType = 'NONE' | 'SENIOR' | 'PWD' | 'PROMO' | string;
 export interface DiscountOptions {
   type: DiscountType;
-  promoPercent?: number; // only used if type === "Promo"
+  promoPercent?: number;
 }
-
-export type DiscountType = 'SENIOR' | 'PWD' | 'PROMO' | "NONE";
-
 // Define the type of methods the parent can call
 export type PaymentBottomSheetRef = {
   open: () => void;
@@ -94,33 +159,50 @@ export interface CalculationResult {
   discountRate: any
 }
 export interface Receipt {
-  user?: User
-  outlet?: Outlet,
+  user?: User;
+  outlet?: Outlet;
   transaction: {
-    id: string
-    date: string
-    timestamp: string
-    cashier?: string
-    //cashierId: number
-  }
-  items: Item[]
+    id: string;
+    date: string;
+    timestamp: string;
+    cashier?: string;
+  };
+  items: ReceiptItem[];
   totals: {
-    vatAmount: number
-    subtotal: number
-    total: number
-    cashReceived: number
-    change: number
-    discountType?: 'SENIOR' | 'PROMO' | "PWD"
-    discountPercent?: number
-    discountTotal?: number
-  }
+    vatAmount: number;
+    subtotal: number;
+    total: number;
+    cashReceived: number;
+    change: number;
+    discountType?: 'SENIOR' | 'PWD' | 'PROMO' | 'NONE';
+    discountPercent?: number;
+    discountTotal?: number;
+    // ── new ──
+    isVatExempt?: boolean;
+    vatExemptType?: 'SENIOR_CITIZEN' | 'PWD' | 'DIPLOMAT' | 'GOVERNMENT';
+    vatExemptRefNo?: string;
+    vatExemptAmount?: number;
+  };
   payment: {
-    status: string
-    method: string
-  }
+    status: string;
+    method: string;
+  };
+}
+export interface ReceiptItem {
+  id: string;
+  name: string;
+  price: number;
+  priceAtSale: number;     // unit price at time of sale
+  quantity: number;        // Float — supports 0.875 kg
+  unitId?: number;
+  unitName?: string;       // "kg", "dozen", "piece"
+  unitLabel?: string;      // "Per Kilo", "Per Dozen"
+  subtotal: number;        // priceAtSale * quantity
+  vatable?: boolean;
+  barcode?: string;
 }
 export interface Transaction {
-  id: string,
+  id: string;
   outletId?: Number;
   cashierId?: Number;
   deviceId: string;
@@ -131,10 +213,20 @@ export interface Transaction {
   cashReceived: number;
   change: number;
   paymentMethod: 'CASH' | 'CARD' | 'DIGITAL';
-  status: 'PENDING' | 'SYNCED' | 'FAILED' | 'PAYED' | 'CANCELED';
+  status: 'PENDING' | 'PAID' | 'SYNCED' | 'FAILED' | 'CANCELED'; // ← added PAID + SYNCED
   createdAt: string;
   syncedAt?: string;
   retryCount: number;
+
+  // ── VAT Exemption (SC / PWD) ──────────────────────────────────
+  isVatExempt?: boolean;
+  vatExemptType?: 'SENIOR_CITIZEN' | 'PWD' | 'DIPLOMAT' | 'GOVERNMENT';
+  vatExemptRefNo?: string;     // SC/PWD ID — BIR required on receipt
+  vatExemptAmount?: number;    // total VAT stripped
+
+  // ── Promo applied (mutually exclusive with SC/PWD benefit) ────
+  outletPromoId?: number;
+  promoDiscountAmt?: number;
 }
 
 export interface AuthState {
@@ -270,19 +362,49 @@ export interface Cashier {
 }
 
 
+export interface OrderItem {
+  id: string;
+  name: string;
+  quantity: number;
+  price: number;
+  // new fields resolved from CartItem → InventoryItemUnit → Item
+  unitName?: string;
+  unitLabel?: string;
+  stockLabel?: string;
+  image?: string | null;
+}
+
+export interface CustomerDetails {
+  id: number;
+  name?: string;
+  address?: string;
+  tin?: string;
+  businessStyle?: string;
+}
+
 export interface AdminTransaction {
   id: string;
   branchId: string;
   outletId: string;
   cashierId: string;
+  /** Resolved cashier info (present when fetched via getOutletTransactions) */
+  cashier?: {
+    id: number;
+    fullname: string;
+    email: string;
+  } | null;
   items: OrderItem[];
   total: number;
-  tax: number;
+  tax: number;       // mapped from vatAmount on the server
   subtotal: number;
-  paymentMethod: 'cash' | 'card' | 'digital';
-  status: 'completed' | 'pending' | 'cancelled';
+  vatAmount?: number;       // raw server field, same value as tax
+  cashReceived?: number | null;
+  change?: number | null;
+  paymentMethod: 'cash' | 'card' | 'digital' | string;
+  status: 'completed' | 'pending' | 'cancelled' | string;
   createdAt: string;
   completedAt?: string;
+  customerDetails?: CustomerDetails | null;
 }
 
 export interface BranchRevenue {
@@ -303,4 +425,39 @@ export interface OutletRevenue {
     start: string;
     end: string;
   };
+}
+// ─── Category Search Modal ──────────────────────────────────────────────────────
+export interface CategoryOption {
+  id: number;
+  name: string;
+}
+export interface UnitLine {
+  id: string;
+  unitName: string; // e.g. "box", "piece", "pack"
+  unitLabel: string; // display label e.g. "Box of 12"
+  price: string;
+  quantity: string;
+  conversionFactor: string; // how many base units in this unit
+  barcode: string;
+  isDefault: boolean;
+  reorderPoint: string;
+  allowDecimal: boolean;
+}
+
+
+export interface CostLine {
+  id: string; // local UI id only — not sent to backend
+  label: string;
+  amount: number;
+}
+export interface CatalogItem {
+  id: string;
+  name: string;
+  barcode: string;
+  brand?: string;
+  category?: string;
+  image?: string;
+  sellingPrice: string;
+  costLines: CostLine[] | [];
+  stock?: number;
 }

@@ -1,5 +1,5 @@
+// components/pos/ReceiptModal.tsx
 import React, { useRef, useEffect, useState } from 'react';
-// import our event bus
 import {
   Modal,
   View,
@@ -10,274 +10,516 @@ import {
   ScrollView,
   Image,
 } from 'react-native';
-import { CustomCheckbox } from "@/components/pos/checkbox/CustomCheckbox"
-import { PaymentBottomSheetRef } from "@/types"
-import { X, Printer, PhilippinePeso, CreditCard } from 'lucide-react-native';
+import { CustomCheckbox } from '@/components/pos/checkbox/CustomCheckbox';
+import { PaymentBottomSheetRef } from '@/types';
+import {
+  X,
+  Printer,
+  PhilippinePeso,
+  CreditCard,
+  Package,
+  Store,
+} from 'lucide-react-native';
 import type { DiscountType } from '@/types';
-import { useTheme } from '@/contexts/ThemeContext'
+import { useTheme } from '@/contexts/ThemeContext';
 import { usePOS } from '@/contexts/POSContext';
-import { calculateTotal } from '@/hooks/calculateTotal'
-import { outletData } from '@/data/mockData';
+import { calculateTotal } from '@/hooks/calculateTotal';
 import DiscountModal from './DiscountModal';
 import PaymentBottomSheet from '@/components/pos/paymentMethod/PaymentBottomSheet';
-// import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import RootView from '@/components/ui/RootView'
-import { useAuth } from "@/contexts/AuthContext"
+import RootView from '@/components/ui/RootView';
+import { useAuth } from '@/contexts/AuthContext';
 import { ReceiptService } from '@/services/paymentService';
-
 import useNetworkStatus from '@/hooks/useNetworkStatus';
+import { useResponsive } from '@/hooks/useResponsive';
+
+const WEIGHT_UNITS = ['kg', 'gram', 'g', 'grams', 'kilo', 'kilos'];
+
 interface ReceiptModalProps {
   visible: boolean;
   onClose: () => void;
   onPrintReceipt: (receiptData: any) => void;
-  onOrderPlaced?: () => void; // ✅ New prop
+  onOrderPlaced?: () => void;
 }
 
-
-export function ReceiptModal({ visible, onClose, onOrderPlaced }: ReceiptModalProps) {
+export function ReceiptModal({
+  visible,
+  onClose,
+  onOrderPlaced,
+}: ReceiptModalProps) {
   const paymentSheetRef = useRef<PaymentBottomSheetRef>(null);
   const isConnected = useNetworkStatus();
-
-  <TouchableOpacity
-    disabled={!isConnected} // disable button if offline
-    onPress={() => paymentSheetRef.current?.open()}
-  >
-    <Text>
-      {isConnected ? "Payment Method" : "Offline: Payment Disabled"}
-    </Text>
-  </TouchableOpacity>
-
-  const {
-    cartItems: items,
-    clearCart,
-    outlet,
-  } = usePOS()
-  const { colors, } = useTheme()
+  const { cartItems: items, clearCart, outlet } = usePOS();
+  const { colors } = useTheme();
+  const { isDesktop, isTablet } = useResponsive();
+  const isWide = isDesktop || isTablet;
+  const [vatExemptRefNo, setVatExemptRefNo] = useState('');
   const [cashReceived, setCashReceived] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [discountOption, setDiscountOption] = useState<DiscountType>('NONE')
-  const [isDiscounted, setIsDiscounted] = useState(false)
-  const [isVisible, setIsVisible] = useState(false)
+  const [discountOption, setDiscountOption] = useState<DiscountType>('NONE');
+  const [isDiscounted, setIsDiscounted] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
+  const [selectedPromoId, setSelectedPromoId] = useState<number | null>(null);
+
   useEffect(() => {
     if (!isDiscounted) {
-      setDiscountOption('NONE')
+      setDiscountOption('NONE');
+      setSelectedPromoId(null);
     }
-  }, [isDiscounted])
-  const {
-    total,
-    subtotal,
-    vatAmount,
-    discount,
-    discountRate
-  } = calculateTotal(items, outletData, { type: discountOption })
-  const { user } = useAuth()
+  }, [isDiscounted]);
+
+  useEffect(() => {
+    if (discountOption === 'NONE') {
+      setSelectedPromoId(null);
+    }
+  }, [discountOption]);
+  if (!outlet) return null;
+  const { total, subtotal, vatAmount, discount, discountRate } = calculateTotal(
+    items,
+    outlet,
+    { type: discountOption },
+  );
+
+  const { user } = useAuth();
   const cashAmount = parseFloat(cashReceived) || 0;
   const change = cashAmount - total;
-  if (!user || !outlet) {
-    throw new Error("No user or outlet")
-  }
-  const handlePrintReceipt = () => {
-    setIsProcessing(true);
-    ReceiptService.processAndPrintReceipt({
-      items,
-      cashReceived: parseFloat(cashReceived) || 0,
-      paymentMethod: "CASH",
-      discountOption,
-      onSuccess: () => {
-        setIsProcessing(false);
-        onOrderPlaced?.();
-        clearCart();
-        handleClose();
-      },
-      onFail: () => setIsProcessing(false),
-      outlet,
-      user
-    });
-  };
 
-  const resetForm = () => {
-    setCashReceived('');
-    setIsProcessing(false);
+  if (!outlet || !user) return null;
+
+  const handlePrintReceipt = async () => {
+    setIsProcessing(true);
+    const isSeniorOrPwd =
+      discountOption === 'SENIOR' || discountOption === 'PWD';
+    try {
+      await ReceiptService.processAndPrintReceipt({
+        items,
+        cashReceived: parseFloat(cashReceived) || 0,
+        paymentMethod: 'CASH',
+        discountOption,
+        outlet,
+        user,
+        // ── new fields ──
+        isVatExempt: isSeniorOrPwd,
+        vatExemptType: isSeniorOrPwd
+          ? discountOption === 'SENIOR'
+            ? 'SENIOR_CITIZEN'
+            : 'PWD'
+          : undefined,
+        vatExemptRefNo: isSeniorOrPwd ? vatExemptRefNo : undefined,
+        vatExemptAmount: isSeniorOrPwd ? vatAmount : undefined,
+        outletPromoId: selectedPromoId,
+        promoDiscountAmt: discount,
+        onSuccess: () => {
+          setIsProcessing(false);
+          onOrderPlaced?.();
+          clearCart();
+          handleClose();
+        },
+        onFail: () => {
+          setIsProcessing(false);
+        },
+      });
+    } catch {
+      setIsProcessing(false);
+    }
   };
 
   const handleClose = () => {
-    resetForm();
+    setCashReceived('');
+    setIsProcessing(false);
     onClose();
   };
 
+  // ── Item row ────────────────────────────────────────────────────────────────
+  const ItemRow = ({ data }: { data: any }) => {
+    const isWeight =
+      data.unitName && WEIGHT_UNITS.includes(data.unitName.toLowerCase());
+    const unitPrice = data.priceAtSale ?? data.price;
+    const lineTotal = unitPrice * data.quantity;
+
+    return (
+      <View style={[rs.itemRow, { borderBottomColor: colors.border }]}>
+        <View style={rs.itemLeft}>
+          {/* Image or placeholder */}
+          {data.image ? (
+            <Image source={{ uri: data.image }} style={rs.itemThumb} />
+          ) : (
+            <View
+              style={[
+                rs.itemThumb,
+                {
+                  backgroundColor: colors.border,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                },
+              ]}
+            >
+              <Package
+                size={16}
+                color={colors.textSecondary}
+                strokeWidth={1.5}
+              />
+            </View>
+          )}
+          <View style={{ flex: 1 }}>
+            <Text style={[rs.itemName, { color: colors.text }]}>
+              {data.name}
+            </Text>
+            <Text style={[rs.itemMeta, { color: colors.textSecondary }]}>
+              {isWeight
+                ? `${data.quantity.toFixed(3)} ${data.unitName} × ₱${unitPrice.toFixed(2)}/${data.unitName}`
+                : `${data.quantity} ${data.unitLabel ?? 'pc'} × ₱${unitPrice.toFixed(2)}`}
+            </Text>
+          </View>
+        </View>
+        <Text style={[rs.itemTotal, { color: colors.text }]}>
+          ₱{lineTotal.toFixed(2)}
+        </Text>
+      </View>
+    );
+  };
+
+  // ── Totals block ────────────────────────────────────────────────────────────
+  const TotalsBlock = () => {
+    const isSeniorOrPwd =
+      discountOption === 'SENIOR' || discountOption === 'PWD';
+    return (
+      <View style={[rs.totalsBlock, { borderColor: colors.border }]}>
+        <View style={rs.totalRow}>
+          <Text style={[rs.totalLabel, { color: colors.textSecondary }]}>
+            Subtotal
+          </Text>
+          <Text style={[rs.totalValue, { color: colors.text }]}>
+            ₱{subtotal.toFixed(2)}
+          </Text>
+        </View>
+
+        {/* VAT line — hidden when SC/PWD (exempt) */}
+        {outlet.isVatRegistered && !isSeniorOrPwd && (
+          <View style={rs.totalRow}>
+            <Text style={[rs.totalLabel, { color: colors.textSecondary }]}>
+              VAT (
+              {outlet.vatType?.rate
+                ? outlet.vatType.rate * 100
+                : outlet.VatPercent
+                  ? outlet.VatPercent * 100
+                  : 0}
+              %)
+            </Text>
+            <Text style={[rs.totalValue, { color: colors.text }]}>
+              ₱{vatAmount.toFixed(2)}
+            </Text>
+          </View>
+        )}
+
+        {/* VAT Exempt badge */}
+        {isSeniorOrPwd && (
+          <View style={rs.totalRow}>
+            <Text style={[rs.totalLabel, { color: '#10B981' }]}>
+              VAT Exempt ({discountOption})
+            </Text>
+            <Text style={[rs.totalValue, { color: '#10B981' }]}>
+              -₱{vatAmount.toFixed(2)}
+            </Text>
+          </View>
+        )}
+
+        {/* Discount line */}
+        {isDiscounted && (
+          <View style={rs.totalRow}>
+            <Text style={[rs.totalLabel, { color: colors.textSecondary }]}>
+              Discount {discountOption} ({(discountRate * 100).toFixed(0)}%)
+            </Text>
+            <Text style={[rs.totalValue, { color: '#EF4444' }]}>
+              -₱{discount.toFixed(2)}
+            </Text>
+          </View>
+        )}
+
+        <View
+          style={[rs.totalRow, rs.grandRow, { borderTopColor: colors.border }]}
+        >
+          <Text style={[rs.grandLabel, { color: colors.text }]}>Total</Text>
+          <Text style={[rs.grandValue, { color: colors.accent }]}>
+            ₱{total.toFixed(2)}
+          </Text>
+        </View>
+      </View>
+    );
+  };
+
+  // ── Payment block ───────────────────────────────────────────────────────────
+  const PaymentBlock = () => (
+    <View style={rs.paymentBlock}>
+      {/* Discount + payment method row */}
+      <View style={rs.paymentTopRow}>
+        <CustomCheckbox
+          label="Apply Discount"
+          checked={isDiscounted}
+          onPress={() => {
+            if (!isDiscounted) setIsDiscounted(true);
+            setIsVisible(!isVisible);
+          }}
+          colors={colors}
+        />
+        <TouchableOpacity
+          style={rs.payMethodBtn}
+          disabled={!isConnected || !outlet.hasKey}
+          onPress={() => paymentSheetRef.current?.open()}
+        >
+          <CreditCard
+            size={18}
+            color={
+              isConnected && outlet.hasKey
+                ? colors.primary
+                : colors.textSecondary
+            }
+          />
+          <Text
+            style={[
+              rs.payMethodTxt,
+              {
+                color:
+                  isConnected && outlet.hasKey
+                    ? colors.primary
+                    : colors.textSecondary,
+              },
+            ]}
+          >
+            {isConnected && outlet.hasKey
+              ? 'Payment Method'
+              : !isConnected
+                ? 'Offline'
+                : 'Unavailable'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      <DiscountModal
+        isVisible={isVisible}
+        onClose={() => setIsVisible(false)}
+        isDiscounted={isDiscounted}
+        setIsDiscounted={() => setIsDiscounted(!isDiscounted)}
+        discountOption={discountOption}
+        setDiscountOption={setDiscountOption}
+        setSelectedPromoId={setSelectedPromoId}
+      />
+      {(discountOption === 'SENIOR' || discountOption === 'PWD') && (
+        <View
+          style={[
+            rs.cashRow,
+            { backgroundColor: colors.background, borderColor: '#10B981' },
+          ]}
+        >
+          <Text style={{ fontSize: 13, color: '#10B981', fontWeight: '600' }}>
+            {discountOption === 'SENIOR' ? 'SC' : 'PWD'} ID
+          </Text>
+          <TextInput
+            style={[
+              rs.cashInput,
+              { color: colors.text },
+              isWide && ({ outlineStyle: 'none' } as any),
+            ]}
+            placeholder={`Enter ${discountOption === 'SENIOR' ? 'Senior Citizen' : 'PWD'} ID No.`}
+            placeholderTextColor={colors.textSecondary}
+            value={vatExemptRefNo}
+            onChangeText={setVatExemptRefNo}
+          />
+        </View>
+      )}
+
+      {/* Cash input */}
+      <View
+        style={[
+          rs.cashRow,
+          { backgroundColor: colors.background, borderColor: colors.border },
+        ]}
+      >
+        <PhilippinePeso size={18} color={colors.textSecondary} />
+        <TextInput
+          style={[
+            rs.cashInput,
+            { color: colors.text },
+            isWide && ({ outlineStyle: 'none' } as any),
+          ]}
+          placeholder="Enter cash received"
+          placeholderTextColor={colors.textSecondary}
+          value={cashReceived}
+          onChangeText={setCashReceived}
+          keyboardType="numeric"
+          selectTextOnFocus
+        />
+      </View>
+
+      {/* Change */}
+      {cashAmount > 0 && (
+        <View
+          style={[
+            rs.changeBlock,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
+          <View style={rs.totalRow}>
+            <Text style={[rs.totalLabel, { color: colors.textSecondary }]}>
+              Cash Received
+            </Text>
+            <Text style={[rs.totalValue, { color: colors.text }]}>
+              ₱{cashAmount.toFixed(2)}
+            </Text>
+          </View>
+          <View style={[rs.totalRow, { marginTop: 6 }]}>
+            <Text style={[rs.grandLabel, { color: colors.text }]}>Change</Text>
+            <Text
+              style={[
+                rs.grandValue,
+                { color: change >= 0 ? '#10B981' : '#EF4444' },
+              ]}
+            >
+              {change < 0 ? 'Insufficient' : `₱${change.toFixed(2)}`}
+            </Text>
+          </View>
+        </View>
+      )}
+    </View>
+  );
 
   return (
     <>
-      <Modal visible={visible} animationType="slide" transparent
-        onRequestClose={() => {  // Android back button
-          onClose();
-        }}
+      <Modal
+        visible={visible}
+        animationType="slide"
+        transparent
+        onRequestClose={onClose}
       >
-        <RootView style={styles.modalContainer}>
-          <View style={styles.overlay}>
-            <TouchableOpacity
-              style={StyleSheet.absoluteFillObject}
-              activeOpacity={1}
-              onPress={() => {   // tap outside to close
-                onClose();
-              }}
-            />
-            <View style={[styles.modal, { backgroundColor: colors.card }]}>
-              {/* Header */}
-              <View style={[styles.header, { borderColor: colors.border }]}>
-                <View style={styles.headerLeft}>
-                  <Image
-                    source={{ uri: 'https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop' }}
-                    style={styles.logo}
-                  />
-                  <View>
-                    <Text style={[styles.outletName, { color: colors.text }]}>TechStore Pro</Text>
-                    <Text style={[styles.receiptTitle, { color: colors.textSecondary }]}>Receipt Summary {outletData.isVatRegistered ? 'Vat-Registered' : 'Non-Vat'}</Text>
-                  </View>
-                </View>
-                <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
-                  <X size={24} color={colors.textSecondary} />
-                </TouchableOpacity>
-              </View>
+        <RootView style={rs.overlay}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFillObject}
+            activeOpacity={1}
+            onPress={onClose}
+          />
 
-              {/* Receipt Content */}
-              <ScrollView style={[styles.content, { borderColor: colors.border }]}>
-                <Text style={[styles.sectionTitle, { color: colors.text }]}>Items Purchased</Text>
-                {items.map((data) => (
-                  <View key={data.id} style={styles.itemRow}>
-                    <View style={styles.itemInfo}>
-                      <Text style={[styles.itemName, { color: colors.text }]}>{data.name}</Text>
-                      <Text style={[styles.itemDetails, { color: colors.textSecondary }]}>
-                        {data.quantity} × ₱{data.price.toFixed(2)}
-                      </Text>
-                    </View>
-                    <Text style={[styles.itemTotal, { color: colors.text }]}>
-                      ₱{(data.price * data.quantity).toFixed(2)}
-                    </Text>
-                  </View>
-                ))}
-                <View style={[styles.divider, { backgroundColor: colors.border }]} />
-              </ScrollView>
-              {/* Footer */}
-              <View style={[styles.divider, { backgroundColor: colors.border }]} />
-
-              <View style={[styles.section, styles.paymentSection]}>
-                <View style={[styles.section, { borderColor: colors.border }]}>
-                  <View style={styles.totalRow}>
-                    <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>Subtotal:</Text>
-                    <Text style={[styles.totalValue, { color: colors.text }]}>₱{subtotal.toFixed(2)}</Text>
-                  </View>
-                  {outletData.isVatRegistered && (discountOption === 'PROMO' || discountOption === "NONE") &&
-                    (
-                      <>
-                        <View style={styles.totalRow}>
-                          <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>VAT Amount({outletData.VatPercent ? outletData.VatPercent * 100 : '0'}%):</Text>
-                          <Text style={[styles.totalValue, { color: colors.text }]}>₱{vatAmount.toFixed(2)}</Text>
-                        </View>
-                      </>
-                    )
-                  }
-                  {isDiscounted &&
-                    <View style={styles.totalRow}>
-                      <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>Discount {discountOption} ({discountRate * 100}%):</Text>
-                      <Text style={[styles.totalValue, { color: colors.text }]}>₱{discount.toFixed(2)}</Text>
-                    </View>
-                  }
-                  <View style={[styles.totalRow, styles.grandTotalRow, { borderColor: colors.border }]}>
-                    <Text style={[styles.grandTotalLabel, { color: colors.text }]}>Total (VAT Included):</Text>
-                    <Text style={[styles.grandTotalValue, { color: colors.text }]}>₱{total.toFixed(2)}</Text>
-                  </View>
-                </View>
-                <View className="flex flex-col align-center justify-between">
-                  <Text style={[styles.sectionTitle, { color: colors.text }]}>Payment</Text>
-                  <View className="flex flex-row justify-between align-center">
-                    <View style={{ flexDirection: "row", alignItems: "center" }}>
-                      <CustomCheckbox
-                        label="Apply Discount"
-                        checked={isDiscounted}
-                        onPress={() => {
-                          if (!isDiscounted) {
-                            setIsDiscounted(!isDiscounted);
-                          } setIsVisible(!isVisible)
-                        }}
-                        colors={colors}
-                      />
-                    </View>
-                    <View style={{ flexDirection: "row", alignItems: "center" }}>
-                      <TouchableOpacity
-                        className="flex-row justitfy-center align-center gap-1"
-
-                        disabled={!isConnected || !outlet.hasKey} // 👈 disable touch if offline
-                        onPress={() => paymentSheetRef.current?.open()} // 👈 open bottom sheet
-                      >
-                        <Text style={[{ color: colors.text }, !isConnected && !outlet.hasKey ? { color: colors.warning } : { color: colors.primary }]}>
-                          {isConnected && outlet.hasKey ? "Payment Method" : !isConnected ? "Offline" : !outlet.hasKey ? "Unavailable" : "Offline"}
-                        </Text>
-                        <CreditCard size={24} color={!isConnected ? colors.warning : colors.primary} />
-                      </TouchableOpacity>
-                    </View>
-                    <DiscountModal
-                      isVisible={isVisible}
-                      onClose={() => setIsVisible(false)}
-                      isDiscounted={isDiscounted}
-                      setIsDiscounted={() => setIsDiscounted(!isDiscounted)}
-                      discountOption={discountOption}
-                      setDiscountOption={setDiscountOption}
-                    />
-                  </View>
-                </View>
-                <View style={[styles.cashInputContainer, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                  <PhilippinePeso size={20} color="#6B7280" />
-                  <TextInput
-                    style={[styles.cashInput, { color: colors.text }]}
-                    placeholder="Enter cash received"
-                    placeholderTextColor="#9CA3AF"
-                    value={cashReceived}
-                    onChangeText={setCashReceived}
-                    keyboardType="numeric"
-                    selectTextOnFocus
-                  />
-                </View>
-
-                {cashAmount > 0 && (
-                  <View style={[styles.changeSection, { backgroundColor: colors.background }]}>
-                    <View style={styles.totalRow}>
-                      <Text style={[styles.totalLabel, { color: colors.text }]}>Cash Received:</Text>
-                      <Text style={[styles.totalValue, { color: colors.text }]}>₱{cashAmount.toFixed(2)}</Text>
-                    </View>
-                    <View style={[styles.totalRow, styles.changeRow, { borderColor: colors.border }]}>
-                      <Text style={[styles.changeLabel, { color: colors.text }]}>Change:</Text>
-                      <Text style={[
-                        styles.changeValue,
-                        { color: change >= 0 ? '#10B981' : '#EF4444' }
-                      ]}>
-                        {change < 0 ? 'Insuficient Cash' : `₱${Math.abs(change).toFixed(2)}`}
-                      </Text>
-                    </View>
+          <View
+            style={[
+              rs.modal,
+              isWide && rs.wideModal,
+              { backgroundColor: colors.card },
+            ]}
+          >
+            {/* Header */}
+            <View style={[rs.header, { borderBottomColor: colors.border }]}>
+              <View style={rs.headerLeft}>
+                {outlet.bannerImage ? (
+                  <Image source={{ uri: outlet.bannerImage }} style={rs.logo} />
+                ) : (
+                  <View
+                    style={[
+                      rs.logo,
+                      {
+                        backgroundColor: colors.border,
+                        borderRadius: 25,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      },
+                    ]}
+                  >
+                    <Store size={20} color={colors.textSecondary} />
                   </View>
                 )}
-              </View>
-              <View style={[styles.footer, { borderColor: colors.border }]}>
-                <TouchableOpacity onPress={handleClose} style={[styles.cancelButton, { backgroundColor: colors.background }]}>
-                  <Text style={[styles.cancelButtonText, { color: colors.textSecondary }]}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handlePrintReceipt}
-                  style={[
-                    styles.printButton, { backgroundColor: colors.accent},
-                    (cashAmount < total || isProcessing) && styles.disabledButton
-                  ]}
-                  disabled={cashAmount < total || isProcessing}
-                >
-                  <Printer size={20} color="white" />
-                  <Text style={styles.printButtonText}>
-                    {isProcessing ? 'Processing...' : 'Print Receipt'}
+                <View>
+                  <Text style={[rs.outletName, { color: colors.text }]}>
+                    {outlet.name}
                   </Text>
-                </TouchableOpacity>
+                  <Text
+                    style={[rs.receiptSub, { color: colors.textSecondary }]}
+                  >
+                    Receipt ·{' '}
+                    {outlet.isVatRegistered ? 'VAT Registered' : 'Non-VAT'}
+                  </Text>
+                </View>
               </View>
+              <TouchableOpacity onPress={handleClose} style={rs.closeBtn}>
+                <X size={22} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Body — single column on mobile, two column on desktop */}
+            {isWide ? (
+              <View style={rs.wideBody}>
+                {/* Left: items */}
+                <View
+                  style={[rs.wideLeft, { borderRightColor: colors.border }]}
+                >
+                  <Text style={[rs.sectionTitle, { color: colors.text }]}>
+                    Items ({items.length})
+                  </Text>
+                  <ScrollView showsVerticalScrollIndicator={false}>
+                    {items.map((data) => (
+                      <ItemRow key={data.id} data={data} />
+                    ))}
+                  </ScrollView>
+                  <TotalsBlock />
+                </View>
+                {/* Right: payment */}
+                <View style={rs.wideRight}>
+                  <Text style={[rs.sectionTitle, { color: colors.text }]}>
+                    Payment
+                  </Text>
+                  <PaymentBlock />
+                </View>
+              </View>
+            ) : (
+              <ScrollView
+                style={[rs.mobileBody, { backgroundColor: colors.background }]}
+              >
+                <Text
+                  style={[
+                    rs.sectionTitle,
+                    { color: colors.text, marginBottom: 8 },
+                  ]}
+                >
+                  Items ({items.length})
+                </Text>
+                {items.map((data) => (
+                  <ItemRow key={data.id} data={data} />
+                ))}
+                <TotalsBlock />
+                <Text
+                  style={[
+                    rs.sectionTitle,
+                    { color: colors.text, marginTop: 16, marginBottom: 8 },
+                  ]}
+                >
+                  Payment
+                </Text>
+                <PaymentBlock />
+              </ScrollView>
+            )}
+
+            {/* Footer */}
+            <View style={[rs.footer, { borderTopColor: colors.border }]}>
+              <TouchableOpacity
+                onPress={handleClose}
+                style={[rs.cancelBtn, { borderColor: colors.border }]}
+              >
+                <Text style={[rs.cancelTxt, { color: colors.textSecondary }]}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handlePrintReceipt}
+                style={[
+                  rs.printBtn,
+                  { backgroundColor: colors.accent },
+                  (cashAmount < total || isProcessing) && rs.disabledBtn,
+                ]}
+                disabled={cashAmount < total || isProcessing}
+              >
+                <Printer size={18} color="white" />
+                <Text style={rs.printTxt}>
+                  {isProcessing ? 'Processing…' : 'Print Receipt'}
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
-
           <PaymentBottomSheet ref={paymentSheetRef} />
         </RootView>
       </Modal>
@@ -285,210 +527,149 @@ export function ReceiptModal({ visible, onClose, onOrderPlaced }: ReceiptModalPr
   );
 }
 
-const styles = StyleSheet.create({
-  modalContainer: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)', // This makes the background dark and transparent
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+const rs = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0,0,0,0.55)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: 16,
   },
   modal: {
-    backgroundColor: 'white',
     borderRadius: 16,
     width: '100%',
-    maxWidth: 500,
-    height: '90%',
+    maxWidth: 480,
+    maxHeight: '92%',
+    overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  wideModal: {
+    maxWidth: 820, // two-column on desktop
+    height: '88%',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
   },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  logo: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-  },
-  outletName: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1F2937',
-  },
-  receiptTitle: {
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  closeButton: {
-    padding: 4,
-  },
-  content: {
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  logo: { width: 44, height: 44, borderRadius: 22 },
+  outletName: { fontSize: 16, fontWeight: '800' },
+  receiptSub: { fontSize: 12, marginTop: 1 },
+  closeBtn: { padding: 6 },
+
+  // Wide two-column body
+  wideBody: { flex: 1, flexDirection: 'row' },
+  wideLeft: {
     flex: 1,
     padding: 20,
+    borderRightWidth: 1,
   },
-  section: {
-    marginBottom: 3,
-  },
-  paymentSection: {
-    paddingHorizontal: 20,
+  wideRight: {
+    width: 300,
+    padding: 20,
   },
 
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 12,
-  },
+  // Mobile single column body
+  mobileBody: { flex: 1, padding: 16 },
+
+  sectionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 12 },
+
+  // Item row
   itemRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    paddingVertical: 8,
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    gap: 8,
   },
-  itemInfo: {
-    flex: 1,
-  },
-  itemName: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#1F2937',
-    marginBottom: 2,
-  },
-  itemDetails: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
+  itemLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  itemThumb: { width: 36, height: 36, borderRadius: 8 },
+  itemName: { fontSize: 13, fontWeight: '600', marginBottom: 2 },
+  itemMeta: { fontSize: 11 },
   itemTotal: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#1F2937',
+    fontWeight: '700',
+    minWidth: 70,
+    textAlign: 'right',
   },
-  divider: {
-    height: 1,
-    marginVertical: 16,
+
+  // Totals
+  totalsBlock: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    gap: 6,
   },
   totalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 4,
   },
-  totalLabel: {
-    fontSize: 14,
-    color: '#6B7280',
+  totalLabel: { fontSize: 13 },
+  totalValue: { fontSize: 13, fontWeight: '600' },
+  grandRow: { paddingTop: 10, marginTop: 6, borderTopWidth: 1 },
+  grandLabel: { fontSize: 16, fontWeight: '800' },
+  grandValue: { fontSize: 20, fontWeight: '800' },
+
+  // Payment
+  paymentBlock: { gap: 12 },
+  paymentTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  totalValue: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#1F2937',
-  },
-  grandTotalRow: {
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-    marginTop: 8,
-  },
-  grandTotalLabel: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1F2937',
-  },
-  grandTotalValue: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#3B82F6',
-  },
-  cashInputContainer: {
+  payMethodBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  payMethodTxt: { fontSize: 13, fontWeight: '600' },
+  cashRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderRadius: 10,
     paddingHorizontal: 12,
-    height: 48,
-    marginBottom: 16,
+    height: 46,
+    gap: 8,
   },
-  cashInput: {
-    flex: 1,
-    fontSize: 16,
-    color: '#1F2937',
-    marginLeft: 8,
-  },
-  changeSection: {
-    backgroundColor: '#F0FDF4',
-    borderRadius: 8,
+  cashInput: { flex: 1, fontSize: 16 },
+  changeBlock: {
+    borderRadius: 10,
+    borderWidth: 1,
     padding: 12,
+    gap: 4,
   },
-  changeRow: {
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#D1FAE5',
-    marginTop: 8,
-  },
-  changeLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-  },
-  changeValue: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
+
+  // Footer
   footer: {
     flexDirection: 'row',
-    paddingHorizontal: 20,
-    paddingVertical: 5,
-    gap: 12,
+    padding: 16,
+    gap: 10,
     borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
   },
-  cancelButton: {
+  cancelBtn: {
     flex: 1,
-    paddingVertical: 14,
+    paddingVertical: 13,
     alignItems: 'center',
-    borderRadius: 8,
-    backgroundColor: '#F3F4F6',
+    borderRadius: 10,
+    borderWidth: 1,
   },
-  cancelButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-  printButton: {
+  cancelTxt: { fontSize: 15, fontWeight: '600' },
+  printBtn: {
     flex: 2,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 8,
+    paddingVertical: 13,
+    borderRadius: 10,
     gap: 8,
   },
-  disabledButton: {
-    backgroundColor: '#9CA3AF',
-  },
-  printButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: 'white',
-  },
+  disabledBtn: { backgroundColor: '#9CA3AF' },
+  printTxt: { fontSize: 15, fontWeight: '700', color: '#fff' },
 });

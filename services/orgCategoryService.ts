@@ -86,7 +86,6 @@ export class OrgCategoryService {
         groupId
         isActive
         createdAt
-        # ✅ removed globalCategory — optional, only include if you need it
         group {
           id
           name

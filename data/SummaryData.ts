@@ -4,7 +4,7 @@
 
 export interface GISRow {
   id: string;
-  main: "Income" | "Expenses";
+  main: "Income" | "Expenses" | string;
   group: string;
   code: string;
   description: string;

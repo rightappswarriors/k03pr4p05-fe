@@ -77,6 +77,7 @@ export class SyncService {
     const syncedOrderIds: string[] = [];
     const failedOrderIds: string[] = [];
     try {
+      // syncService.ts — update the mutation
       const NEWTRANSACTION_MUTATION = gql`
         mutation Mutation(
           $outletId: Int!
@@ -105,9 +106,7 @@ export class SyncService {
             change: $change
           ) {
             id
-            cashier {
-              fullname
-            }
+            cashier { fullname }
           }
         }
       `;
@@ -117,7 +116,7 @@ export class SyncService {
       for (const order of orders) {
         try {
           //order.items.map((item)=> (
-            //console.log("ItemId:",item.id)
+          //console.log("ItemId:",item.id)
           //))
           const response = (await client.request(
             NEWTRANSACTION_MUTATION,
@@ -133,10 +132,12 @@ export class SyncService {
               status: 'SYNCED',
               createdAt: order.createdAt,
               itemsSold: order.items.map((item) => ({
-                itemId: Number(item.id),
-                price: item.price,
+                itemId: Number(item.id.split('_')[0]), // ← handles "123_unitId" cart key
+                price: item.priceAtSale ?? item.price,
+                priceAtSale: item.priceAtSale ?? item.price,  // ← add
                 quantity: item.quantity,
-                //                vatable: item.vatable,
+                unitId: item.unitId ?? null,                   // ← add
+                unitName: item.unitName ?? null,               // ← add
               })),
             },
             {

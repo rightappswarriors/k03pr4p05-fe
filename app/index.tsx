@@ -12,6 +12,7 @@ import { router } from 'expo-router';
 // Auth
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { AuthService } from '@/services/authService';
 export default function SplashScreen() {
   const { colors } = useTheme();
   const { user, isLoading, isAuthenticated } = useAuth();
@@ -26,9 +27,9 @@ export default function SplashScreen() {
       }
 
       // Check onboarding state and redirect accordingly
-      if (user.role === "ADMIN") {
-        router.replace('/(admin)')
-        return
+      if (user.role === 'ADMIN') {
+        router.replace('/(admin)');
+        return;
       }
       if (!user.isVerified) {
         router.replace('/onboarding?step=verify');
@@ -45,19 +46,27 @@ export default function SplashScreen() {
         return;
       }
 
-      // Fully onboarded - route based on role
-      if (user.role === 'CASHIER' || user.role === 'STAFF') {
-        router.replace('/(tabs)');
-      } else if (
-        user.role === 'OWNER' ||
-        user.role === 'MANAGER'
-      ) {
+      // For OWNER/MANAGER — straight to ERP
+      if (user.role === 'OWNER' || user.role === 'MANAGER') {
         router.replace('/(erp)');
-      } else if (user.role === "ADMIN") {
-        router.replace('/(admin)')
-      } else {
-        router.replace('/login');
+        return;
       }
+
+      // For STAFF/CASHIER — check outlet assignment first
+      if (user.role === 'STAFF' || user.role === 'CASHIER') {
+        AuthService.getMyOutletAssignment().then((assignment) => {
+          if (assignment?.role === 'CASHIER') {
+            // Assigned to an outlet as cashier → POS
+            router.replace('/(tabs)');
+          } else {
+            // Not assigned or non-cashier role → employee area
+            router.replace('/(employee)');
+          }
+        });
+        return;
+      }
+
+      router.replace('/login');
     }
   }, [isLoading, isAuthenticated, user]);
 
@@ -81,7 +90,6 @@ export default function SplashScreen() {
     </View>
   );
 }
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,

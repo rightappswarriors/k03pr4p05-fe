@@ -33,14 +33,10 @@ import { InventoryService } from '@/services';
 import { MediaService } from '@/services/mediaService';
 import { VatTypeService } from '@/services/vatTypeService';
 import { CategoryPickerModal } from '@/components/CategoryPickerModal';
+import { CostLine } from '@/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface CostLine {
-  id: string; // local UI id only — not sent to backend
-  label: string;
-  amount: number;
-}
 
 export interface InventoryItem {
   id: string;
@@ -58,6 +54,8 @@ export interface InventoryItem {
   priceB?: number;
   priceC?: number;
   vatExempt?: boolean;
+  stockLabel?: string; // ← new
+  stockDescription?: string; // ← new
 }
 
 // What we send to InventoryService.updateItem — matches UpdateItemInput exactly
@@ -71,7 +69,6 @@ interface UpdateItemPayload {
   categoryId?: number; // global
   orgCategoryId?: number; // ✅ org
   vatTypeId?: number;
-  brandId?: number;
   stock?: number;
   skuNumber?: string;
   vatExempt?: boolean;
@@ -414,6 +411,8 @@ function EditItemModal({
   const [stock, setStock] = useState('0');
   const [minStock, setMinStock] = useState('10');
   const [price, setPrice] = useState('');
+  const [stockLabel, setStockLabel] = useState('piece');
+  const [stockDescription, setStockDescription] = useState('');
   const [opExPct, setOpExPct] = useState('10');
   const [priceB, setPriceB] = useState('');
   const [priceC, setPriceC] = useState('');
@@ -455,6 +454,8 @@ function EditItemModal({
     );
     setPriceB(item.priceB != null ? String(item.priceB) : '');
     setPriceC(item.priceC != null ? String(item.priceC) : '');
+    setStockLabel(item.stockLabel ?? 'piece');
+    setStockDescription(item.stockDescription ?? '');
     setVatExempt(item.vatExempt ?? false);
     setCostLines(
       (item.costLines ?? []).map((cl) => ({
@@ -840,7 +841,93 @@ function EditItemModal({
                 />
               </View>
             </View>
+            {/* Stock Label */}
 
+            <View style={s.row2}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.label}>STOCK UNIT *</Text>
+                <Text
+                  style={{
+                    fontSize: 11,
+                    color: colors.textSecondary,
+                    marginBottom: 8,
+                  }}
+                >
+                  What unit is this item's stock measured in?
+                </Text>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    flexWrap: 'wrap',
+                    gap: 6,
+                    marginBottom: 8,
+                  }}
+                >
+                  {[
+                    'piece',
+                    'kg',
+                    'gram',
+                    'liter',
+                    'ml',
+                    'sack',
+                    'box',
+                    'dozen',
+                    'tray',
+                  ].map((unit) => (
+                    <TouchableOpacity
+                      key={unit}
+                      style={[s.catPill, stockLabel === unit && s.catAct]}
+                      onPress={() => setStockLabel(unit)}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: '600',
+                          color: stockLabel === unit ? '#fff' : colors.text,
+                        }}
+                      >
+                        {unit}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                {/* Custom unit input if not in list */}
+                <TextInput
+                  style={s.input}
+                  placeholder="Or type custom unit (e.g. bundle, roll)"
+                  placeholderTextColor={colors.textSecondary}
+                  value={
+                    [
+                      'piece',
+                      'kg',
+                      'gram',
+                      'liter',
+                      'ml',
+                      'sack',
+                      'box',
+                      'dozen',
+                      'tray',
+                    ].includes(stockLabel)
+                      ? ''
+                      : stockLabel
+                  }
+                  onChangeText={(v) =>
+                    v.trim() && setStockLabel(v.trim().toLowerCase())
+                  }
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                {/* Stock Description */}
+                <Text style={s.label}>STOCK DESCRIPTION (optional)</Text>
+                <TextInput
+                  style={s.input}
+                  placeholder="e.g. 25kg sack of NFA rice"
+                  placeholderTextColor={colors.textSecondary}
+                  value={stockDescription}
+                  onChangeText={setStockDescription}
+                />
+              </View>
+            </View>
             {/* ── Pricing ── */}
             <View style={s.row2}>
               <View style={{ flex: 1 }}>
@@ -1082,7 +1169,16 @@ function ItemDetailModal({
   const maxStock = Math.max(item.stock, item.minStock * 4, 200);
   const ratio = Math.min(item.stock / maxStock, 1);
   const barColor = item.lowStock ? colors.error : colors.success;
-
+  const [distribution, setDistribution] = useState<any>(null);
+  const [distLoading, setDistLoading] = useState(false);
+  React.useEffect(() => {
+    if (!visible || !item) return;
+    setDistLoading(true);
+    InventoryService.getItemStockDistribution(Number(item.id))
+      .then(setDistribution)
+      .catch(() => setDistribution(null))
+      .finally(() => setDistLoading(false));
+  }, [visible, item]);
   const totalCost = item.costLines?.reduce((s, l) => s + l.amount, 0) ?? 0;
   const profit = item.sellingPrice - totalCost;
   const margin = item.sellingPrice > 0 ? (profit / item.sellingPrice) * 100 : 0;
@@ -1220,7 +1316,7 @@ function ItemDetailModal({
               </View>
               <View style={{ alignItems: 'flex-end' }}>
                 <Text style={{ fontSize: 13, color: colors.textSecondary }}>
-                  Min:{' '}
+                  Minimum Reorder Level:{' '}
                   <Text style={{ fontWeight: '700', color: colors.text }}>
                     {item.minStock}
                   </Text>
@@ -1365,7 +1461,207 @@ function ItemDetailModal({
               </View>
             </View>
           </View>
+          {/* Stock Distribution */}
+          <View
+            style={[
+              idm.section,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                marginTop: 12,
+              },
+            ]}
+          >
+            <Text style={[idm.sectionTitle, { color: colors.textSecondary }]}>
+              STOCK DISTRIBUTION
+            </Text>
 
+            {distLoading ? (
+              <View style={{ padding: 20, alignItems: 'center' }}>
+                <ActivityIndicator size="small" color={colors.primary} />
+              </View>
+            ) : !distribution ? (
+              <Text
+                style={{
+                  padding: 12,
+                  fontSize: 12,
+                  color: colors.textSecondary,
+                }}
+              >
+                No distribution data
+              </Text>
+            ) : (
+              <>
+                {/* Summary row */}
+                <View style={{ flexDirection: 'row', padding: 12, gap: 8 }}>
+                  {[
+                    [
+                      'Total',
+                      `${distribution.totalStock} ${distribution.stockLabel}`,
+                      colors.text,
+                    ],
+                    [
+                      'Assigned',
+                      `${distribution.totalAssigned} ${distribution.stockLabel}`,
+                      colors.accent,
+                    ],
+                    [
+                      'Warehouse',
+                      `${distribution.warehouseStock} ${distribution.stockLabel}`,
+                      distribution.warehouseStock < 0
+                        ? colors.error
+                        : colors.success,
+                    ],
+                  ].map(([label, value, color]) => (
+                    <View
+                      key={label as string}
+                      style={{
+                        flex: 1,
+                        alignItems: 'center',
+                        backgroundColor: colors.background,
+                        borderRadius: 8,
+                        padding: 8,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 15,
+                          fontWeight: '800',
+                          color: color as string,
+                        }}
+                      >
+                        {value}
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: 10,
+                          color: colors.textSecondary,
+                          marginTop: 2,
+                        }}
+                      >
+                        {label}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+
+                {/* Per-outlet rows */}
+                {distribution.outlets.length === 0 ? (
+                  <Text
+                    style={{
+                      padding: 12,
+                      fontSize: 12,
+                      color: colors.textSecondary,
+                    }}
+                  >
+                    Not assigned to any outlet yet
+                  </Text>
+                ) : (
+                  distribution.outlets.map((outlet: any) => (
+                    <View
+                      key={outlet.outletId}
+                      style={[
+                        idm.detailRow,
+                        {
+                          borderBottomColor: colors.border,
+                        },
+                      ]}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            fontWeight: '600',
+                            color: colors.text,
+                          }}
+                        >
+                          {outlet.outletName}
+                        </Text>
+                        {outlet.reorderPoint > 0 && (
+                          <Text
+                            style={{
+                              fontSize: 11,
+                              color: colors.textSecondary,
+                              marginTop: 2,
+                            }}
+                          >
+                            Reorder at {outlet.reorderPoint} {outlet.baseUnit}
+                          </Text>
+                        )}
+                      </View>
+                      <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                        <Text
+                          style={{
+                            fontSize: 14,
+                            fontWeight: '700',
+                            color: colors.text,
+                          }}
+                        >
+                          {outlet.quantity} {outlet.baseUnit}
+                        </Text>
+                        <View
+                          style={{
+                            paddingHorizontal: 8,
+                            paddingVertical: 2,
+                            borderRadius: 10,
+                            borderWidth: 1,
+                            borderColor:
+                              outlet.status === 'CRITICAL'
+                                ? colors.error
+                                : outlet.status === 'LOW'
+                                  ? '#F59E0B'
+                                  : colors.success,
+                            backgroundColor:
+                              outlet.status === 'CRITICAL'
+                                ? colors.error + '18'
+                                : outlet.status === 'LOW'
+                                  ? '#F59E0B18'
+                                  : colors.success + '18',
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 10,
+                              fontWeight: '700',
+                              color:
+                                outlet.status === 'CRITICAL'
+                                  ? colors.error
+                                  : outlet.status === 'LOW'
+                                    ? '#F59E0B'
+                                    : colors.success,
+                            }}
+                          >
+                            {outlet.status === 'CRITICAL'
+                              ? '● CRITICAL'
+                              : outlet.status === 'LOW'
+                                ? '⚠ LOW'
+                                : '✓ OK'}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  ))
+                )}
+
+                {/* stockDescription if set */}
+                {distribution.stockDescription && (
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      color: colors.textSecondary,
+                      padding: 12,
+                      paddingTop: 4,
+                      fontStyle: 'italic',
+                    }}
+                  >
+                    {distribution.stockDescription}
+                  </Text>
+                )}
+              </>
+            )}
+          </View>
           {/* Pricing */}
           <View
             style={[
@@ -1658,6 +1954,8 @@ function AddItemModal({
   const [price, setPrice] = useState('');
   const [vatExempt, setVatExempt] = useState(false);
   const [opExPct, setOpExPct] = useState('10');
+  const [stockLabel, setStockLabel] = useState('piece');
+  const [stockDescription, setStockDescription] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [itemImageUri, setItemImageUri] = useState('');
   const [costLines, setCostLines] = useState<CostLine[]>([
@@ -2028,6 +2326,82 @@ function AddItemModal({
               </View>
             </View>
 
+            {/* Stock Label */}
+
+            <View style={s.row2}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.label}>STOCK UNIT *</Text>
+                <Text
+                  style={{
+                    fontSize: 11,
+                    color: colors.textSecondary,
+                    marginBottom: 8,
+                  }}
+                >
+                  What unit is this item's stock measured in?
+                </Text>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    flexWrap: 'wrap',
+                    gap: 6,
+                    marginBottom: 8,
+                  }}
+                >
+                  {[
+                    'piece',
+                    'kg',
+                    'gram',
+                    'liter',
+                    'ml',
+                    'sack',
+                    'box',
+                    'dozen',
+                    'tray',
+                  ].map((unit) => (
+                    <TouchableOpacity
+                      key={unit}
+                      style={[s.catPill, stockLabel === unit && s.catAct]}
+                      onPress={() => setStockLabel(unit)}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: '600',
+                          color: stockLabel === unit ? '#fff' : colors.text,
+                        }}
+                      >
+                        {unit}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                {/* Custom unit input if not in list */}
+                <TextInput
+                  style={s.input}
+                  placeholder="Or type custom unit (e.g. bundle, roll)"
+                  placeholderTextColor={colors.textSecondary}
+                  value={
+                    [
+                      'piece',
+                      'kg',
+                      'gram',
+                      'liter',
+                      'ml',
+                      'sack',
+                      'box',
+                      'dozen',
+                      'tray',
+                    ].includes(stockLabel)
+                      ? ''
+                      : stockLabel
+                  }
+                  onChangeText={(v) =>
+                    v.trim() && setStockLabel(v.trim().toLowerCase())
+                  }
+                />
+              </View>
+            </View>
             <View style={s.row2}>
               <View style={{ flex: 1 }}>
                 <Text style={s.label}>Selling Price ₱ *</Text>
@@ -2238,6 +2612,8 @@ export default function InventoryScreen() {
               sku: it.barcode || it.skuNumber || `SKU-${it.id}`,
               stock: Number(it.stock || 0),
               minStock: Number(it.minQuantity || 10),
+              stockLabel: it.stockLabel ?? 'piece',
+              stockDescription: it.stockDescription ?? undefined,
               category:
                 it.category?.name ||
                 (it.categoryId ? String(it.categoryId) : 'General'),
@@ -2731,18 +3107,13 @@ export default function InventoryScreen() {
                       }}
                     >
                       <Text
-                        style={{ fontSize: 12, color: colors.textSecondary }}
-                      >
-                        Units:
-                      </Text>
-                      <Text
                         style={{
                           fontSize: 14,
                           fontWeight: '900',
                           color: item.lowStock ? colors.error : colors.text,
                         }}
                       >
-                        {item.stock}
+                        {item.stock} {item.stockLabel ?? 'pcs'}
                       </Text>
                     </View>
                   </View>

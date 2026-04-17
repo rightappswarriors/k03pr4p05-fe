@@ -1,3 +1,5 @@
+// hooks/useResponsive.ts
+// Custom hook to provide screen dimensions and responsive breakpoints
 import { useState, useEffect } from 'react';
 import { Dimensions } from 'react-native';
 

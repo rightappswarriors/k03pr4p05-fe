@@ -35,6 +35,12 @@ export default function OnboardingScreen({
     subscription: 4,
   };
 
+  useEffect(() => {
+    // Pre-fill email if passed via params (e.g. from failed login)
+    if (params.email && typeof params.email === 'string') {
+      setEmail(params.email);
+    }
+  }, [params.email]);
   const [step, setStep] = useState<number>(1);
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -95,7 +101,6 @@ export default function OnboardingScreen({
       }
     }
   }, [user, initialStep, params.step, router, stepMap]);
-
   const goToComplete = async () => {
     try {
       console.log('[Onboarding] goToComplete: Starting completion process');
@@ -111,12 +116,19 @@ export default function OnboardingScreen({
         await onboarding.setIsLoggedIn(true);
         console.log('[Onboarding] goToComplete: Onboarding states set');
       }
-      console.log('[Onboarding] goToComplete: Navigating to admin dashboard...');
+      console.log(
+        '[Onboarding] goToComplete: Navigating to admin dashboard...',
+      );
       router.replace('/(erp)/erp');
     } catch (error) {
-      console.error('[Onboarding] goToComplete: Error during completion:', error);
+      console.error(
+        '[Onboarding] goToComplete: Error during completion:',
+        error,
+      );
       // Even if something fails, try to navigate - the admin layout will handle auth checks
-      console.log('[Onboarding] goToComplete: Attempting navigation despite error...');
+      console.log(
+        '[Onboarding] goToComplete: Attempting navigation despite error...',
+      );
       router.replace('/(erp)/erp');
     }
   };
@@ -190,12 +202,12 @@ export default function OnboardingScreen({
     try {
       const org = await AuthService.createOrganization(orgName);
       setOrganizationId(org.id);
-      
+
       // Refresh user context to include the new orgId
       if (refreshUser) {
         await refreshUser();
       }
-      
+
       setStep(4);
     } catch (err) {
       setError(
@@ -215,14 +227,14 @@ export default function OnboardingScreen({
     setError('');
     try {
       await AuthService.createSubscription(organizationId, plan);
-      
+
       // Auto-login after subscription completion
       const tempPassword = await AsyncStorage.getItem('temp_password');
       if (tempPassword) {
         await AuthService.login(email, tempPassword);
         await AsyncStorage.removeItem('temp_password');
       }
-      
+
       await goToComplete();
     } catch (err) {
       setError(

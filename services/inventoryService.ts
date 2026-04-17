@@ -4,57 +4,88 @@ import { AuthService } from './authService';
 import { getGraphQLClient } from '@/utils/constants';
 
 export class InventoryService {
-  static async getInventory(outletId: number): Promise<any> {
+  static async getItemStockDistribution(itemId: number): Promise<any> {
     const QUERY = gql`
-      query GetInventoryByOutletId($outletId: Int!) {
-        getInventoryByOutletId(outletId: $outletId) {
-          id
-          name
-          address
-          outletType
-          inventory {
-            id
-            outletId
-            inventoryItems {
-              id
-              itemId
-              quantity
-              price
-              minQuantity
-              opExPct
-              costJson
-              totalCost
-              priceB
-              priceC
-              categoryId              // ✅ add
-              category { id name } 
-              item {
-                id
-                name
-                barcode
-                stock
-                vatExempt
-                assembly
-                skuNumber
-                brandId
-                brandDetails { id name }
-                categoryId
-                category { id name }
-              }
-            }
-          }
+    query GetItemStockDistribution($itemId: Int!) {
+      getItemStockDistribution(itemId: $itemId) {
+        itemId
+        itemName
+        totalStock
+        minQuantity
+        stockLabel
+        stockDescription
+        warehouseStock
+        totalAssigned
+        outlets {
+          outletId
+          outletName
+          quantity
+          baseUnit
+          reorderPoint
+          status
         }
       }
-    `;
-
-    const response = await graphQLRequest<{ getInventoryByOutletId: any }>(QUERY, {
-      outletId,
-    });
-
-    return response.getInventoryByOutletId;
+    }
+  `;
+    const { accessToken } = await AuthService.getTokens();
+    const client = await getGraphQLClient();
+    const data = await client.request<{ getItemStockDistribution: any }>(
+      QUERY,
+      { itemId },
+      { Authorization: `Bearer ${accessToken}` }
+    );
+    return data.getItemStockDistribution;
   }
 
 
+  static async getInventoryItemById(inventoryItemId: number): Promise<any> {
+    const QUERY = gql`
+    query GetInventoryItemById($id: ID!) {
+      getInventoryItemById(id: $id) {
+        id
+        price
+        quantity
+        categoryId
+        category { id name }
+        item {
+          id
+          name
+          barcode
+          brand
+          stock
+          sellingPrice
+          description
+          image
+          costLines { id label amount }
+        }
+        units {
+          id
+          unitName
+          unitLabel
+          price
+          quantity
+          conversionFactor
+          baseUnit
+          barcode
+          isDefault
+          isActive
+          allowDecimal
+          minOrderQty
+          maxOrderQty
+          reorderPoint
+        }
+      }
+    }
+  `;
+    const { accessToken } = await AuthService.getTokens();
+    const client = await getGraphQLClient();
+    const data = await client.request<{ getInventoryItemById: any }>(
+      QUERY,
+      { id: inventoryItemId },
+      { Authorization: `Bearer ${accessToken}` }
+    );
+    return data.getInventoryItemById;
+  }
   static getMediaServerUrl(): string {
     return (process.env.EXPO_PUBLIC_MEDIA_SERVER_URL || 'http://10.0.2.2:3001').replace(/\/$/, '');
   }
@@ -179,7 +210,42 @@ export class InventoryService {
 
     return { publicUrl, filePath };
   }
+  static async getDashboardInventoryStats(): Promise<{
+    skuCount: number;
+    totalUnits: number;
+    categoryBreakdown: { name: string; totalStock: number }[];
+  }> {
+    const GRAPHQL = gql`
+    query {
+      getDashboardInventoryStats {
+        skuCount
+        totalUnits
+        categoryBreakdown {
+          name
+          totalStock
+        }
+      }
+    }
+  `;
 
+    try {
+      const { accessToken } = await AuthService.getTokens();
+      const client = await getGraphQLClient();
+      const res = await client.request(
+        GRAPHQL, {},
+        { Authorization: `Bearer ${accessToken}` },
+      ) as any;
+
+      return res.getDashboardInventoryStats ?? {
+        skuCount: 0,
+        totalUnits: 0,
+        categoryBreakdown: [],
+      };
+    } catch (error) {
+      console.error('Failed to fetch dashboard inventory stats:', error);
+      return { skuCount: 0, totalUnits: 0, categoryBreakdown: [] };
+    }
+  }
   static async getOrgItems(query?: string, size?: number): Promise<any[]> {
     const GRAPHQL = gql`
       query GetItems($query: String, $size: Int) {
@@ -196,6 +262,8 @@ export class InventoryService {
           priceB
           priceC
           minQuantity
+          stockLabel          
+          stockDescription    
           costLines { label amount }
           category {
             id
@@ -319,23 +387,22 @@ export class InventoryService {
 
   static async updateItem(itemId: number, data: any): Promise<any> {
     const MUTATION = gql`
-      mutation UpdateItem($id: Int!, $data: UpdateItemInput!) {
+      mutation UpdateItem($id: ID!, $data: UpdateItemInput!) {
         updateItem(id: $id, data: $data) {
           id
           name
           barcode
           description
-          brand
+          brandId
           categoryId
           stock
           sellingPrice
           costLines { label amount}
           category { id name }
-          price
+          sellingPrice
           vatExempt
           assembly
           skuNumber
-          brandDetails { id name }
           image
         }
       }
@@ -344,7 +411,7 @@ export class InventoryService {
     try {
       const { accessToken } = await AuthService.getTokens();
       const client = await getGraphQLClient();
-      const response = await client.request(MUTATION, { id: itemId, data }, {
+      const response = await client.request(MUTATION, { id: String(itemId), data }, {
         Authorization: `Bearer ${accessToken}`
       }) as any;
 
@@ -494,11 +561,63 @@ export class InventoryService {
       throw error;
     }
   }
-
+  static async updateOutletItem(
+    inventoryItemId: number,
+    payload: {
+      price: number;
+      quantity: number;
+      categoryId?: number;
+      units: Array<{
+        unitName: string;
+        unitLabel: string;
+        price: number;
+        quantity: number;
+        conversionFactor: number;
+        baseUnit: string;
+        barcode?: string;
+        isDefault: boolean;
+        allowDecimal: boolean;
+        minOrderQty?: number;
+        maxOrderQty?: number;
+        reorderPoint?: number;
+      }>;
+    }
+  ): Promise<void> {
+    const MUTATION = gql`
+    mutation UpdateOutletItem($data: UpdateOutletItemInput!) {
+      updateOutletItem(data: $data) {
+        id
+        price
+        quantity
+        units {
+          id
+          unitName
+          unitLabel
+          price
+          isDefault
+          allowDecimal
+        }
+      }
+    }
+  `;
+    const { accessToken } = await AuthService.getTokens();
+    const client = await getGraphQLClient();
+    await client.request(
+      MUTATION,
+      {
+        data: {
+          inventoryItemId,
+          ...payload,
+        },
+      },
+      { Authorization: `Bearer ${accessToken}` }
+    );
+  }
   /**
    * Add item to outlet inventory with units for selling
    */
   static async addItemToOutletWithUnits(outletId: number, data: {
+    isLocked?: boolean;
     itemId: number;
     quantity: number;
     price: number;
@@ -508,6 +627,7 @@ export class InventoryService {
       unitLabel: string;
       price: number;
       quantity: number;
+      allowDecimal: boolean;
       conversionFactor: number;
       baseUnit?: string;
       barcode?: string;
@@ -541,6 +661,7 @@ export class InventoryService {
             unitLabel
             price
             quantity
+            allowDecimal
             conversionFactor
             baseUnit
             barcode

@@ -107,7 +107,7 @@ export default function LoginScreenDefault({
     setLoading(true);
     try {
       await login(email, password);
-      router.replace('/(tabs)');
+      router.replace('/');
     } catch (error) {
       if (isDesktop) {
         window.alert('Login Failed');
@@ -123,7 +123,11 @@ export default function LoginScreenDefault({
       setLoading(true);
       await loginWithBiometric();
     } catch (error) {
-      Alert.alert('Biometric Login Failed', (error as Error).message);
+      if (isDesktop) {
+        window.alert('Biometric Login Failed');
+      } else {
+        Alert.alert('Biometric Login Failed', (error as Error).message);
+      }
     } finally {
       setLoading(false);
     }

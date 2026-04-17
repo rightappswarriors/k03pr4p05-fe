@@ -1,6 +1,7 @@
 // screens/(erp)/outlet-detail.tsx
 // Responsive: staff/inventory use 4/3/2/1 grid; transactions always 1 column.
 
+import TransactionDetailModal from '@/components/TransactionDetailModal';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
@@ -18,6 +19,7 @@ import {
   Animated,
   Image,
   Alert,
+  Switch,
 } from 'react-native';
 import { useIsFocused } from '@react-navigation/native';
 import {
@@ -41,7 +43,7 @@ import {
 } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { AdminService } from '@/services/adminService';
+import { AdminService } from '@/services/ManagerService';
 import { AuthService } from '@/services/authService';
 import { HrService } from '@/services/hrService';
 import { MasterFileService } from '@/services/masterFileService';
@@ -51,15 +53,69 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { DropdownField } from '.';
 import { formatPeso } from '@/utils/moneyHelpers';
 import DateRangePickerModal from '@/components/DateRangePickerModal';
-import { FILTERS } from './outlets';
+import { aom, FILTERS } from './outlets';
 import { useAuth } from '@/contexts/AuthContext';
 import { MediaService } from '@/services/mediaService';
 import { useResponsiveGrid } from '@/hooks/useResponsiveGrid';
+import { gql } from 'graphql-request';
+import { getGraphQLClient } from '@/utils/constants';
+import { VatTypeItem, VatTypeService } from '@/services/vatTypeService';
+import { PromoTypeItem, PromoTypeService } from '@/services/promoTypeService';
+import * as outletPromoService from '@/services/outletPromoService';
+import {
+  OutletPromoItem,
+  OutletPromoService,
+} from '@/services/outletPromoService';
 
 type Tab = 'overview' | 'inventory' | 'staff';
 type TxnView = 'card' | 'table';
 
 const TXN_PAGE_SIZE = 10;
+const isWeb = Platform.OS === 'web';
+
+// ─── Overlay styles ────────────────────────────────────────────────────────────
+
+const bottomSheetOverlay: any = Platform.select({
+  web: {
+    position: 'fixed' as any,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    justifyContent: 'flex-end' as const,
+    alignItems: 'center' as const,
+    zIndex: 9999,
+  },
+  default: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end' as const,
+  },
+});
+
+const centeredOverlay: any = Platform.select({
+  web: {
+    position: 'fixed' as any,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    zIndex: 9999,
+  },
+  default: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end' as const,
+  },
+});
 
 // ─── Skeleton pulse ────────────────────────────────────────────────────────────
 
@@ -118,6 +174,7 @@ function EditOutletModal({
   onSuccess?: () => void;
   colors: any;
 }) {
+  const [outletPromos, setOutletPromos] = useState<OutletPromoItem[]>([]);
   const [name, setName] = useState(outletName);
   const [bannerImage, setBannerImage] = useState(outletBannerImage || '');
   const [bannerImagePath, setBannerImagePath] = useState(
@@ -143,6 +200,14 @@ function EditOutletModal({
   const [wifiSSID, setWifiSSID] = useState(outletData?.wifiSSID || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [vatTypes, setVatTypes] = useState<VatTypeItem[]>([]);
+  const [promoTypes, setPromoTypes] = useState<PromoTypeItem[]>([]);
+  const [tin, setTin] = useState('');
+  const [ptu, setPtu] = useState('');
+  const [bir, setBir] = useState('');
+  const [isVatRegistered, setIsVatRegistered] = useState(false);
+  const [vatZeroSale, setVatZeroSale] = useState('');
+  const [vatTypeId, setVatTypeId] = useState<number | undefined>(undefined);
 
   useEffect(() => {
     if (visible && outletData) {
@@ -159,6 +224,15 @@ function EditOutletModal({
       setSvcChg(outletData.serviceCharge?.toString() || '');
       setCode(outletData.code || '');
       setWifiSSID(outletData.wifiSSID || '');
+      VatTypeService.getAll().then(setVatTypes);
+      PromoTypeService.getAll().then(setPromoTypes);
+      setTin(outletData.tin || '');
+      setPtu(outletData.ptu || '');
+      setBir(outletData.bir || '');
+      setIsVatRegistered(outletData.isVatRegistered ?? false);
+      setVatZeroSale(outletData.vatZeroSale?.toString() || '');
+      setVatTypeId(outletData.vatTypeId ?? undefined);
+      OutletPromoService.getByOutlet(Number(outletId)).then(setOutletPromos);
     }
   }, [
     visible,
@@ -254,6 +328,17 @@ function EditOutletModal({
         latitude: latitude ? parseFloat(latitude) : undefined,
         longitude: longitude ? parseFloat(longitude) : undefined,
         bannerImage: finalBannerImage || undefined,
+        tin: tin.trim() || undefined,
+        ptu: ptu.trim() || undefined,
+        bir: bir.trim() || undefined,
+        isVatRegistered,
+        vatZeroSale: vatZeroSale ? parseFloat(vatZeroSale) : undefined,
+        vatTypeId: vatTypeId ?? undefined,
+        outletPromos: outletPromos.map((p) => ({
+          promoTypeId: p.promoTypeId,
+          discount: p.discount,
+          isActive: p.isActive ?? true,
+        })),
       });
       if (onUpdated) onUpdated(finalBannerImage, finalBannerImagePath);
       if (onSuccess) onSuccess();
@@ -265,296 +350,499 @@ function EditOutletModal({
     }
   };
 
+  const overlayStyle = isWeb ? centeredOverlay : bottomSheetOverlay;
+  const sheetStyle = isWeb
+    ? [eom.sheet, eom.webDialog, { backgroundColor: colors.surface }]
+    : [
+        eom.sheet,
+        {
+          backgroundColor: colors.surface,
+          maxWidth: 600,
+          width: '100%' as any,
+        },
+      ];
+
   return (
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
+      animationType={isWeb ? 'fade' : 'slide'}
       onRequestClose={onClose}
     >
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            justifyContent: 'flex-end',
-          }}
+      <View style={overlayStyle}>
+        <TouchableOpacity
+          style={StyleSheet.absoluteFillObject}
+          activeOpacity={1}
+          onPress={onClose}
+        />
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-          <TouchableOpacity
-            style={{ flex: 1 }}
-            activeOpacity={1}
-            onPress={onClose}
-          />
-          <View style={{ alignItems: 'center', width: '100%' }}>
-            <View
-              style={[
-                eom.sheet,
-                {
-                  backgroundColor: colors.surface,
-                  maxWidth: 600,
-                  width: '100%',
-                },
-              ]}
-            >
+          <View style={sheetStyle}>
+            {!isWeb && (
               <View style={[eom.handle, { backgroundColor: colors.border }]} />
-              <View style={[eom.header, { borderBottomColor: colors.border }]}>
-                <Text style={[eom.title, { color: colors.text }]}>
-                  Edit Outlet
-                </Text>
-                <TouchableOpacity onPress={onClose}>
-                  <X size={20} color={colors.textSecondary} strokeWidth={2} />
-                </TouchableOpacity>
+            )}
+            <View style={[eom.header, { borderBottomColor: colors.border }]}>
+              <Text style={[eom.title, { color: colors.text }]}>
+                Edit Outlet
+              </Text>
+              <TouchableOpacity onPress={onClose}>
+                <X size={20} color={colors.textSecondary} strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              contentContainerStyle={eom.body}
+              keyboardShouldPersistTaps="handled"
+            >
+              {[
+                [
+                  'OUTLET NAME *',
+                  name,
+                  setName,
+                  'e.g. Main Street Outlet',
+                  false,
+                ],
+                ['ADDRESS', address, setAddress, 'Full address', true],
+                ['PHONE', phone, setPhone, '+63 9XX XXX XXXX', false],
+                ['CODE', code, setCode, 'Outlet code', false],
+                ['WIFI SSID', wifiSSID, setWifiSSID, 'Network name', false],
+              ].map(([label, val, setter, ph, multi]: any) => (
+                <View key={label as string}>
+                  <Text style={[eom.label, { color: colors.textSecondary }]}>
+                    {label as string}
+                  </Text>
+                  <TextInput
+                    style={[
+                      eom.input,
+                      multi && eom.textarea,
+                      {
+                        color: colors.text,
+                        backgroundColor: colors.background,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                    placeholder={ph as string}
+                    placeholderTextColor={colors.textSecondary}
+                    value={val as string}
+                    onChangeText={setter}
+                    multiline={multi as boolean}
+                    numberOfLines={multi ? 3 : 1}
+                    textAlignVertical={multi ? 'top' : 'center'}
+                  />
+                </View>
+              ))}
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[eom.label, { color: colors.textSecondary }]}>
+                    GOV. TAX %
+                  </Text>
+                  <TextInput
+                    style={[
+                      eom.input,
+                      {
+                        color: colors.text,
+                        backgroundColor: colors.background,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                    placeholder="0.00"
+                    placeholderTextColor={colors.textSecondary}
+                    value={govTax}
+                    onChangeText={setGovTax}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[eom.label, { color: colors.textSecondary }]}>
+                    SERVICE CHARGE %
+                  </Text>
+                  <TextInput
+                    style={[
+                      eom.input,
+                      {
+                        color: colors.text,
+                        backgroundColor: colors.background,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                    placeholder="0.00"
+                    placeholderTextColor={colors.textSecondary}
+                    value={svcChg}
+                    onChangeText={setSvcChg}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
               </View>
-              <ScrollView
-                contentContainerStyle={eom.body}
-                keyboardShouldPersistTaps="handled"
+              <DropdownField
+                label="Outlet Type"
+                value={type}
+                options={[
+                  { id: 'retail', label: 'retail' },
+                  { id: 'wholesale', label: 'wholesale' },
+                  { id: 'service', label: 'service' },
+                ]}
+                onSelect={setType}
+                colors={colors}
+              />
+              <DropdownField
+                label="Status"
+                value={status}
+                options={[
+                  { id: 'open', label: 'open' },
+                  { id: 'closed', label: 'closed' },
+                  { id: 'maintenance', label: 'maintenance' },
+                ]}
+                onSelect={setStatus}
+                colors={colors}
+              />
+              <Text style={[eom.label, { color: colors.textSecondary }]}>
+                LOCATION (optional)
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={[
+                      eom.label,
+                      { color: colors.textSecondary, fontSize: 11 },
+                    ]}
+                  >
+                    LATITUDE
+                  </Text>
+                  <TextInput
+                    style={[
+                      eom.input,
+                      {
+                        color: colors.text,
+                        backgroundColor: colors.background,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                    placeholder="e.g. 14.5995"
+                    placeholderTextColor={colors.textSecondary}
+                    value={latitude}
+                    onChangeText={setLatitude}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={[
+                      eom.label,
+                      { color: colors.textSecondary, fontSize: 11 },
+                    ]}
+                  >
+                    LONGITUDE
+                  </Text>
+                  <TextInput
+                    style={[
+                      eom.input,
+                      {
+                        color: colors.text,
+                        backgroundColor: colors.background,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                    placeholder="e.g. 120.9842"
+                    placeholderTextColor={colors.textSecondary}
+                    value={longitude}
+                    onChangeText={setLongitude}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+              </View>
+              <Text
+                style={[
+                  eom.label,
+                  { color: colors.textSecondary, marginTop: 14 },
+                ]}
               >
-                {[
+                BANNER IMAGE (optional)
+              </Text>
+              {bannerImage ? (
+                <View style={{ marginBottom: 12 }}>
+                  <Image
+                    source={{ uri: bannerImage }}
+                    style={{
+                      width: '100%',
+                      height: 140,
+                      borderRadius: 10,
+                      marginBottom: 8,
+                    }}
+                    resizeMode="cover"
+                  />
+                  <TouchableOpacity
+                    onPress={() => {
+                      setBannerImage('');
+                      setBannerImagePath('');
+                    }}
+                  >
+                    <Text style={{ color: colors.error, fontSize: 12 }}>
+                      Remove image
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View
+                  style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}
+                >
+                  <TouchableOpacity
+                    onPress={pickImage}
+                    style={{
+                      flex: 1,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 10,
+                      padding: 10,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ color: colors.primary }}>Gallery</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={takePhoto}
+                    style={{
+                      flex: 1,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 10,
+                      padding: 10,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ color: colors.primary }}>Camera</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              <Text style={[aom.section, { color: colors.textSecondary }]}>
+                VAT & COMPLIANCE
+              </Text>
+              <View style={[aom.toggleRow, { borderColor: colors.border }]}>
+                <View>
+                  <Text style={[aom.toggleLabel, { color: colors.text }]}>
+                    VAT Registered
+                  </Text>
+                  <Text
+                    style={[aom.toggleSub, { color: colors.textSecondary }]}
+                  >
+                    Outlet charges VAT on transactions
+                  </Text>
+                </View>
+                <Switch
+                  value={isVatRegistered ?? false}
+                  onValueChange={setIsVatRegistered}
+                  trackColor={{ false: colors.border, true: colors.primary }}
+                  thumbColor="#fff"
+                />
+              </View>
+              {isVatRegistered && (
+                <>
+                  <DropdownField
+                    label="VAT Type"
+                    value={vatTypes.find((v) => v.id === vatTypeId)?.name ?? ''}
+                    options={vatTypes.map((v) => ({
+                      id: String(v.id),
+                      label: v.name,
+                    }))}
+                    onSelect={(item) => setVatTypeId(Number(item.id))}
+                    colors={colors}
+                  />
+                  <Text style={[eom.label, { color: colors.textSecondary }]}>
+                    VAT ZERO SALE %
+                  </Text>
+                  <TextInput
+                    style={[
+                      aom.input,
+                      {
+                        color: colors.text,
+                        backgroundColor: colors.background,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                    placeholder="0.00"
+                    placeholderTextColor={colors.textSecondary}
+                    value={vatZeroSale}
+                    onChangeText={setVatZeroSale}
+                    keyboardType="decimal-pad"
+                  />
+                </>
+              )}
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                {(
                   [
-                    'OUTLET NAME *',
-                    name,
-                    setName,
-                    'e.g. Main Street Outlet',
-                    false,
-                  ],
-                  ['ADDRESS', address, setAddress, 'Full address', true],
-                  ['PHONE', phone, setPhone, '+63 9XX XXX XXXX', false],
-                  ['CODE', code, setCode, 'Outlet code', false],
-                  ['WIFI SSID', wifiSSID, setWifiSSID, 'Network name', false],
-                ].map(([label, val, setter, ph, multi]: any) => (
-                  <View key={label as string}>
+                    ['TIN', tin, setTin, '000-000-000-000'],
+                    ['PTU NO.', ptu, setPtu, 'Permit to Operate no.'],
+                    ['BIR ACCREDITATION', bir, setBir, 'BIR accreditation no.'],
+                  ] as [string, string, (v: string) => void, string][]
+                ).map(([label, val, setter, ph]) => (
+                  <View style={{ flex: 1 }} key={label}>
                     <Text style={[eom.label, { color: colors.textSecondary }]}>
-                      {label as string}
+                      {label}
                     </Text>
                     <TextInput
                       style={[
                         eom.input,
-                        multi && eom.textarea,
                         {
                           color: colors.text,
                           backgroundColor: colors.background,
                           borderColor: colors.border,
                         },
                       ]}
-                      placeholder={ph as string}
+                      placeholder={ph}
                       placeholderTextColor={colors.textSecondary}
-                      value={val as string}
+                      value={val}
                       onChangeText={setter}
-                      multiline={multi as boolean}
-                      numberOfLines={multi ? 3 : 1}
-                      textAlignVertical={multi ? 'top' : 'center'}
+                      autoCapitalize="characters"
                     />
                   </View>
                 ))}
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[eom.label, { color: colors.textSecondary }]}>
-                      GOV. TAX %
-                    </Text>
-                    <TextInput
-                      style={[
-                        eom.input,
-                        {
-                          color: colors.text,
-                          backgroundColor: colors.background,
-                          borderColor: colors.border,
-                        },
-                      ]}
-                      placeholder="0.00"
-                      placeholderTextColor={colors.textSecondary}
-                      value={govTax}
-                      onChangeText={setGovTax}
-                      keyboardType="decimal-pad"
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[eom.label, { color: colors.textSecondary }]}>
-                      SERVICE CHARGE %
-                    </Text>
-                    <TextInput
-                      style={[
-                        eom.input,
-                        {
-                          color: colors.text,
-                          backgroundColor: colors.background,
-                          borderColor: colors.border,
-                        },
-                      ]}
-                      placeholder="0.00"
-                      placeholderTextColor={colors.textSecondary}
-                      value={svcChg}
-                      onChangeText={setSvcChg}
-                      keyboardType="decimal-pad"
-                    />
-                  </View>
-                </View>
-                <DropdownField
-                  label="Outlet Type"
-                  value={type}
-                  options={['retail', 'wholesale', 'service']}
-                  onSelect={setType}
-                  colors={colors}
-                />
-                <DropdownField
-                  label="Status"
-                  value={status}
-                  options={['open', 'closed', 'maintenance']}
-                  onSelect={setStatus}
-                  colors={colors}
-                />
-                <Text style={[eom.label, { color: colors.textSecondary }]}>
-                  LOCATION (optional)
-                </Text>
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                  <View style={{ flex: 1 }}>
-                    <Text
-                      style={[
-                        eom.label,
-                        { color: colors.textSecondary, fontSize: 11 },
-                      ]}
-                    >
-                      LATITUDE
-                    </Text>
-                    <TextInput
-                      style={[
-                        eom.input,
-                        {
-                          color: colors.text,
-                          backgroundColor: colors.background,
-                          borderColor: colors.border,
-                        },
-                      ]}
-                      placeholder="e.g. 14.5995"
-                      placeholderTextColor={colors.textSecondary}
-                      value={latitude}
-                      onChangeText={setLatitude}
-                      keyboardType="decimal-pad"
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text
-                      style={[
-                        eom.label,
-                        { color: colors.textSecondary, fontSize: 11 },
-                      ]}
-                    >
-                      LONGITUDE
-                    </Text>
-                    <TextInput
-                      style={[
-                        eom.input,
-                        {
-                          color: colors.text,
-                          backgroundColor: colors.background,
-                          borderColor: colors.border,
-                        },
-                      ]}
-                      placeholder="e.g. 120.9842"
-                      placeholderTextColor={colors.textSecondary}
-                      value={longitude}
-                      onChangeText={setLongitude}
-                      keyboardType="decimal-pad"
-                    />
-                  </View>
-                </View>
-                <Text
-                  style={[
-                    eom.label,
-                    { color: colors.textSecondary, marginTop: 14 },
-                  ]}
-                >
-                  BANNER IMAGE (optional)
-                </Text>
-                {bannerImage ? (
-                  <View style={{ marginBottom: 12 }}>
-                    <Image
-                      source={{ uri: bannerImage }}
-                      style={{
-                        width: '100%',
-                        height: 140,
-                        borderRadius: 10,
-                        marginBottom: 8,
-                      }}
-                      resizeMode="cover"
-                    />
-                    <TouchableOpacity
-                      onPress={() => {
-                        setBannerImage('');
-                        setBannerImagePath('');
-                      }}
-                    >
-                      <Text style={{ color: colors.error, fontSize: 12 }}>
-                        Remove image
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : (
+              </View>
+
+              <Text style={[aom.section, { color: colors.textSecondary }]}>
+                PROMO DISCOUNTS
+              </Text>
+              <Text style={[aom.hint, { color: colors.textSecondary }]}>
+                Configure which discount types this outlet accepts and their
+                rates.
+              </Text>
+              {promoTypes.map((pt) => {
+                const existing = outletPromos.find(
+                  (p: any) => p.promoTypeId === pt.id,
+                );
+                const isEnabled = !!existing;
+                return (
                   <View
-                    style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}
-                  >
-                    <TouchableOpacity
-                      onPress={pickImage}
-                      style={{
-                        flex: 1,
-                        borderWidth: 1,
-                        borderColor: colors.border,
-                        borderRadius: 10,
-                        padding: 10,
-                        alignItems: 'center',
-                      }}
-                    >
-                      <Text style={{ color: colors.primary }}>Gallery</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={takePhoto}
-                      style={{
-                        flex: 1,
-                        borderWidth: 1,
-                        borderColor: colors.border,
-                        borderRadius: 10,
-                        padding: 10,
-                        alignItems: 'center',
-                      }}
-                    >
-                      <Text style={{ color: colors.primary }}>Camera</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-                {error ? (
-                  <Text
+                    key={pt.id}
                     style={{
-                      fontSize: 12,
-                      color: colors.error,
+                      borderWidth: 1,
+                      borderColor: isEnabled ? colors.primary : colors.border,
+                      borderRadius: 12,
+                      padding: 12,
                       marginBottom: 8,
+                      backgroundColor: isEnabled
+                        ? colors.primary + '08'
+                        : colors.background,
                     }}
                   >
-                    {error}
-                  </Text>
-                ) : null}
-                <TouchableOpacity
-                  style={[
-                    eom.saveBtn,
-                    {
-                      backgroundColor: colors.primary,
-                      opacity: loading ? 0.7 : 1,
-                    },
-                  ]}
-                  onPress={handleSave}
-                  disabled={loading}
-                  activeOpacity={0.85}
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={{
+                            color: colors.text,
+                            fontWeight: '600',
+                            fontSize: 14,
+                          }}
+                        >
+                          {pt.name}
+                        </Text>
+                        {pt.description ? (
+                          <Text
+                            style={{
+                              color: colors.textSecondary,
+                              fontSize: 11,
+                              marginTop: 2,
+                            }}
+                          >
+                            {pt.description}
+                          </Text>
+                        ) : null}
+                      </View>
+                      <Switch
+                        value={isEnabled}
+                        onValueChange={(val) => {
+                          setOutletPromos((prev: any[]) => {
+                            if (val)
+                              return [
+                                ...prev,
+                                {
+                                  promoTypeId: pt.id,
+                                  discount: 0,
+                                  isActive: true,
+                                },
+                              ];
+                            return prev.filter((p) => p.promoTypeId !== pt.id);
+                          });
+                        }}
+                        trackColor={{
+                          false: colors.border,
+                          true: colors.primary,
+                        }}
+                        thumbColor="#fff"
+                      />
+                    </View>
+                    {isEnabled && existing && (
+                      <View style={{ marginTop: 10 }}>
+                        <Text
+                          style={[eom.label, { color: colors.textSecondary }]}
+                        >
+                          DISCOUNT %
+                        </Text>
+                        <TextInput
+                          style={[
+                            eom.input,
+                            {
+                              color: colors.text,
+                              backgroundColor: colors.background,
+                              borderColor: colors.border,
+                              marginBottom: 0,
+                            },
+                          ]}
+                          placeholder="e.g. 20"
+                          placeholderTextColor={colors.textSecondary}
+                          value={
+                            existing.discount === 0
+                              ? ''
+                              : String(existing.discount)
+                          }
+                          onChangeText={(v) => {
+                            setOutletPromos((prev) =>
+                              prev.map((p) =>
+                                p.promoTypeId === pt.id
+                                  ? { ...p, discount: parseFloat(v) || 0 }
+                                  : p,
+                              ),
+                            );
+                          }}
+                          keyboardType="decimal-pad"
+                        />
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+              {error ? (
+                <Text
+                  style={{ fontSize: 12, color: colors.error, marginBottom: 8 }}
                 >
-                  <Text style={eom.saveTxt}>
-                    {loading ? 'Saving…' : 'Save Changes'}
-                  </Text>
-                </TouchableOpacity>
-              </ScrollView>
-            </View>
+                  {error}
+                </Text>
+              ) : null}
+              <TouchableOpacity
+                style={[
+                  eom.saveBtn,
+                  {
+                    backgroundColor: colors.primary,
+                    opacity: loading ? 0.7 : 1,
+                  },
+                ]}
+                onPress={handleSave}
+                disabled={loading}
+                activeOpacity={0.85}
+              >
+                <Text style={eom.saveTxt}>
+                  {loading ? 'Saving…' : 'Save Changes'}
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
-        </View>
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
@@ -563,7 +851,20 @@ const eom = StyleSheet.create({
   sheet: {
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: '90%',
+    maxHeight: '90%' as any,
+  },
+  webDialog: {
+    borderRadius: 16,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    width: 600,
+    maxWidth: '90vw' as any,
+    maxHeight: '85vh' as any,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 24,
   },
   handle: {
     width: 40,
@@ -624,7 +925,10 @@ function CreateStaffModal({
   const [fullname, setFullname] = useState('');
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
-  const [role, setRole] = useState('CASHIER');
+  const [role, setRole] = useState<{ id: string; label: string }>({
+    id: 'CASHIER',
+    label: 'CASHIER',
+  });
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -669,145 +973,145 @@ function CreateStaffModal({
     }
   };
 
+  const overlayStyle = isWeb ? centeredOverlay : bottomSheetOverlay;
+  const sheetStyle = isWeb
+    ? [csm2.sheet, csm2.webDialog, { backgroundColor: colors.surface }]
+    : [
+        csm2.sheet,
+        {
+          backgroundColor: colors.surface,
+          maxWidth: 560,
+          width: '100%' as any,
+        },
+      ];
+
   return (
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
+      animationType={isWeb ? 'fade' : 'slide'}
       onRequestClose={onClose}
     >
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            justifyContent: 'flex-end',
-          }}
+      <View style={overlayStyle}>
+        <TouchableOpacity
+          style={StyleSheet.absoluteFillObject}
+          activeOpacity={1}
+          onPress={onClose}
+        />
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-          <TouchableOpacity
-            style={{ flex: 1 }}
-            activeOpacity={1}
-            onPress={onClose}
-          />
-          <View style={{ alignItems: 'center', width: '100%' }}>
-            <View
-              style={[
-                csm2.sheet,
-                {
-                  backgroundColor: colors.surface,
-                  maxWidth: 560,
-                  width: '100%',
-                },
-              ]}
-            >
+          <View style={sheetStyle}>
+            {!isWeb && (
               <View style={[csm2.handle, { backgroundColor: colors.border }]} />
-              <View style={[csm2.header, { borderBottomColor: colors.border }]}>
-                <Text style={[csm2.title, { color: colors.text }]}>
-                  Create New Staff
-                </Text>
-                <TouchableOpacity onPress={onClose}>
-                  <X size={20} color={colors.textSecondary} strokeWidth={2} />
-                </TouchableOpacity>
-              </View>
-              <ScrollView
-                contentContainerStyle={{ padding: 20 }}
-                keyboardShouldPersistTaps="handled"
-              >
-                {[
-                  [
-                    'FULL NAME *',
-                    fullname,
-                    setFullname,
-                    'e.g. Maria Santos',
-                    'default',
-                    false,
-                  ],
-                  [
-                    'EMAIL *',
-                    email,
-                    setEmail,
-                    'm.santos@store.com',
-                    'email-address',
-                    false,
-                  ],
-                  [
-                    'USERNAME *',
-                    username,
-                    setUsername,
-                    'msantos',
-                    'default',
-                    false,
-                  ],
-                  [
-                    'PASSWORD *',
-                    password,
-                    setPassword,
-                    'Min. 6 characters',
-                    'default',
-                    true,
-                  ],
-                ].map(([label, val, setter, ph, kb, secure]: any) => (
-                  <View key={label as string}>
-                    <Text style={[csm2.label, { color: colors.textSecondary }]}>
-                      {label as string}
-                    </Text>
-                    <TextInput
-                      style={[
-                        csm2.input,
-                        {
-                          color: colors.text,
-                          backgroundColor: colors.background,
-                          borderColor: colors.border,
-                        },
-                      ]}
-                      placeholder={ph as string}
-                      placeholderTextColor={colors.textSecondary}
-                      value={val as string}
-                      onChangeText={setter}
-                      keyboardType={kb as any}
-                      autoCapitalize="none"
-                      secureTextEntry={!!secure}
-                    />
-                  </View>
-                ))}
-                <DropdownField
-                  label="Role"
-                  value={role}
-                  options={['CASHIER', 'STAFF', 'MANAGER']}
-                  onSelect={setRole}
-                  colors={colors}
-                />
-                {error ? (
-                  <Text
-                    style={{ fontSize: 12, color: colors.error, marginTop: 6 }}
-                  >
-                    {error}
-                  </Text>
-                ) : null}
-                <TouchableOpacity
-                  style={[
-                    csm2.btn,
-                    {
-                      backgroundColor: colors.primary,
-                      opacity: loading ? 0.7 : 1,
-                    },
-                  ]}
-                  onPress={handleCreate}
-                  disabled={loading}
-                  activeOpacity={0.85}
-                >
-                  <Text style={csm2.btnTxt}>
-                    {loading ? 'Creating…' : 'Create Staff Account'}
-                  </Text>
-                </TouchableOpacity>
-              </ScrollView>
+            )}
+            <View style={[csm2.header, { borderBottomColor: colors.border }]}>
+              <Text style={[csm2.title, { color: colors.text }]}>
+                Create New Staff
+              </Text>
+              <TouchableOpacity onPress={onClose}>
+                <X size={20} color={colors.textSecondary} strokeWidth={2} />
+              </TouchableOpacity>
             </View>
+            <ScrollView
+              contentContainerStyle={{ padding: 20 }}
+              keyboardShouldPersistTaps="handled"
+            >
+              {[
+                [
+                  'FULL NAME *',
+                  fullname,
+                  setFullname,
+                  'e.g. Maria Santos',
+                  'default',
+                  false,
+                ],
+                [
+                  'EMAIL *',
+                  email,
+                  setEmail,
+                  'm.santos@store.com',
+                  'email-address',
+                  false,
+                ],
+                [
+                  'USERNAME *',
+                  username,
+                  setUsername,
+                  'msantos',
+                  'default',
+                  false,
+                ],
+                [
+                  'PASSWORD *',
+                  password,
+                  setPassword,
+                  'Min. 6 characters',
+                  'default',
+                  true,
+                ],
+              ].map(([label, val, setter, ph, kb, secure]: any) => (
+                <View key={label as string}>
+                  <Text style={[csm2.label, { color: colors.textSecondary }]}>
+                    {label as string}
+                  </Text>
+                  <TextInput
+                    style={[
+                      csm2.input,
+                      {
+                        color: colors.text,
+                        backgroundColor: colors.background,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                    placeholder={ph as string}
+                    placeholderTextColor={colors.textSecondary}
+                    value={val as string}
+                    onChangeText={setter}
+                    keyboardType={kb as any}
+                    autoCapitalize="none"
+                    secureTextEntry={!!secure}
+                  />
+                </View>
+              ))}
+              <DropdownField
+                label="Role"
+                value={role.label}
+                options={[
+                  { id: 'CASHIER', label: 'CASHIER' },
+                  { id: 'STAFF', label: 'STAFF' },
+                  { id: 'MANAGER', label: 'MANAGER' },
+                ]}
+                onSelect={setRole}
+                colors={colors}
+              />
+              {error ? (
+                <Text
+                  style={{ fontSize: 12, color: colors.error, marginTop: 6 }}
+                >
+                  {error}
+                </Text>
+              ) : null}
+              <TouchableOpacity
+                style={[
+                  csm2.btn,
+                  {
+                    backgroundColor: colors.primary,
+                    opacity: loading ? 0.7 : 1,
+                  },
+                ]}
+                onPress={handleCreate}
+                disabled={loading}
+                activeOpacity={0.85}
+              >
+                <Text style={csm2.btnTxt}>
+                  {loading ? 'Creating…' : 'Create Staff Account'}
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
-        </View>
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
@@ -816,8 +1120,21 @@ const csm2 = StyleSheet.create({
   sheet: {
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: '90%',
+    maxHeight: '90%' as any,
     paddingBottom: 32,
+  },
+  webDialog: {
+    borderRadius: 16,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    width: 480,
+    maxWidth: '90vw' as any,
+    maxHeight: '85vh' as any,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 24,
   },
   handle: {
     width: 40,
@@ -864,163 +1181,156 @@ const csm2 = StyleSheet.create({
 function AssignStaffModal({
   visible,
   onClose,
-  onAssign,
+  onAssigned,
   colors,
   outletId,
+  alreadyAssigned,
 }: {
   visible: boolean;
   onClose: () => void;
-  onAssign: (user: Cashier) => void;
+  onAssigned: () => void;
   colors: any;
   outletId: string;
+  alreadyAssigned: Cashier[];
 }) {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<Cashier[]>([]);
+  const [allStaff, setAllStaff] = useState<any[]>([]);
+  const [selected, setSelected] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
-  const doSearch = async () => {
-    if (!query.trim()) return;
+  useEffect(() => {
+    if (!visible) return;
+    setSelected([]);
+    setError('');
     setLoading(true);
+    HrService.getAllStaffs()
+      .then(setAllStaff)
+      .catch(() => setError('Failed to load staff.'))
+      .finally(() => setLoading(false));
+  }, [visible]);
+
+  const filtered = allStaff.filter(
+    (s) =>
+      !query.trim() ||
+      s.fullname.toLowerCase().includes(query.toLowerCase()) ||
+      s.email?.toLowerCase().includes(query.toLowerCase()),
+  );
+  const isAssigned = (id: string) => alreadyAssigned.some((a) => a.id === id);
+  const toggle = (id: string) =>
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+
+  const handleConfirm = async () => {
+    if (selected.length === 0) return;
+    setSaving(true);
+    setError('');
     try {
-      const mock: Cashier[] = [
-        {
-          id: 'u1',
-          fullname: 'Juan dela Cruz',
-          email: 'juan@store.com',
-          isActive: false,
-          outletId: '',
-        },
-        {
-          id: 'u2',
-          fullname: 'Maria Santos',
-          email: 'maria@store.com',
-          isActive: false,
-          outletId: '',
-        },
-        {
-          id: 'u3',
-          fullname: 'Pedro Reyes',
-          email: 'pedro@store.com',
-          isActive: false,
-          outletId: '',
-        },
-      ].filter(
-        (u) =>
-          u.fullname.toLowerCase().includes(query.toLowerCase()) ||
-          u.email.toLowerCase().includes(query.toLowerCase()),
+      await AdminService.assignStaffToOutlet(
+        outletId,
+        selected.map((userId) => ({ userId: Number(userId), role: 'CASHIER' })),
       );
-      setResults(mock);
+      onAssigned();
+      onClose();
+    } catch (e: any) {
+      setError(e?.message || 'Failed to assign staff.');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
+
+  // Assign staff stays as bottom sheet (it has a list — better as sheet on all platforms)
+  // But on web we use the fixed overlay
+  const overlayStyle = isWeb ? centeredOverlay : bottomSheetOverlay;
+  const sheetStyle = isWeb
+    ? [asm2.sheet, asm2.webDialog, { backgroundColor: colors.surface }]
+    : [
+        asm2.sheet,
+        {
+          backgroundColor: colors.surface,
+          maxWidth: 560,
+          width: '100%' as any,
+        },
+      ];
 
   return (
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
+      animationType={isWeb ? 'fade' : 'slide'}
       onRequestClose={onClose}
     >
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: 'rgba(0,0,0,0.5)',
-          justifyContent: 'flex-end',
-        }}
-      >
+      <View style={overlayStyle}>
         <TouchableOpacity
-          style={{ flex: 1 }}
+          style={StyleSheet.absoluteFillObject}
           activeOpacity={1}
           onPress={onClose}
         />
-        <View style={{ alignItems: 'center', width: '100%' }}>
-          <View
-            style={[
-              asm2.sheet,
-              { backgroundColor: colors.surface, maxWidth: 560, width: '100%' },
-            ]}
-          >
+        <View style={sheetStyle}>
+          {!isWeb && (
             <View style={[asm2.handle, { backgroundColor: colors.border }]} />
-            <View style={[asm2.header, { borderBottomColor: colors.border }]}>
-              <Text style={[asm2.title, { color: colors.text }]}>
-                Assign Existing Staff
-              </Text>
-              <TouchableOpacity onPress={onClose}>
-                <X size={20} color={colors.textSecondary} strokeWidth={2} />
-              </TouchableOpacity>
-            </View>
+          )}
+          <View style={[asm2.header, { borderBottomColor: colors.border }]}>
+            <Text style={[asm2.title, { color: colors.text }]}>
+              Assign Staff to Outlet
+            </Text>
+            <TouchableOpacity onPress={onClose}>
+              <X size={20} color={colors.textSecondary} strokeWidth={2} />
+            </TouchableOpacity>
+          </View>
+          <View style={[asm2.searchRow, { borderBottomColor: colors.border }]}>
             <View
-              style={[asm2.searchRow, { borderBottomColor: colors.border }]}
+              style={[
+                asm2.searchBox,
+                {
+                  backgroundColor: colors.background,
+                  borderColor: colors.border,
+                },
+              ]}
             >
-              <View
-                style={[
-                  asm2.searchBox,
-                  {
-                    backgroundColor: colors.background,
-                    borderColor: colors.border,
-                  },
-                ]}
-              >
-                <Search
-                  size={13}
-                  color={colors.textSecondary}
-                  strokeWidth={2}
-                />
-                <TextInput
-                  style={[asm2.searchInput, { color: colors.text }]}
-                  placeholder="Search by name or email…"
-                  placeholderTextColor={colors.textSecondary}
-                  value={query}
-                  onChangeText={setQuery}
-                  returnKeyType="search"
-                  onSubmitEditing={doSearch}
-                  autoCorrect={false}
-                />
-                {query.length > 0 && (
-                  <TouchableOpacity
-                    onPress={() => {
-                      setQuery('');
-                      setResults([]);
-                    }}
-                  >
-                    <X size={13} color={colors.textSecondary} strokeWidth={2} />
-                  </TouchableOpacity>
-                )}
-              </View>
-              <TouchableOpacity
-                style={[
-                  asm2.searchBtn,
-                  { backgroundColor: loading ? colors.border : colors.primary },
-                ]}
-                onPress={doSearch}
-                disabled={loading}
-              >
-                <Search size={14} color="#fff" strokeWidth={2.5} />
-              </TouchableOpacity>
+              <Search size={13} color={colors.textSecondary} strokeWidth={2} />
+              <TextInput
+                style={[asm2.searchInput, { color: colors.text }]}
+                placeholder="Search by name or email…"
+                placeholderTextColor={colors.textSecondary}
+                value={query}
+                onChangeText={setQuery}
+                autoCorrect={false}
+              />
+              {query.length > 0 && (
+                <TouchableOpacity onPress={() => setQuery('')}>
+                  <X size={13} color={colors.textSecondary} strokeWidth={2} />
+                </TouchableOpacity>
+              )}
             </View>
-            <FlatList
-              data={results}
-              keyExtractor={(i) => i.id}
-              style={{ maxHeight: 300 }}
-              ListEmptyComponent={
-                <View style={{ padding: 24, alignItems: 'center' }}>
-                  <Text style={{ fontSize: 13, color: colors.textSecondary }}>
-                    {loading
-                      ? 'Searching…'
-                      : query
-                        ? 'No users found'
-                        : 'Search to find staff'}
-                  </Text>
-                </View>
-              }
-              renderItem={({ item }) => (
+          </View>
+          <FlatList
+            data={filtered}
+            keyExtractor={(i) => i.id.toString()}
+            style={{ maxHeight: 320 }}
+            ListEmptyComponent={
+              <View style={{ padding: 24, alignItems: 'center' }}>
+                <Text style={{ fontSize: 13, color: colors.textSecondary }}>
+                  {loading ? 'Loading staff…' : 'No staff found'}
+                </Text>
+              </View>
+            }
+            renderItem={({ item }) => {
+              const assigned = isAssigned(item.id.toString());
+              const checked = selected.includes(item.id.toString());
+              return (
                 <TouchableOpacity
-                  style={[asm2.resultRow, { borderBottomColor: colors.border }]}
-                  onPress={() => {
-                    onAssign(item);
-                    onClose();
-                  }}
+                  style={[
+                    asm2.resultRow,
+                    {
+                      borderBottomColor: colors.border,
+                      opacity: assigned ? 0.5 : 1,
+                    },
+                  ]}
+                  onPress={() => !assigned && toggle(item.id.toString())}
+                  disabled={assigned}
                   activeOpacity={0.75}
                 >
                   <View
@@ -1057,12 +1367,73 @@ function AssignStaffModal({
                       {item.email}
                     </Text>
                   </View>
-                  <Text style={[asm2.assignTxt, { color: colors.primary }]}>
-                    Assign
-                  </Text>
+                  {assigned ? (
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        fontWeight: '700',
+                        color: colors.success,
+                      }}
+                    >
+                      Assigned
+                    </Text>
+                  ) : (
+                    <View
+                      style={[
+                        asm2.checkbox,
+                        {
+                          borderColor: checked ? colors.primary : colors.border,
+                          backgroundColor: checked
+                            ? colors.primary
+                            : 'transparent',
+                        },
+                      ]}
+                    >
+                      {checked && (
+                        <Check size={14} color="#fff" strokeWidth={3} />
+                      )}
+                    </View>
+                  )}
                 </TouchableOpacity>
-              )}
-            />
+              );
+            }}
+          />
+          {error ? (
+            <Text
+              style={{
+                color: colors.error,
+                fontSize: 12,
+                paddingHorizontal: 20,
+                paddingTop: 8,
+              }}
+            >
+              {error}
+            </Text>
+          ) : null}
+          <View style={[asm2.footer, { borderTopColor: colors.border }]}>
+            <TouchableOpacity
+              style={[asm2.cancelBtn, { borderColor: colors.border }]}
+              onPress={onClose}
+            >
+              <Text style={{ color: colors.text, fontWeight: '700' }}>
+                Cancel
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                asm2.confirmBtn,
+                {
+                  backgroundColor:
+                    selected.length > 0 ? colors.primary : colors.border,
+                },
+              ]}
+              onPress={handleConfirm}
+              disabled={selected.length === 0 || saving}
+            >
+              <Text style={{ color: '#fff', fontWeight: '700' }}>
+                {saving ? 'Assigning…' : `Assign ${selected.length} Staff`}
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -1075,6 +1446,36 @@ const asm2 = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingBottom: 32,
+  },
+  webDialog: {
+    borderRadius: 16,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    width: 520,
+    maxWidth: '90vw' as any,
+    maxHeight: '85vh' as any,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 24,
+  },
+  footer: { flexDirection: 'row', padding: 16, gap: 12, borderTopWidth: 1 },
+  cancelBtn: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  confirmBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center' },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   handle: {
     width: 40,
@@ -1170,10 +1571,11 @@ export default function OutletDetailScreen() {
   const [selectedStaff, setSelectedStaff] = useState<string[]>([]);
   const [txnView, setTxnView] = useState<TxnView>('card');
   const [txnPage, setTxnPage] = useState(1);
-  const [activeFilter, setActiveFilter] = useState<DateRangeFilter>('today');
+  const [activeFilter, setActiveFilter] =
+    useState<DateRangeFilter>('this_week');
   const { user } = useAuth();
   const isFocused = useIsFocused();
-
+  const [selectedTxnId, setSelectedTxnId] = useState<string | null>(null);
   const [outletBannerImage, setOutletBannerImage] = useState<string>('');
   const [outletBannerImagePath, setOutletBannerImagePath] =
     useState<string>('');
@@ -1184,16 +1586,77 @@ export default function OutletDetailScreen() {
   const [outletRevenue, setOutletRevenue] = useState<OutletRevenue | null>(
     null,
   );
+  const [returnTarget, setReturnTarget] = useState<AdminTransaction | null>(
+    null,
+  );
+  const [returnItems, setReturnItems] = useState<
+    Record<string, { qty: string; isResellable: boolean; reason: string }>
+  >({});
+  const [returning, setReturning] = useState(false);
+  const [restockTarget, setRestockTarget] = useState<any>(null);
+  const [restockQty, setRestockQty] = useState('');
+  const [restockReason, setRestockReason] = useState('');
+  const [restocking, setRestocking] = useState(false);
+
+  const handleReturn = async () => {
+    if (!returnTarget) return;
+    const items = Object.entries(returnItems)
+      .filter(([_, v]) => parseFloat(v.qty) > 0)
+      .map(([itemId, v]) => ({
+        itemId: parseInt(itemId),
+        quantity: parseFloat(v.qty),
+        isResellable: v.isResellable,
+        reason: v.reason || undefined,
+      }));
+    if (items.length === 0) return;
+    setReturning(true);
+    try {
+      const MUTATION = gql`
+        mutation ProcessCustomerReturn(
+          $transactionId: Int!
+          $outletId: Int!
+          $items: [ReturnItemInput!]!
+        ) {
+          processCustomerReturn(
+            transactionId: $transactionId
+            outletId: $outletId
+            items: $items
+          ) {
+            success
+          }
+        }
+      `;
+      const { accessToken } = await AuthService.getTokens();
+      const client = await getGraphQLClient();
+      await client.request(
+        MUTATION,
+        {
+          transactionId: parseInt(returnTarget.id),
+          outletId: parseInt(outletId),
+          items,
+        },
+        { Authorization: `Bearer ${accessToken}` },
+      );
+      Alert.alert('Success', 'Return processed successfully');
+      setReturnTarget(null);
+      setReturnItems({});
+      await loadData();
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Failed to process return');
+    } finally {
+      setReturning(false);
+    }
+  };
 
   useEffect(() => {
-    if (outletId) {
-      loadData();
-    }
+    if (outletId) loadData();
   }, [outletId, activeFilter]);
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
+      setOutletItems([]);
+      setAssignedStaff([]);
       const { startDate, endDate } = getDateRange(activeFilter);
       if (!user?.orgId) return null;
       const [
@@ -1205,7 +1668,7 @@ export default function OutletDetailScreen() {
         availableStaffData,
       ] = await Promise.all([
         AdminService.getCurrentCashiers(outletId),
-        AdminService.getRecentTransactions(outletId, 50),
+        AdminService.getRecentTransactions(outletId, 50, 0, startDate, endDate),
         AdminService.getCashiersByOutlet(outletId),
         AdminService.getOutletRevenue(outletId, startDate, endDate),
         AdminService.getItemsByOutlet(outletId),
@@ -1257,14 +1720,45 @@ export default function OutletDetailScreen() {
     }
   };
 
-  const handleAssignStaff = async () => {
+  const handleRestock = async () => {
+    if (!restockTarget || !restockQty) return;
+    setRestocking(true);
     try {
-      await AdminService.assignStaffToOutlet(outletId, selectedStaff);
-      setSelectedStaff([]);
-      setShowAssignModal(false);
+      const MUTATION = gql`
+        mutation RestockOutlet(
+          $inventoryItemId: Int!
+          $quantity: Float!
+          $reason: String
+        ) {
+          restockOutlet(
+            inventoryItemId: $inventoryItemId
+            quantity: $quantity
+            reason: $reason
+          ) {
+            id
+            quantity
+          }
+        }
+      `;
+      const { accessToken } = await AuthService.getTokens();
+      const client = await getGraphQLClient();
+      await client.request(
+        MUTATION,
+        {
+          inventoryItemId: restockTarget.id,
+          quantity: parseFloat(restockQty),
+          reason: restockReason || undefined,
+        },
+        { Authorization: `Bearer ${accessToken}` },
+      );
+      setRestockTarget(null);
+      setRestockQty('');
+      setRestockReason('');
       await loadData();
-    } catch (error) {
-      console.error('Failed to assign staff:', error);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Failed to restock');
+    } finally {
+      setRestocking(false);
     }
   };
 
@@ -1292,28 +1786,88 @@ export default function OutletDetailScreen() {
     { key: 'staff', label: 'Staff', icon: Users },
   ];
 
-  // Inventory grid renderer
-  const renderInventoryItem = ({ item }: { item: any }) => (
-    <View style={{ flex: 1, padding: grid.screenPadding / 2 }}>
-      <View style={[st.itemCard, { backgroundColor: colors.card }]}>
-        <View style={{ flex: 1 }}>
-          <Text style={[st.itemName, { color: colors.text }]}>
-            {item.item?.name ?? item.name ?? 'Unnamed Item'}
-          </Text>
-          <Text style={[st.itemDetail, { color: colors.textSecondary }]}>
-            Stock: {item.quantity} | Price: {formatPeso(item.price)}
-          </Text>
-          {item.units && item.units.length > 0 && (
-            <Text style={[st.itemDetail, { color: colors.textSecondary }]}>
-              Units: {(item.units as any[]).map((u) => u.unitName).join(', ')}
+  const renderInventoryItem = ({ item }: { item: any }) => {
+    const defaultUnit =
+      item.units?.find((u: any) => u.isDefault) ?? item.units?.[0];
+    const reorderPoint = defaultUnit?.reorderPoint ?? 0;
+    const isLow = reorderPoint > 0 && item.quantity <= reorderPoint;
+    return (
+      <View style={{ flex: 1, padding: grid.screenPadding / 2 }}>
+        <TouchableOpacity
+          style={[
+            st.itemCard,
+            {
+              backgroundColor: colors.card,
+              borderColor: isLow ? colors.error : colors.border,
+              borderWidth: isLow ? 1.5 : 1,
+            },
+          ]}
+          onPress={() =>
+            router.push({
+              pathname: '/(erp)/add-inventory-item',
+              params: {
+                outletId,
+                outletName,
+                branchId,
+                branchName,
+                inventoryItemId: item.id.toString(),
+              },
+            })
+          }
+          activeOpacity={0.8}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={[st.itemName, { color: colors.text }]}>
+              {item.item?.name ?? item.name ?? 'Unnamed Item'}
             </Text>
-          )}
-        </View>
+            <Text style={[st.itemDetail, { color: colors.textSecondary }]}>
+              Stock: {item.quantity} {item.item?.stockLabel ?? 'pcs'} | ₱
+              {item.price}
+            </Text>
+            {isLow && (
+              <Text
+                style={{
+                  fontSize: 11,
+                  color: colors.error,
+                  fontWeight: '700',
+                  marginTop: 2,
+                }}
+              >
+                ⚠ Below reorder point ({reorderPoint})
+              </Text>
+            )}
+            {item.units && item.units.length > 0 && (
+              <Text style={[st.itemDetail, { color: colors.textSecondary }]}>
+                Units:{' '}
+                {(item.units as any[]).map((u: any) => u.unitName).join(', ')}
+              </Text>
+            )}
+          </View>
+          <TouchableOpacity
+            style={[
+              {
+                paddingHorizontal: 12,
+                paddingVertical: 7,
+                borderRadius: 8,
+                backgroundColor: colors.primary + '18',
+                borderWidth: 1,
+                borderColor: colors.primary,
+              },
+            ]}
+            onPress={() => setRestockTarget(item)}
+            activeOpacity={0.8}
+          >
+            <Text
+              style={{ fontSize: 12, fontWeight: '700', color: colors.primary }}
+            >
+              Restock
+            </Text>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </View>
-    </View>
-  );
+    );
+  };
 
-  // Staff grid renderer
   const renderStaffItem = ({ item: staff }: { item: any }) => {
     const isPresent = currentCashiers.some((c) => c.id === staff.id);
     return (
@@ -1382,6 +1936,29 @@ export default function OutletDetailScreen() {
     );
   };
 
+  // Shared inline modal style helpers
+  const inlineOverlay = isWeb ? centeredOverlay : bottomSheetOverlay;
+  const inlineSheetBase: any = isWeb
+    ? {
+        borderRadius: 16,
+        width: 520,
+        maxWidth: '90vw',
+        maxHeight: '85vh',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.15,
+        shadowRadius: 24,
+        elevation: 24,
+      }
+    : {
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+        maxHeight: '80%',
+        maxWidth: 560,
+        width: '100%',
+        alignSelf: 'center',
+      };
+
   return (
     <SafeAreaView
       style={[st.container, { backgroundColor: colors.background }]}
@@ -1417,27 +1994,6 @@ export default function OutletDetailScreen() {
           <Text style={[st.editBtnTxt, { color: colors.primary }]}>Edit</Text>
         </TouchableOpacity>
       </View>
-
-      {/* Banner */}
-      {outletBannerImage ? (
-        <Image
-          source={{ uri: outletBannerImage }}
-          style={{ width: '100%', height: 180 }}
-          resizeMode="cover"
-        />
-      ) : (
-        <View
-          style={{
-            width: '100%',
-            height: 150,
-            backgroundColor: colors.border,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Text style={{ color: colors.textSecondary }}>No outlet image</Text>
-        </View>
-      )}
 
       {/* Tab bar */}
       <View
@@ -1482,7 +2038,7 @@ export default function OutletDetailScreen() {
         })}
       </View>
 
-      {/* ── OVERVIEW TAB ──────────────────────────────────────────────────────── */}
+      {/* ── OVERVIEW TAB ── */}
       {activeTab === 'overview' && (
         <ScrollView
           style={{ flex: 1 }}
@@ -1491,7 +2047,28 @@ export default function OutletDetailScreen() {
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
           }
         >
-          {/* Centred content */}
+          {/* Banner */}
+          {outletBannerImage ? (
+            <Image
+              source={{ uri: outletBannerImage }}
+              style={{ width: '100%', height: 180 }}
+              resizeMode="cover"
+            />
+          ) : (
+            <View
+              style={{
+                width: '100%',
+                height: 150,
+                backgroundColor: colors.border,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text style={{ color: colors.textSecondary }}>
+                No outlet image
+              </Text>
+            </View>
+          )}
           <View
             style={{
               alignSelf: 'center',
@@ -1500,7 +2077,6 @@ export default function OutletDetailScreen() {
               padding: grid.screenPadding,
             }}
           >
-            {/* Date filters */}
             <View style={[st.filterRow, { backgroundColor: colors.card }]}>
               {FILTERS.map((filter) => {
                 const { label } = getDateRange(filter, customStart, customEnd);
@@ -1530,7 +2106,6 @@ export default function OutletDetailScreen() {
                 );
               })}
             </View>
-
             <DateRangePickerModal
               visible={showDatePicker}
               onClose={() => setShowDatePicker(false)}
@@ -1542,8 +2117,6 @@ export default function OutletDetailScreen() {
               initialStart={customStart}
               initialEnd={customEnd}
             />
-
-            {/* Metrics — always 3 across */}
             {loading ? (
               <View style={st.metricsRow}>
                 {[1, 2, 3].map((i) => (
@@ -1591,8 +2164,6 @@ export default function OutletDetailScreen() {
                 </View>
               </View>
             )}
-
-            {/* Active cashiers — always 1 col list */}
             <Text
               style={[st.sectionTitle, { color: colors.text, marginTop: 8 }]}
             >
@@ -1647,8 +2218,6 @@ export default function OutletDetailScreen() {
                 </View>
               ))
             )}
-
-            {/* Transactions header — always 1 col */}
             <View
               style={{
                 flexDirection: 'row',
@@ -1695,8 +2264,6 @@ export default function OutletDetailScreen() {
                 </TouchableOpacity>
               </View>
             </View>
-
-            {/* Transactions — always single column */}
             {transactions.length === 0 ? (
               <View style={[st.emptyCard, { backgroundColor: colors.card }]}>
                 <ShoppingCart
@@ -1712,8 +2279,10 @@ export default function OutletDetailScreen() {
               <>
                 {txnView === 'card' &&
                   pagedTxns.map((txn) => (
-                    <View
+                    <TouchableOpacity
+                      activeOpacity={0.8}
                       key={txn.id}
+                      onPress={() => setSelectedTxnId(txn.id)}
                       style={[st.txnCard, { backgroundColor: colors.card }]}
                     >
                       <View
@@ -1798,9 +2367,32 @@ export default function OutletDetailScreen() {
                           +{txn.items.length - 2} more
                         </Text>
                       )}
-                    </View>
+                      <TouchableOpacity
+                        style={[
+                          {
+                            alignSelf: 'flex-start',
+                            marginTop: 6,
+                            paddingHorizontal: 10,
+                            paddingVertical: 4,
+                            borderRadius: 6,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                          },
+                        ]}
+                        onPress={() => setReturnTarget(txn)}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            color: colors.textSecondary,
+                            fontWeight: '600',
+                          }}
+                        >
+                          Return Items
+                        </Text>
+                      </TouchableOpacity>
+                    </TouchableOpacity>
                   ))}
-
                 {txnView === 'table' && (
                   <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                     <View>
@@ -1835,7 +2427,9 @@ export default function OutletDetailScreen() {
                         )}
                       </View>
                       {pagedTxns.map((txn, idx) => (
-                        <View
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          onPress={() => setSelectedTxnId(txn.id)}
                           key={txn.id}
                           style={{
                             flexDirection: 'row',
@@ -1901,12 +2495,35 @@ export default function OutletDetailScreen() {
                               ₱{txn.total.toFixed(2)}
                             </Text>
                           </View>
-                        </View>
+                          <TouchableOpacity
+                            style={[
+                              {
+                                alignSelf: 'flex-start',
+                                marginTop: 6,
+                                paddingHorizontal: 10,
+                                paddingVertical: 4,
+                                borderRadius: 6,
+                                borderWidth: 1,
+                                borderColor: colors.border,
+                              },
+                            ]}
+                            onPress={() => setReturnTarget(txn)}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 11,
+                                color: colors.textSecondary,
+                                fontWeight: '600',
+                              }}
+                            >
+                              Return Items
+                            </Text>
+                          </TouchableOpacity>
+                        </TouchableOpacity>
                       ))}
                     </View>
                   </ScrollView>
                 )}
-
                 {totalPages > 1 && (
                   <View
                     style={[st.pagination, { borderTopColor: colors.border }]}
@@ -1960,7 +2577,7 @@ export default function OutletDetailScreen() {
         </ScrollView>
       )}
 
-      {/* ── INVENTORY TAB — responsive grid ──────────────────────────────────── */}
+      {/* ── INVENTORY TAB ── */}
       {activeTab === 'inventory' && (
         <View style={{ flex: 1 }}>
           <View
@@ -1992,7 +2609,26 @@ export default function OutletDetailScreen() {
               <Text style={st.addBtnTxt}>Assign Items</Text>
             </TouchableOpacity>
           </View>
-          {outletItems.length === 0 ? (
+          {loading ? (
+            <FlatList
+              key="skeleton"
+              data={Array.from({ length: 6 })}
+              keyExtractor={(_, i) => `skel-${i}`}
+              numColumns={grid.cols}
+              contentContainerStyle={{
+                paddingHorizontal: grid.screenPadding / 2,
+                paddingBottom: 40,
+              }}
+              renderItem={() => (
+                <View style={{ flex: 1, padding: grid.screenPadding / 2 }}>
+                  <SkeletonPulse
+                    colors={colors}
+                    style={{ height: 80, borderRadius: 12 }}
+                  />
+                </View>
+              )}
+            />
+          ) : outletItems.length === 0 ? (
             <View
               style={{
                 flex: 1,
@@ -2038,7 +2674,7 @@ export default function OutletDetailScreen() {
         </View>
       )}
 
-      {/* ── STAFF TAB — responsive grid ──────────────────────────────────────── */}
+      {/* ── STAFF TAB ── */}
       {activeTab === 'staff' && (
         <View style={{ flex: 1 }}>
           <View
@@ -2114,13 +2750,10 @@ export default function OutletDetailScreen() {
       <AssignStaffModal
         visible={showAssignModal}
         onClose={() => setShowAssignModal(false)}
-        onAssign={(user) =>
-          setAssignedStaff((prev) =>
-            prev.find((s) => s.id === user.id) ? prev : [...prev, user],
-          )
-        }
+        onAssigned={loadData}
         colors={colors}
         outletId={outletId}
+        alreadyAssigned={assignedStaff}
       />
       <CreateStaffModal
         visible={showCreateModal}
@@ -2145,300 +2778,493 @@ export default function OutletDetailScreen() {
       />
 
       {/* Assign Items Modal */}
-      <Modal visible={showAssignItemsModal} transparent animationType="slide">
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            justifyContent: 'flex-end',
-          }}
-        >
+      <Modal
+        visible={showAssignItemsModal}
+        transparent
+        animationType={isWeb ? 'fade' : 'slide'}
+      >
+        <View style={inlineOverlay}>
           <TouchableOpacity
-            style={{ flex: 1 }}
+            style={StyleSheet.absoluteFillObject}
             activeOpacity={1}
             onPress={() => setShowAssignItemsModal(false)}
           />
-          <View style={{ alignItems: 'center', width: '100%' }}>
-            <View
-              style={[
-                st.modalSheet,
-                {
-                  backgroundColor: colors.surface,
-                  maxWidth: 600,
-                  width: '100%',
-                },
-              ]}
-            >
+          <View style={[inlineSheetBase, { backgroundColor: colors.surface }]}>
+            {!isWeb && (
               <View
                 style={[st.modalHandle, { backgroundColor: colors.border }]}
               />
-              <View
-                style={[st.modalHeader, { borderBottomColor: colors.border }]}
-              >
-                <Text style={[st.modalTitle, { color: colors.text }]}>
-                  Assign Items to Outlet
-                </Text>
-                <TouchableOpacity
-                  onPress={() => setShowAssignItemsModal(false)}
-                >
-                  <X size={20} color={colors.textSecondary} strokeWidth={2} />
-                </TouchableOpacity>
-              </View>
-              <ScrollView contentContainerStyle={st.modalBody}>
-                {availableItems.map((item) => {
-                  const itemIdStr = item.id.toString();
-                  const isSelected = selectedItems.includes(itemIdStr);
-                  const isAssigned = outletItems.some(
-                    (oi) => oi.item?.id === item.id,
-                  );
-                  return (
-                    <View
-                      key={item.id}
+            )}
+            <View
+              style={[st.modalHeader, { borderBottomColor: colors.border }]}
+            >
+              <Text style={[st.modalTitle, { color: colors.text }]}>
+                Assign Items to Outlet
+              </Text>
+              <TouchableOpacity onPress={() => setShowAssignItemsModal(false)}>
+                <X size={20} color={colors.textSecondary} strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={st.modalBody}>
+              {availableItems.map((item) => {
+                const itemIdStr = item.id.toString();
+                const isSelected = selectedItems.includes(itemIdStr);
+                const isAssigned = outletItems.some(
+                  (oi) => oi.item?.id === item.id,
+                );
+                return (
+                  <View
+                    key={item.id}
+                    style={[
+                      st.itemRow,
+                      {
+                        backgroundColor: colors.card,
+                        borderColor: colors.border,
+                        opacity: isAssigned ? 0.6 : 1,
+                      },
+                    ]}
+                  >
+                    <TouchableOpacity
                       style={[
-                        st.itemRow,
+                        st.checkbox,
                         {
-                          backgroundColor: colors.card,
-                          borderColor: colors.border,
-                          opacity: isAssigned ? 0.6 : 1,
+                          borderColor: isSelected
+                            ? colors.primary
+                            : colors.border,
+                          backgroundColor: isSelected
+                            ? colors.primary + '30'
+                            : 'transparent',
+                          opacity: isAssigned ? 0.5 : 1,
                         },
                       ]}
+                      onPress={() => {
+                        if (!isAssigned)
+                          setSelectedItems((prev) =>
+                            isSelected
+                              ? prev.filter((id) => id !== itemIdStr)
+                              : [...prev, itemIdStr],
+                          );
+                      }}
+                      disabled={isAssigned}
                     >
-                      <TouchableOpacity
-                        style={[
-                          st.checkbox,
-                          {
-                            borderColor: isSelected
-                              ? colors.primary
-                              : colors.border,
-                            backgroundColor: isSelected
-                              ? colors.primary + '30'
-                              : 'transparent',
-                            opacity: isAssigned ? 0.5 : 1,
-                          },
-                        ]}
-                        onPress={() => {
-                          if (!isAssigned) {
-                            setSelectedItems((prev) =>
-                              isSelected
-                                ? prev.filter((id) => id !== itemIdStr)
-                                : [...prev, itemIdStr],
-                            );
-                          }
-                        }}
-                        disabled={isAssigned}
-                      >
-                        {isSelected && (
-                          <Text
-                            style={{
-                              fontSize: 16,
-                              fontWeight: '700',
-                              color: colors.primary,
-                            }}
-                          >
-                            ✓
-                          </Text>
-                        )}
-                      </TouchableOpacity>
-                      <View style={{ flex: 1, marginLeft: 12 }}>
-                        <Text style={[st.itemName, { color: colors.text }]}>
-                          {item.name}
-                        </Text>
-                        <Text
-                          style={[
-                            st.itemDetail,
-                            { color: colors.textSecondary, marginTop: 2 },
-                          ]}
-                        >
-                          {item.barcode && `SKU: ${item.barcode}`}
-                        </Text>
-                      </View>
-                      {isAssigned && (
+                      {isSelected && (
                         <Text
                           style={{
-                            fontSize: 11,
+                            fontSize: 16,
                             fontWeight: '700',
-                            color: colors.success,
+                            color: colors.primary,
                           }}
                         >
-                          ✓ Assigned
+                          ✓
                         </Text>
                       )}
+                    </TouchableOpacity>
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={[st.itemName, { color: colors.text }]}>
+                        {item.name}
+                      </Text>
+                      <Text
+                        style={[
+                          st.itemDetail,
+                          { color: colors.textSecondary, marginTop: 2 },
+                        ]}
+                      >
+                        {item.barcode && `SKU: ${item.barcode}`}
+                      </Text>
                     </View>
-                  );
-                })}
-              </ScrollView>
-              <View style={[st.modalFooter, { borderTopColor: colors.border }]}>
-                <TouchableOpacity
-                  style={[
-                    st.modalBtn,
-                    st.modalCancelBtn,
-                    { borderColor: colors.border },
-                  ]}
-                  onPress={() => {
-                    setSelectedItems([]);
-                    setItemQuantities({});
-                    setItemPrices({});
-                    setShowAssignItemsModal(false);
-                  }}
-                >
-                  <Text style={[st.modalBtnText, { color: colors.text }]}>
-                    Cancel
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    st.modalBtn,
-                    st.modalConfirmBtn,
-                    { backgroundColor: colors.primary },
-                  ]}
-                  onPress={handleAssignItems}
-                  disabled={selectedItems.length === 0}
-                >
-                  <Text style={[st.modalBtnText, { color: '#fff' }]}>
-                    Assign {selectedItems.length} Items
-                  </Text>
-                </TouchableOpacity>
-              </View>
+                    {isAssigned && (
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          fontWeight: '700',
+                          color: colors.success,
+                        }}
+                      >
+                        ✓ Assigned
+                      </Text>
+                    )}
+                  </View>
+                );
+              })}
+            </ScrollView>
+            <View style={[st.modalFooter, { borderTopColor: colors.border }]}>
+              <TouchableOpacity
+                style={[
+                  st.modalBtn,
+                  st.modalCancelBtn,
+                  { borderColor: colors.border },
+                ]}
+                onPress={() => {
+                  setSelectedItems([]);
+                  setItemQuantities({});
+                  setItemPrices({});
+                  setShowAssignItemsModal(false);
+                }}
+              >
+                <Text style={[st.modalBtnText, { color: colors.text }]}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  st.modalBtn,
+                  st.modalConfirmBtn,
+                  { backgroundColor: colors.primary },
+                ]}
+                onPress={handleAssignItems}
+                disabled={selectedItems.length === 0}
+              >
+                <Text style={[st.modalBtnText, { color: '#fff' }]}>
+                  Assign {selectedItems.length} Items
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* Assign Staff Modal */}
-      <Modal visible={showAssignModal} transparent animationType="slide">
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            justifyContent: 'flex-end',
-          }}
-        >
+      {/* Restock Modal */}
+      <Modal
+        visible={!!restockTarget}
+        transparent
+        animationType={isWeb ? 'fade' : 'slide'}
+        onRequestClose={() => setRestockTarget(null)}
+      >
+        <View style={inlineOverlay}>
           <TouchableOpacity
-            style={{ flex: 1 }}
+            style={StyleSheet.absoluteFillObject}
             activeOpacity={1}
-            onPress={() => setShowAssignModal(false)}
+            onPress={() => setRestockTarget(null)}
           />
-          <View style={{ alignItems: 'center', width: '100%' }}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
             <View
-              style={[
-                st.modalSheet,
-                {
-                  backgroundColor: colors.surface,
-                  maxWidth: 600,
-                  width: '100%',
-                },
-              ]}
+              style={[inlineSheetBase, { backgroundColor: colors.surface }]}
             >
-              <View
-                style={[st.modalHandle, { backgroundColor: colors.border }]}
-              />
+              {!isWeb && (
+                <View
+                  style={[st.modalHandle, { backgroundColor: colors.border }]}
+                />
+              )}
               <View
                 style={[st.modalHeader, { borderBottomColor: colors.border }]}
               >
                 <Text style={[st.modalTitle, { color: colors.text }]}>
-                  Assign Staff to Outlet
+                  Restock — {restockTarget?.item?.name}
                 </Text>
-                <TouchableOpacity onPress={() => setShowAssignModal(false)}>
+                <TouchableOpacity onPress={() => setRestockTarget(null)}>
                   <X size={20} color={colors.textSecondary} strokeWidth={2} />
                 </TouchableOpacity>
               </View>
-              <ScrollView contentContainerStyle={st.modalBody}>
-                {availableStaff.map((staff) => {
-                  const isSelected = selectedStaff.includes(
-                    staff.id.toString(),
-                  );
-                  const isAssigned = assignedStaff.some(
-                    (as) => as.id === staff.id,
-                  );
-                  return (
-                    <TouchableOpacity
-                      key={staff.id}
-                      style={[
-                        st.staffRow,
-                        {
-                          backgroundColor: colors.card,
-                          opacity: isAssigned ? 0.5 : 1,
-                        },
-                      ]}
-                      onPress={() => {
-                        if (isAssigned) return;
-                        setSelectedStaff((prev) =>
-                          isSelected
-                            ? prev.filter((id) => id !== staff.id.toString())
-                            : [...prev, staff.id.toString()],
-                        );
-                      }}
-                      disabled={isAssigned}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <Text style={[st.staffName, { color: colors.text }]}>
-                          {staff.fullname}
-                        </Text>
-                        <Text
-                          style={[
-                            st.staffDetail,
-                            { color: colors.textSecondary },
-                          ]}
-                        >
-                          {staff.email}
-                        </Text>
-                      </View>
-                      {isAssigned ? (
-                        <Text
-                          style={[st.assignedText, { color: colors.success }]}
-                        >
-                          Assigned
-                        </Text>
-                      ) : (
-                        <View
-                          style={[
-                            st.checkbox,
-                            isSelected && { backgroundColor: colors.primary },
-                          ]}
-                        >
-                          {isSelected && (
-                            <Check size={16} color="#fff" strokeWidth={3} />
-                          )}
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-              <View style={[st.modalFooter, { borderTopColor: colors.border }]}>
-                <TouchableOpacity
-                  style={[
-                    st.modalBtn,
-                    st.modalCancelBtn,
-                    { borderColor: colors.border },
-                  ]}
-                  onPress={() => {
-                    setSelectedStaff([]);
-                    setShowAssignModal(false);
+              <ScrollView
+                contentContainerStyle={{ padding: 20 }}
+                keyboardShouldPersistTaps="handled"
+              >
+                <Text
+                  style={{
+                    fontSize: 13,
+                    color: colors.textSecondary,
+                    marginBottom: 16,
                   }}
                 >
-                  <Text style={[st.modalBtnText, { color: colors.text }]}>
-                    Cancel
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    st.modalBtn,
-                    st.modalConfirmBtn,
-                    { backgroundColor: colors.primary },
-                  ]}
-                  onPress={handleAssignStaff}
-                  disabled={selectedStaff.length === 0}
+                  Current outlet stock: {restockTarget?.quantity}{' '}
+                  {restockTarget?.item?.stockLabel ?? 'pcs'}
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: '700',
+                    color: colors.textSecondary,
+                    marginBottom: 6,
+                  }}
                 >
-                  <Text style={[st.modalBtnText, { color: '#fff' }]}>
-                    Assign {selectedStaff.length} Staff
+                  QUANTITY TO ADD
+                </Text>
+                <TextInput
+                  style={{
+                    borderWidth: 1,
+                    borderRadius: 10,
+                    borderColor: colors.border,
+                    backgroundColor: colors.background,
+                    color: colors.text,
+                    paddingHorizontal: 14,
+                    paddingVertical: 11,
+                    fontSize: 16,
+                    marginBottom: 14,
+                  }}
+                  placeholder="0"
+                  placeholderTextColor={colors.textSecondary}
+                  value={restockQty}
+                  onChangeText={setRestockQty}
+                  keyboardType="decimal-pad"
+                  autoFocus
+                />
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: '700',
+                    color: colors.textSecondary,
+                    marginBottom: 6,
+                  }}
+                >
+                  REASON (optional)
+                </Text>
+                <TextInput
+                  style={{
+                    borderWidth: 1,
+                    borderRadius: 10,
+                    borderColor: colors.border,
+                    backgroundColor: colors.background,
+                    color: colors.text,
+                    paddingHorizontal: 14,
+                    paddingVertical: 11,
+                    fontSize: 14,
+                    marginBottom: 20,
+                  }}
+                  placeholder="e.g. Weekly restock from warehouse"
+                  placeholderTextColor={colors.textSecondary}
+                  value={restockReason}
+                  onChangeText={setRestockReason}
+                />
+                <TouchableOpacity
+                  style={{
+                    backgroundColor:
+                      parseFloat(restockQty) > 0
+                        ? colors.primary
+                        : colors.border,
+                    borderRadius: 12,
+                    paddingVertical: 14,
+                    alignItems: 'center',
+                    opacity: restocking ? 0.7 : 1,
+                  }}
+                  onPress={handleRestock}
+                  disabled={
+                    !restockQty || parseFloat(restockQty) <= 0 || restocking
+                  }
+                >
+                  <Text
+                    style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}
+                  >
+                    {restocking
+                      ? 'Restocking…'
+                      : `Add ${restockQty || '0'} to Outlet`}
                   </Text>
                 </TouchableOpacity>
-              </View>
+              </ScrollView>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
+
+      {/* Return Modal */}
+      <Modal
+        visible={!!returnTarget}
+        transparent
+        animationType={isWeb ? 'fade' : 'slide'}
+        onRequestClose={() => setReturnTarget(null)}
+      >
+        <View style={inlineOverlay}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFillObject}
+            activeOpacity={1}
+            onPress={() => setReturnTarget(null)}
+          />
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
+            <View
+              style={[inlineSheetBase, { backgroundColor: colors.surface }]}
+            >
+              {!isWeb && (
+                <View
+                  style={[st.modalHandle, { backgroundColor: colors.border }]}
+                />
+              )}
+              <View
+                style={[st.modalHeader, { borderBottomColor: colors.border }]}
+              >
+                <Text style={[st.modalTitle, { color: colors.text }]}>
+                  Return Items — #
+                  {returnTarget?.id.toString().slice(-6).toUpperCase()}
+                </Text>
+                <TouchableOpacity onPress={() => setReturnTarget(null)}>
+                  <X size={20} color={colors.textSecondary} strokeWidth={2} />
+                </TouchableOpacity>
+              </View>
+              <ScrollView
+                contentContainerStyle={{ padding: 20 }}
+                keyboardShouldPersistTaps="handled"
+              >
+                {returnTarget?.items.map((item) => {
+                  const state = returnItems[item.id] ?? {
+                    qty: '',
+                    isResellable: true,
+                    reason: '',
+                  };
+                  return (
+                    <View
+                      key={item.id}
+                      style={{
+                        marginBottom: 16,
+                        padding: 14,
+                        backgroundColor: colors.card,
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 14,
+                          fontWeight: '700',
+                          color: colors.text,
+                          marginBottom: 8,
+                        }}
+                      >
+                        {item.name}
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          color: colors.textSecondary,
+                          marginBottom: 8,
+                        }}
+                      >
+                        Sold qty: {item.quantity}
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          fontWeight: '700',
+                          color: colors.textSecondary,
+                          marginBottom: 4,
+                        }}
+                      >
+                        RETURN QTY
+                      </Text>
+                      <TextInput
+                        style={{
+                          borderWidth: 1,
+                          borderRadius: 8,
+                          borderColor: colors.border,
+                          backgroundColor: colors.background,
+                          color: colors.text,
+                          paddingHorizontal: 12,
+                          paddingVertical: 8,
+                          fontSize: 14,
+                          marginBottom: 10,
+                        }}
+                        placeholder="0"
+                        placeholderTextColor={colors.textSecondary}
+                        value={state.qty}
+                        onChangeText={(v) =>
+                          setReturnItems((prev) => ({
+                            ...prev,
+                            [item.id]: { ...state, qty: v },
+                          }))
+                        }
+                        keyboardType="decimal-pad"
+                      />
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          marginBottom: 8,
+                        }}
+                      >
+                        <Text style={{ fontSize: 13, color: colors.text }}>
+                          Resellable (add back to stock)
+                        </Text>
+                        <TouchableOpacity
+                          style={{
+                            paddingHorizontal: 12,
+                            paddingVertical: 5,
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            borderColor: state.isResellable
+                              ? colors.success
+                              : colors.error,
+                            backgroundColor: state.isResellable
+                              ? colors.success + '18'
+                              : colors.error + '18',
+                          }}
+                          onPress={() =>
+                            setReturnItems((prev) => ({
+                              ...prev,
+                              [item.id]: {
+                                ...state,
+                                isResellable: !state.isResellable,
+                              },
+                            }))
+                          }
+                        >
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              fontWeight: '700',
+                              color: state.isResellable
+                                ? colors.success
+                                : colors.error,
+                            }}
+                          >
+                            {state.isResellable ? '✓ Yes' : '✕ Write-off'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                      <TextInput
+                        style={{
+                          borderWidth: 1,
+                          borderRadius: 8,
+                          borderColor: colors.border,
+                          backgroundColor: colors.background,
+                          color: colors.text,
+                          paddingHorizontal: 12,
+                          paddingVertical: 8,
+                          fontSize: 13,
+                        }}
+                        placeholder="Reason (optional)"
+                        placeholderTextColor={colors.textSecondary}
+                        value={state.reason}
+                        onChangeText={(v) =>
+                          setReturnItems((prev) => ({
+                            ...prev,
+                            [item.id]: { ...state, reason: v },
+                          }))
+                        }
+                      />
+                    </View>
+                  );
+                })}
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: colors.primary,
+                    borderRadius: 12,
+                    paddingVertical: 14,
+                    alignItems: 'center',
+                    opacity: returning ? 0.7 : 1,
+                  }}
+                  onPress={handleReturn}
+                  disabled={returning}
+                >
+                  <Text
+                    style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}
+                  >
+                    {returning ? 'Processing…' : 'Process Return'}
+                  </Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
+
+      <TransactionDetailModal
+        transactionId={selectedTxnId}
+        onClose={() => setSelectedTxnId(null)}
+        colors={colors}
+      />
     </SafeAreaView>
   );
 }
@@ -2606,7 +3432,7 @@ const st = StyleSheet.create({
   modalSheet: {
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: '80%',
+    maxHeight: '80%' as any,
   },
   modalHandle: {
     width: 40,

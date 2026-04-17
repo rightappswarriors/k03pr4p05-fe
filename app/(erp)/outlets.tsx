@@ -34,9 +34,9 @@ import {
   Edit2,
 } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { AdminService } from '@/services/adminService';
+import { AdminService } from '@/services/ManagerService';
 import { AuthService } from '@/services/authService';
-import { AdminOutlet, OutletRevenue } from '@/types';
+import { AdminOutlet, OutletPromoInput, OutletRevenue } from '@/types';
 import { DateRangeFilter, getDateRange } from '@/utils/dateHelpers';
 import DateRangePickerModal from '@/components/DateRangePickerModal';
 import { useWebSocket } from '@/contexts/WSContext';
@@ -54,6 +54,8 @@ import { ActivityIndicator } from 'react-native';
 import { MediaService } from '@/services/mediaService';
 import { useResponsiveGrid } from '@/hooks/useResponsiveGrid';
 import { formatPeso } from '@/utils/moneyHelpers';
+import { VatTypeItem, VatTypeService } from '@/services/vatTypeService';
+import { PromoTypeItem, PromoTypeService } from '@/services/promoTypeService';
 
 export const FILTERS: DateRangeFilter[] = [
   'today',
@@ -63,6 +65,54 @@ export const FILTERS: DateRangeFilter[] = [
 ];
 const OUTLET_TYPES = ['retail', 'wholesale', 'service'];
 const OUTLET_STATUSES = ['open', 'closed', 'maintenance'];
+
+const isWeb = Platform.OS === 'web';
+
+// ─── Overlay styles ────────────────────────────────────────────────────────────
+
+// Bottom sheet overlay — used only on native (modals on web use centeredOverlay)
+const bottomSheetOverlay: any = Platform.select({
+  web: {
+    position: 'fixed' as any,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    justifyContent: 'flex-end' as const,
+    alignItems: 'center' as const,
+    zIndex: 9999,
+  },
+  default: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end' as const,
+  },
+});
+
+// Centered modal overlay — web only
+const centeredOverlay: any = Platform.select({
+  web: {
+    position: 'fixed' as any,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    zIndex: 9999,
+  },
+  default: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end' as const,
+  },
+});
 
 // ─── Skeleton outlet card ──────────────────────────────────────────────────────
 
@@ -413,6 +463,13 @@ interface OutletFormData {
   longitude: number | undefined;
   bannerImage: string;
   bannerImagePath?: string;
+  tin?: string;
+  ptu?: string;
+  bir?: string;
+  isVatRegistered?: boolean;
+  vatZeroSale?: string;
+  vatTypeId?: number;
+  outletPromos?: OutletPromoInput[];
 }
 
 function AddOutletModal({
@@ -448,6 +505,15 @@ function AddOutletModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [vatTypes, setVatTypes] = useState<VatTypeItem[]>([]);
+  const [promoTypes, setPromoTypes] = useState<PromoTypeItem[]>([]);
+
+  useEffect(() => {
+    if (visible) {
+      VatTypeService.getAll().then(setVatTypes);
+      PromoTypeService.getAll().then(setPromoTypes);
+    }
+  }, [visible]);
 
   const set = (field: keyof OutletFormData) => (value: any) =>
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -616,393 +682,582 @@ function AddOutletModal({
   };
   const labelStyle = { color: colors.textSecondary };
 
+  // On web: centered dialog. On native: bottom sheet.
+  const overlayStyle = isWeb ? centeredOverlay : bottomSheetOverlay;
+  const sheetStyle = isWeb
+    ? [aom.sheet, aom.webDialog, { backgroundColor: colors.surface }]
+    : [
+        aom.sheet,
+        {
+          backgroundColor: colors.surface,
+          maxWidth: 600,
+          width: '100%' as any,
+        },
+      ];
+
   return (
     <>
       <Modal
         visible={visible}
         transparent
-        animationType="slide"
+        animationType={isWeb ? 'fade' : 'slide'}
         onRequestClose={onClose}
       >
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-          <View
-            style={{
-              flex: 1,
-              backgroundColor: 'rgba(0,0,0,0.48)',
-              justifyContent: 'flex-end',
-            }}
+        <View style={overlayStyle}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFillObject}
+            activeOpacity={1}
+            onPress={onClose}
+          />
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           >
-            <TouchableOpacity
-              style={{ flex: 1 }}
-              activeOpacity={1}
-              onPress={onClose}
-            />
-            {/* Cap width on wide screens */}
-            <View style={{ alignItems: 'center', width: '100%' }}>
-              <View
-                style={[
-                  aom.sheet,
-                  {
-                    backgroundColor: colors.surface,
-                    maxWidth: 600,
-                    width: '100%',
-                  },
-                ]}
-              >
+            <View style={sheetStyle}>
+              {/* Handle — only on native bottom sheet */}
+              {!isWeb && (
                 <View
                   style={[aom.handle, { backgroundColor: colors.border }]}
                 />
-                <View
-                  style={[aom.header, { borderBottomColor: colors.border }]}
-                >
-                  <View>
-                    <Text style={[aom.title, { color: colors.text }]}>
-                      New Outlet
-                    </Text>
-                    <Text style={[aom.sub, { color: colors.textSecondary }]}>
-                      {branchName}
-                    </Text>
-                  </View>
-                  <TouchableOpacity onPress={onClose}>
-                    <X size={20} color={colors.textSecondary} strokeWidth={2} />
-                  </TouchableOpacity>
+              )}
+
+              {/* Header */}
+              <View style={[aom.header, { borderBottomColor: colors.border }]}>
+                <View>
+                  <Text style={[aom.title, { color: colors.text }]}>
+                    New Outlet
+                  </Text>
+                  <Text style={[aom.sub, { color: colors.textSecondary }]}>
+                    {branchName}
+                  </Text>
                 </View>
-                <ScrollView
-                  contentContainerStyle={aom.body}
-                  keyboardShouldPersistTaps="handled"
-                  showsVerticalScrollIndicator={false}
-                >
-                  <Text style={[aom.section, { color: colors.textSecondary }]}>
-                    BASIC INFO
-                  </Text>
-                  <Text style={[aom.label, labelStyle]}>OUTLET NAME *</Text>
-                  <TextInput
-                    style={[aom.input, inputStyle]}
-                    placeholder="e.g. Main Street Outlet"
-                    placeholderTextColor={colors.textSecondary}
-                    value={form.name}
-                    onChangeText={set('name')}
-                  />
-                  <Text style={[aom.label, labelStyle]}>ADDRESS *</Text>
-                  <TextInput
-                    style={[aom.input, aom.textarea, inputStyle]}
-                    placeholder="Full address"
-                    placeholderTextColor={colors.textSecondary}
-                    value={form.address}
-                    onChangeText={set('address')}
-                    multiline
-                    numberOfLines={3}
-                    textAlignVertical="top"
-                  />
-                  <Text style={[aom.label, labelStyle]}>
-                    BANNER IMAGE (optional)
-                  </Text>
-                  {form.bannerImage ? (
-                    <View
+                <TouchableOpacity onPress={onClose}>
+                  <X size={20} color={colors.textSecondary} strokeWidth={2} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView
+                contentContainerStyle={aom.body}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                <Text style={[aom.section, { color: colors.textSecondary }]}>
+                  BASIC INFO
+                </Text>
+                <Text style={[aom.label, labelStyle]}>OUTLET NAME *</Text>
+                <TextInput
+                  style={[aom.input, inputStyle]}
+                  placeholder="e.g. Main Street Outlet"
+                  placeholderTextColor={colors.textSecondary}
+                  value={form.name}
+                  onChangeText={set('name')}
+                />
+                <Text style={[aom.label, labelStyle]}>ADDRESS *</Text>
+                <TextInput
+                  style={[aom.input, aom.textarea, inputStyle]}
+                  placeholder="Full address"
+                  placeholderTextColor={colors.textSecondary}
+                  value={form.address}
+                  onChangeText={set('address')}
+                  multiline
+                  numberOfLines={3}
+                  textAlignVertical="top"
+                />
+                <Text style={[aom.label, labelStyle]}>
+                  BANNER IMAGE (optional)
+                </Text>
+                {form.bannerImage ? (
+                  <View
+                    style={[
+                      aom.imagePreview,
+                      {
+                        borderColor: colors.border,
+                        backgroundColor: colors.background,
+                      },
+                    ]}
+                  >
+                    <ImageIcon size={40} color={colors.primary} />
+                    <Text
+                      style={[aom.imageText, { color: colors.textSecondary }]}
+                    >
+                      Banner selected
+                    </Text>
+                    <TouchableOpacity
+                      style={aom.removeImageBtn}
+                      onPress={() =>
+                        setForm((prev) => ({ ...prev, bannerImage: '' }))
+                      }
+                    >
+                      <X size={16} color={colors.error} strokeWidth={2} />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={aom.imagePicker}>
+                    <TouchableOpacity
                       style={[
-                        aom.imagePreview,
+                        aom.imageBtn,
                         {
                           borderColor: colors.border,
                           backgroundColor: colors.background,
                         },
                       ]}
+                      onPress={pickImage}
                     >
-                      <ImageIcon size={40} color={colors.primary} />
-                      <Text
-                        style={[aom.imageText, { color: colors.textSecondary }]}
-                      >
-                        Banner selected
-                      </Text>
-                      <TouchableOpacity
-                        style={aom.removeImageBtn}
-                        onPress={() =>
-                          setForm((prev) => ({ ...prev, bannerImage: '' }))
-                        }
-                      >
-                        <X size={16} color={colors.error} strokeWidth={2} />
-                      </TouchableOpacity>
-                    </View>
-                  ) : (
-                    <View style={aom.imagePicker}>
-                      <TouchableOpacity
-                        style={[
-                          aom.imageBtn,
-                          {
-                            borderColor: colors.border,
-                            backgroundColor: colors.background,
-                          },
-                        ]}
-                        onPress={pickImage}
-                      >
-                        <ImageIcon
-                          size={20}
-                          color={colors.primary}
-                          strokeWidth={2}
-                        />
-                        <Text
-                          style={[aom.imageBtnText, { color: colors.primary }]}
-                        >
-                          Gallery
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[
-                          aom.imageBtn,
-                          {
-                            borderColor: colors.border,
-                            backgroundColor: colors.background,
-                          },
-                        ]}
-                        onPress={takePhoto}
-                      >
-                        <Camera
-                          size={20}
-                          color={colors.primary}
-                          strokeWidth={2}
-                        />
-                        <Text
-                          style={[aom.imageBtnText, { color: colors.primary }]}
-                        >
-                          Camera
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                  <Text style={[aom.hint, { color: colors.textSecondary }]}>
-                    Banner image will be displayed at the top of the outlet in
-                    the POS app.
-                  </Text>
-                  <Text style={[aom.label, labelStyle]}>PHONE (optional)</Text>
-                  <TextInput
-                    style={[
-                      aom.input,
-                      inputStyle,
-                      fieldErrors.phone ? { borderColor: colors.error } : {},
-                    ]}
-                    placeholder="+63 9XX XXX XXXX"
-                    placeholderTextColor={colors.textSecondary}
-                    value={form.phone}
-                    onChangeText={(v) => {
-                      set('phone')(v);
-                      clearFieldError('phone');
-                    }}
-                    onBlur={() => validateField('phone', form.phone)}
-                    keyboardType="phone-pad"
-                  />
-                  <InlineError field="phone" />
-                  <Text style={[aom.label, labelStyle]}>OUTLET CODE</Text>
-                  <TextInput
-                    style={[
-                      aom.input,
-                      inputStyle,
-                      fieldErrors.code ? { borderColor: colors.error } : {},
-                    ]}
-                    placeholder="Auto-generated if left blank"
-                    placeholderTextColor={colors.textSecondary}
-                    value={form.code}
-                    onChangeText={(v) => {
-                      set('code')(v.toUpperCase().replace(/[^A-Z0-9_-]/g, ''));
-                      clearFieldError('code');
-                    }}
-                    onBlur={() => validateField('code', form.code)}
-                    maxLength={12}
-                    autoCapitalize="characters"
-                  />
-                  <InlineError field="code" />
-                  <Text style={[aom.hint, { color: colors.textSecondary }]}>
-                    Unique code used by POS terminals.
-                  </Text>
-                  <Text style={[aom.section, { color: colors.textSecondary }]}>
-                    TYPE & STATUS
-                  </Text>
-                  <DropdownField
-                    label="Outlet Type"
-                    value={form.outletType}
-                    options={OUTLET_TYPES}
-                    onSelect={set('outletType')}
-                    colors={colors}
-                  />
-                  <DropdownField
-                    label="Status"
-                    value={form.status}
-                    options={OUTLET_STATUSES}
-                    onSelect={set('status')}
-                    colors={colors}
-                  />
-                  <View style={[aom.toggleRow, { borderColor: colors.border }]}>
-                    <View>
-                      <Text style={[aom.toggleLabel, { color: colors.text }]}>
-                        Active
-                      </Text>
-                      <Text
-                        style={[aom.toggleSub, { color: colors.textSecondary }]}
-                      >
-                        Outlet is visible and operational
-                      </Text>
-                    </View>
-                    <Switch
-                      value={form.isActive}
-                      onValueChange={set('isActive')}
-                      trackColor={{
-                        false: colors.border,
-                        true: colors.primary,
-                      }}
-                      thumbColor="#fff"
-                    />
-                  </View>
-                  <Text style={[aom.section, { color: colors.textSecondary }]}>
-                    FEES & CHARGES
-                  </Text>
-                  <View style={{ flexDirection: 'row', gap: 12 }}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[aom.label, labelStyle]}>GOV. TAX %</Text>
-                      <TextInput
-                        style={[
-                          aom.input,
-                          inputStyle,
-                          fieldErrors.governmentTax
-                            ? { borderColor: colors.error }
-                            : {},
-                        ]}
-                        placeholder="0.00"
-                        placeholderTextColor={colors.textSecondary}
-                        value={form.governmentTax}
-                        onChangeText={(v) => {
-                          set('governmentTax')(v.replace(/[^0-9.]/g, ''));
-                          clearFieldError('governmentTax');
-                        }}
-                        onBlur={() =>
-                          validateField('governmentTax', form.governmentTax)
-                        }
-                        keyboardType="decimal-pad"
+                      <ImageIcon
+                        size={20}
+                        color={colors.primary}
+                        strokeWidth={2}
                       />
-                      <InlineError field="governmentTax" />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[aom.label, labelStyle]}>
-                        SERVICE CHARGE %
+                      <Text
+                        style={[aom.imageBtnText, { color: colors.primary }]}
+                      >
+                        Gallery
                       </Text>
-                      <TextInput
-                        style={[
-                          aom.input,
-                          inputStyle,
-                          fieldErrors.serviceCharge
-                            ? { borderColor: colors.error }
-                            : {},
-                        ]}
-                        placeholder="0.00"
-                        placeholderTextColor={colors.textSecondary}
-                        value={form.serviceCharge}
-                        onChangeText={(v) => {
-                          set('serviceCharge')(v.replace(/[^0-9.]/g, ''));
-                          clearFieldError('serviceCharge');
-                        }}
-                        onBlur={() =>
-                          validateField('serviceCharge', form.serviceCharge)
-                        }
-                        keyboardType="decimal-pad"
-                      />
-                      <InlineError field="serviceCharge" />
-                    </View>
-                  </View>
-                  <Text style={[aom.section, { color: colors.textSecondary }]}>
-                    SETTINGS
-                  </Text>
-                  <Text style={[aom.label, labelStyle]}>
-                    WIFI SSID (optional)
-                  </Text>
-                  <TextInput
-                    style={[aom.input, inputStyle]}
-                    placeholder="Network name for POS terminal"
-                    placeholderTextColor={colors.textSecondary}
-                    value={form.wifiSSID}
-                    onChangeText={set('wifiSSID')}
-                    maxLength={64}
-                  />
-                  <Text style={[aom.section, { color: colors.textSecondary }]}>
-                    LOCATION
-                  </Text>
-                  <TouchableOpacity
-                    style={[
-                      aom.locationBtn,
-                      {
-                        borderColor: form.latitude
-                          ? colors.primary
-                          : colors.border,
-                        backgroundColor: form.latitude
-                          ? colors.primary + '10'
-                          : colors.background,
-                      },
-                    ]}
-                    onPress={() => setShowMapPicker(true)}
-                    activeOpacity={0.82}
-                  >
-                    <Map
-                      size={16}
-                      color={
-                        form.latitude ? colors.primary : colors.textSecondary
-                      }
-                      strokeWidth={2}
-                    />
-                    <Text
+                    </TouchableOpacity>
+                    <TouchableOpacity
                       style={[
-                        aom.locationBtnTxt,
+                        aom.imageBtn,
                         {
-                          color: form.latitude
-                            ? colors.primary
-                            : colors.textSecondary,
-                          flex: 1,
+                          borderColor: colors.border,
+                          backgroundColor: colors.background,
                         },
                       ]}
+                      onPress={takePhoto}
                     >
-                      {form.latitude
-                        ? `📍 ${form.latitude.toFixed(5)}, ${form.longitude?.toFixed(5)}`
-                        : 'Set coordinates'}
-                    </Text>
-                    {form.latitude && (
-                      <TouchableOpacity
-                        onPress={() =>
-                          setForm((p) => ({
-                            ...p,
-                            latitude: undefined,
-                            longitude: undefined,
-                          }))
-                        }
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      <Camera
+                        size={20}
+                        color={colors.primary}
+                        strokeWidth={2}
+                      />
+                      <Text
+                        style={[aom.imageBtnText, { color: colors.primary }]}
                       >
-                        <X size={14} color={colors.error} strokeWidth={2} />
-                      </TouchableOpacity>
-                    )}
-                  </TouchableOpacity>
-                  {error ? (
-                    <Text style={[aom.error, { color: colors.error }]}>
-                      {error}
+                        Camera
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                <Text style={[aom.hint, { color: colors.textSecondary }]}>
+                  Banner image will be displayed at the top of the outlet in the
+                  POS app.
+                </Text>
+                <Text style={[aom.label, labelStyle]}>PHONE (optional)</Text>
+                <TextInput
+                  style={[
+                    aom.input,
+                    inputStyle,
+                    fieldErrors.phone ? { borderColor: colors.error } : {},
+                  ]}
+                  placeholder="+63 9XX XXX XXXX"
+                  placeholderTextColor={colors.textSecondary}
+                  value={form.phone}
+                  onChangeText={(v) => {
+                    set('phone')(v);
+                    clearFieldError('phone');
+                  }}
+                  onBlur={() => validateField('phone', form.phone)}
+                  keyboardType="phone-pad"
+                />
+                <InlineError field="phone" />
+                <Text style={[aom.label, labelStyle]}>OUTLET CODE</Text>
+                <TextInput
+                  style={[
+                    aom.input,
+                    inputStyle,
+                    fieldErrors.code ? { borderColor: colors.error } : {},
+                  ]}
+                  placeholder="Auto-generated if left blank"
+                  placeholderTextColor={colors.textSecondary}
+                  value={form.code}
+                  onChangeText={(v) => {
+                    set('code')(v.toUpperCase().replace(/[^A-Z0-9_-]/g, ''));
+                    clearFieldError('code');
+                  }}
+                  onBlur={() => validateField('code', form.code)}
+                  maxLength={12}
+                  autoCapitalize="characters"
+                />
+                <InlineError field="code" />
+                <Text style={[aom.hint, { color: colors.textSecondary }]}>
+                  Unique code used by POS terminals.
+                </Text>
+
+                <Text style={[aom.section, { color: colors.textSecondary }]}>
+                  TYPE & STATUS
+                </Text>
+                <DropdownField
+                  label="Outlet Type"
+                  value={form.outletType}
+                  options={OUTLET_TYPES}
+                  onSelect={set('outletType')}
+                  colors={colors}
+                />
+                <DropdownField
+                  label="Status"
+                  value={form.status}
+                  options={OUTLET_STATUSES}
+                  onSelect={set('status')}
+                  colors={colors}
+                />
+                <View style={[aom.toggleRow, { borderColor: colors.border }]}>
+                  <View>
+                    <Text style={[aom.toggleLabel, { color: colors.text }]}>
+                      Active
                     </Text>
-                  ) : null}
-                  <TouchableOpacity
+                    <Text
+                      style={[aom.toggleSub, { color: colors.textSecondary }]}
+                    >
+                      Outlet is visible and operational
+                    </Text>
+                  </View>
+                  <Switch
+                    value={form.isActive}
+                    onValueChange={set('isActive')}
+                    trackColor={{ false: colors.border, true: colors.primary }}
+                    thumbColor="#fff"
+                  />
+                </View>
+
+                <Text style={[aom.section, { color: colors.textSecondary }]}>
+                  FEES & CHARGES
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[aom.label, labelStyle]}>GOV. TAX %</Text>
+                    <TextInput
+                      style={[
+                        aom.input,
+                        inputStyle,
+                        fieldErrors.governmentTax
+                          ? { borderColor: colors.error }
+                          : {},
+                      ]}
+                      placeholder="0.00"
+                      placeholderTextColor={colors.textSecondary}
+                      value={form.governmentTax}
+                      onChangeText={(v) => {
+                        set('governmentTax')(v.replace(/[^0-9.]/g, ''));
+                        clearFieldError('governmentTax');
+                      }}
+                      onBlur={() =>
+                        validateField('governmentTax', form.governmentTax)
+                      }
+                      keyboardType="decimal-pad"
+                    />
+                    <InlineError field="governmentTax" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[aom.label, labelStyle]}>
+                      SERVICE CHARGE %
+                    </Text>
+                    <TextInput
+                      style={[
+                        aom.input,
+                        inputStyle,
+                        fieldErrors.serviceCharge
+                          ? { borderColor: colors.error }
+                          : {},
+                      ]}
+                      placeholder="0.00"
+                      placeholderTextColor={colors.textSecondary}
+                      value={form.serviceCharge}
+                      onChangeText={(v) => {
+                        set('serviceCharge')(v.replace(/[^0-9.]/g, ''));
+                        clearFieldError('serviceCharge');
+                      }}
+                      onBlur={() =>
+                        validateField('serviceCharge', form.serviceCharge)
+                      }
+                      keyboardType="decimal-pad"
+                    />
+                    <InlineError field="serviceCharge" />
+                  </View>
+                </View>
+
+                <Text style={[aom.section, { color: colors.textSecondary }]}>
+                  SETTINGS
+                </Text>
+                <Text style={[aom.label, labelStyle]}>
+                  WIFI SSID (optional)
+                </Text>
+                <TextInput
+                  style={[aom.input, inputStyle]}
+                  placeholder="Network name for POS terminal"
+                  placeholderTextColor={colors.textSecondary}
+                  value={form.wifiSSID}
+                  onChangeText={set('wifiSSID')}
+                  maxLength={64}
+                />
+
+                <Text style={[aom.section, { color: colors.textSecondary }]}>
+                  LOCATION
+                </Text>
+                <TouchableOpacity
+                  style={[
+                    aom.locationBtn,
+                    {
+                      borderColor: form.latitude
+                        ? colors.primary
+                        : colors.border,
+                      backgroundColor: form.latitude
+                        ? colors.primary + '10'
+                        : colors.background,
+                    },
+                  ]}
+                  onPress={() => setShowMapPicker(true)}
+                  activeOpacity={0.82}
+                >
+                  <Map
+                    size={16}
+                    color={
+                      form.latitude ? colors.primary : colors.textSecondary
+                    }
+                    strokeWidth={2}
+                  />
+                  <Text
                     style={[
-                      aom.submitBtn,
+                      aom.locationBtnTxt,
                       {
-                        backgroundColor: colors.primary,
-                        opacity: loading ? 0.7 : 1,
+                        color: form.latitude
+                          ? colors.primary
+                          : colors.textSecondary,
+                        flex: 1,
                       },
                     ]}
-                    onPress={handleAdd}
-                    disabled={loading}
-                    activeOpacity={0.85}
                   >
-                    <Text style={aom.submitTxt}>
-                      {loading ? 'Creating…' : 'Create Outlet'}
+                    {form.latitude
+                      ? `📍 ${form.latitude.toFixed(5)}, ${form.longitude?.toFixed(5)}`
+                      : 'Set coordinates'}
+                  </Text>
+                  {form.latitude && (
+                    <TouchableOpacity
+                      onPress={() =>
+                        setForm((p) => ({
+                          ...p,
+                          latitude: undefined,
+                          longitude: undefined,
+                        }))
+                      }
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <X size={14} color={colors.error} strokeWidth={2} />
+                    </TouchableOpacity>
+                  )}
+                </TouchableOpacity>
+                {error ? (
+                  <Text style={[aom.error, { color: colors.error }]}>
+                    {error}
+                  </Text>
+                ) : null}
+
+                <Text style={[aom.section, { color: colors.textSecondary }]}>
+                  VAT & COMPLIANCE
+                </Text>
+                <View style={[aom.toggleRow, { borderColor: colors.border }]}>
+                  <View>
+                    <Text style={[aom.toggleLabel, { color: colors.text }]}>
+                      VAT Registered
                     </Text>
-                  </TouchableOpacity>
-                </ScrollView>
-              </View>
+                    <Text
+                      style={[aom.toggleSub, { color: colors.textSecondary }]}
+                    >
+                      Outlet charges VAT on transactions
+                    </Text>
+                  </View>
+                  <Switch
+                    value={form.isVatRegistered ?? false}
+                    onValueChange={set('isVatRegistered')}
+                    trackColor={{ false: colors.border, true: colors.primary }}
+                    thumbColor="#fff"
+                  />
+                </View>
+                {form.isVatRegistered && (
+                  <>
+                    <DropdownField
+                      label="VAT Type"
+                      value={
+                        vatTypes.find((v) => v.id === form.vatTypeId)?.name ??
+                        ''
+                      }
+                      options={vatTypes.map((v) => v.name)}
+                      onSelect={(name) => {
+                        const found = vatTypes.find((v) => v.name === name);
+                        set('vatTypeId')(found?.id);
+                      }}
+                      colors={colors}
+                    />
+                    <Text style={[aom.label, labelStyle]}>VAT ZERO SALE %</Text>
+                    <TextInput
+                      style={[aom.input, inputStyle]}
+                      placeholder="0.00"
+                      placeholderTextColor={colors.textSecondary}
+                      value={form.vatZeroSale ?? ''}
+                      onChangeText={set('vatZeroSale')}
+                      keyboardType="decimal-pad"
+                    />
+                  </>
+                )}
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  {[
+                    ['TIN', 'tin', '000-000-000-000'],
+                    ['PTU NO.', 'ptu', 'Permit to Operate no.'],
+                    ['BIR ACCREDITATION', 'bir', 'BIR accreditation no.'],
+                  ].map(([label, field, ph]) => (
+                    <View style={{ flex: 1 }} key={field}>
+                      <Text style={[aom.label, labelStyle]}>{label}</Text>
+                      <TextInput
+                        style={[aom.input, inputStyle]}
+                        placeholder={ph}
+                        placeholderTextColor={colors.textSecondary}
+                        value={(form as any)[field] ?? ''}
+                        onChangeText={set(field as keyof OutletFormData)}
+                        autoCapitalize="characters"
+                      />
+                    </View>
+                  ))}
+                </View>
+
+                <Text style={[aom.section, { color: colors.textSecondary }]}>
+                  PROMO DISCOUNTS
+                </Text>
+                <Text style={[aom.hint, { color: colors.textSecondary }]}>
+                  Configure which discount types this outlet accepts and their
+                  rates.
+                </Text>
+                {promoTypes.map((pt) => {
+                  const existing = (form.outletPromos ?? []).find(
+                    (p) => p.promoTypeId === pt.id,
+                  );
+                  const isEnabled = !!existing;
+                  return (
+                    <View
+                      key={pt.id}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: isEnabled ? colors.primary : colors.border,
+                        borderRadius: 12,
+                        padding: 12,
+                        marginBottom: 8,
+                        backgroundColor: isEnabled
+                          ? colors.primary + '08'
+                          : colors.background,
+                      }}
+                    >
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text
+                            style={{
+                              color: colors.text,
+                              fontWeight: '600',
+                              fontSize: 14,
+                            }}
+                          >
+                            {pt.name}
+                          </Text>
+                          {pt.description ? (
+                            <Text
+                              style={{
+                                color: colors.textSecondary,
+                                fontSize: 11,
+                                marginTop: 2,
+                              }}
+                            >
+                              {pt.description}
+                            </Text>
+                          ) : null}
+                        </View>
+                        <Switch
+                          value={isEnabled}
+                          onValueChange={(val) => {
+                            setForm((prev) => {
+                              const promos = prev.outletPromos ?? [];
+                              if (val)
+                                return {
+                                  ...prev,
+                                  outletPromos: [
+                                    ...promos,
+                                    {
+                                      promoTypeId: pt.id,
+                                      discount: 0,
+                                      isActive: true,
+                                    },
+                                  ],
+                                };
+                              return {
+                                ...prev,
+                                outletPromos: promos.filter(
+                                  (p) => p.promoTypeId !== pt.id,
+                                ),
+                              };
+                            });
+                          }}
+                          trackColor={{
+                            false: colors.border,
+                            true: colors.primary,
+                          }}
+                          thumbColor="#fff"
+                        />
+                      </View>
+                      {isEnabled && (
+                        <View style={{ marginTop: 10 }}>
+                          <Text
+                            style={[aom.label, { color: colors.textSecondary }]}
+                          >
+                            DISCOUNT %
+                          </Text>
+                          <TextInput
+                            style={[aom.input, inputStyle, { marginBottom: 0 }]}
+                            placeholder="e.g. 20"
+                            placeholderTextColor={colors.textSecondary}
+                            value={
+                              existing!.discount === 0
+                                ? ''
+                                : String(existing!.discount)
+                            }
+                            onChangeText={(v) => {
+                              setForm((prev) => ({
+                                ...prev,
+                                outletPromos: (prev.outletPromos ?? []).map(
+                                  (p) =>
+                                    p.promoTypeId === pt.id
+                                      ? { ...p, discount: parseFloat(v) || 0 }
+                                      : p,
+                                ),
+                              }));
+                            }}
+                            keyboardType="decimal-pad"
+                          />
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+
+                <TouchableOpacity
+                  style={[
+                    aom.submitBtn,
+                    {
+                      backgroundColor: colors.primary,
+                      opacity: loading ? 0.7 : 1,
+                    },
+                  ]}
+                  onPress={handleAdd}
+                  disabled={loading}
+                  activeOpacity={0.85}
+                >
+                  <Text style={aom.submitTxt}>
+                    {loading ? 'Creating…' : 'Create Outlet'}
+                  </Text>
+                </TouchableOpacity>
+              </ScrollView>
             </View>
-          </View>
-        </KeyboardAvoidingView>
+          </KeyboardAvoidingView>
+        </View>
       </Modal>
       <MapPinPicker
         visible={showMapPicker}
@@ -1016,11 +1271,26 @@ function AddOutletModal({
   );
 }
 
-const aom = StyleSheet.create({
+export const aom = StyleSheet.create({
   sheet: {
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: '92%',
+    maxHeight: '92%' as any,
+  },
+  // Web-only: centered dialog instead of bottom sheet
+  webDialog: {
+    borderRadius: 16,
+    width: 600,
+    maxWidth: '90vw' as any,
+    maxHeight: '85vh' as any,
+    // override the bottom-sheet border radius on all corners
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 24,
   },
   handle: {
     width: 40,
@@ -1189,131 +1459,127 @@ function EditBranchModal({
     }
   };
 
+  // On web: centered dialog. On native: bottom sheet.
+  const overlayStyle = isWeb ? centeredOverlay : bottomSheetOverlay;
+
   return (
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
+      animationType={isWeb ? 'fade' : 'slide'}
       onRequestClose={onClose}
     >
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            justifyContent: 'flex-end',
-          }}
+      <View style={overlayStyle}>
+        <TouchableOpacity
+          style={StyleSheet.absoluteFillObject}
+          activeOpacity={1}
+          onPress={onClose}
+        />
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-          <TouchableOpacity
-            style={{ flex: 1 }}
-            activeOpacity={1}
-            onPress={onClose}
-          />
-          <View style={{ alignItems: 'center', width: '100%' }}>
-            <View
-              style={[
-                ebm.sheet,
-                {
-                  backgroundColor: colors.surface,
-                  maxWidth: 560,
-                  width: '100%',
-                },
-              ]}
-            >
+          <View
+            style={[
+              ebm.sheet,
+              isWeb && ebm.webDialog,
+              { backgroundColor: colors.surface },
+            ]}
+          >
+            {/* Handle — native only */}
+            {!isWeb && (
               <View style={[ebm.handle, { backgroundColor: colors.border }]} />
-              <View style={[ebm.header, { borderBottomColor: colors.border }]}>
-                <Text style={[ebm.title, { color: colors.text }]}>
-                  Edit Branch
-                </Text>
-                <TouchableOpacity onPress={onClose}>
-                  <X size={20} color={colors.textSecondary} strokeWidth={2} />
-                </TouchableOpacity>
-              </View>
-              <ScrollView
-                contentContainerStyle={ebm.body}
-                keyboardShouldPersistTaps="handled"
-              >
-                <Text style={[ebm.label, { color: colors.textSecondary }]}>
-                  Branch Name *
-                </Text>
-                <TextInput
-                  style={[
-                    ebm.input,
-                    {
-                      color: colors.text,
-                      backgroundColor: colors.background,
-                      borderColor: colors.border,
-                    },
-                  ]}
-                  value={name}
-                  onChangeText={setName}
-                  placeholder="Branch name"
-                  placeholderTextColor={colors.textSecondary}
-                />
-                <Text style={[ebm.label, { color: colors.textSecondary }]}>
-                  Address *
-                </Text>
-                <TextInput
-                  style={[
-                    ebm.input,
-                    {
-                      color: colors.text,
-                      backgroundColor: colors.background,
-                      borderColor: colors.border,
-                    },
-                  ]}
-                  value={address}
-                  onChangeText={setAddress}
-                  placeholder="Branch address"
-                  placeholderTextColor={colors.textSecondary}
-                />
-                <Text style={[ebm.label, { color: colors.textSecondary }]}>
-                  Phone
-                </Text>
-                <TextInput
-                  style={[
-                    ebm.input,
-                    {
-                      color: colors.text,
-                      backgroundColor: colors.background,
-                      borderColor: colors.border,
-                    },
-                  ]}
-                  value={phone}
-                  onChangeText={setPhone}
-                  placeholder="Contact phone"
-                  placeholderTextColor={colors.textSecondary}
-                  keyboardType="phone-pad"
-                />
-                {error ? (
-                  <Text style={{ color: colors.error, marginTop: 8 }}>
-                    {error}
-                  </Text>
-                ) : null}
-                <TouchableOpacity
-                  style={[
-                    ebm.saveBtn,
-                    {
-                      backgroundColor: colors.primary,
-                      opacity: loading ? 0.7 : 1,
-                    },
-                  ]}
-                  onPress={handleSave}
-                  disabled={loading}
-                  activeOpacity={0.85}
-                >
-                  <Text style={ebm.saveTxt}>
-                    {loading ? 'Updating…' : 'Save Changes'}
-                  </Text>
-                </TouchableOpacity>
-              </ScrollView>
+            )}
+
+            <View style={[ebm.header, { borderBottomColor: colors.border }]}>
+              <Text style={[ebm.title, { color: colors.text }]}>
+                Edit Branch
+              </Text>
+              <TouchableOpacity onPress={onClose}>
+                <X size={20} color={colors.textSecondary} strokeWidth={2} />
+              </TouchableOpacity>
             </View>
+
+            <ScrollView
+              contentContainerStyle={ebm.body}
+              keyboardShouldPersistTaps="handled"
+            >
+              <Text style={[ebm.label, { color: colors.textSecondary }]}>
+                Branch Name *
+              </Text>
+              <TextInput
+                style={[
+                  ebm.input,
+                  {
+                    color: colors.text,
+                    backgroundColor: colors.background,
+                    borderColor: colors.border,
+                  },
+                ]}
+                value={name}
+                onChangeText={setName}
+                placeholder="Branch name"
+                placeholderTextColor={colors.textSecondary}
+              />
+              <Text style={[ebm.label, { color: colors.textSecondary }]}>
+                Address *
+              </Text>
+              <TextInput
+                style={[
+                  ebm.input,
+                  {
+                    color: colors.text,
+                    backgroundColor: colors.background,
+                    borderColor: colors.border,
+                  },
+                ]}
+                value={address}
+                onChangeText={setAddress}
+                placeholder="Branch address"
+                placeholderTextColor={colors.textSecondary}
+              />
+              <Text style={[ebm.label, { color: colors.textSecondary }]}>
+                Phone
+              </Text>
+              <TextInput
+                style={[
+                  ebm.input,
+                  {
+                    color: colors.text,
+                    backgroundColor: colors.background,
+                    borderColor: colors.border,
+                  },
+                ]}
+                value={phone}
+                onChangeText={setPhone}
+                placeholder="Contact phone"
+                placeholderTextColor={colors.textSecondary}
+                keyboardType="phone-pad"
+              />
+              {error ? (
+                <Text style={{ color: colors.error, marginTop: 8 }}>
+                  {error}
+                </Text>
+              ) : null}
+              <TouchableOpacity
+                style={[
+                  ebm.saveBtn,
+                  {
+                    backgroundColor: colors.primary,
+                    opacity: loading ? 0.7 : 1,
+                  },
+                ]}
+                onPress={handleSave}
+                disabled={loading}
+                activeOpacity={0.85}
+              >
+                <Text style={ebm.saveTxt}>
+                  {loading ? 'Updating…' : 'Save Changes'}
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
-        </View>
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
@@ -1697,7 +1963,6 @@ export default function OutletListScreen() {
           initialEnd={customEnd}
         />
 
-        {/* Section count header */}
         <View
           style={{
             flexDirection: 'row',
@@ -1713,7 +1978,6 @@ export default function OutletListScreen() {
           </Text>
         </View>
 
-        {/* Outlet grid */}
         {loading && outlets.length === 0 ? (
           <FlatList
             key={`skeleton-${grid.cols}`}
@@ -1887,7 +2151,21 @@ const ebm = StyleSheet.create({
   sheet: {
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: '90%',
+    maxHeight: '90%' as any,
+  },
+  // Web-only: centered dialog
+  webDialog: {
+    borderRadius: 16,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    width: 480,
+    maxWidth: '90vw' as any,
+    maxHeight: '85vh' as any,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 24,
   },
   handle: {
     width: 40,

@@ -40,7 +40,7 @@ type EmployeeStatus = 'Active' | 'On Leave' | 'Contract';
 interface Employee {
   id: string;
   name: string;
-  role: string;
+  role?: string;
   department: string;
   status: EmployeeStatus;
   salary: number;
@@ -133,7 +133,7 @@ function EmployeeDetailModal({
           </View>
           <View style={{ flex: 1 }}>
             <Text style={edm.headerName}>{employee.name}</Text>
-            <Text style={edm.headerRole}>{employee.role}</Text>
+            <Text style={edm.headerRole}>{employee.role || 'No role assigned'}</Text>
             <Text style={edm.headerDept}>
               {employee.department} · {yearsOfService(employee.hireDate)} tenure
             </Text>
@@ -660,7 +660,6 @@ function AddEmployeeModal({
   positions: MasterItem[];
 }) {
   const [name, setName] = useState('');
-  const [role, setRole] = useState('');
   const [department, setDepartment] = useState('');
   const [position, setPosition] = useState('');
   const [salary, setSalary] = useState('');
@@ -681,11 +680,6 @@ function AddEmployeeModal({
       return;
     }
 
-    // Role
-    if (!role.trim()) {
-      setError('Please select a role.');
-      return;
-    }
 
     // Department is optional for now
 
@@ -727,7 +721,6 @@ function AddEmployeeModal({
         fullname: name.trim(),
         email: email.trim(),
         password: password.trim(),
-        role: role.trim() as any,
         departmentId,
         positionId,
       });
@@ -735,10 +728,10 @@ function AddEmployeeModal({
       const newEmployee: Employee = {
         id: String(createdUser.id),
         name: createdUser.fullname,
-        role: createdUser.role || role.trim(),
         department: department.trim() || 'Unassigned',
         status: status,
         salary: salaryNum,
+        position: position.trim() || undefined,
         hireDate: createdUser.createdAt || new Date().toISOString(),
         email: createdUser.email,
         ...(position.trim() && { position: position.trim() }),
@@ -757,7 +750,6 @@ function AddEmployeeModal({
 
     // Reset form
     setName('');
-    setRole('');
     setDepartment('');
     setPosition('');
     setEmail('');
@@ -904,14 +896,6 @@ function AddEmployeeModal({
               autoCapitalize="none"
             />
 
-            <SearchableDropdown
-              label="Role"
-              value={role}
-              options={roleOptions.map((r: string) => ({ label: r }))}
-              onSelect={setRole}
-              colors={colors}
-              placeholder="Select role…"
-            />
 
             <SearchableDropdown
               label="Department"
@@ -1067,7 +1051,7 @@ function EmployeeCard({
             style={[ecard.statusBadge, { backgroundColor: colors.primary + '20' }]}
           >
             <Text style={[ecard.statusText, { color: colors.primary }]}>
-              {item.position || 'No position'}
+              {item.role || 'No position'}
             </Text>
           </View>
           <View
@@ -1198,7 +1182,7 @@ export default function HRScreen() {
       const matchSearch =
         !q ||
         emp.name.toLowerCase().includes(q) ||
-        emp.role.toLowerCase().includes(q) ||
+        emp.role?.toLowerCase().includes(q) ||
         emp.department.toLowerCase().includes(q) ||
         emp.email.toLowerCase().includes(q);
       const matchDept = deptFilter === 'All' || emp.department === deptFilter;

@@ -27,10 +27,11 @@ import {
   CheckCircle2,
   Plus,
   X,
+  Package,
 } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
-import { AdminService } from '@/services/adminService';
+import { AdminService } from '@/services/ManagerService';
 import { Branch, BranchRevenue } from '@/types';
 import { DateRangeFilter, getDateRange } from '@/utils/dateHelpers';
 import DateRangePickerModal from '@/components/DateRangePickerModal';
@@ -39,6 +40,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { formatPeso, formatPesoCompact } from '@/utils/moneyHelpers';
 import { useLimitGuard } from '@/components/LockedFeature';
 import { useResponsiveGrid } from '@/hooks/useResponsiveGrid';
+import { useResponsive } from '@/hooks/useResponsive';
 
 const DATE_FILTERS: DateRangeFilter[] = [
   'today',
@@ -142,11 +144,13 @@ export function DropdownField({
 }: {
   label: string;
   value: string;
-  options: string[];
-  onSelect: (v: string) => void;
+  options: { id: string; label: string }[];
+  onSelect: (item: { id: string; label: string }) => void;
   colors: any;
   placeholder?: string;
 }) {
+  const selectedItem = options.find((o) => o.id === value);
+  const { isMobile } = useResponsive();
   const [open, setOpen] = useState(false);
   return (
     <View style={{ marginBottom: 14 }}>
@@ -185,7 +189,7 @@ export function DropdownField({
           }}
           numberOfLines={1}
         >
-          {value || placeholder || 'Select…'}
+          {selectedItem?.label || placeholder || 'Select…'}
         </Text>
         <ChevronDown size={16} color={colors.textSecondary} strokeWidth={2} />
       </TouchableOpacity>
@@ -201,6 +205,7 @@ export function DropdownField({
             backgroundColor: 'rgba(0,0,0,0.45)',
             justifyContent: 'center',
             padding: 24,
+            alignItems: 'center', // 👈 ADD THIS
           }}
           activeOpacity={1}
           onPress={() => setOpen(false)}
@@ -210,6 +215,9 @@ export function DropdownField({
               backgroundColor: colors.surface,
               borderRadius: 14,
               overflow: 'hidden',
+              maxWidth: isMobile ? '100%' : 600, // 👈 KEY FIX
+              alignSelf: 'center',
+              width: '100%',
               maxHeight: 380,
             }}
           >
@@ -226,36 +234,77 @@ export function DropdownField({
                 {label}
               </Text>
             </View>
-            {options.map((item) => (
-              <TouchableOpacity
-                key={item}
+            {options.length === 0 ? (
+              <View
                 style={{
-                  flexDirection: 'row',
+                  padding: 24,
                   alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: 14,
-                  borderBottomWidth: 1,
-                  borderBottomColor: colors.border,
-                  backgroundColor:
-                    item === value ? colors.primary + '15' : 'transparent',
-                }}
-                onPress={() => {
-                  onSelect(item);
-                  setOpen(false);
+                  justifyContent: 'center',
                 }}
               >
-                <Text style={{ fontSize: 13, color: colors.text, flex: 1 }}>
-                  {item}
+                <Package
+                  size={isMobile ? 26 : 40}
+                  color={colors.textSecondary}
+                  strokeWidth={1.5}
+                />
+
+                <Text
+                  style={{
+                    marginTop: 10,
+                    fontSize: 14,
+                    fontWeight: '600',
+                    color: colors.text,
+                  }}
+                >
+                  No {label}
                 </Text>
-                {item === value && (
-                  <CheckCircle2
-                    size={16}
-                    color={colors.primary}
-                    strokeWidth={2}
-                  />
-                )}
-              </TouchableOpacity>
-            ))}
+
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color: colors.textSecondary,
+                    marginTop: 4,
+                    textAlign: 'center',
+                  }}
+                >
+                  No {label.toLowerCase()} found in the masterfile.
+                  {'\n'}
+                  Create one first.
+                </Text>
+              </View>
+            ) : (
+              options.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: 14,
+                    borderBottomWidth: 1,
+                    borderBottomColor: colors.border,
+                    backgroundColor:
+                      item.id === value ? colors.primary + '15' : 'transparent',
+                  }}
+                  onPress={() => {
+                    onSelect(item);
+                    setOpen(false);
+                  }}
+                >
+                  <Text style={{ fontSize: 13, color: colors.text, flex: 1 }}>
+                    {item.label}
+                  </Text>
+
+                  {item.id === value && (
+                    <CheckCircle2
+                      size={16}
+                      color={colors.primary}
+                      strokeWidth={2}
+                    />
+                  )}
+                </TouchableOpacity>
+              ))
+            )}
           </View>
         </TouchableOpacity>
       </Modal>

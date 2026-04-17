@@ -28,7 +28,7 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTheme } from '@/contexts/ThemeContext';
 import { InventoryService } from '@/services/inventoryService';
-import { AdminService } from '@/services/adminService';
+import { AdminService } from '@/services/ManagerService';
 import { graphQLRequest } from '@/services/apiClient';
 import { gql } from 'graphql-request';
 import { TimeSelector } from '@/components/RestockDatePickerModal';
@@ -37,7 +37,12 @@ import RestockDatePickerModal, {
   type ScheduleResult,
   DAY_SHORT,
 } from '@/components/RestockDatePickerModal';
-import { PackagePlus } from 'lucide-react-native';
+import { AtSign, PackagePlus, X } from 'lucide-react-native';
+
+import ContactPickerModal from '@/components/ContactPickerModal';
+import { AuthService } from '@/services/authService';
+import { getGraphQLClient } from '@/utils/constants';
+import { useAuth } from '@/contexts/AuthContext';
 
 // ─── GraphQL ──────────────────────────────────────────────────────────────────
 
@@ -116,6 +121,18 @@ const GET_RESTOCK_SCHEDULES = gql`
             minQuantity
           }
         }
+         supplierOrders {         
+          id
+          status
+          supplierEmail
+          items {
+            id
+            itemId
+            requestedQty
+            deliveredQty
+            confirmedQty
+          }
+        }
       }
     }
   }
@@ -144,8 +161,18 @@ const CREATE_RESTOCK_SCHEDULE = gql`
           name
         }
       }
-      branch { id name address }
-      outlet { id name address latitude longitude }
+      branch {
+        id
+        name
+        address
+      }
+      outlet {
+        id
+        name
+        address
+        latitude
+        longitude
+      }
     }
   }
 `;
@@ -164,8 +191,18 @@ const UPDATE_RESTOCK_SCHEDULE = gql`
       address
       latitude
       longitude
-      branch { id name address }
-      outlet { id name address latitude longitude }
+      branch {
+        id
+        name
+        address
+      }
+      outlet {
+        id
+        name
+        address
+        latitude
+        longitude
+      }
     }
   }
 `;
@@ -281,7 +318,19 @@ interface Outlet {
   longitude?: number;
   status: string;
 }
-
+interface SupplierOrderItem {
+  id: number;
+  itemId: number;
+  requestedQty: number;
+  deliveredQty?: number;
+  confirmedQty?: number;
+}
+interface SupplierOrder {
+  id: number;
+  status: 'pending' | 'acknowledged' | 'sent' | 'delivered' | 'cancelled';
+  supplierEmail: string;
+  items: SupplierOrderItem[];
+}
 interface Cycle {
   id: number;
   scheduleId: number;
@@ -301,6 +350,7 @@ interface Cycle {
   firedAt?: string;
   createdAt: string;
   cycleItems: CycleItem[];
+  supplierOrders: SupplierOrder[];  // ← add this
 }
 
 interface ScheduleItem {
@@ -483,7 +533,22 @@ function scheduleToPrismaInput(result: ScheduleResult) {
       throw new Error(`Unknown recurrence: ${result.recurrence}`);
   }
 }
+function getStockStatus(stock: number, minQuantity: number) {
+  if (stock <= 0) {
+    return { level: 'critical', label: 'No Stock', color: '#EF4444' };
+  }
 
+  // If minQuantity is 0 or not set, use a fallback threshold of 10
+  const threshold = minQuantity > 0 ? minQuantity : 10;
+
+  if (stock <= threshold) {
+    return { level: 'low', label: 'Low', color: '#EF4444' };
+  }
+  if (stock <= threshold * 1.5) {
+    return { level: 'warning', label: 'Low Stock', color: '#F59E0B' };
+  }
+  return { level: 'ok', label: 'OK', color: '#22C55E' };
+}
 // ─── Item Picker Modal ────────────────────────────────────────────────────────
 
 function ItemPickerModal({
@@ -591,14 +656,41 @@ function ItemPickerModal({
           renderItem={({ item }) => {
             const sel = localSelected.find((s) => s.itemId === item.id);
             const selected = !!sel;
+            const stockStatus = getStockStatus(
+              item.stock,
+              item.minQuantity || 1,
+            );
+            const isLow =
+              stockStatus.level === 'low' || stockStatus.level === 'critical';
+            const isWarning = stockStatus.level === 'warning';
+
+            // Border color priority: selected (primary) > low (red) > warning (yellow) > default
+            const borderColor = selected
+              ? colors.primary
+              : isLow
+                ? '#EF4444'
+                : isWarning
+                  ? '#F59E0B'
+                  : colors.border;
+
+            const borderWidth = selected || isLow || isWarning ? 1.5 : 1;
+
+            const backgroundColor = selected
+              ? colors.primary + '10'
+              : isLow
+                ? '#EF444408'
+                : isWarning
+                  ? '#F59E0B08'
+                  : colors.card;
+
             return (
               <View
                 style={[
                   s.itemPickerRow,
-                  selected && {
-                    borderColor: colors.primary,
-                    borderWidth: 1.5,
-                    backgroundColor: colors.primary + '10',
+                  {
+                    borderColor,
+                    borderWidth,
+                    backgroundColor,
                   },
                 ]}
               >
@@ -635,9 +727,43 @@ function ItemPickerModal({
                     >
                       {item.name}
                     </Text>
-                    <Text style={{ fontSize: 11, color: colors.textSecondary }}>
-                      Stock: {item.stock} · Min: {item.minQuantity}
-                    </Text>
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                        marginTop: 2,
+                      }}
+                    >
+                      <Text
+                        style={{ fontSize: 11, color: colors.textSecondary }}
+                      >
+                        Stock: {item.stock} · Min: {item.minQuantity}
+                      </Text>
+                      {/* Stock badge — only show if not OK */}
+                      {stockStatus.level !== 'ok' && (
+                        <View
+                          style={{
+                            paddingHorizontal: 6,
+                            paddingVertical: 1,
+                            borderRadius: 20,
+                            borderWidth: 1,
+                            borderColor: stockStatus.color,
+                            backgroundColor: stockStatus.color + '15',
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 10,
+                              fontWeight: '600',
+                              color: stockStatus.color,
+                            }}
+                          >
+                            {stockStatus.label}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
                   </View>
                 </TouchableOpacity>
                 {selected && (
@@ -716,11 +842,20 @@ function BranchPickerModal({
   }, [search, visible]);
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
       <View style={{ flex: 1, backgroundColor: colors.background }}>
-        <View style={[styles.modalHeader, { backgroundColor: colors.primary }]}> 
-          <TouchableOpacity onPress={onClose}><Text style={{ color: 'rgba(255,255,255,0.7)' }}>Close</Text></TouchableOpacity>
-          <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>Select Branch</Text>
+        <View style={[styles.modalHeader, { backgroundColor: colors.primary }]}>
+          <TouchableOpacity onPress={onClose}>
+            <Text style={{ color: 'rgba(255,255,255,0.7)' }}>Close</Text>
+          </TouchableOpacity>
+          <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>
+            Select Branch
+          </Text>
           <View style={{ width: 48 }} />
         </View>
         <View style={{ padding: 12 }}>
@@ -734,22 +869,42 @@ function BranchPickerModal({
           <View style={{ minHeight: 180 }}>
             {loading ? (
               Array.from({ length: 5 }).map((_, idx) => (
-                <View key={idx} style={{ height: 48, borderRadius: 10, backgroundColor: colors.border, marginBottom: 8 }} />
+                <View
+                  key={idx}
+                  style={{
+                    height: 48,
+                    borderRadius: 10,
+                    backgroundColor: colors.border,
+                    marginBottom: 8,
+                  }}
+                />
               ))
             ) : branches.length === 0 ? (
-              <Text style={{ textAlign: 'center', color: colors.textSecondary }}>No branches found.</Text>
+              <Text
+                style={{ textAlign: 'center', color: colors.textSecondary }}
+              >
+                No branches found.
+              </Text>
             ) : (
               branches.map((branch) => (
                 <TouchableOpacity
                   key={branch.id}
-                  style={{ padding: 12, borderBottomWidth: 1, borderColor: colors.border }}
+                  style={{
+                    padding: 12,
+                    borderBottomWidth: 1,
+                    borderColor: colors.border,
+                  }}
                   onPress={() => {
                     onSelect(branch);
                     onClose();
                   }}
                 >
-                  <Text style={{ fontWeight: '700', color: colors.text }}>{branch.name}</Text>
-                  <Text style={{ color: colors.textSecondary }}>{branch.address}</Text>
+                  <Text style={{ fontWeight: '700', color: colors.text }}>
+                    {branch.name}
+                  </Text>
+                  <Text style={{ color: colors.textSecondary }}>
+                    {branch.address}
+                  </Text>
                 </TouchableOpacity>
               ))
             )}
@@ -781,7 +936,10 @@ function OutletPickerModal({
     if (!branchId) return;
     setLoading(true);
     try {
-      const outletList = await AdminService.getOutletsByBranchMinimal(String(branchId), query);
+      const outletList = await AdminService.getOutletsByBranchMinimal(
+        String(branchId),
+        query,
+      );
       setOutlets(outletList);
     } catch (e) {
       console.error('Failed to load outlets', e);
@@ -806,11 +964,20 @@ function OutletPickerModal({
   }, [search, visible, branchId]);
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
       <View style={{ flex: 1, backgroundColor: colors.background }}>
-        <View style={[styles.modalHeader, { backgroundColor: colors.primary }]}> 
-          <TouchableOpacity onPress={onClose}><Text style={{ color: 'rgba(255,255,255,0.7)' }}>Close</Text></TouchableOpacity>
-          <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>Select Outlet</Text>
+        <View style={[styles.modalHeader, { backgroundColor: colors.primary }]}>
+          <TouchableOpacity onPress={onClose}>
+            <Text style={{ color: 'rgba(255,255,255,0.7)' }}>Close</Text>
+          </TouchableOpacity>
+          <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>
+            Select Outlet
+          </Text>
           <View style={{ width: 48 }} />
         </View>
         <View style={{ padding: 12 }}>
@@ -826,23 +993,47 @@ function OutletPickerModal({
               <View style={{ minHeight: 180 }}>
                 {loading ? (
                   Array.from({ length: 5 }).map((_, idx) => (
-                    <View key={idx} style={{ height: 48, borderRadius: 10, backgroundColor: colors.border, marginBottom: 8 }} />
+                    <View
+                      key={idx}
+                      style={{
+                        height: 48,
+                        borderRadius: 10,
+                        backgroundColor: colors.border,
+                        marginBottom: 8,
+                      }}
+                    />
                   ))
                 ) : outlets.length === 0 ? (
-                  <Text style={{ textAlign: 'center', color: colors.textSecondary }}>No outlets found for this branch.</Text>
+                  <Text
+                    style={{ textAlign: 'center', color: colors.textSecondary }}
+                  >
+                    No outlets found for this branch.
+                  </Text>
                 ) : (
                   outlets.map((outlet) => (
                     <TouchableOpacity
                       key={outlet.id}
-                      style={{ padding: 12, borderBottomWidth: 1, borderColor: colors.border }}
+                      style={{
+                        padding: 12,
+                        borderBottomWidth: 1,
+                        borderColor: colors.border,
+                      }}
                       onPress={() => {
                         onSelect(outlet);
                         onClose();
                       }}
                     >
-                      <Text style={{ fontWeight: '700', color: colors.text }}>{outlet.name}</Text>
-                      <Text style={{ color: colors.textSecondary }}>{outlet.address}</Text>
-                      <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{outlet.latitude}, {outlet.longitude}</Text>
+                      <Text style={{ fontWeight: '700', color: colors.text }}>
+                        {outlet.name}
+                      </Text>
+                      <Text style={{ color: colors.textSecondary }}>
+                        {outlet.address}
+                      </Text>
+                      <Text
+                        style={{ color: colors.textSecondary, fontSize: 12 }}
+                      >
+                        {outlet.latitude}, {outlet.longitude}
+                      </Text>
                     </TouchableOpacity>
                   ))
                 )}
@@ -850,7 +1041,9 @@ function OutletPickerModal({
             </>
           ) : (
             <View style={{ padding: 16 }}>
-              <Text style={{ color: colors.textSecondary }}>Select a branch first.</Text>
+              <Text style={{ color: colors.textSecondary }}>
+                Select a branch first.
+              </Text>
             </View>
           )}
         </View>
@@ -902,6 +1095,8 @@ function CycleFormModal({
   const [selectedItems, setSelectedItems] = useState<
     { itemId: number; quantity: number }[]
   >([]);
+  const [contactPickerOpen, setContactPickerOpen] = useState(false);
+  const [selectedContact, setSelectedContact] = useState<any>(null);
   const [itemPickerOpen, setItemPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -961,15 +1156,15 @@ function CycleFormModal({
         editing.latitude != null
           ? String(editing.latitude)
           : editing.outlet?.latitude != null
-          ? String(editing.outlet.latitude)
-          : '',
+            ? String(editing.outlet.latitude)
+            : '',
       );
       setLongitude(
         editing.longitude != null
           ? String(editing.longitude)
           : editing.outlet?.longitude != null
-          ? String(editing.outlet.longitude)
-          : '',
+            ? String(editing.outlet.longitude)
+            : '',
       );
       setSelectedItems(
         editing.cycleItems.map((ci) => ({
@@ -995,15 +1190,15 @@ function CycleFormModal({
         schedule?.latitude != null
           ? String(schedule.latitude)
           : schedule?.outlet?.latitude != null
-          ? String(schedule.outlet.latitude)
-          : '',
+            ? String(schedule.outlet.latitude)
+            : '',
       );
       setLongitude(
         schedule?.longitude != null
           ? String(schedule.longitude)
           : schedule?.outlet?.longitude != null
-          ? String(schedule.outlet.longitude)
-          : '',
+            ? String(schedule.outlet.longitude)
+            : '',
       );
       setSelectedItems([]);
     }
@@ -1084,7 +1279,7 @@ function CycleFormModal({
           <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>
             {isFired ? 'View Cycle' : editing ? 'Edit Cycle' : 'Add Cycle'}
           </Text>
-          <PackagePlus color={colors.text}/>
+          <PackagePlus color={colors.text} />
           {isFired && <View style={{ width: 48 }} />}
         </View>
 
@@ -1260,26 +1455,69 @@ function CycleFormModal({
           />
 
           {/* ── Supplier ── */}
-          <Text style={[s.sectionLabel, { marginTop: 8 }]}>
-            Supplier for this Cycle
-          </Text>
           <View style={s.formGroup}>
             <Text style={s.label}>Supplier email *</Text>
-            <TextInput
+            <TouchableOpacity
               style={[
                 s.input,
-                { color: colors.text },
+                {
+                  justifyContent: 'center',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 8,
+                },
                 isFired && { opacity: 0.6 },
+                emailRecipient ? { borderColor: '#0EA5E9' } : {},
               ]}
-              placeholder="supplier@example.com"
-              placeholderTextColor={colors.textSecondary}
-              value={emailRecipient}
-              onChangeText={setEmailRecipient}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              editable={!isFired}
-            />
+              onPress={() => !isFired && setContactPickerOpen(true)}
+              disabled={isFired}
+            >
+              <AtSign
+                size={14}
+                color={emailRecipient ? '#0EA5E9' : colors.textSecondary}
+                strokeWidth={2}
+              />
+              <Text
+                style={{
+                  flex: 1,
+                  fontSize: 14,
+                  color: emailRecipient ? colors.text : colors.textSecondary,
+                }}
+                numberOfLines={1}
+              >
+                {emailRecipient
+                  ? selectedContact
+                    ? `${selectedContact.label} · ${emailRecipient}`
+                    : emailRecipient
+                  : 'Tap to choose or type email…'}
+              </Text>
+              {!isFired && emailRecipient ? (
+                <TouchableOpacity
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    setEmailRecipient('');
+                    setSelectedContact(null);
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <X size={14} color={colors.textSecondary} strokeWidth={2} />
+                </TouchableOpacity>
+              ) : null}
+            </TouchableOpacity>
           </View>
+
+          <ContactPickerModal
+            visible={contactPickerOpen}
+            onClose={() => setContactPickerOpen(false)}
+            onConfirm={(email, contact) => {
+              setEmailRecipient(email);
+              setSelectedContact(contact ?? null);
+            }}
+            defaultEmail={emailRecipient}
+            branchId={selectedBranch?.id ?? null}
+            orgId={1} // TODO: replace with real orgId from auth context
+            colors={colors}
+          />
           <View style={s.formGroup}>
             <Text style={s.label}>Email subject (optional)</Text>
             <TextInput
@@ -1288,7 +1526,7 @@ function CycleFormModal({
                 { color: colors.text },
                 isFired && { opacity: 0.6 },
               ]}
-              placeholder="Restock order for Week 1"
+              placeholder="Re-order for Week 1"
               placeholderTextColor={colors.textSecondary}
               value={emailSubject}
               onChangeText={setEmailSubject}
@@ -1333,20 +1571,35 @@ function CycleFormModal({
               onPress={() => setBranchPickerOpen(true)}
               disabled={isFired}
             >
-              <Text style={{ color: selectedBranch ? colors.text : colors.textSecondary }}>
-                {selectedBranch ? `${selectedBranch.name} · ${selectedBranch.address}` : 'Select branch'}
+              <Text
+                style={{
+                  color: selectedBranch ? colors.text : colors.textSecondary,
+                }}
+              >
+                {selectedBranch
+                  ? `${selectedBranch.name} · ${selectedBranch.address}`
+                  : 'Select branch'}
               </Text>
             </TouchableOpacity>
           </View>
           <View style={s.formGroup}>
             <Text style={s.label}>Outlet</Text>
             <TouchableOpacity
-              style={[s.input, { justifyContent: 'center', opacity: selectedBranch ? 1 : 0.6 }]}
+              style={[
+                s.input,
+                { justifyContent: 'center', opacity: selectedBranch ? 1 : 0.6 },
+              ]}
               onPress={() => selectedBranch && setOutletPickerOpen(true)}
               disabled={!selectedBranch || isFired}
             >
-              <Text style={{ color: selectedOutlet ? colors.text : colors.textSecondary }}>
-                {selectedOutlet ? `${selectedOutlet.name} · ${selectedOutlet.address}` : 'Select outlet'}
+              <Text
+                style={{
+                  color: selectedOutlet ? colors.text : colors.textSecondary,
+                }}
+              >
+                {selectedOutlet
+                  ? `${selectedOutlet.name} · ${selectedOutlet.address}`
+                  : 'Select outlet'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -1406,8 +1659,12 @@ function CycleFormModal({
             onSelect={(outlet) => {
               setSelectedOutlet(outlet);
               setAddress(outlet.address);
-              setLatitude(outlet.latitude != null ? String(outlet.latitude) : '');
-              setLongitude(outlet.longitude != null ? String(outlet.longitude) : '');
+              setLatitude(
+                outlet.latitude != null ? String(outlet.latitude) : '',
+              );
+              setLongitude(
+                outlet.longitude != null ? String(outlet.longitude) : '',
+              );
             }}
           />
 
@@ -1622,7 +1879,8 @@ function ScheduleFormModal({
   const [itemPickerOpen, setItemPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-
+  const [contactPickerOpen, setContactPickerOpen] = useState(false);
+  const [selectedContact, setSelectedContact] = useState<any>(null);
   useEffect(() => {
     if (!visible) return;
     if (editing) {
@@ -1639,8 +1897,20 @@ function ScheduleFormModal({
       setSelectedBranch(editing.branch || null);
       setSelectedOutlet(editing.outlet || null);
       setAddress(editing.address || editing.outlet?.address || '');
-      setLatitude(editing.latitude != null ? String(editing.latitude) : editing.outlet?.latitude != null ? String(editing.outlet.latitude) : '');
-      setLongitude(editing.longitude != null ? String(editing.longitude) : editing.outlet?.longitude != null ? String(editing.outlet.longitude) : '');
+      setLatitude(
+        editing.latitude != null
+          ? String(editing.latitude)
+          : editing.outlet?.latitude != null
+            ? String(editing.outlet.latitude)
+            : '',
+      );
+      setLongitude(
+        editing.longitude != null
+          ? String(editing.longitude)
+          : editing.outlet?.longitude != null
+            ? String(editing.outlet.longitude)
+            : '',
+      );
       setScheduleResult(null);
     } else {
       setSelectedBranch(null);
@@ -1752,9 +2022,9 @@ function ScheduleFormModal({
             </Text>
           </TouchableOpacity>
           <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>
-            {editing ? 'Edit Schedule' : 'New Restock Schedule'}
+            {editing ? 'Edit Schedule' : 'New Re-order Schedule'}
           </Text>
-          <PackagePlus color={colors.text}/>
+          <PackagePlus color={colors.text} />
         </View>
         <ScrollView
           contentContainerStyle={{ padding: 16, paddingBottom: 60 }}
@@ -1873,38 +2143,104 @@ function ScheduleFormModal({
           </Text>
           <View style={s.formGroup}>
             <Text style={s.label}>Default supplier email *</Text>
-            <TextInput
-              style={[s.input, { color: colors.text }]}
-              placeholder="supplier@example.com"
-              placeholderTextColor={colors.textSecondary}
-              value={emailRecipient}
-              onChangeText={setEmailRecipient}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
+            <TouchableOpacity
+              style={[
+                s.input,
+                {
+                  justifyContent: 'center',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 8,
+                },
+                emailRecipient ? { borderColor: '#0EA5E9' } : {},
+              ]}
+              onPress={() => setContactPickerOpen(true)}
+            >
+              <AtSign
+                size={14}
+                color={emailRecipient ? '#0EA5E9' : colors.textSecondary}
+                strokeWidth={2}
+              />
+              <Text
+                style={{
+                  flex: 1,
+                  fontSize: 14,
+                  color: emailRecipient ? colors.text : colors.textSecondary,
+                }}
+                numberOfLines={1}
+              >
+                {emailRecipient
+                  ? selectedContact
+                    ? `${selectedContact.label} · ${emailRecipient}`
+                    : emailRecipient
+                  : 'Tap to choose or type email…'}
+              </Text>
+              {emailRecipient ? (
+                <TouchableOpacity
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    setEmailRecipient('');
+                    setSelectedContact(null);
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <X size={14} color={colors.textSecondary} strokeWidth={2} />
+                </TouchableOpacity>
+              ) : null}
+            </TouchableOpacity>
           </View>
 
-          <Text style={[s.sectionLabel, { marginTop: 12 }]}>Location (Default)</Text>
+          <ContactPickerModal
+            visible={contactPickerOpen}
+            onClose={() => setContactPickerOpen(false)}
+            onConfirm={(email, contact) => {
+              setEmailRecipient(email);
+              setSelectedContact(contact ?? null);
+            }}
+            defaultEmail={emailRecipient}
+            branchId={selectedBranch?.id ?? null}
+            orgId={1} // TODO: replace with real orgId from auth context
+            colors={colors}
+          />
+
+          <Text style={[s.sectionLabel, { marginTop: 12 }]}>
+            Location (Default)
+          </Text>
           <View style={s.formGroup}>
             <Text style={s.label}>Branch</Text>
             <TouchableOpacity
               style={[s.input, { justifyContent: 'center' }]}
               onPress={() => setBranchPickerOpen(true)}
             >
-              <Text style={{ color: selectedBranch ? colors.text : colors.textSecondary }}>
-                {selectedBranch ? `${selectedBranch.name} · ${selectedBranch.address}` : 'Select branch'}
+              <Text
+                style={{
+                  color: selectedBranch ? colors.text : colors.textSecondary,
+                }}
+              >
+                {selectedBranch
+                  ? `${selectedBranch.name} · ${selectedBranch.address}`
+                  : 'Select branch'}
               </Text>
             </TouchableOpacity>
           </View>
           <View style={s.formGroup}>
             <Text style={s.label}>Outlet</Text>
             <TouchableOpacity
-              style={[s.input, { justifyContent: 'center', opacity: selectedBranch ? 1 : 0.6 }]}
+              style={[
+                s.input,
+                { justifyContent: 'center', opacity: selectedBranch ? 1 : 0.6 },
+              ]}
               onPress={() => selectedBranch && setOutletPickerOpen(true)}
               disabled={!selectedBranch}
             >
-              <Text style={{ color: selectedOutlet ? colors.text : colors.textSecondary }}>
-                {selectedOutlet ? `${selectedOutlet.name} · ${selectedOutlet.address}` : 'Select outlet'}
+              <Text
+                style={{
+                  color: selectedOutlet ? colors.text : colors.textSecondary,
+                }}
+              >
+                {selectedOutlet
+                  ? `${selectedOutlet.name} · ${selectedOutlet.address}`
+                  : 'Select outlet'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -1961,8 +2297,12 @@ function ScheduleFormModal({
             onSelect={(outlet) => {
               setSelectedOutlet(outlet);
               setAddress(outlet.address);
-              setLatitude(outlet.latitude != null ? String(outlet.latitude) : '');
-              setLongitude(outlet.longitude != null ? String(outlet.longitude) : '');
+              setLatitude(
+                outlet.latitude != null ? String(outlet.latitude) : '',
+              );
+              setLongitude(
+                outlet.longitude != null ? String(outlet.longitude) : '',
+              );
             }}
           />
 
@@ -2021,6 +2361,220 @@ function ScheduleFormModal({
   );
 }
 
+function MarkReceivedModal({
+  visible,
+  cycle,
+  onClose,
+  onSaved,
+  colors,
+}: {
+  visible: boolean;
+  cycle: Cycle | null;
+  onClose: () => void;
+  onSaved: () => void;
+  colors: any;
+}) {
+  const [quantities, setQuantities] = useState<Record<number, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const { user } = useAuth();
+
+  useEffect(() => {
+    if (!cycle) return;
+    const initial: Record<number, string> = {};
+    cycle.cycleItems.forEach((ci) => {
+      initial[ci.id] = String(ci.quantity);
+    });
+    setQuantities(initial);
+  }, [cycle]);
+
+  const handleSave = async () => {
+    if (!cycle) return;
+    const supplierOrder = cycle.supplierOrders?.[0];
+    if (!supplierOrder) {
+      setError('No supplier order found for this cycle');
+      return;
+    }
+    setSaving(true);
+    try {
+      const MUTATION = gql`
+        mutation ReceivePurchaseOrder(
+          $supplierOrderId: Int!
+          $items: [ReceivePurchaseOrderItemInput!]!
+        ) {
+          receivePurchaseOrder(
+            supplierOrderId: $supplierOrderId
+            items: $items
+          ) {
+            id
+            status
+          }
+        }
+      `;
+      const { accessToken } = await AuthService.getTokens();
+      const client = await getGraphQLClient();
+      await client.request(
+        MUTATION,
+        {
+          supplierOrderId: supplierOrder.id,
+          items: supplierOrder.items.map((item: any) => ({
+            supplierOrderItemId: item.id,
+            confirmedQty: parseFloat(quantities[item.id] || '0'),
+          })),
+        },
+        { Authorization: `Bearer ${accessToken}` },
+      );
+
+      onSaved();
+      onClose();
+    } catch (e: any) {
+      setError(e?.message || 'Failed to mark as received');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!cycle) return null;
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          justifyContent: 'flex-end',
+        }}
+      >
+        <TouchableOpacity
+          style={{ flex: 1 }}
+          activeOpacity={1}
+          onPress={onClose}
+        />
+        <View
+          style={{
+            backgroundColor: colors.surface,
+            borderTopLeftRadius: 20,
+            borderTopRightRadius: 20,
+            maxHeight: '80%',
+          }}
+        >
+          <View
+            style={{
+              width: 40,
+              height: 4,
+              borderRadius: 2,
+              backgroundColor: colors.border,
+              alignSelf: 'center',
+              marginTop: 12,
+            }}
+          />
+          <View
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: 20,
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border,
+            }}
+          >
+            <Text
+              style={{ fontSize: 16, fontWeight: '800', color: colors.text }}
+            >
+              Mark as Received
+            </Text>
+            <TouchableOpacity onPress={onClose}>
+              <X size={20} color={colors.textSecondary} strokeWidth={2} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={{ padding: 20 }}>
+            <Text
+              style={{
+                fontSize: 13,
+                color: colors.textSecondary,
+                marginBottom: 16,
+              }}
+            >
+              Confirm the actual quantities received from the supplier.
+            </Text>
+            {cycle.cycleItems.map((ci) => (
+              <View key={ci.id} style={{ marginBottom: 14 }}>
+                <Text
+                  style={{
+                    fontSize: 14,
+                    fontWeight: '600',
+                    color: colors.text,
+                    marginBottom: 6,
+                  }}
+                >
+                  {ci.item.name}
+                </Text>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 10,
+                  }}
+                >
+                  <Text style={{ fontSize: 12, color: colors.textSecondary }}>
+                    Requested: {ci.quantity}
+                  </Text>
+                  <TextInput
+                    style={{
+                      flex: 1,
+                      borderWidth: 1,
+                      borderRadius: 8,
+                      borderColor: colors.border,
+                      backgroundColor: colors.background,
+                      color: colors.text,
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      fontSize: 14,
+                    }}
+                    placeholder="Confirmed qty"
+                    placeholderTextColor={colors.textSecondary}
+                    value={quantities[ci.id] ?? ''}
+                    onChangeText={(v) =>
+                      setQuantities((prev) => ({ ...prev, [ci.id]: v }))
+                    }
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+              </View>
+            ))}
+            {error ? (
+              <Text
+                style={{ fontSize: 12, color: colors.error, marginBottom: 8 }}
+              >
+                {error}
+              </Text>
+            ) : null}
+            <TouchableOpacity
+              style={{
+                backgroundColor: colors.primary,
+                borderRadius: 12,
+                paddingVertical: 14,
+                alignItems: 'center',
+                opacity: saving ? 0.7 : 1,
+              }}
+              onPress={handleSave}
+              disabled={saving}
+            >
+              <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>
+                {saving ? 'Saving…' : 'Confirm Receipt'}
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
 // ─── Cycle Calendar Strip ─────────────────────────────────────────────────────
 // A horizontal scrollable list of cycles for a schedule.
 
@@ -2030,11 +2584,13 @@ function CycleCalendarStrip({
   onEditCycle,
   onDeleteCycle,
   onToggleCycle,
+  onMarkReceived,
   colors,
 }: {
   schedule: Schedule;
   onAddCycle: () => void;
   onEditCycle: (cycle: Cycle) => void;
+  onMarkReceived: (cycle: Cycle) => void;
   onDeleteCycle: (cycle: Cycle) => void;
   onToggleCycle: (cycle: Cycle) => void;
   colors: any;
@@ -2251,6 +2807,36 @@ function CycleCalendarStrip({
                     >
                       SENT
                     </Text>
+                    {fired &&
+                      !cycle.supplierOrders?.find(
+                        (o) => o.status === 'delivered',
+                      ) && (
+                        <TouchableOpacity
+                          style={{
+                            marginTop: 6,
+                            backgroundColor: colors.primary + '18',
+                            borderRadius: 6,
+                            paddingHorizontal: 6,
+                            paddingVertical: 3,
+                            borderWidth: 1,
+                            borderColor: colors.primary,
+                          }}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            onMarkReceived(cycle);
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 9,
+                              fontWeight: '800',
+                              color: colors.primary,
+                            }}
+                          >
+                            RECEIVE
+                          </Text>
+                        </TouchableOpacity>
+                      )}
                   </View>
                 )}
                 {!fired && past && (
@@ -2344,6 +2930,7 @@ function ScheduleCard({
   onDelete,
   onAddCycle,
   onEditCycle,
+  onMarkReceived,
   onDeleteCycle,
   onToggleCycle,
   colors,
@@ -2353,6 +2940,7 @@ function ScheduleCard({
   onDelete: () => void;
   onAddCycle: () => void;
   onEditCycle: (cycle: Cycle) => void;
+  onMarkReceived: (cycle: Cycle) => void;
   onDeleteCycle: (cycle: Cycle) => void;
   onToggleCycle: (cycle: Cycle) => void;
   colors: any;
@@ -2545,6 +3133,7 @@ function ScheduleCard({
         {/* Cycle calendar (collapsible) */}
         {expanded && (
           <CycleCalendarStrip
+            onMarkReceived={onMarkReceived}
             schedule={schedule}
             onAddCycle={onAddCycle}
             onEditCycle={onEditCycle}
@@ -2747,6 +3336,11 @@ export default function RestockSchedulerScreen() {
   // Schedule form
   const [scheduleFormVisible, setScheduleFormVisible] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
+  const [markReceivedCycle, setMarkReceivedCycle] = useState<Cycle | null>(
+    null,
+  );
+
+  // Pass to ScheduleCard → CycleCalendarStrip → cycle cards
 
   // Cycle form
   const [cycleFormVisible, setCycleFormVisible] = useState(false);
@@ -3014,6 +3608,7 @@ export default function RestockSchedulerScreen() {
         renderItem={({ item }) => (
           <ScheduleCard
             schedule={item}
+            onMarkReceived={(cycle) => setMarkReceivedCycle(cycle)}
             onEdit={() => handleEditSchedule(item)}
             onDelete={() => handleDeleteSchedule(item)}
             onAddCycle={() => handleAddCycle(item)}
@@ -3061,7 +3656,13 @@ export default function RestockSchedulerScreen() {
         editing={editingSchedule}
         colors={colors}
       />
-
+      <MarkReceivedModal
+        visible={!!markReceivedCycle}
+        cycle={markReceivedCycle}
+        onClose={() => setMarkReceivedCycle(null)}
+        onSaved={load}
+        colors={colors}
+      />
       {/* Cycle form modal */}
       <CycleFormModal
         visible={cycleFormVisible}

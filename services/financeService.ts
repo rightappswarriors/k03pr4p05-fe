@@ -2,23 +2,19 @@ import { gql } from 'graphql-request';
 import { graphQLRequest } from './apiClient';
 
 export class FinanceService {
-  static async getAccountTitles(orgId?: number): Promise<any[]> {
+  // ✅ Fix — remove the empty parens
+  static async getAccountTitles(): Promise<any[]> {
     const QUERY = gql`
-      query AccountTitles($orgId: Int) {
-        accountTitles(orgId: $orgId) {
-          id
-          orgId
-          name
-          code
-          createdAt
-        }
+    query {
+      getAll {
+        id
+        label
       }
-    `;
-
-    const response = await graphQLRequest<{ accountTitles: any[] }>(QUERY, { orgId });
-    return response.accountTitles;
+    }
+  `;
+    const response = await graphQLRequest<{ getAll: any[] }>(QUERY, {});
+    return response.getAll;
   }
-
   static async createAccountTitle(orgId: number, name: string, code: string): Promise<any> {
     const MUTATION = gql`
       mutation CreateAccountTitle($orgId: Int!, $name: String!, $code: String!) {
@@ -71,41 +67,64 @@ export class FinanceService {
     return response.deleteAccountTitle;
   }
 
-  static async getGISRows(orgId?: number): Promise<any[]> {
-    const QUERY = gql`
-      query GISRows($orgId: Int) {
-        gisRows(orgId: $orgId) {
-          id
-          orgId
-          accountTitleId
-          amount
-          description
-        }
-      }
-    `;
 
-    const response = await graphQLRequest<{ gisRows: any[] }>(QUERY, { orgId });
-    return response.gisRows;
+  static async getGISRows(startDate?: string, endDate?: string): Promise<any[]> {
+    const QUERY = gql`
+    query GISRows($startDate: String, $endDate: String) {
+      gisRows(startDate: $startDate, endDate: $endDate) {
+        id
+        orgId
+        accountTitleId
+        amount
+        description
+      }
+    }
+  `;
+    const response = await graphQLRequest<{ gisRows: any[] }>(QUERY, { startDate, endDate });
+    return response.gisRows ?? [];
   }
 
-  static async createGISRow(orgId: number, accountTitleId: number, amount: number, description: string): Promise<any> {
+
+  static async createGISRow(row: {
+    main: string;
+    group: string;
+    code: string;
+    description: string;
+    debit: number;
+    credit: number;
+    total: number;
+  }): Promise<any> {
     const MUTATION = gql`
-      mutation CreateGISRow($orgId: Int!, $accountTitleId: Int!, $amount: Float!, $description: String!) {
-        createGISRow(orgId: $orgId, accountTitleId: $accountTitleId, amount: $amount, description: $description) {
+      mutation CreateGISRow(
+        $main: String!
+        $group: String!
+        $code: String!
+        $description: String!
+        $debit: Float!
+        $credit: Float!
+        $total: Float!
+      ) {
+        createGISRow(
+          main: $main
+          group: $group
+          code: $code
+          description: $description
+          debit: $debit
+          credit: $credit
+          total: $total
+        ) {
           id
-          orgId
-          amount
+          main
+          group
+          code
           description
+          debit
+          credit
+          total
         }
       }
     `;
-
-    const response = await graphQLRequest<{ createGISRow: any }>(MUTATION, {
-      orgId,
-      accountTitleId,
-      amount,
-      description,
-    });
+    const response = await graphQLRequest<{ createGISRow: any }>(MUTATION, row);
     return response.createGISRow;
   }
 
@@ -130,65 +149,121 @@ export class FinanceService {
     return response.updateGISRow;
   }
 
-  static async deleteGISRow(id: number): Promise<any> {
+  static async deleteGISRow(id: string): Promise<any> {
     const MUTATION = gql`
-      mutation DeleteGISRow($id: Int!) {
+      mutation DeleteGISRow($id: String!) {
         deleteGISRow(id: $id) {
           id
         }
       }
     `;
-
-    const response = await graphQLRequest<{ deleteGISRow: any }>(MUTATION, { id });
-    return response.deleteGISRow;
+    await graphQLRequest<{ deleteGISRow: any }>(MUTATION, { id });
   }
 
-  static async getSummaryRows(orgId?: number): Promise<any[]> {
+  static async getSummaryRows(startDate?: string, endDate?: string): Promise<any[]> {
     const QUERY = gql`
-      query SummaryRows($orgId: Int) {
-        summaryRows(orgId: $orgId) {
+    query SummaryRows($startDate: String, $endDate: String) {
+      summaryRows(startDate: $startDate, endDate: $endDate) {
+        id
+        orgId
+        accountTitleId
+        amount
+        description
+        itemId
+        itemName
+      }
+    }
+  `;
+    const response = await graphQLRequest<{ summaryRows: any[] }>(QUERY, { startDate, endDate });
+    return response.summaryRows ?? [];
+  }
+
+  /**
+   * Create a Summary Row (Item Net Summary entry).
+   * @param orgId       Organisation ID
+   * @param accountTitleId  Optional account title reference
+   * @param amount      Entry amount
+   * @param description Optional free-text description
+   * @param itemId      Optional: catalog item ID (from CatalogSearchModal)
+   * @param itemName    Optional: item name — either resolved from catalog or entered manually
+   */
+  static async createSummaryRow(
+
+    accountTitleId?: number,
+    amount?: number,
+    description?: string,
+    itemId?: number,
+    itemName?: string,
+  ): Promise<any> {
+    const MUTATION = gql`
+      mutation CreateSummaryRow(
+        $orgId: Int
+        $accountTitleId: Int
+        $amount: Float
+        $description: String
+        $itemId: Int
+        $itemName: String
+      ) {
+        createSummaryRow(
+          orgId: $orgId
+          accountTitleId: $accountTitleId
+          amount: $amount
+          description: $description
+          itemId: $itemId
+          itemName: $itemName
+        ) {
           id
           orgId
           accountTitleId
           amount
           description
-        }
-      }
-    `;
-
-    const response = await graphQLRequest<{ summaryRows: any[] }>(QUERY, { orgId });
-    return response.summaryRows;
-  }
-
-  static async createSummaryRow(orgId: number, accountTitleId: number, amount: number, description: string): Promise<any> {
-    const MUTATION = gql`
-      mutation CreateSummaryRow($orgId: Int!, $accountTitleId: Int!, $amount: Float!, $description: String!) {
-        createSummaryRow(orgId: $orgId, accountTitleId: $accountTitleId, amount: $amount, description: $description) {
-          id
-          orgId
-          amount
-          description
+          itemId
+          itemName
         }
       }
     `;
 
     const response = await graphQLRequest<{ createSummaryRow: any }>(MUTATION, {
-      orgId,
       accountTitleId,
       amount,
       description,
+      itemId,
+      itemName,
     });
     return response.createSummaryRow;
   }
 
-  static async updateSummaryRow(id: number, accountTitleId: number, amount: number, description: string): Promise<any> {
+  static async updateSummaryRow(
+    id: number,
+    accountTitleId: number,
+    amount: number,
+    description: string,
+    itemId?: number,
+    itemName?: string,
+  ): Promise<any> {
     const MUTATION = gql`
-      mutation UpdateSummaryRow($id: Int!, $accountTitleId: Int!, $amount: Float!, $description: String!) {
-        updateSummaryRow(id: $id, accountTitleId: $accountTitleId, amount: $amount, description: $description) {
+      mutation UpdateSummaryRow(
+        $id: Int!
+        $accountTitleId: Int
+        $amount: Float
+        $description: String
+        $itemId: Int
+        $itemName: String
+      ) {
+        updateSummaryRow(
+          id: $id
+          accountTitleId: $accountTitleId
+          amount: $amount
+          description: $description
+          itemId: $itemId
+          itemName: $itemName
+        ) {
           id
           orgId
           amount
           description
+          itemId
+          itemName
         }
       }
     `;
@@ -198,6 +273,8 @@ export class FinanceService {
       accountTitleId,
       amount,
       description,
+      itemId,
+      itemName,
     });
     return response.updateSummaryRow;
   }

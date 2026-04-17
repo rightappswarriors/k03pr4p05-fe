@@ -10,6 +10,7 @@ import { gql } from 'graphql-request';
 import { DeviceService } from './deviceService';
 import { OrganizationService } from './organizationService';
 import { SubscriptionService } from './subscriptionService';
+import { gqlErrorMessage } from '@/utils/gqlErrorMessage';
 interface AuthPayload {
   user: User;
   token: string;
@@ -125,9 +126,12 @@ export class AuthService {
       await secureStorage.setItemAsync(REFRESH_TOKEN_KEY, refresh_token);
       await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
       return user;
-    } catch (error) {
-      //console.error('GraphQL login error:', error);
-      throw new Error('Invalid email or password');
+    } catch (error: any) {
+      // GraphQL errors come back in error.response.errors[]
+      const graphqlMessage = gqlErrorMessage(error);
+      console.error('Login error:', graphqlMessage, '\n\nFull error object:', error);
+      throw new Error(graphqlMessage ?? (error instanceof Error ? error.message : String(error)));
+
     }
   }
 
@@ -153,9 +157,9 @@ export class AuthService {
         }
       }
     `;
-    
+
     try {
-       const response = await graphQLRequest<{ registerUser: any }>(
+      const response = await graphQLRequest<{ registerUser: any }>(
         REGISTER_MUTATION,
         { fullname, email, password, contactNumber },
         { skipAuth: true }
@@ -178,11 +182,30 @@ export class AuthService {
     }
 
   }
-
+  static async getMyOutletAssignment(): Promise<{ outletId: number; role: string, outletName: string } | null> {
+    const GET_MY_OUTLET = gql`
+    query GetMyOutletAssignment {
+      myOutletAssignment {
+        outletId
+        role
+      }
+    }
+  `;
+    try {
+      const client = await getGraphQLClient();
+      const { accessToken } = await AuthService.getTokens();
+      const data = await client.request(GET_MY_OUTLET, {}, {
+        Authorization: `Bearer ${accessToken}`
+      });
+      return data.myOutletAssignment ?? null;
+    } catch {
+      return null;
+    }
+  }
   static async verifyEmail(email: string, code: string): Promise<User> {
     try {
       console.log(`[AuthService] Verifying email: ${email}`)
-      
+
       const VERIFY_MUTATION = gql`
         mutation VerifyEmail($email: String!, $code: String!) {
           verifyEmail(email: $email, code: $code) {

@@ -12,6 +12,7 @@ import { BarcodeScanner } from '@/components/pos/BarcodeScanner';
 import { useTheme } from '@/contexts/ThemeContext'
 import { useResponsive } from '@/hooks/useResponsive'
 import { usePOS } from "@/contexts/POSContext"
+
 export default function POSScreen() {
   const { isDesktop, isMobile } = useResponsive()
   const { colors } = useTheme()

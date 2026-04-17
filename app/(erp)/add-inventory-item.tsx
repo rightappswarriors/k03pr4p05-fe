@@ -1,7 +1,7 @@
 // screens/(admin)/add-inventory-item.tsx
 // Search item catalog → configure price, qty, units → add to outlet inventory
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,361 +10,94 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Modal,
-  FlatList,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
 } from 'react-native';
 import {
   ArrowLeft,
   Search,
-  Package,
   Plus,
   Trash2,
   X,
+  Info,
 } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { InventoryService } from '@/services/inventoryService';
-import { CostLine } from '@/screens/InventoryScreen';
+
 import { GlobalCategoryPickerModal } from '@/components/GlobalCategoryPickerModal';
+import { CatalogItem, UnitLine } from '@/types';
+import { CatalogSearchModal } from '@/components/CatalogSearchModal';
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
-interface CatalogItem {
-  id: string;
-  name: string;
-  barcode: string;
-  brand?: string;
-  category?: string;
-  image?: string;
-  sellingPrice: string;
-  costLines: CostLine[] | [];
-  stock?: number;
-}
 
-interface UnitLine {
-  id: string;
-  unitName: string; // e.g. "box", "piece", "pack"
-  unitLabel: string; // display label e.g. "Box of 12"
-  price: string;
-  quantity: string;
-  conversionFactor: string; // how many base units in this unit
-  barcode: string;
-  isDefault: boolean;
-  reorderPoint: string;
-}
-
-// ─── Mock catalog search ───────────────────────────────────────────────────────
-// removed mock data and replaced with actual search function that calls backend API
-import { CategoryPickerModal } from '@/components/CategoryPickerModal';
-async function searchCatalog(q: string): Promise<CatalogItem[]> {
-  try {
-    const items = await InventoryService.getOrgItems(q, 50);
-    return items.map((item) => ({
-      id: item.id.toString(),
-      name: item.name,
-      barcode: item.barcode,
-      brand: item.brandDetails?.name,
-      category: item.category?.name,
-      image: item.media?.[0]?.url,
-      sellingPrice: item.sellingPrice, // Default price since Item doesn't have price at org level
-      stock: item.stock,
-      costLines: item.costLines || [],
-    }));
-  } catch (error) {
-    console.error('Failed to search catalog:', error);
-    return [];
-  }
-}
-
-// ─── Catalog Search Modal ──────────────────────────────────────────────────────
-
-function CatalogSearchModal({
-  visible,
-  onClose,
-  onSelect,
-  colors,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  onSelect: (item: CatalogItem) => void;
-  colors: any;
-}) {
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<CatalogItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
-
-  // Show full catalog on open — no need to search for the first load
-  React.useEffect(() => {
-    if (visible && !hasSearched) {
-      searchCatalog('').then(setResults);
-    }
-    if (!visible) {
-      // Reset when closed so next open shows full list again
-      setQuery('');
-      setResults([]);
-      setHasSearched(false);
-    }
-  }, [visible]);
-
-  const doSearch = async () => {
-    const q = query.trim();
-    setLoading(true);
-    setHasSearched(true);
-    const res = await searchCatalog(q || ''); // empty string returns all
-    setResults(res);
-    setLoading(false);
-  };
-
-  const handleClear = () => {
-    setQuery('');
-    searchCatalog('').then(setResults);
-    setHasSearched(false);
-  };
-
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: 'rgba(0,0,0,0.5)',
-          justifyContent: 'flex-end',
-        }}
-      >
-        <TouchableOpacity
-          style={{ flex: 1 }}
-          activeOpacity={1}
-          onPress={onClose}
-        />
-        <View style={[csm.sheet, { backgroundColor: colors.surface }]}>
-          <View style={[csm.handle, { backgroundColor: colors.border }]} />
-          <View style={[csm.header, { borderBottomColor: colors.border }]}>
-            <Text style={[csm.title, { color: colors.text }]}>
-              Search Item Catalog
-            </Text>
-            <TouchableOpacity onPress={onClose}>
-              <X size={20} color={colors.textSecondary} strokeWidth={2} />
-            </TouchableOpacity>
-          </View>
-          {/* Search row */}
-
-          <View style={[csm.searchRow, { borderBottomColor: colors.border }]}>
-            <View
-              style={[
-                csm.searchBox,
-                {
-                  backgroundColor: colors.background,
-                  borderColor: colors.border,
-                },
-              ]}
-            >
-              <Search size={13} color={colors.textSecondary} strokeWidth={2} />
-              <TextInput
-                style={[csm.searchInput, { color: colors.text }]}
-                placeholder="Search by name, barcode, brand…"
-                placeholderTextColor={colors.textSecondary}
-                value={query}
-                onChangeText={setQuery}
-                returnKeyType="search"
-                onSubmitEditing={doSearch}
-                autoCorrect={false}
-              />
-              {query.length > 0 && (
-                <TouchableOpacity
-                  onPress={handleClear}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <X size={13} color={colors.textSecondary} strokeWidth={2} />
-                </TouchableOpacity>
-              )}
-            </View>
-            <TouchableOpacity
-              style={[
-                csm.searchBtn,
-                { backgroundColor: loading ? colors.border : colors.primary },
-              ]}
-              onPress={doSearch}
-              disabled={loading}
-              activeOpacity={0.85}
-            >
-              <Search size={13} color="#fff" strokeWidth={2.5} />
-              <Text style={{ fontSize: 11, fontWeight: '700', color: '#fff' }}>
-                {loading ? '…' : 'Search'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Loading state — shown above FlatList so it's always visible */}
-          {loading && (
-            <View style={{ padding: 20, alignItems: 'center' }}>
-              <Text style={{ fontSize: 13, color: colors.textSecondary }}>
-                Searching catalog…
-              </Text>
-            </View>
-          )}
-
-          {!loading && (
-            <FlatList
-              data={results}
-              keyExtractor={(i) => i.id}
-              style={{ maxHeight: 320 }}
-              keyboardShouldPersistTaps="handled"
-              ListEmptyComponent={
-                <View style={{ padding: 28, alignItems: 'center' }}>
-                  <Package size={32} color={colors.border} strokeWidth={1.5} />
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      color: colors.textSecondary,
-                      marginTop: 10,
-                    }}
-                  >
-                    {loading ? (
-                      <ActivityIndicator />
-                    ) : query ? (
-                      `No items found for "${query}"`
-                    ) : (
-                      'No catalog items available.'
-                    )}
-                  </Text>
-                </View>
-              }
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[csm.resultRow, { borderBottomColor: colors.border }]}
-                  onPress={() => {
-                    onSelect(item);
-                    onClose();
-                  }}
-                  activeOpacity={0.75}
-                >
-                  <View
-                    style={[
-                      csm.icon,
-                      { backgroundColor: colors.primary + '18' },
-                    ]}
-                  >
-                    <Package size={16} color={colors.primary} strokeWidth={2} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[csm.itemName, { color: colors.text }]}>
-                      {item.name}
-                    </Text>
-                    <Text
-                      style={[csm.itemMeta, { color: colors.textSecondary }]}
-                    >
-                      {item.brand ? `${item.brand} · ` : ''}
-                      {item.category} · {item.barcode}
-                    </Text>
-                  </View>
-                  <Text style={[csm.selectTxt, { color: colors.primary }]}>
-                    Select
-                  </Text>
-                </TouchableOpacity>
-              )}
-            />
-          )}
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-const csm = StyleSheet.create({
-  sheet: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingBottom: 32,
-  },
-  handle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginTop: 12,
-    marginBottom: 4,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-  },
-  title: { fontSize: 16, fontWeight: '800' },
-  searchRow: {
-    flexDirection: 'row',
-    gap: 8,
-    padding: 12,
-    borderBottomWidth: 1,
-  },
-  searchBox: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderRadius: 10,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  searchInput: { flex: 1, fontSize: 13 },
-  searchBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 10,
-    justifyContent: 'center',
-  },
-  resultRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-  },
-  icon: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  itemName: { fontSize: 14, fontWeight: '600' },
-  itemMeta: { fontSize: 11, marginTop: 2 },
-  selectTxt: { fontSize: 13, fontWeight: '700' },
-});
-
-// ─── Category Search Modal ──────────────────────────────────────────────────────
-interface CategoryOption {
-  id: number;
-  name: string;
-}
 
 // ─── Main Screen ───────────────────────────────────────────────────────────────
 
 export default function AddInventoryItemScreen() {
-  const { outletId, outletName, branchName, branchId } = useLocalSearchParams<{
-    outletId: string;
-    outletName: string;
-    branchName: string;
-    branchId: string;
-  }>();
+  const { outletId, outletName, branchName, branchId, inventoryItemId } =
+    useLocalSearchParams<{
+      outletId: string;
+      outletName: string;
+      branchName: string;
+      branchId: string;
+      inventoryItemId?: string;
+    }>();
+
+  const isEditMode = !!inventoryItemId;
+
+  useEffect(() => {
+    if (!inventoryItemId) return;
+    InventoryService.getInventoryItemById(Number(inventoryItemId)).then(
+      (data) => {
+        if (!data) return;
+
+        // Prefill item
+        setSelectedItem({
+          id: data.item.id.toString(),
+          name: data.item.name,
+          barcode: data.item.barcode,
+          brand: data.item.brand,
+          sellingPrice: data.item.sellingPrice?.toString() ?? '',
+          stock: data.item.stock,
+          costLines: data.item.costLines ?? [],
+        });
+
+        // Prefill base fields
+        setBasePrice(data.price.toString());
+        setBaseQty(data.quantity.toString());
+
+        // Prefill category
+        if (data.category) {
+          setSelectedCategoryId(data.category.id);
+          setSelectedCategoryName(data.category.name);
+        }
+
+        // Prefill units
+        if (data.units && data.units.length > 0) {
+          setUnits(
+            data.units.map((u: any) => ({
+              id: u.id.toString(),
+              unitName: u.unitName,
+              unitLabel: u.unitLabel,
+              price: u.price.toString(),
+              quantity: u.quantity.toString(),
+              conversionFactor: u.conversionFactor.toString(),
+              barcode: u.barcode ?? '',
+              isDefault: u.isDefault,
+              allowDecimal: u.allowDecimal,
+              reorderPoint: u.reorderPoint?.toString() ?? '0',
+            })),
+          );
+        }
+      },
+    );
+  }, [inventoryItemId]);
   const { colors } = useTheme();
 
   const [catalogOpen, setCatalogOpen] = useState(false);
 
+  const [tooltipVisible, setTooltipVisible] = useState<string | null>(null);
   const [categoryPickerVisible, setCategoryPickerVisible] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(
     null,
@@ -385,6 +118,7 @@ export default function AddInventoryItemScreen() {
       quantity: '0',
       conversionFactor: '1',
       barcode: '',
+      allowDecimal: false,
       isDefault: true,
       reorderPoint: '10',
     },
@@ -405,6 +139,7 @@ export default function AddInventoryItemScreen() {
         conversionFactor: '1',
         barcode: '',
         isDefault: false,
+        allowDecimal: false,
         reorderPoint: '0',
       },
     ]);
@@ -442,6 +177,7 @@ export default function AddInventoryItemScreen() {
         barcode: '',
         isDefault: true,
         reorderPoint: '10',
+        allowDecimal: false,
       },
     ]);
     setError('');
@@ -462,12 +198,11 @@ export default function AddInventoryItemScreen() {
     }
     setSaving(true);
     try {
-      await InventoryService.addItemToOutletWithUnits(Number(outletId), {
+      const payload = {
         itemId: Number(selectedItem.id),
         price: parseFloat(basePrice),
         quantity: parseInt(baseQty) || 0,
         categoryId: selectedCategoryId ?? undefined,
-        //!add new field
         units: units.map((u) => ({
           unitName: u.unitName,
           unitLabel: u.unitLabel,
@@ -477,11 +212,25 @@ export default function AddInventoryItemScreen() {
           baseUnit: 'piece',
           barcode: u.barcode || undefined,
           isDefault: u.isDefault,
+          allowDecimal: u.allowDecimal,
           minOrderQty: parseFloat(u.reorderPoint) || 0,
           maxOrderQty: undefined,
           reorderPoint: parseFloat(u.reorderPoint) || 0,
         })),
-      });
+      };
+
+      if (isEditMode) {
+        const { itemId, ...updatePayload } = payload;
+        await InventoryService.updateOutletItem(
+          Number(inventoryItemId),
+          updatePayload,
+        );
+      } else {
+        await InventoryService.addItemToOutletWithUnits(
+          Number(outletId),
+          payload,
+        );
+      }
       setSuccess(true);
       setTimeout(() => {
         resetForm();
@@ -535,7 +284,7 @@ export default function AddInventoryItemScreen() {
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={[ais.title, { color: colors.text }]}>
-            Add Inventory Item
+            {isEditMode ? 'Edit Inventory Item' : 'Add Inventory Item'}
           </Text>
           <Text style={[ais.subtitle, { color: colors.textSecondary }]}>
             {outletName}
@@ -892,6 +641,125 @@ export default function AddInventoryItemScreen() {
                       </Text>
                     </View>
                   )}
+                  {/** I want to add the allowDecimal checkbox place it to the right and a hint what is this like (!) tooltip */}
+                  {/* Right side of unit header — allowDecimal toggle + tooltip */}
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 8,
+                    }}
+                  >
+                    {/* Tooltip trigger */}
+                    <TouchableOpacity
+                      onPress={() =>
+                        setTooltipVisible(
+                          tooltipVisible === unit.id ? null : unit.id,
+                        )
+                      }
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Info
+                        size={14}
+                        color={colors.textSecondary}
+                        strokeWidth={2}
+                      />
+                    </TouchableOpacity>
+
+                    {/* Allow Decimal label + checkbox */}
+                    <TouchableOpacity
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                      }}
+                      onPress={() =>
+                        setUnits((prev) =>
+                          prev.map((u) =>
+                            u.id === unit.id
+                              ? { ...u, allowDecimal: !u.allowDecimal }
+                              : u,
+                          ),
+                        )
+                      }
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          color: colors.textSecondary,
+                          fontWeight: '500',
+                        }}
+                      >
+                        Decimal qty
+                      </Text>
+                      {/* Checkbox */}
+                      <View
+                        style={[
+                          {
+                            width: 20,
+                            height: 20,
+                            borderRadius: 5,
+                            borderWidth: 1.5,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            borderColor: unit.allowDecimal
+                              ? colors.primary
+                              : colors.border,
+                            backgroundColor: unit.allowDecimal
+                              ? colors.primary
+                              : 'transparent',
+                          },
+                        ]}
+                      >
+                        {unit.allowDecimal && (
+                          <Text
+                            style={{
+                              color: '#fff',
+                              fontSize: 13,
+                              fontWeight: '700',
+                              lineHeight: 16,
+                            }}
+                          >
+                            ✓
+                          </Text>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Tooltip — renders below the header row */}
+                  {tooltipVisible === unit.id && (
+                    <View
+                      style={[
+                        {
+                          marginTop: 8,
+                          padding: 10,
+                          borderRadius: 8,
+                          backgroundColor: colors.background,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          color: colors.textSecondary,
+                          lineHeight: 18,
+                        }}
+                      >
+                        <Text style={{ fontWeight: '700', color: colors.text }}>
+                          Decimal quantity
+                        </Text>{' '}
+                        allows selling fractional amounts like 1.5 kg or 0.75
+                        liters.{'\n'}
+                        Enable this for weight-based units (kg, gram, liter).
+                        {'\n'}
+                        Leave off for countable units (piece, dozen, box).
+                      </Text>
+                    </View>
+                  )}
                 </View>
                 <View style={{ flexDirection: 'row', gap: 8 }}>
                   {!unit.isDefault && (
@@ -1150,7 +1018,13 @@ export default function AddInventoryItemScreen() {
               activeOpacity={0.85}
             >
               <Text style={ais.saveTxt}>
-                {saving ? 'Adding…' : 'Add to Outlet Inventory'}
+                {saving
+                  ? isEditMode
+                    ? 'Saving…'
+                    : 'Adding…'
+                  : isEditMode
+                    ? 'Save Changes'
+                    : 'Add to Outlet Inventory'}
               </Text>
             </TouchableOpacity>
           )}
