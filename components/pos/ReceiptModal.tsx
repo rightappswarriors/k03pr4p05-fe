@@ -57,27 +57,41 @@ export function ReceiptModal({
   const [isProcessing, setIsProcessing] = useState(false);
   const [discountOption, setDiscountOption] = useState<DiscountType>('NONE');
   const [isDiscounted, setIsDiscounted] = useState(false);
+  const [applyVatExempt, setApplyVatExempt] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
-  const [selectedPromoId, setSelectedPromoId] = useState<number | null>(null);
+  const [selectedPromoId, setSelectedPromoId] = useState<number | undefined>(undefined);
 
   useEffect(() => {
     if (!isDiscounted) {
       setDiscountOption('NONE');
-      setSelectedPromoId(null);
+      setSelectedPromoId(undefined);
+      setApplyVatExempt(false);
     }
   }, [isDiscounted]);
 
   useEffect(() => {
     if (discountOption === 'NONE') {
-      setSelectedPromoId(null);
+      setSelectedPromoId(undefined);
+    }
+    if (!/SENIOR|PWD/.test(discountOption)) {
+      setApplyVatExempt(false);
     }
   }, [discountOption]);
   if (!outlet) return null;
-  const { total, subtotal, vatAmount, discount, discountRate } = calculateTotal(
-    items,
-    outlet,
-    { type: discountOption },
-  );
+
+  const isVatExemptOption = /SENIOR|PWD/.test(discountOption);
+  const isVatExemptActive = isVatExemptOption && applyVatExempt && isDiscounted;
+  const vatExemptType = discountOption.includes('PWD')
+    ? 'PWD'
+    : discountOption.includes('SENIOR')
+    ? 'SENIOR_CITIZEN'
+    : undefined;
+
+  const { total, subtotal, vatAmount, discount, discountRate, vatExemptAmount } =
+    calculateTotal(items, outlet, {
+      type: discountOption,
+      applyVatExempt: isVatExemptActive,
+    });
 
   const { user } = useAuth();
   const cashAmount = parseFloat(cashReceived) || 0;
@@ -87,8 +101,6 @@ export function ReceiptModal({
 
   const handlePrintReceipt = async () => {
     setIsProcessing(true);
-    const isSeniorOrPwd =
-      discountOption === 'SENIOR' || discountOption === 'PWD';
     try {
       await ReceiptService.processAndPrintReceipt({
         items,
@@ -97,16 +109,11 @@ export function ReceiptModal({
         discountOption,
         outlet,
         user,
-        // ── new fields ──
-        isVatExempt: isSeniorOrPwd,
-        vatExemptType: isSeniorOrPwd
-          ? discountOption === 'SENIOR'
-            ? 'SENIOR_CITIZEN'
-            : 'PWD'
-          : undefined,
-        vatExemptRefNo: isSeniorOrPwd ? vatExemptRefNo : undefined,
-        vatExemptAmount: isSeniorOrPwd ? vatAmount : undefined,
-        outletPromoId: selectedPromoId,
+        isVatExempt: isVatExemptActive,
+        vatExemptType: isVatExemptActive ? vatExemptType : undefined,
+        vatExemptRefNo: isVatExemptActive ? vatExemptRefNo : undefined,
+        vatExemptAmount: isVatExemptActive ? vatExemptAmount : undefined,
+        outletPromoId: selectedPromoId ?? undefined,
         promoDiscountAmt: discount,
         onSuccess: () => {
           setIsProcessing(false);
@@ -194,9 +201,9 @@ export function ReceiptModal({
         </View>
 
         {/* VAT line — hidden when SC/PWD (exempt) */}
-        {outlet.isVatRegistered && !isSeniorOrPwd && (
+{outlet.isVatRegistered && !(isVatExemptOption && applyVatExempt) && (
           <View style={rs.totalRow}>
-            <Text style={[rs.totalLabel, { color: colors.textSecondary }]}>
+            <Text style={[rs.totalLabel, { color: colors.textSecondary }]}> 
               VAT (
               {outlet.vatType?.rate
                 ? outlet.vatType.rate * 100
@@ -205,29 +212,28 @@ export function ReceiptModal({
                   : 0}
               %)
             </Text>
-            <Text style={[rs.totalValue, { color: colors.text }]}>
+            <Text style={[rs.totalValue, { color: colors.text }]}> 
               ₱{vatAmount.toFixed(2)}
             </Text>
           </View>
         )}
 
-        {/* VAT Exempt badge */}
-        {isSeniorOrPwd && (
+        {isVatExemptActive && vatExemptAmount !== undefined && (
           <View style={rs.totalRow}>
-            <Text style={[rs.totalLabel, { color: '#10B981' }]}>
-              VAT Exempt ({discountOption})
+            <Text style={[rs.totalLabel, { color: '#10B981' }]}> 
+              VAT Exempted
             </Text>
-            <Text style={[rs.totalValue, { color: '#10B981' }]}>
-              -₱{vatAmount.toFixed(2)}
+            <Text style={[rs.totalValue, { color: '#10B981' }]}> 
+              -₱{vatExemptAmount.toFixed(2)}
             </Text>
           </View>
         )}
 
         {/* Discount line */}
-        {isDiscounted && (
+        {isDiscounted && discount > 0 && (
           <View style={rs.totalRow}>
-            <Text style={[rs.totalLabel, { color: colors.textSecondary }]}>
-              Discount {discountOption} ({(discountRate * 100).toFixed(0)}%)
+            <Text style={[rs.totalLabel, { color: colors.textSecondary }]}> 
+              Discount {discountOption} ({discountRate.toFixed(0)}%)
             </Text>
             <Text style={[rs.totalValue, { color: '#EF4444' }]}>
               -₱{discount.toFixed(2)}
@@ -252,15 +258,27 @@ export function ReceiptModal({
     <View style={rs.paymentBlock}>
       {/* Discount + payment method row */}
       <View style={rs.paymentTopRow}>
-        <CustomCheckbox
-          label="Apply Discount"
-          checked={isDiscounted}
-          onPress={() => {
-            if (!isDiscounted) setIsDiscounted(true);
-            setIsVisible(!isVisible);
-          }}
-          colors={colors}
-        />
+        <View style={rs.paymentTopLeft}>
+          <CustomCheckbox
+            label="Apply Discount"
+            checked={isDiscounted}
+            onPress={() => {
+              if (!isDiscounted) setIsDiscounted(true);
+              setIsVisible(!isVisible);
+            }}
+            colors={colors}
+          />
+          {isVatExemptOption && isDiscounted && (
+            <View style={rs.vatExemptCheckbox}>
+              <CustomCheckbox
+                label="VAT Exempt"
+                checked={applyVatExempt}
+                onPress={() => setApplyVatExempt((prev) => !prev)}
+                colors={colors}
+              />
+            </View>
+          )}
+        </View>
         <TouchableOpacity
           style={rs.payMethodBtn}
           disabled={!isConnected || !outlet.hasKey}
@@ -293,7 +311,6 @@ export function ReceiptModal({
           </Text>
         </TouchableOpacity>
       </View>
-
       <DiscountModal
         isVisible={isVisible}
         onClose={() => setIsVisible(false)}
@@ -302,24 +319,24 @@ export function ReceiptModal({
         discountOption={discountOption}
         setDiscountOption={setDiscountOption}
         setSelectedPromoId={setSelectedPromoId}
+        subtotal={subtotal} // ← add
+        vatAmount={vatAmount} // ← add
+        vatExemptRefNo={vatExemptRefNo} // ← move from PaymentBlock
+        setVatExemptRefNo={setVatExemptRefNo} // ← move from PaymentBlock
       />
-      {(discountOption === 'SENIOR' || discountOption === 'PWD') && (
+      {isVatExemptOption && (
         <View
           style={[
             rs.cashRow,
-            { backgroundColor: colors.background, borderColor: '#10B981' },
+            { backgroundColor: colors.background, borderColor: applyVatExempt ? '#10B981' : colors.border },
           ]}
         >
-          <Text style={{ fontSize: 13, color: '#10B981', fontWeight: '600' }}>
-            {discountOption === 'SENIOR' ? 'SC' : 'PWD'} ID
+          <Text style={{ fontSize: 13, color: applyVatExempt ? '#10B981' : colors.textSecondary, fontWeight: '600' }}>
+            {discountOption.includes('PWD') ? 'PWD' : 'SC'} ID
           </Text>
           <TextInput
-            style={[
-              rs.cashInput,
-              { color: colors.text },
-              isWide && ({ outlineStyle: 'none' } as any),
-            ]}
-            placeholder={`Enter ${discountOption === 'SENIOR' ? 'Senior Citizen' : 'PWD'} ID No.`}
+            style={[rs.cashInput, { color: colors.text }]}
+            placeholder={`Enter ${discountOption.includes('PWD') ? 'PWD' : 'Senior Citizen'} ID No.`}
             placeholderTextColor={colors.textSecondary}
             value={vatExemptRefNo}
             onChangeText={setVatExemptRefNo}
@@ -336,17 +353,12 @@ export function ReceiptModal({
       >
         <PhilippinePeso size={18} color={colors.textSecondary} />
         <TextInput
-          style={[
-            rs.cashInput,
-            { color: colors.text },
-            isWide && ({ outlineStyle: 'none' } as any),
-          ]}
+          style={[rs.cashInput, { color: colors.text }]}
           placeholder="Enter cash received"
           placeholderTextColor={colors.textSecondary}
           value={cashReceived}
           onChangeText={setCashReceived}
           keyboardType="numeric"
-          selectTextOnFocus
         />
       </View>
 
@@ -626,6 +638,13 @@ const rs = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  paymentTopLeft: {
+    flex: 1,
+    gap: 8,
+  },
+  vatExemptCheckbox: {
+    marginTop: 8,
   },
   payMethodBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   payMethodTxt: { fontSize: 13, fontWeight: '600' },

@@ -21,7 +21,6 @@ import {
   Package,
 } from 'lucide-react-native';
 import { ReceiptModal } from './ReceiptModal';
-import { ReceiptModalBigScreen } from './ReceiptModalBigScreen';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useTransactionSync } from '@/hooks/useTransactionSync';
 import { useResponsive } from '@/hooks/useResponsive';

@@ -1,5 +1,5 @@
 import React from "react";
-import { TouchableOpacity, View, Text } from "react-native";
+import { TouchableOpacity, View, Text, StyleSheet } from "react-native";
 import { Check } from "lucide-react-native";
 
 interface CustomCheckboxProps {
@@ -12,22 +12,46 @@ interface CustomCheckboxProps {
 export const CustomCheckbox = ({ label, checked, onPress, colors }: CustomCheckboxProps) => (
   <TouchableOpacity
     onPress={onPress}
-    activeOpacity={0.8}
-    className="flex-row items-center gap-2"
+    activeOpacity={0.75}
+    style={[styles.button, { borderColor: checked ? colors.primary : colors.border }]}
   >
     <View
-      className="w-6 h-6 rounded-md border items-center justify-center"
-      style={{
-        borderColor: checked ? colors.primary : colors.border,
-        backgroundColor: checked ? colors.primary : "transparent",
-      }}
+      style={[
+        styles.box,
+        {
+          borderColor: checked ? colors.primary : colors.border,
+          backgroundColor: checked ? colors.primary : colors.card,
+        },
+      ]}
     >
       {checked && <Check size={16} color="#fff" strokeWidth={3} />}
     </View>
-    {label && (
-      <Text className="text-base" style={{ color: colors.text }}>
-        {label}
-      </Text>
-    )}
+    {label ? (
+      <Text style={[styles.label, { color: colors.text }]}>{label}</Text>
+    ) : null}
   </TouchableOpacity>
 );
+
+const styles = StyleSheet.create({
+  button: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderRadius: 14,
+  },
+  box: {
+    width: 24,
+    height: 24,
+    borderWidth: 1.5,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  label: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
+});

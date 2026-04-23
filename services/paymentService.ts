@@ -31,7 +31,7 @@ export class ReceiptService {
   onSuccess?: () => void;
   onFail?: () => void;
   isVatExempt?: boolean;
-  vatExemptType?: string;
+  vatExemptType?: 'SENIOR_CITIZEN' | 'PWD' | 'DIPLOMAT' | 'GOVERNMENT';
   vatExemptRefNo?: string;
   vatExemptAmount?: number;
   outletPromoId?: number;
@@ -39,7 +39,10 @@ export class ReceiptService {
 }) {
   try {
     const { total, subtotal, vatAmount, discount, discountRate } =
-      calculateTotal(items, outlet, { type: discountOption as any });
+      calculateTotal(items, outlet, {
+        type: discountOption as any,
+        applyVatExempt: Boolean(isVatExempt),
+      });
 
     if (paymentMethod === 'CASH') {
       if (!cashReceived || cashReceived < total) {
@@ -76,11 +79,26 @@ export class ReceiptService {
         subtotal: parseFloat(subtotal.toFixed(2)),
         vatAmount: parseFloat(vatAmount.toFixed(2)),
         total: parseFloat(total.toFixed(2)),
-        discountType: discountOption !== 'NONE' ? discountOption : undefined,
-        discountPercent: discountOption !== 'NONE' ? discountRate * 100 : undefined,
-        discountTotal: discountOption !== 'NONE' ? discount : undefined,
-        cashReceived: paymentMethod === 'CASH' ? parseFloat(cashReceived.toFixed(2)) : 0,
-        change: paymentMethod === 'CASH' ? parseFloat(change.toFixed(2)) : 0,
+        discountType:
+          discountOption !== 'NONE' && (discount !== 0 || isVatExempt)
+            ? discountOption
+            : undefined,
+        discountPercent:
+          discountOption !== 'NONE' && (discount !== 0 || isVatExempt)
+            ? discountRate * 100
+            : undefined,
+        discountTotal:
+          discountOption !== 'NONE' && (discount !== 0 || isVatExempt)
+            ? discount
+            : undefined,
+        isVatExempt: Boolean(isVatExempt),
+        vatExemptType: isVatExempt ? vatExemptType : undefined,
+        vatExemptRefNo: isVatExempt ? vatExemptRefNo : undefined,
+        vatExemptAmount: isVatExempt ? vatExemptAmount : undefined,
+        cashReceived:
+          paymentMethod === 'CASH' ? parseFloat(cashReceived.toFixed(2)) : 0,
+        change:
+          paymentMethod === 'CASH' ? parseFloat(change.toFixed(2)) : 0,
       },
       payment: {
         method: paymentMethod,
@@ -114,10 +132,20 @@ export class ReceiptService {
       itemsSold,
       cashReceived: paymentMethod === 'CASH' ? parseFloat(cashReceived.toFixed(2)) : undefined,
       change: paymentMethod === 'CASH' ? parseFloat(change.toFixed(2)) : undefined,
-      discountType: discountOption !== 'NONE' ? discountOption : undefined,
-      discountAmount: discountOption !== 'NONE' ? discount : undefined,
+      discountType:
+        discountOption !== 'NONE' && (discount !== 0 || isVatExempt)
+          ? discountOption
+          : undefined,
+      discountAmount:
+        discountOption !== 'NONE' && (discount !== 0 || isVatExempt)
+          ? discount
+          : undefined,
       outletPromoId,
       promoDiscountAmt,
+      isVatExempt: Boolean(isVatExempt),
+      vatExemptType: isVatExempt ? vatExemptType : undefined,
+      vatExemptRefNo: isVatExempt ? vatExemptRefNo : undefined,
+      vatExemptAmount: isVatExempt ? vatExemptAmount : undefined,
     });
 
     // ← await print, no setTimeout

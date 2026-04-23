@@ -84,6 +84,10 @@ export class SalesService {
     paymentType?: string;
     discountType?: string;
     discountAmount?: number;
+    isVatExempt?: boolean;
+    vatExemptType?: string;
+    vatExemptRefNo?: string;
+    vatExemptAmount?: number;
     outletPromoId?: number;
     promoDiscountAmt?: number;
   }): Promise<any> {
@@ -103,6 +107,10 @@ export class SalesService {
         $paymentType: String
         $discountType: String
         $discountAmount: Float
+        $isVatExempt: Boolean
+        $vatExemptType: VatExemptType
+        $vatExemptRefNo: String
+        $vatExemptAmount: Float
         $outletPromoId: Int
         $promoDiscountAmt: Float
       ) {
@@ -121,6 +129,10 @@ export class SalesService {
           paymentType: $paymentType
           discountType: $discountType
           discountAmount: $discountAmount
+          isVatExempt: $isVatExempt
+          vatExemptType: $vatExemptType
+          vatExemptRefNo: $vatExemptRefNo
+          vatExemptAmount: $vatExemptAmount
           outletPromoId: $outletPromoId
           promoDiscountAmt: $promoDiscountAmt
         ) {
@@ -148,6 +160,10 @@ export class SalesService {
         itemsSold: data.itemsSold,
         discountType: data.discountType,
         discountAmount: data.discountAmount,
+        isVatExempt: data.isVatExempt,
+        vatExemptType: data.vatExemptType,
+        vatExemptRefNo: data.vatExemptRefNo,
+        vatExemptAmount: data.vatExemptAmount,
         outletPromoId: data.outletPromoId,
         promoDiscountAmt: data.promoDiscountAmt,
 

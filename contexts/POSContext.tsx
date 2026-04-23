@@ -177,7 +177,8 @@ export const CartProvider = ({ children }: CartProviderProps) => {
         const discountOption: Record<string, number> = {};
         outletData.outletPromos?.forEach((p: any) => {
           if (p.isActive) {
-            discountOption[p.promoType.name.toUpperCase().replace(/\s+/g, '_')] = p.discount;
+            discountOption[p.promoType.name.toUpperCase().replace(/\s+/g, '_')] =
+              typeof p.discount === 'number' ? p.discount / 100 : 0;
           }
         });
         // Defaults for senior/pwd
@@ -202,6 +203,8 @@ export const CartProvider = ({ children }: CartProviderProps) => {
           ptu: outletData.ptu,
           bir: outletData.bir,
           vatType: outletData.vatType,
+          status: outletData.status ?? 'open',
+          vatTypeId: outletData.vatTypeId,
           outletPromos: outletData.outletPromos,
           discountOption,
         });

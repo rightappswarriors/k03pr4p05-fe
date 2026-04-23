@@ -244,6 +244,12 @@ Thank you for testing!
                 <td class="right">Php ${(receipt.totals.vatAmount ?? 0).toFixed(2)}</td>
                </tr>`
         : ''}
+          ${receipt.totals.isVatExempt
+        ? `<tr>
+                <td>VAT Exempted:</td>
+                <td class="right">-Php ${(receipt.totals.vatExemptAmount ?? 0).toFixed(2)}</td>
+               </tr>`
+        : ''}
           ${receipt.totals.discountType
         ? `<tr>
                 <td>${receipt.totals.discountType.toUpperCase()} Discount

@@ -144,6 +144,7 @@ export type DiscountType = 'NONE' | 'SENIOR' | 'PWD' | 'PROMO' | string;
 export interface DiscountOptions {
   type: DiscountType;
   promoPercent?: number;
+  applyVatExempt?: boolean;
 }
 // Define the type of methods the parent can call
 export type PaymentBottomSheetRef = {
@@ -151,13 +152,18 @@ export type PaymentBottomSheetRef = {
   close: () => void;
 };
 
-export interface CalculationResult {
-  subtotal: number; // in pesos
-  discount: number; // in pesos
-  vatAmount: number; // in pesos
-  total: number; // in pesos
-  discountRate: any
-}
+export type CalculationResult = {
+  subtotal: number;
+  discount: number;
+  vatAmount: number;
+  discountRate: number;
+  total: number;
+  isVatExempt?: boolean;
+  scPwdDiscountAmt?: number;
+  vatExemptAmount?: number;
+  usePromoInstead?: boolean;
+};
+
 export interface Receipt {
   user?: User;
   outlet?: Outlet;
@@ -174,7 +180,7 @@ export interface Receipt {
     total: number;
     cashReceived: number;
     change: number;
-    discountType?: 'SENIOR' | 'PWD' | 'PROMO' | 'NONE';
+    discountType?: DiscountType;
     discountPercent?: number;
     discountTotal?: number;
     // ── new ──
