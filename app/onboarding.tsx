@@ -63,9 +63,13 @@ export default function OnboardingScreen({
         setOrganizationId(Number(orgId));
         console.log('[Onboarding] Set organizationId from user data:', orgId);
       }
+      // Also set email from user data if not already set
+      if (user.email && !email) {
+        setEmail(user.email);
+        console.log('[Onboarding] Set email from user data:', user.email);
+      }
     }
-  }, [user, organizationId]);
-
+  }, [user, organizationId, email]);
   // Determine initial step based on user state or prop or URL param
   useEffect(() => {
     const stepFromParams = params.step as string;
@@ -104,31 +108,18 @@ export default function OnboardingScreen({
   const goToComplete = async () => {
     try {
       console.log('[Onboarding] goToComplete: Starting completion process');
-      // User is already logged in after subscription, no need to refresh
-      // if (refreshUser) {
-      //   console.log('[Onboarding] goToComplete: Refreshing user data...');
-      //   await refreshUser();
-      //   console.log('[Onboarding] goToComplete: User data refreshed successfully');
-      // }
       if (onboarding) {
         console.log('[Onboarding] goToComplete: Setting onboarding states...');
         await onboarding.setHasOnboarded(true);
         await onboarding.setIsLoggedIn(true);
-        console.log('[Onboarding] goToComplete: Onboarding states set');
+
+        console.log('[Onboarding] goToComplete: Onboarding states set successfully');
       }
-      console.log(
-        '[Onboarding] goToComplete: Navigating to admin dashboard...',
-      );
+      console.log('[Onboarding] goToComplete: Navigating to admin dashboard...');
       router.replace('/(erp)/erp');
     } catch (error) {
-      console.error(
-        '[Onboarding] goToComplete: Error during completion:',
-        error,
-      );
-      // Even if something fails, try to navigate - the admin layout will handle auth checks
-      console.log(
-        '[Onboarding] goToComplete: Attempting navigation despite error...',
-      );
+      console.error('[Onboarding] goToComplete: Error during completion:', error);
+      console.log('[Onboarding] goToComplete: Attempting navigation despite error...');
       router.replace('/(erp)/erp');
     }
   };
@@ -200,16 +191,21 @@ export default function OnboardingScreen({
     setLoading(true);
     setError('');
     try {
+
+      console.log('[Onboarding] handleCreateOrg: Creating organization:', orgName);
       const org = await AuthService.createOrganization(orgName);
+      console.log('[Onboarding] handleCreateOrg: Organization created:', org);
+      console.log('[Onboarding] handleCreateOrg: Setting organizationId to', org.id);
       setOrganizationId(org.id);
 
-      // Refresh user context to include the new orgId
-      if (refreshUser) {
-        await refreshUser();
-      }
-
+      // During onboarding, we don't need to refresh user context
+      // We'll let the subscription step handle the final refresh
+      console.log('[Onboarding] handleCreateOrg: Advancing to subscription step (step 4)');
       setStep(4);
+      console.log('[Onboarding] handleCreateOrg: Successfully advanced to step 4');
     } catch (err) {
+      console.error('[Onboarding] handleCreateOrg: Caught error:', err);
+
       setError(
         err instanceof Error ? err.message : 'Organization creation failed',
       );
@@ -226,17 +222,41 @@ export default function OnboardingScreen({
     setLoading(true);
     setError('');
     try {
+      console.log('[Onboarding] handleSubscription: Creating subscription with plan:', plan);
       await AuthService.createSubscription(organizationId, plan);
+      console.log('[Onboarding] handleSubscription: Subscription created successfully');
 
-      // Auto-login after subscription completion
+      // Check if we need to auto-login (fresh registration flow) or if already authenticated (login flow)
       const tempPassword = await AsyncStorage.getItem('temp_password');
-      if (tempPassword) {
-        await AuthService.login(email, tempPassword);
-        await AsyncStorage.removeItem('temp_password');
+      if (tempPassword && email) {
+        // Fresh registration flow: user came from register → verify → organization → subscription
+        console.log('[Onboarding] handleSubscription: Fresh registration detected, auto-logging in');
+        try {
+          await AuthService.login(email, tempPassword);
+          await AsyncStorage.removeItem('temp_password');
+          console.log('[Onboarding] handleSubscription: Auto-login successful');
+        } catch (loginErr) {
+          console.warn('[Onboarding] handleSubscription: Auto-login failed, but continuing:', loginErr);
+          // Continue even if login fails - user might be able to navigate
+        }
+      } else {
+        // Login flow: user logged in and is completing onboarding
+        // Already authenticated, just refresh user context
+        console.log('[Onboarding] handleSubscription: Existing user completing onboarding, refreshing context');
+        if (refreshUser) {
+          try {
+            await refreshUser();
+            console.log('[Onboarding] handleSubscription: User context refreshed');
+          } catch (refreshErr) {
+            console.warn('[Onboarding] handleSubscription: User refresh failed, continuing anyway:', refreshErr);
+          }
+        }
       }
 
+      console.log('[Onboarding] handleSubscription: Going to completion');
       await goToComplete();
     } catch (err) {
+      console.error('[Onboarding] handleSubscription: Error:', err);
       setError(
         err instanceof Error ? err.message : 'Subscription creation failed',
       );

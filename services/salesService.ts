@@ -1,5 +1,6 @@
 import { gql } from 'graphql-request';
 import { graphQLRequest } from './apiClient';
+import { formatGraphQLError } from '@/utils/errorFormatter';
 
 export class SalesService {
   static async getTransactions(outletId: number, startDate?: string, endDate?: string): Promise<any[]> {
@@ -66,8 +67,12 @@ export class SalesService {
       return response.getTransactionsByOrgId;
     } catch (error) {
       console.error('Failed to get transactions query getTransactionsByOrgId:', error);
+
+      const message = formatGraphQLError(error);
+      console.error('Failed to get transactions query getTransactionsByOrgId:', message);
       return [];
     }
+
   }
   static async createTransaction(data: {
     outletId: number;

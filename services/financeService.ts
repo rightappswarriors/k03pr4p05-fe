@@ -73,10 +73,32 @@ export class FinanceService {
     query GISRows($startDate: String, $endDate: String) {
       gisRows(startDate: $startDate, endDate: $endDate) {
         id
-        orgId
+        main
+        group
+        code
+        centerId
+        subCenterId
         accountTitleId
-        amount
         description
+        debit
+        credit
+        total
+        orgId
+        userId
+        createdAt
+        accountTitle {
+          id
+          label
+          code
+        }
+        center {
+          id
+          label
+        }
+        subCenter {
+          id
+          label
+        }
       }
     }
   `;
@@ -93,6 +115,9 @@ export class FinanceService {
     debit: number;
     credit: number;
     total: number;
+    centerId: number;
+    subCenterId: number;
+    accountTitleId: number;
   }): Promise<any> {
     const MUTATION = gql`
       mutation CreateGISRow(
@@ -103,6 +128,9 @@ export class FinanceService {
         $debit: Float!
         $credit: Float!
         $total: Float!
+        $centerId: Int!
+        $subCenterId: Int!
+        $accountTitleId: Int!
       ) {
         createGISRow(
           main: $main
@@ -112,15 +140,34 @@ export class FinanceService {
           debit: $debit
           credit: $credit
           total: $total
+          centerId: $centerId
+          subCenterId: $subCenterId
+          accountTitleId: $accountTitleId
         ) {
           id
           main
           group
           code
+          centerId
+          subCenterId
+          accountTitleId
           description
           debit
           credit
           total
+          accountTitle {
+            id
+            label
+            code
+          }
+          center {
+            id
+            label
+          }
+          subCenter {
+            id
+            label
+          }
         }
       }
     `;
@@ -128,14 +175,34 @@ export class FinanceService {
     return response.createGISRow;
   }
 
-  static async updateGISRow(id: number, accountTitleId: number, amount: number, description: string): Promise<any> {
+  static async updateGISRow(id: number, accountTitleId: number, amount: number, description: string, centerId?: number, subCenterId?: number): Promise<any> {
     const MUTATION = gql`
-      mutation UpdateGISRow($id: Int!, $accountTitleId: Int!, $amount: Float!, $description: String!) {
-        updateGISRow(id: $id, accountTitleId: $accountTitleId, amount: $amount, description: $description) {
+      mutation UpdateGISRow($id: Int!, $accountTitleId: Int, $amount: Float, $description: String, $centerId: Int, $subCenterId: Int) {
+        updateGISRow(id: $id, accountTitleId: $accountTitleId, amount: $amount, description: $description, centerId: $centerId, subCenterId: $subCenterId) {
           id
-          orgId
-          amount
+          main
+          group
+          code
+          centerId
+          subCenterId
+          accountTitleId
           description
+          debit
+          credit
+          total
+          accountTitle {
+            id
+            label
+            code
+          }
+          center {
+            id
+            label
+          }
+          subCenter {
+            id
+            label
+          }
         }
       }
     `;
@@ -145,6 +212,8 @@ export class FinanceService {
       accountTitleId,
       amount,
       description,
+      centerId,
+      subCenterId,
     });
     return response.updateGISRow;
   }
@@ -165,12 +234,37 @@ export class FinanceService {
     query SummaryRows($startDate: String, $endDate: String) {
       summaryRows(startDate: $startDate, endDate: $endDate) {
         id
-        orgId
-        accountTitleId
-        amount
+        itemCode
         description
-        itemId
+        opExPct
+        computedCost
+        costContribution
+        sellingPrice
+        centerId
+        subCenterId
+        accountTitleId
+        status
         itemName
+        itemId
+        orgId
+        createdAt
+        item {
+          id
+          name
+        }
+        accountTitle {
+          id
+          label
+          code
+        }
+        center {
+          id
+          label
+        }
+        subCenter {
+          id
+          label
+        }
       }
     }
   `;
@@ -180,53 +274,74 @@ export class FinanceService {
 
   /**
    * Create a Summary Row (Item Net Summary entry).
-   * @param orgId       Organisation ID
    * @param accountTitleId  Optional account title reference
-   * @param amount      Entry amount
-   * @param description Optional free-text description
+   * @param centerId  Optional: center ID
+   * @param subCenterId  Optional: subcenter ID
    * @param itemId      Optional: catalog item ID (from CatalogSearchModal)
    * @param itemName    Optional: item name — either resolved from catalog or entered manually
    */
   static async createSummaryRow(
-
     accountTitleId?: number,
-    amount?: number,
-    description?: string,
+    centerId?: number,
+    subCenterId?: number,
     itemId?: number,
     itemName?: string,
   ): Promise<any> {
     const MUTATION = gql`
       mutation CreateSummaryRow(
-        $orgId: Int
         $accountTitleId: Int
-        $amount: Float
-        $description: String
+        $centerId: Int
+        $subCenterId: Int
         $itemId: Int
         $itemName: String
       ) {
         createSummaryRow(
-          orgId: $orgId
           accountTitleId: $accountTitleId
-          amount: $amount
-          description: $description
+          centerId: $centerId
+          subCenterId: $subCenterId
           itemId: $itemId
           itemName: $itemName
         ) {
           id
-          orgId
-          accountTitleId
-          amount
+          itemCode
           description
-          itemId
+          opExPct
+          computedCost
+          costContribution
+          sellingPrice
+          centerId
+          subCenterId
+          accountTitleId
+          status
           itemName
+          itemId
+          orgId
+          createdAt
+          item {
+            id
+            name
+          }
+          accountTitle {
+            id
+            label
+            code
+          }
+          center {
+            id
+            label
+          }
+          subCenter {
+            id
+            label
+          }
         }
       }
     `;
 
     const response = await graphQLRequest<{ createSummaryRow: any }>(MUTATION, {
       accountTitleId,
-      amount,
-      description,
+      centerId,
+      subCenterId,
       itemId,
       itemName,
     });
@@ -235,9 +350,9 @@ export class FinanceService {
 
   static async updateSummaryRow(
     id: number,
-    accountTitleId: number,
-    amount: number,
-    description: string,
+    accountTitleId?: number,
+    centerId?: number,
+    subCenterId?: number,
     itemId?: number,
     itemName?: string,
   ): Promise<any> {
@@ -245,25 +360,51 @@ export class FinanceService {
       mutation UpdateSummaryRow(
         $id: Int!
         $accountTitleId: Int
-        $amount: Float
-        $description: String
+        $centerId: Int
+        $subCenterId: Int
         $itemId: Int
         $itemName: String
       ) {
         updateSummaryRow(
           id: $id
           accountTitleId: $accountTitleId
-          amount: $amount
-          description: $description
+          centerId: $centerId
+          subCenterId: $subCenterId
           itemId: $itemId
           itemName: $itemName
         ) {
           id
-          orgId
-          amount
+          itemCode
           description
-          itemId
+          opExPct
+          computedCost
+          costContribution
+          sellingPrice
+          centerId
+          subCenterId
+          accountTitleId
+          status
           itemName
+          itemId
+          orgId
+          createdAt
+          item {
+            id
+            name
+          }
+          accountTitle {
+            id
+            label
+            code
+          }
+          center {
+            id
+            label
+          }
+          subCenter {
+            id
+            label
+          }
         }
       }
     `;
@@ -271,8 +412,8 @@ export class FinanceService {
     const response = await graphQLRequest<{ updateSummaryRow: any }>(MUTATION, {
       id,
       accountTitleId,
-      amount,
-      description,
+      centerId,
+      subCenterId,
       itemId,
       itemName,
     });

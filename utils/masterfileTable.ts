@@ -164,7 +164,7 @@ export const TABLE_CONFIG: TableConfig[] = [
       update: (id, name) => CenterService.update(Number(id), name),
       delete: (id) => CenterService.delete(Number(id)),
     },
-    toItem: (raw) => ({ id: String(raw.id), label: raw.name }),
+    toItem: (raw) => ({ id: String(raw.id), label: raw.label }),
   },
   {
     key: 'subCenters',
@@ -180,8 +180,10 @@ export const TABLE_CONFIG: TableConfig[] = [
       update: (id, name) => SubCenterService.update(Number(id), name),
       delete: (id) => SubCenterService.delete(Number(id)),
     },
-    toItem: (raw) => ({ id: String(raw.id), label: raw.name }),
+    toItem: (raw) => ({ id: String(raw.id), label: raw.label }),
   },
+  // Excerpt from tableConfig.ts - just the accountTitles section
+
   {
     key: 'accountTitles',
     label: 'Account Titles',
@@ -192,12 +194,33 @@ export const TABLE_CONFIG: TableConfig[] = [
     placeholder: 'e.g. Transportation Allowance',
     service: {
       getAll: () => MasterFileFinanceService.getAccountTitles(),
-      create: (name) => MasterFileFinanceService.createAccountTitle(name),
-      update: (id, name) => MasterFileFinanceService.updateAccountTitle(Number(id), name),
+      create: (name, extra) => MasterFileFinanceService.createAccountTitle(
+        name,
+        extra?.code  // ✅ Now passes optional code
+      ),
+      update: (id, name, extra) => MasterFileFinanceService.updateAccountTitle(
+        Number(id),
+        name,
+        extra?.code  // ✅ Now passes optional code
+      ),
       delete: (id) => MasterFileFinanceService.deleteAccountTitle(Number(id)),
     },
-    toItem: (raw) => ({ id: String(raw.id), label: raw.name }),
+    toItem: (raw) => ({
+      id: String(raw.id),
+      label: raw.label,  // ✅ Now uses 'label' consistently
+      code: raw.code
+    }),
+    // ✅ Optional: Add code field if you want users to input it
+    extraFields: [
+      {
+        key: 'code',
+        label: 'Account Code',
+        placeholder: 'e.g. 1001',
+        type: 'text' as const,
+      },
+    ],
   },
+
   {
     key: 'positions',
     label: 'Positions',

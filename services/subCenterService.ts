@@ -25,7 +25,7 @@ export class SubCenterService {
             }
         `;
         const response = await graphQLRequest<{ createSubCenter: any }>(CREATE_SUB_CENTER, {
-            label: name
+            label: name,
         });
         return response.createSubCenter;
     }
@@ -33,16 +33,18 @@ export class SubCenterService {
         const UPDATE_SUB_CENTER = gql`
             mutation UpdateSubCenter($id: Int!, $label: String!) {
                 updateSubCenter(id: $id, label: $label) {
-                id 
-                label
+                    id 
+                    label
                 }
-            }`
+            }
+        `
         const response = await graphQLRequest<{ updateSubCenter: any }>(UPDATE_SUB_CENTER, {
             id,
             label
         });
         return response.updateSubCenter;
     }
+
     static async delete(id: number) {
         const DELETE_SUB_CENTER = gql`
             mutation DeleteSubCenter($id: Int!) {

@@ -657,17 +657,17 @@ export default function DashboardScreen() {
     useState<ItemNetFormState>(EMPTY_ITEM_NET_FORM);
   const [showCatalogSearch, setShowCatalogSearch] = useState(false);
   const itemNetModalAnim = useRef(new Animated.Value(0)).current;
-  const [centers, setCenters] = useState<{ id: string; label: string }[]>([]);
-  const [subCenters, setSubCenters] = useState<{ id: string; label: string }[]>(
-    [],
-  );
   const [deleteTarget, setDeleteTarget] = useState<GISRow | null>(null);
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [selectedCard, setSelectedCard] = useState<FinancialCardData | null>(
     null,
   );
   const [exportSuccess, setExportSuccess] = useState(false);
-
+  
+  const [centers, setCenters] = useState<{ id: string; label: string }[]>([]);
+  const [subCenters, setSubCenters] = useState<{ id: string; label: string }[]>(
+    [],
+  );
   const modalAnim = useRef(new Animated.Value(0)).current;
   const numColumns = getResponsiveColumns(width);
   const cardWidth = (width - 32) / numColumns;
@@ -747,7 +747,7 @@ export default function DashboardScreen() {
         transactions,
         accountTitles,
         centers,
-        subCenter,
+        subCenters,
         gisData,
         summaryData,
         inventoryStats,
@@ -775,7 +775,14 @@ export default function DashboardScreen() {
         (sum: number, row: any) => sum + Number(row.amount ?? 0),
         0,
       );
-
+      setAccountTitles(
+        accountTitles.map((c: any) => ({
+          id: c.id,
+          label: c.label
+        }))
+      );
+      setSubCenters(subCenters.map((c: any) => ({ id: c.id, label: c.label })));
+      setCenters(centers.map((c: any) => ({ id: c.id, label: c.label })));
       setDashboardStats({
         totalSales,
         salesGrowth: 0,

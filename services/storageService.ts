@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SyncLog, Transaction } from '@/types';
+import { formatGraphQLError } from '@/utils/errorFormatter';
 
 const TRANSACTION_KEY = 'offline_orders';
 const SYNC_LOGS_KEY = 'sync_logs';
@@ -95,10 +96,13 @@ export class StorageService {
     try {
       const logsJson = await AsyncStorage.getItem(SYNC_LOGS_KEY);
       return logsJson ? JSON.parse(logsJson) : [];
-    } catch (error) {
-      //console.error('Failed to get sync logs:', error);
+    }
+    catch (error) {
+      const message = formatGraphQLError(error);
+      console.error('getSyncLogs error:', message);
       return [];
     }
+
   }
 
   static async clearAllData(): Promise<void> {
@@ -114,7 +118,9 @@ export class StorageService {
       );
       await AsyncStorage.removeItem(SYNC_LOGS_KEY);
     } catch (error) {
-      //console.error('Failed to clear data:', error);
+      const message = formatGraphQLError(error);
+      console.error('clearAllData error:', message);
+      return;
     }
   }
 }

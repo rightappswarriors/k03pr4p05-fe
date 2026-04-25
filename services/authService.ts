@@ -240,10 +240,11 @@ export class AuthService {
 
       const { user, token, refresh_token } = response.verifyEmail;
 
-      // Don't store tokens during onboarding - will login after subscription
-      // await secureStorage.setItemAsync(AUTH_TOKEN_KEY, token);
-      // await secureStorage.setItemAsync(REFRESH_TOKEN_KEY, refresh_token);
-      // await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
+      // Store tokens immediately after verification for onboarding flow
+      // User will use these to create organization and subscription
+      await secureStorage.setItemAsync(AUTH_TOKEN_KEY, token);
+      await secureStorage.setItemAsync(REFRESH_TOKEN_KEY, refresh_token);
+      await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
 
       console.log(`[AuthService] ✅ Email verified successfully for:`, user.email)
       return user;

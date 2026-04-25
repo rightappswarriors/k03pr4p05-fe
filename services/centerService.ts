@@ -1,22 +1,20 @@
 import { gql } from "graphql-request"
 import { graphQLRequest } from "./apiClient";
 
-
 export class CenterService {
     static async getCenters() {
-        // Make sure it queries correctly — no args needed
         const QUERY = gql`
-        query {
-            getCenters {
-            id
-            label
+            query {
+                getCenters {
+                    id
+                    label
+                }
             }
-        }
         `;
-        const response = await graphQLRequest<{ getCenters: any }>(QUERY, {
-        });
+        const response = await graphQLRequest<{ getCenters: any }>(QUERY, {});
         return response.getCenters;
     }
+
     static async create(label: string) {
         const CREATE_CENTER = gql`
             mutation CreateCenter($label: String!) {
@@ -31,6 +29,7 @@ export class CenterService {
         });
         return response.createCenter;
     }
+
     static async update(id: number, label: string) {
         const UPDATE_CENTER = gql`
             mutation UpdateCenter($id: Int!, $label: String!) {
@@ -46,12 +45,16 @@ export class CenterService {
         });
         return response.updateCenter;
     }
+
     static async delete(id: number) {
         const DELETE_CENTER = gql`
             mutation DeleteCenter($id: Int!) {
-            deleteCenter(id: $id)
-                {}            
-            }`
+                deleteCenter(id: $id) {
+                    id
+                    label
+                }
+            }
+        `;
         const response = await graphQLRequest<{ deleteCenter: any }>(DELETE_CENTER, {
             id
         });
