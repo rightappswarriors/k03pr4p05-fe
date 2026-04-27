@@ -598,6 +598,7 @@ export class AdminService {
     tin?: string;
     ptu?: string;
     bir?: string;
+    isActive?: boolean;
     isVatRegistered?: boolean;
     vatZeroSale?: number;
     vatTypeId?: number;
@@ -620,6 +621,7 @@ export class AdminService {
       $tin: String
       $ptu: String
       $bir: String
+      $isActive: Boolean
       $isVatRegistered: Boolean
       $vatZeroSale: Float
       $vatTypeId: Int
@@ -641,6 +643,7 @@ export class AdminService {
         tin: $tin
         ptu: $ptu
         bir: $bir
+        isActive: $isActive
         isVatRegistered: $isVatRegistered
         vatZeroSale: $vatZeroSale
         vatTypeId: $vatTypeId

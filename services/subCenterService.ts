@@ -1,5 +1,6 @@
 import { gql } from "graphql-request";
 import { graphQLRequest } from "./apiClient";
+import { formatGraphQLError } from "@/utils/errorFormatter";
 
 export class SubCenterService {
     static async getAll() {
@@ -11,9 +12,15 @@ export class SubCenterService {
                 }
             }
         `;
-        const response = await graphQLRequest<{ subCenters: any }>(SUB_CENTERS, {
-        });
-        return response.subCenters;
+        try {
+
+            const response = await graphQLRequest<{ subCenters: any }>(SUB_CENTERS, {
+            });
+            return response.subCenters;
+        } catch (error) {
+            const errorMessage = formatGraphQLError(error)
+            console.error(errorMessage);
+        }
     }
     static async create(name: string) {
         const CREATE_SUB_CENTER = gql`

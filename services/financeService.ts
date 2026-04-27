@@ -6,14 +6,14 @@ export class FinanceService {
   static async getAccountTitles(): Promise<any[]> {
     const QUERY = gql`
     query {
-      getAll {
+      getAllAccountTitles {
         id
         label
       }
     }
   `;
-    const response = await graphQLRequest<{ getAll: any[] }>(QUERY, {});
-    return response.getAll;
+    const response = await graphQLRequest<{ getAllAccountTitles: any[] }>(QUERY, {});
+    return response.getAllAccountTitles;
   }
   static async createAccountTitle(orgId: number, name: string, code: string): Promise<any> {
     const MUTATION = gql`

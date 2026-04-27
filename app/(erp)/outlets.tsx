@@ -63,8 +63,8 @@ export const FILTERS: DateRangeFilter[] = [
   'this_month',
   'custom',
 ];
-const OUTLET_TYPES = ['retail', 'wholesale', 'service'];
-const OUTLET_STATUSES = ['open', 'closed', 'maintenance'];
+const OUTLET_TYPES = [{id:'retail', label: 'Retail'}, {id:'wholesale', label: 'Wholesale'}, {id:'service', label: 'Service'}];
+const OUTLET_STATUSES = [{ id: 'open', label: 'Open' }, { id: 'closed', label: 'Closed' }, { id: 'maintenance', label: 'Maintenance' }];
 
 const isWeb = Platform.OS === 'web';
 
@@ -462,6 +462,7 @@ interface OutletFormData {
   latitude: number | undefined;
   longitude: number | undefined;
   bannerImage: string;
+
   bannerImagePath?: string;
   tin?: string;
   ptu?: string;
@@ -500,6 +501,13 @@ function AddOutletModal({
     longitude: undefined,
     bannerImage: '',
     bannerImagePath: '',
+    tin: '',
+    ptu: '',
+    bir: '',
+    isVatRegistered: false,
+    vatZeroSale: '',
+    vatTypeId: undefined,
+    outletPromos: [],
   });
   const [showMapPicker, setShowMapPicker] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -665,6 +673,13 @@ function AddOutletModal({
         longitude: undefined,
         bannerImage: '',
         bannerImagePath: '',
+        tin: '',
+        ptu: '',
+        bir: '',
+        isVatRegistered: false,
+        vatZeroSale: '',
+        vatTypeId: undefined,
+        outletPromos: [],
       });
       setError('');
       onClose();
@@ -888,14 +903,14 @@ function AddOutletModal({
                   label="Outlet Type"
                   value={form.outletType}
                   options={OUTLET_TYPES}
-                  onSelect={set('outletType')}
+                  onSelect={(item) => set('outletType')(item.id)}
                   colors={colors}
                 />
                 <DropdownField
                   label="Status"
                   value={form.status}
                   options={OUTLET_STATUSES}
-                  onSelect={set('status')}
+                  onSelect={(item) => set('status')(item.id)}
                   colors={colors}
                 />
                 <View style={[aom.toggleRow, { borderColor: colors.border }]}>
@@ -1074,14 +1089,10 @@ function AddOutletModal({
                   <>
                     <DropdownField
                       label="VAT Type"
-                      value={
-                        vatTypes.find((v) => v.id === form.vatTypeId)?.name ??
-                        ''
-                      }
-                      options={vatTypes.map((v) => v.name)}
-                      onSelect={(name) => {
-                        const found = vatTypes.find((v) => v.name === name);
-                        set('vatTypeId')(found?.id);
+                      value={form.vatTypeId !== undefined ? String(form.vatTypeId) : ''}
+                      options={vatTypes.map((v) => ({ id: String(v.id), label: v.name }))}
+                      onSelect={(item) => {
+                        set('vatTypeId')(parseInt(item.id, 10));
                       }}
                       colors={colors}
                     />
@@ -1812,6 +1823,14 @@ export default function OutletListScreen() {
         latitude: data.latitude,
         longitude: data.longitude,
         bannerImage: data.bannerImage,
+        isActive: data.isActive,
+        tin: data.tin,
+        ptu: data.ptu,
+        bir: data.bir,
+        isVatRegistered: data.isVatRegistered,
+        vatZeroSale: data.vatZeroSale ? parseFloat(data.vatZeroSale) : undefined,
+        vatTypeId: data.vatTypeId,
+        outletPromos: data.outletPromos,
       });
       setOutlets((prev) => [
         ...prev,
