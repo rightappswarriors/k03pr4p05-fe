@@ -19,6 +19,7 @@ import {
 } from '@/utils/constants';
 import { gql } from 'graphql-request';
 import { useAuth } from './AuthContext';
+import { formatGraphQLError } from '@/utils/errorFormatter';
 
 interface POSContextType {
   outlet: Outlet | undefined;
@@ -129,6 +130,7 @@ export const CartProvider = ({ children }: CartProviderProps) => {
                 description
                 barcode
                 brand
+                vatExempt
                 categoryId
                 color {
                   name
@@ -208,7 +210,6 @@ export const CartProvider = ({ children }: CartProviderProps) => {
           outletPromos: outletData.outletPromos,
           discountOption,
         });
-        console.log('Items:', items);
         setItems(
           items.map((itemField: any) => ({
             id: itemField.item.id.toString(),
@@ -219,7 +220,7 @@ export const CartProvider = ({ children }: CartProviderProps) => {
             barcode: itemField.item.barcode,
             description: itemField.item.description,
             brand: itemField.item.brand,
-            vatable: itemField.item.vatable,
+            vatExempt: itemField.item.vatExempt,
             color: Array.isArray(itemField.item.color)
               ? itemField.item.color.map((c: any) => c.name).join(', ')
               : itemField.item.color,
@@ -251,7 +252,8 @@ export const CartProvider = ({ children }: CartProviderProps) => {
 
         setCategories(derivedCategories);
       } catch (error) {
-        console.error('Error getting Outlet items:', error);
+        const formattedError = formatGraphQLError(error);
+        console.error('Error getting Outlet items:', formattedError);
       } finally {
         setLoading(false);
       }

@@ -70,6 +70,7 @@ import {
 } from '@/components/dashboardSummary/ViewToggle';
 import {
   calcVatAndNet,
+  calVatAmount,
   formatPeso,
   formatPesoCompact,
   getResponsiveColumns,
@@ -84,23 +85,15 @@ import {
   SummaryTable,
 } from '@/components/dashboardSummary/SummaryTable';
 import { DropdownField } from '@/app/(erp)';
-import {
-  ACCOUNT_TITLE_OPTIONS,
-  VAT_TYPE_OPTIONS,
-} from '@/components/dashboardSummary/AddingEntry';
-import {
-  useCenterLabels,
-  useSubCenterLabels,
-  useVatTypeLabels,
-  useAccountTitleLabels,
-} from '@/contexts/MasterFileContext';
 import { useAuth } from '@/contexts/AuthContext';
 import DateRangePickerModal from '@/components/DateRangePickerModal';
 import { CatalogSearchModal } from '@/components/CatalogSearchModal';
-import type { CatalogItem } from '@/types';
-import { useResponsive } from '@/hooks/useResponsive';
+import type { CatalogItem, CostLine } from '@/types';
 import { CenterService } from '@/services/centerService';
 import { SubCenterService } from '@/services/subCenterService';
+import { VatTypeService } from '@/services/vatTypeService';
+import { MasterFileFinanceService } from '@/services/masterFileFinanceService';
+import { autoCode } from '@/utils/autoCode';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 function getDateRange(
@@ -139,6 +132,7 @@ function getDateRange(
   startDate.setHours(0, 0, 0, 0);
   return { startDate: startDate.toISOString(), endDate: endDate.toISOString() };
 }
+
 const DATE_PERIOD_KEY = 'dashboard_selected_period';
 
 const DATE_PRESETS = [
@@ -151,26 +145,49 @@ const DATE_PRESETS = [
 ] as const;
 type DatePreset = (typeof DATE_PRESETS)[number];
 
-const CHART_RANGE_LABELS: Record<
-  Exclude<DatePreset, 'Custom Range'>,
-  { labels: string[]; salesIdx: number[] }
-> = {
-  'This Month': { labels: ['W1', 'W2', 'W3', 'W4'], salesIdx: [0, 1, 2, 3] },
-  'Last Month': { labels: ['W1', 'W2', 'W3', 'W4'], salesIdx: [0, 1, 2, 3] },
-  'Last 3 Months': { labels: ['Jan', 'Feb', 'Mar'], salesIdx: [0, 1, 2] },
-  'Last 6 Months': {
-    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-    salesIdx: [0, 1, 2, 3, 4, 5],
-  },
-  'This Year': { labels: ['Q1', 'Q2', 'Q3', 'Q4'], salesIdx: [0, 1, 2, 3] },
+// ─── Dynamic chart range (replaces static CHART_RANGE_LABELS) ─────────────────
+function getDynamicChartRange(preset: Exclude<DatePreset, 'Custom Range'>): {
+  labels: string[];
+  windowMonths: number;
+  isWeekly: boolean;
+} {
+  const now = new Date();
+
+  if (preset === 'This Month' || preset === 'Last Month') {
+    return { labels: ['W1', 'W2', 'W3', 'W4'], windowMonths: 1, isWeekly: true };
+  }
+
+  if (preset === 'This Year') {
+    return { labels: ['Q1', 'Q2', 'Q3', 'Q4'], windowMonths: 12, isWeekly: false };
+  }
+
+  // Last 3 Months or Last 6 Months — dynamically computed from today
+  const count = preset === 'Last 3 Months' ? 3 : 6;
+  const labels: string[] = [];
+  for (let i = count - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    labels.push(d.toLocaleDateString('en-US', { month: 'short' }));
+  }
+  return { labels, windowMonths: count, isWeekly: false };
+}
+
+// NEW — only abbreviates at 100K+, full number below that
+const fmt = (n: number) => {
+  const abs = Math.abs(n);
+  const sign = n < 0 ? '-' : '';
+  if (abs >= 1_000_000) return `${sign}₱${(abs / 1_000_000).toFixed(1)}M`;
+  if (abs >= 100_000) return `${sign}₱${(abs / 1_000).toFixed(0)}K`;
+  return `${sign}₱${abs.toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 };
 
-const fmt = (n: number) =>
-  n >= 1_000_000
-    ? `₱${(n / 1_000_000).toFixed(1)}M`
-    : n >= 1_000
-      ? `₱${(n / 1_000).toFixed(0)}K`
-      : `₱${n}`;
+// NEW — full precise tooltip value
+const fmtFull = (n: number) =>
+  (n < 0 ? '-' : '') +
+  '₱' +
+  Math.abs(n).toLocaleString('en-PH', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 
 // ─── Form State ───────────────────────────────────────────────────────────────
 
@@ -201,17 +218,39 @@ const EMPTY_FORM: FormState = {
 interface ItemNetFormState {
   selectedItem: CatalogItem | null;
   itemName: string;
+  itemCode: string;
   accountTitleId: string;
-  amount: string;
+  costInputAmount: string;
+  costLines: CostLine[];
+  newCostLineLabel: string;
+  newCostLineAmount: string;
+  costInputMode: 'VAT_EXCLUSIVE' | 'VAT_INCLUSIVE';
   description: string;
+  vatType: string;
+  centerId: string;
+  subCenterId: string;
+  opExPct: string;
+  sellingPriceInput: string;
+  sellingPriceInputMode: 'VAT_EXCLUSIVE' | 'VAT_INCLUSIVE';
 }
 
 const EMPTY_ITEM_NET_FORM: ItemNetFormState = {
   selectedItem: null,
   itemName: '',
+  itemCode: '',
   accountTitleId: '',
-  amount: '',
+  costInputAmount: '',
+  costLines: [],
+  newCostLineLabel: '',
+  newCostLineAmount: '',
+  costInputMode: 'VAT_EXCLUSIVE',
   description: '',
+  vatType: '',
+  centerId: '',
+  subCenterId: '',
+  opExPct: '',
+  sellingPriceInput: '',
+  sellingPriceInputMode: 'VAT_EXCLUSIVE',
 };
 
 // ─── Date Range Picker ────────────────────────────────────────────────────────
@@ -425,6 +464,98 @@ const drp = StyleSheet.create({
   optionText: { fontSize: 13 },
 });
 
+function SummaryCard({
+  label,
+  value,
+  fullValue,
+  valueColor,
+  colors,
+  tooltipId,
+  tooltipVisible,
+  setTooltipVisible,
+  isTablet,
+  onPressOut,
+}: {
+  label: string;
+  value: string;
+  fullValue: string;
+  valueColor?: string;
+  colors: any;
+  tooltipId: string;
+  tooltipVisible: string | null;
+  setTooltipVisible: (id: string | null) => void;
+  isTablet: boolean;
+  onPressOut?: () => void;
+}) {
+  const showTip = tooltipVisible === tooltipId;
+  return (
+    <TouchableOpacity
+      style={{
+        flex: 1,
+        backgroundColor: colors.card,
+        borderRadius: 10,
+        padding: 12,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: showTip ? colors.primary : colors.border,
+      }}
+      onPress={() => setTooltipVisible(showTip ? null : tooltipId)}
+      onLongPress={() => setTooltipVisible(tooltipId)}
+      onPressOut={onPressOut}
+      activeOpacity={0.85}
+    >
+      {showTip && (
+        <View
+          style={{
+            position: 'absolute',
+            ...(isTablet
+              ? { top: '100%', marginTop: 6 }
+              : { bottom: '100%', marginBottom: 6 }),
+            alignSelf: 'center',
+            backgroundColor: colors.surface,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 8,
+            paddingHorizontal: 10,
+            paddingVertical: 5,
+            zIndex: 999,
+            minWidth: 140,
+            alignItems: 'center',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.1,
+            shadowRadius: 6,
+            elevation: 6,
+          }}
+        >
+          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
+            {fullValue}
+          </Text>
+        </View>
+      )}
+      <Text
+        style={{
+          fontSize: 15,
+          fontWeight: '800',
+          color: valueColor ?? colors.text,
+        }}
+      >
+        {value}
+      </Text>
+      <Text
+        style={{
+          fontSize: 10,
+          color: colors.textSecondary,
+          marginTop: 3,
+          textAlign: 'center',
+        }}
+      >
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
 // ─── Delete confirm ───────────────────────────────────────────────────────────
 function DeleteConfirmModal({
   visible,
@@ -632,6 +763,9 @@ export default function DashboardScreen() {
   const [accountTitles, setAccountTitles] = useState<
     { id: string; label: string }[]
   >([]);
+  const [vatTypes, setVatTypes] = useState<
+    { id: string; label: string; rate: number }[]
+  >([]);
   const [financeData, setFinanceData] = useState({
     revenue: 0,
     expenses: 0,
@@ -655,20 +789,83 @@ export default function DashboardScreen() {
   const [itemNetSubmitSuccess, setItemNetSubmitSuccess] = useState(false);
   const [itemNetForm, setItemNetForm] =
     useState<ItemNetFormState>(EMPTY_ITEM_NET_FORM);
+
+  const itemNetPreview = useMemo(() => {
+    const costLinesTotal = itemNetForm.costLines.reduce(
+      (sum, line) => sum + (line.amount || 0),
+      0,
+    );
+    const costInput =
+      costLinesTotal > 0
+        ? costLinesTotal
+        : parseFloat(itemNetForm.costInputAmount) || 0;
+    const selectedVatType = vatTypes.find(
+      (v) => v.id === String(itemNetForm.vatType),
+    );
+    const rate = selectedVatType?.rate ?? 0;
+    const baseCost =
+      itemNetForm.costInputMode === 'VAT_INCLUSIVE'
+        ? costInput / (1 + rate)
+        : costInput;
+    const vatInput =
+      itemNetForm.costInputMode === 'VAT_INCLUSIVE'
+        ? costInput - baseCost
+        : baseCost * rate;
+
+    const rawSellingPrice = itemNetForm.selectedItem?.sellingPrice
+      ? parseFloat(itemNetForm.selectedItem.sellingPrice)
+      : parseFloat(itemNetForm.sellingPriceInput) || 0;
+    const sellingPrice =
+      itemNetForm.sellingPriceInputMode === 'VAT_INCLUSIVE'
+        ? rawSellingPrice / (1 + rate)
+        : rawSellingPrice;
+    const vatOutput =
+      itemNetForm.sellingPriceInputMode === 'VAT_INCLUSIVE'
+        ? rawSellingPrice - sellingPrice
+        : sellingPrice * rate;
+
+    const opExPct = (parseFloat(itemNetForm.opExPct) || 0) / 100;
+    const opExAmount = sellingPrice * opExPct;
+    const grossProfit = sellingPrice - baseCost;
+    const netProfit = grossProfit - opExAmount;
+    const status = netProfit >= 0 ? 'INCOME' : 'LOSS';
+    const warning =
+      sellingPrice < baseCost ? 'Selling price is lower than cost' : '';
+
+    return {
+      baseCost,
+      vatInput,
+      sellingPrice,
+      vatOutput,
+      opExPct,
+      opExAmount,
+      grossProfit,
+      netProfit,
+      status,
+      warning,
+      rawSellingPrice,
+    };
+  }, [itemNetForm, vatTypes]);
+
   const [showCatalogSearch, setShowCatalogSearch] = useState(false);
   const itemNetModalAnim = useRef(new Animated.Value(0)).current;
   const [deleteTarget, setDeleteTarget] = useState<GISRow | null>(null);
   const [detailModalVisible, setDetailModalVisible] = useState(false);
+  const [tooltipVisible, setTooltipVisible] = useState<string | null>(null);
   const [selectedCard, setSelectedCard] = useState<FinancialCardData | null>(
     null,
   );
   const [exportSuccess, setExportSuccess] = useState(false);
-  
+
   const [centers, setCenters] = useState<{ id: string; label: string }[]>([]);
   const [subCenters, setSubCenters] = useState<{ id: string; label: string }[]>(
     [],
   );
   const modalAnim = useRef(new Animated.Value(0)).current;
+
+  // ── Raw transactions ref — needed for chartData to recompute per preset ───
+  const rawTransactionsRef = useRef<any[]>([]);
+
   const numColumns = getResponsiveColumns(width);
   const cardWidth = (width - 32) / numColumns;
   const chartWidth = isTablet
@@ -689,13 +886,13 @@ export default function DashboardScreen() {
     AsyncStorage.setItem(VIEW_MODE_KEY, mode).catch(() => {});
   }, []);
 
-  const buildSalesTrend = (transactions: any[]): number[] => {
+  // ── buildSalesTrend: accepts windowMonths, anchors from today ─────────────
+  const buildSalesTrend = (transactions: any[], windowMonths = 6): number[] => {
     const now = new Date();
-    const window = 6;
-    const months = Array.from({ length: window }, (_, i) => {
+    const months = Array.from({ length: windowMonths }, (_, i) => {
       const d = new Date(
         now.getFullYear(),
-        now.getMonth() - (window - 1 - i),
+        now.getMonth() - (windowMonths - 1 - i),
         1,
       );
       return `${d.getFullYear()}-${d.getMonth() + 1}`;
@@ -711,6 +908,56 @@ export default function DashboardScreen() {
           );
         })
         .reduce((sum, tx) => sum + Number(tx.total ?? tx.amount ?? 0), 0);
+    });
+  };
+
+  // ── buildExpenseTrend: accepts windowMonths, anchors from today ───────────
+  const buildExpenseTrend = (
+    gisRows: any[],
+    summaryRows: SummaryRow[] = [],
+    windowMonths = 6,
+  ): number[] => {
+    const now = new Date();
+    const months = Array.from({ length: windowMonths }, (_, i) => {
+      const d = new Date(
+        now.getFullYear(),
+        now.getMonth() - (windowMonths - 1 - i),
+        1,
+      );
+      return `${d.getFullYear()}-${d.getMonth() + 1}`;
+    });
+
+    return months.map((monthKey) => {
+      const [year, month] = monthKey.split('-').map(Number);
+
+      const gisExpense = gisRows
+        .filter((row) => {
+          const rowDate = new Date(row.createdAt ?? row.date ?? 0);
+          return (
+            rowDate.getFullYear() === year && rowDate.getMonth() + 1 === month
+          );
+        })
+        .reduce((sum, row) => {
+          const isIncome = String(row.main ?? '').toLowerCase() === 'income';
+          if (isIncome) return sum;
+          const raw = Number(row.debit ?? row.total ?? row.amount ?? 0);
+          return sum + Math.abs(raw);
+        }, 0);
+
+      const summaryExpense = summaryRows
+        .filter((row) => {
+          const rowDate = new Date(row.createdAt ?? 0);
+          return (
+            rowDate.getFullYear() === year && rowDate.getMonth() + 1 === month
+          );
+        })
+        .reduce((sum, row) => {
+          const loss =
+            Number(row.costContribution ?? 0) - Number(row.sellingPrice ?? 0);
+          return sum + (loss > 0 ? loss : 0);
+        }, 0);
+
+      return gisExpense + summaryExpense;
     });
   };
 
@@ -752,9 +999,10 @@ export default function DashboardScreen() {
         summaryData,
         inventoryStats,
         staffData,
+        vatTypesData,
       ] = await Promise.all([
         SalesService.getTransactionsByOrgId(startDate, endDate).catch(() => []),
-        FinanceService.getAccountTitles(),
+        MasterFileFinanceService.getAccountTitles(),
         CenterService.getCenters(),
         SubCenterService.getAll(),
         FinanceService.getGISRows(startDate, endDate).catch(() => []),
@@ -765,24 +1013,53 @@ export default function DashboardScreen() {
           categoryBreakdown: [],
         })),
         HrService.getAllStaffs(user.orgId).catch(() => []),
+        VatTypeService.getAll().catch(() => [
+          { id: 'default', label: 'Default', rate: 0 },
+        ]),
       ]);
 
+      // Store raw transactions so chartData can recompute for any preset
+      rawTransactionsRef.current = transactions;
+
+      setVatTypes(
+        vatTypesData.map((v: any) => ({
+          id: String(v.id),
+          label: `${v.name} (%${v.rate * 100})`,
+          rate: v.rate,
+        })),
+      );
       const totalSales = transactions.reduce(
         (sum, tx) => sum + Number(tx.total ?? 0),
         0,
       );
-      const expenses = gisData.reduce(
-        (sum: number, row: any) => sum + Number(row.amount ?? 0),
+      const expenses = gisData.reduce((sum: number, row: any) => {
+        const isIncome = String(row.main ?? '').toLowerCase() === 'income';
+        if (isIncome) return sum;
+        return (
+          sum + Math.abs(Number(row.debit ?? row.total ?? row.amount ?? 0))
+        );
+      }, 0);
+      const summaryExpenses = (summaryData ?? []).reduce(
+        (sum: number, row: any) => {
+          const loss =
+            Number(row.costContribution ?? 0) - Number(row.sellingPrice ?? 0);
+          return sum + (loss > 0 ? loss : 0);
+        },
         0,
       );
+      const totalExpenses = expenses + summaryExpenses;
       setAccountTitles(
         accountTitles.map((c: any) => ({
-          id: c.id,
-          label: c.label
-        }))
+          id: String(c.id),
+          label: c.label || c.name || c.title || String(c.id),
+        })),
       );
-      setSubCenters(subCenters.map((c: any) => ({ id: c.id, label: c.label })));
-      setCenters(centers.map((c: any) => ({ id: c.id, label: c.label })));
+      setSubCenters(
+        subCenters.map((c: any) => ({ id: String(c.id), label: c.label })),
+      );
+      setCenters(
+        centers.map((c: any) => ({ id: String(c.id), label: c.label })),
+      );
       setDashboardStats({
         totalSales,
         salesGrowth: 0,
@@ -790,15 +1067,9 @@ export default function DashboardScreen() {
         inventoryChange: 0,
         employees: staffData?.length ?? 0,
         employeeChange: 0,
-        monthlyProfit: totalSales - expenses,
+        monthlyProfit: totalSales - totalExpenses,
         profitGrowth: 0,
       });
-      setAccountTitles(
-        accountTitles.map((c: any) => ({
-          id: c.id,
-          label: c.name, // or c.label depending on API
-        })),
-      );
       setInventoryDistribution({
         labels: inventoryStats.categoryBreakdown.map((c: any) => c.name),
         data: inventoryStats.categoryBreakdown.map((c: any) => c.totalStock),
@@ -806,11 +1077,11 @@ export default function DashboardScreen() {
 
       setFinanceData({
         revenue: totalSales,
-        expenses,
-        profit: totalSales - expenses,
+        expenses: totalExpenses,
+        profit: totalSales - totalExpenses,
         revenueVsExpenses: {
           revenue: buildSalesTrend(transactions),
-          expenses: gisData.map((row: any) => Number(row.amount ?? 0)),
+          expenses: buildExpenseTrend(gisData, summaryData),
         },
       });
 
@@ -823,9 +1094,13 @@ export default function DashboardScreen() {
           group: row.group ?? 'Finance',
           code: row.code ?? `GIS-${row.id ?? index}`,
           description: row.description ?? row.accountTitle ?? '',
-          debit: Number(row.debit ?? row.amount ?? 0),
+          amount: Number(
+            row.amount ?? row.debit ?? Math.abs(Number(row.total ?? 0)) ?? 0,
+          ),
+          debit: Number(row.debit ?? 0),
           credit: Number(row.credit ?? 0),
           total: Number(row.total ?? row.amount ?? 0),
+          createdAt: row.createdAt,
         })),
       );
 
@@ -835,10 +1110,27 @@ export default function DashboardScreen() {
           itemCode: row.itemCode ?? row.itemId ?? `S-${row.id ?? index}`,
           description:
             row.itemName ?? row.description ?? `Summary ${row.id ?? index}`,
-          opExPct: 0,
-          computedCost: Number(row.amount ?? 0),
-          costContribution: Number(row.amount ?? 0) * 0.7,
-          sellingPrice: Number(row.amount ?? 0) * 1.4,
+          itemName: row.itemName,
+          costLines: Array.isArray(row.costLines)
+            ? row.costLines.map((line: any) => ({
+                label: String(line?.label ?? ''),
+                amount: Number(line?.amount ?? 0),
+              }))
+            : [],
+          opExPct: Number(row.opExPct ?? 0),
+          baseCost: Number(row.baseCost ?? 0),
+          vatInput: Number(row.vatInput ?? 0),
+          sellingPrice: Number(row.sellingPrice ?? 0),
+          vatOutput: Number(row.vatOutput ?? 0),
+          opExAmount: Number(row.opExAmount ?? 0),
+          grossProfit: Number(row.grossProfit ?? 0),
+          netProfit: Number(row.netProfit ?? 0),
+          status: row.status ?? 'INCOME',
+          computedCost: Number(row.computedCost ?? row.amount ?? 0),
+          costContribution: Number(
+            row.costContribution ?? (row.amount ?? 0) * 0.7,
+          ),
+          createdAt: row.createdAt,
         })),
       );
     } catch (error) {
@@ -874,32 +1166,83 @@ export default function DashboardScreen() {
     }
   `;
 
+  // ── chartData: fully dynamic, driven by getDynamicChartRange ─────────────
   const chartData = useMemo(() => {
     const presetKey =
       datePreset === 'Custom Range' ? 'Last 6 Months' : datePreset;
-    const range =
-      CHART_RANGE_LABELS[presetKey as Exclude<DatePreset, 'Custom Range'>];
-    const allSales = salesTrendData.length ? salesTrendData : Array(6).fill(0);
-    const allFinRev = financeData.revenueVsExpenses.revenue.length
-      ? financeData.revenueVsExpenses.revenue
-      : Array(6).fill(0);
-    const allFinExp = financeData.revenueVsExpenses.expenses.length
-      ? financeData.revenueVsExpenses.expenses
-      : Array(6).fill(0);
-
-    const idxs = range.salesIdx;
-    const salesData = idxs.map(
-      (i) => (allSales[i] ?? allSales[allSales.length - 1]) / 1000,
-    );
-    const revData = idxs.map(
-      (i) => (allFinRev[i] ?? allFinRev[allFinRev.length - 1]) / 1000,
-    );
-    const expData = idxs.map(
-      (i) => (allFinExp[i] ?? allFinExp[allFinExp.length - 1]) / 1000,
+    const { labels, windowMonths, isWeekly } = getDynamicChartRange(
+      presetKey as Exclude<DatePreset, 'Custom Range'>,
     );
 
-    return { labels: range.labels, salesData, revData, expData };
-  }, [datePreset, salesTrendData, financeData]);
+    let salesData: number[];
+    let revData: number[];
+    let expData: number[];
+
+    if (isWeekly) {
+      // Weekly breakdown — placeholder zeros (sub-month data needs POS-level timestamps)
+      salesData = [0, 0, 0, 0];
+      revData = [0, 0, 0, 0];
+      expData = [0, 0, 0, 0];
+    } else if (presetKey === 'This Year') {
+      // Quarterly buckets for the current calendar year
+      const now = new Date();
+      const year = now.getFullYear();
+      const quarters = [
+        [1, 2, 3],
+        [4, 5, 6],
+        [7, 8, 9],
+        [10, 11, 12],
+      ];
+      salesData = quarters.map((months) =>
+        rawTransactionsRef.current
+          .filter((tx) => {
+            const d = new Date(tx.createdAt ?? tx.date ?? 0);
+            return (
+              d.getFullYear() === year && months.includes(d.getMonth() + 1)
+            );
+          })
+          .reduce((sum, tx) => sum + Number(tx.total ?? tx.amount ?? 0), 0),
+      );
+      revData = salesData;
+      expData = quarters.map((months) =>
+        gisRows
+          .filter((row) => {
+            const d = new Date(row.createdAt ?? 0);
+            return (
+              d.getFullYear() === year && months.includes(d.getMonth() + 1)
+            );
+          })
+          .reduce((sum, row) => {
+            if (String(row.main ?? '').toLowerCase() === 'income') return sum;
+            return (
+              sum +
+              Math.abs(Number(row.debit ?? row.total ?? row.amount ?? 0))
+            );
+          }, 0),
+      );
+    } else {
+      // Monthly window: Last 3 Months or Last 6 Months — anchored to today
+      salesData = buildSalesTrend(rawTransactionsRef.current, windowMonths);
+      revData = salesData;
+      expData = buildExpenseTrend(gisRows, summaryRows, windowMonths);
+    }
+
+    const maxSales = Math.max(...salesData, 1);
+    const maxFinance = Math.max(...revData, ...expData, 1);
+    const salesScale = maxSales >= 1000 ? 1000 : 1;
+    const finScale = maxFinance >= 1000 ? 1000 : 1;
+
+    return {
+      labels,
+      salesData: salesData.map((v) =>
+        parseFloat((v / salesScale).toFixed(2)),
+      ),
+      revData: revData.map((v) => parseFloat((v / finScale).toFixed(2))),
+      expData: expData.map((v) => parseFloat((v / finScale).toFixed(2))),
+      salesUnit: salesScale === 1000 ? 'K' : '₱',
+      finUnit: finScale === 1000 ? 'K' : '₱',
+    };
+  }, [datePreset, gisRows, summaryRows]);
 
   const activeDataset: FinancialCardData[] = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -981,11 +1324,35 @@ export default function DashboardScreen() {
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     try {
-      await FinanceService.deleteGISRow(deleteTarget.id);
+      await FinanceService.deleteGISRow(Number(deleteTarget.id));
     } catch (e) {
       console.error('Delete failed', e);
     }
-    setGisRows((prev) => prev.filter((r) => r.id !== deleteTarget.id));
+    setGisRows((prev) => {
+      const nextRows = prev.filter((r) => r.id !== deleteTarget.id);
+      setFinanceData((prevFinance) => {
+        const nextExpenses = nextRows.reduce(
+          (sum, row) =>
+            sum + Math.abs(Number(row.debit ?? row.total ?? row.amount ?? 0)),
+          0,
+        );
+        const nextProfit = prevFinance.revenue - nextExpenses;
+        setDashboardStats((prevStats) => ({
+          ...prevStats,
+          monthlyProfit: nextProfit,
+        }));
+        return {
+          ...prevFinance,
+          expenses: nextExpenses,
+          profit: nextProfit,
+          revenueVsExpenses: {
+            ...prevFinance.revenueVsExpenses,
+            expenses: buildExpenseTrend(nextRows),
+          },
+        };
+      });
+      return nextRows;
+    });
     setDeleteTarget(null);
   };
 
@@ -1031,23 +1398,67 @@ export default function DashboardScreen() {
 
   const handleSubmit = async () => {
     const rawAmount = parseFloat(form.amount) || 0;
-    const { net } = calcVatAndNet(rawAmount, form.vatType);
-    const isIncome = form.accountTitle.startsWith('ACCOUNTS RECEIVABLE');
+    const selectedVatType = vatTypes.find((v) => v.id === String(form.vatType));
+    const { vat } = calcVatAndNet(
+      rawAmount,
+      selectedVatType || String(form.vatType),
+    );
+    const totalAmount = rawAmount + vat;
+
+    const selectedAccountTitle =
+      accountTitles.find((t) => t.id === String(form.accountTitle))?.label ||
+      String(form.accountTitle);
+    const isIncome = selectedAccountTitle.startsWith('ACCOUNTS RECEIVABLE');
 
     const payload = {
       main: isIncome ? 'Income' : 'Expenses',
       group: form.centerDept || 'General',
       code: form.orInvoice || `TXN-${Date.now().toString().slice(-5)}`,
-      description: `${form.accountTitle} — ${form.notes || 'Entry'}`,
-      debit: isIncome ? 0 : net,
-      credit: isIncome ? net : 0,
-      total: isIncome ? net : -net,
+      description: `${selectedAccountTitle} — ${form.notes || 'Entry'}`,
+      debit: isIncome ? 0 : totalAmount,
+      credit: isIncome ? totalAmount : 0,
+      centerId: parseInt(String(form.centerDept), 10) || 0,
+      subCenterId: parseInt(String(form.subCenter), 10) || 0,
+      accountTitleId: parseInt(String(form.accountTitle), 10) || 0,
     };
 
     try {
       const saved = await FinanceService.createGISRow(payload);
-      const newRow: GISRow = { id: saved.id, ...payload };
-      setGisRows((prev) => [newRow, ...prev]);
+      const newRow: GISRow = {
+        id: String(saved.id),
+        main: payload.main,
+        group: payload.group,
+        code: payload.code,
+        description: payload.description,
+        debit: Number(payload.debit),
+        credit: Number(payload.credit),
+        total: Math.abs(Number(payload.debit - payload.credit)),
+        createdAt: saved.createdAt ?? new Date().toISOString(),
+      };
+
+      setGisRows((prev) => {
+        const nextRows = [newRow, ...prev];
+        setFinanceData((prevFinance) => {
+          const nextExpenses =
+            prevFinance.expenses +
+            Math.abs(Number(payload.debit ?? payload.credit ?? 0));
+          const nextProfit = prevFinance.revenue - nextExpenses;
+          setDashboardStats((prevStats) => ({
+            ...prevStats,
+            monthlyProfit: nextProfit,
+          }));
+          return {
+            ...prevFinance,
+            expenses: nextExpenses,
+            profit: nextProfit,
+            revenueVsExpenses: {
+              ...prevFinance.revenueVsExpenses,
+              expenses: buildExpenseTrend(nextRows),
+            },
+          };
+        });
+        return nextRows;
+      });
       setSubmitSuccess(true);
       setTimeout(() => closeModal(), 1400);
     } catch (error) {
@@ -1080,37 +1491,101 @@ export default function DashboardScreen() {
   };
 
   const handleItemNetSubmit = async () => {
-    const amount = parseFloat(itemNetForm.amount) || 0;
-    const itemId = itemNetForm.selectedItem
-      ? parseInt(itemNetForm.selectedItem.id, 10)
-      : undefined;
+    if (
+      !itemNetForm.vatType ||
+      !itemNetForm.accountTitleId ||
+      !itemNetForm.centerId ||
+      !itemNetForm.subCenterId ||
+      (!itemNetForm.costInputAmount && itemNetForm.costLines.length === 0)
+    ) {
+      console.warn('Cannot submit item net summary: missing required fields');
+      return;
+    }
+
+    const opExPct = parseFloat(itemNetForm.opExPct) || 0;
+    const finalSellingPrice = itemNetForm.selectedItem?.sellingPrice
+      ? parseFloat(itemNetForm.selectedItem.sellingPrice)
+      : parseFloat(itemNetForm.sellingPriceInput) || 0;
+
     const itemName = itemNetForm.selectedItem
       ? itemNetForm.selectedItem.name
-      : itemNetForm.itemName.trim() || undefined;
-    const accountTitleId = itemNetForm.accountTitleId
-      ? parseInt(itemNetForm.accountTitleId, 10)
-      : undefined;
+      : itemNetForm.itemName.trim();
+    const finalItemCode =
+      itemNetForm.selectedItem?.itemCode ||
+      itemNetForm.itemCode.trim() ||
+      autoCode(itemName);
 
     try {
       const saved = await FinanceService.createSummaryRow(
-        accountTitleId,
-        amount,
-        itemNetForm.description,
-        itemId,
+        user?.orgId,
+        Number(itemNetForm.accountTitleId) || undefined,
+        Number.isFinite(Number(itemNetForm.vatType))
+          ? Number(itemNetForm.vatType)
+          : undefined,
+        Number(itemNetForm.centerId) || undefined,
+        Number(itemNetForm.subCenterId) || undefined,
+        itemNetForm.selectedItem
+          ? parseInt(itemNetForm.selectedItem.id, 10)
+          : undefined,
         itemName,
+        itemNetForm.costLines.length > 0 ? itemNetForm.costLines : undefined,
+        parseFloat(itemNetForm.costInputAmount) || 0,
+        itemNetForm.costInputMode === 'VAT_INCLUSIVE',
+        finalSellingPrice,
+        itemNetForm.sellingPriceInputMode === 'VAT_INCLUSIVE',
+        opExPct,
+        itemNetForm.description?.trim(),
+        finalItemCode,
       );
 
       const newRow: SummaryRow = {
         id: String(saved.id),
-        itemCode: saved.itemId ? String(saved.itemId) : `S-${saved.id}`,
-        description:
-          saved.itemName ?? itemNetForm.description ?? `Summary ${saved.id}`,
-        opExPct: 0,
-        computedCost: amount,
-        costContribution: amount * 0.7,
-        sellingPrice: amount * 1.4,
+        itemCode: saved.itemCode,
+        itemName: saved.itemName,
+        itemId: saved.itemId ? String(saved.itemId) : undefined,
+        description: saved.description ?? saved.itemName,
+        baseCost: saved.baseCost,
+        vatInput: saved.vatInput,
+        sellingPrice: saved.sellingPrice,
+        vatOutput: saved.vatOutput,
+        opExPct: saved.opExPct,
+        opExAmount: saved.opExAmount,
+        grossProfit: saved.grossProfit,
+        netProfit: saved.netProfit,
+        status: saved.status,
+        computedCost: saved.computedCost,
+        costContribution: saved.costContribution,
+        centerId: Number(saved.centerId),
+        subCenterId: Number(saved.subCenterId),
+        accountTitleId: Number(saved.accountTitleId),
+        orgId: Number(saved.orgId),
+        createdAt: saved.createdAt,
+        costLines: saved.costLines,
       };
-      setSummaryRows((prev) => [newRow, ...prev]);
+
+      const summaryLoss = Math.max(
+        0,
+        newRow.costContribution - newRow.sellingPrice,
+      );
+      const nextSummaryRows = [newRow, ...summaryRows];
+      setSummaryRows(nextSummaryRows);
+      setFinanceData((prevFinance) => {
+        const nextExpenses = prevFinance.expenses + summaryLoss;
+        const nextProfit = prevFinance.revenue - nextExpenses;
+        setDashboardStats((prevStats) => ({
+          ...prevStats,
+          monthlyProfit: nextProfit,
+        }));
+        return {
+          ...prevFinance,
+          expenses: nextExpenses,
+          profit: nextProfit,
+          revenueVsExpenses: {
+            ...prevFinance.revenueVsExpenses,
+            expenses: buildExpenseTrend(gisRows, nextSummaryRows),
+          },
+        };
+      });
       setItemNetSubmitSuccess(true);
       setTimeout(() => closeItemNetModal(), 1400);
     } catch (error) {
@@ -1119,11 +1594,17 @@ export default function DashboardScreen() {
   };
 
   const handleCatalogItemSelect = (item: CatalogItem) => {
+    const sp = item.sellingPrice ? parseFloat(item.sellingPrice) : 0;
+
     setItemNetForm((f) => ({
       ...f,
       selectedItem: item,
       itemName: item.name,
-      amount: item.sellingPrice ? String(item.sellingPrice) : f.amount,
+      itemCode: item.itemCode || f.itemCode,
+      sellingPriceInput: sp > 0 ? String(sp) : f.sellingPriceInput,
+      costLines: item.costLines ?? [],
+      newCostLineLabel: '',
+      newCostLineAmount: '',
     }));
   };
 
@@ -1170,16 +1651,25 @@ export default function DashboardScreen() {
     datasets: [
       {
         data: chartData.revData,
-        color: (o = 1) => `rgba(27, 58, 107, ${o})`,
+        color: (o = 1) =>
+          theme === 'dark'
+            ? `rgba(34, 197, 94, ${o})`
+            : `rgba(22, 163, 74, ${o})`,
         strokeWidth: 2,
       },
       {
         data: chartData.expData,
-        color: (o = 1) => `rgba(232, 119, 34, ${o})`,
+        color: (o = 1) =>
+          theme === 'dark'
+            ? `rgba(239, 68, 68, ${o})`
+            : `rgba(220, 38, 38, ${o})`,
         strokeWidth: 2,
       },
     ],
-    legend: ['Revenue (K)', 'Expenses (K)'],
+    legend: [
+      `Revenue (${chartData.finUnit})`,
+      `Expenses (${chartData.finUnit})`,
+    ],
   };
 
   const periodDisplayLabel =
@@ -1254,7 +1744,6 @@ export default function DashboardScreen() {
       marginTop: 3,
       textAlign: 'center',
     },
-    // ── FIXED: toolbar is full-width with no overflow ──────────────────────
     toolbarFull: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -1277,7 +1766,7 @@ export default function DashboardScreen() {
       borderColor: colors.border,
       paddingHorizontal: 10,
       paddingVertical: 6,
-      minWidth: 0, // allow shrinking on tablet
+      minWidth: 0,
     },
     searchInput: { flex: 1, fontSize: 13, color: colors.text, minWidth: 0 },
     iconBtn: {
@@ -1319,7 +1808,6 @@ export default function DashboardScreen() {
           paddingVertical: 14,
           borderRadius: 12,
         },
-    // ── Table wrapper: stretch full width ──────────────────────────────────
     tableScrollWrapper: {
       flex: 1,
       minHeight: 300,
@@ -1339,11 +1827,13 @@ export default function DashboardScreen() {
   });
 
   // ─── Render ────────────────────────────────────────────────────────────────
+  const showWebScrollIndicator = Platform.OS === 'web';
+
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.scroll}
-      showsVerticalScrollIndicator={false}
+      showsVerticalScrollIndicator={showWebScrollIndicator}
     >
       {/* KEY METRICS */}
       <View style={styles.rowBetween}>
@@ -1447,7 +1937,7 @@ export default function DashboardScreen() {
         <View style={styles.chartFlex}>
           <ChartCard
             title="Sales Trend"
-            subtitle={`Monthly revenue · ${periodDisplayLabel}`}
+            subtitle={`Monthly revenue (${chartData.salesUnit}) · ${periodDisplayLabel}`}
           >
             <LineChart
               data={{
@@ -1494,48 +1984,58 @@ export default function DashboardScreen() {
         Quick Summary
       </Text>
       <View style={styles.summaryRow}>
-        <View style={styles.summaryCard}>
-          {isLoadingDashboardData ? (
-            <ActivityIndicator size="small" color={colors.primary} />
-          ) : (
-            <>
-              <Text style={styles.summaryValue}>
-                {fmt(financeData.revenue)}
-              </Text>
-              <Text style={styles.summaryLabel}>Total Revenue</Text>
-            </>
-          )}
-        </View>
-        <View style={styles.summaryCard}>
-          {isLoadingDashboardData ? (
-            <ActivityIndicator size="small" color={colors.primary} />
-          ) : (
-            <>
-              <Text style={styles.summaryValue}>
-                {fmt(financeData.expenses)}
-              </Text>
-              <Text style={styles.summaryLabel}>Total Expenses</Text>
-            </>
-          )}
-        </View>
-        <View style={styles.summaryCard}>
-          {isLoadingDashboardData ? (
-            <ActivityIndicator size="small" color={colors.primary} />
-          ) : (
-            <>
-              <Text style={[styles.summaryValue, { color: colors.success }]}>
-                {fmt(financeData.profit)}
-              </Text>
-              <Text style={styles.summaryLabel}>Net Profit</Text>
-            </>
-          )}
-        </View>
+        <SummaryCard
+          label="Total Revenue"
+          value={fmt(financeData.revenue)}
+          fullValue={fmtFull(financeData.revenue)}
+          colors={colors}
+          tooltipId="revenue"
+          tooltipVisible={tooltipVisible}
+          onPressOut={() => {
+            if (Platform.OS === 'web') {
+              setTimeout(() => setTooltipVisible(null), 800);
+            }
+          }}
+          setTooltipVisible={setTooltipVisible}
+          isTablet={isTablet}
+        />
+        <SummaryCard
+          label="Total Expenses"
+          value={fmt(financeData.expenses)}
+          fullValue={fmtFull(financeData.expenses)}
+          colors={colors}
+          tooltipId="expenses"
+          tooltipVisible={tooltipVisible}
+          setTooltipVisible={setTooltipVisible}
+          isTablet={isTablet}
+          onPressOut={() => {
+            if (Platform.OS === 'web') {
+              setTimeout(() => setTooltipVisible(null), 800);
+            }
+          }}
+        />
+        <SummaryCard
+          label="Net Profit"
+          value={fmt(financeData.profit)}
+          fullValue={fmtFull(financeData.profit)}
+          valueColor={financeData.profit >= 0 ? colors.success : colors.error}
+          colors={colors}
+          tooltipId="profit"
+          tooltipVisible={tooltipVisible}
+          setTooltipVisible={setTooltipVisible}
+          isTablet={isTablet}
+          onPressOut={() => {
+            if (Platform.OS === 'web') {
+              setTimeout(() => setTooltipVisible(null), 800);
+            }
+          }}
+        />
       </View>
 
       {/* REVENUE VS EXPENSES */}
       <ChartCard
         title="Revenue vs Expenses"
-        subtitle={`6-month financial overview · ${periodDisplayLabel}`}
+        subtitle={`Financial overview · ${periodDisplayLabel}`}
       >
         <LineChart
           data={revData}
@@ -1654,7 +2154,7 @@ export default function DashboardScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* ── TABLE / CARD AREA — fixed to stretch full width ── */}
+      {/* TABLE / CARD AREA */}
       <View style={styles.tableScrollWrapper}>
         {/* TOOLBAR */}
         <View style={styles.toolbarFull}>
@@ -1727,7 +2227,7 @@ export default function DashboardScreen() {
           </Text>
         </View>
 
-        {/* ── Table / Card content — full-width ── */}
+        {/* Table / Card content */}
         <View style={styles.tableInner}>
           {isLoadingDashboardData ? (
             viewMode === 'table' ? (
@@ -1747,7 +2247,6 @@ export default function DashboardScreen() {
             )
           ) : viewMode === 'table' ? (
             activeTab === 'expense' ? (
-              // ── GISTable gets full width via parent View ──
               <View style={{ width: '100%' }}>
                 <GISTable
                   rows={pagedGISRows}
@@ -1790,7 +2289,7 @@ export default function DashboardScreen() {
         />
       </View>
 
-      {/* ── NEW ENTRY BUTTON — label changes per active tab ── */}
+      {/* NEW ENTRY BUTTON */}
       <TouchableOpacity
         style={[styles.newEntryBtn, { backgroundColor: colors.primary }]}
         onPress={activeTab === 'expense' ? openModal : openItemNetModal}
@@ -1837,7 +2336,7 @@ export default function DashboardScreen() {
         initialEnd={customEndDate ?? undefined}
       />
 
-      {/* ── EXPENSE ENTRY MODAL ── */}
+      {/* EXPENSE ENTRY MODAL */}
       <Modal
         visible={modalVisible}
         transparent
@@ -1901,7 +2400,7 @@ export default function DashboardScreen() {
                 <ScrollView
                   style={{ flex: 1 }}
                   contentContainerStyle={s.modalBody}
-                  showsVerticalScrollIndicator={false}
+                  showsVerticalScrollIndicator={showWebScrollIndicator}
                   keyboardShouldPersistTaps="handled"
                 >
                   <Text style={[s.fieldLabel, { color: colors.textSecondary }]}>
@@ -1936,7 +2435,7 @@ export default function DashboardScreen() {
                         value={form.centerDept}
                         options={centers}
                         onSelect={(v) =>
-                          setForm((f) => ({ ...f, centerDept: v.id }))
+                          setForm((f) => ({ ...f, centerDept: String(v.id) }))
                         }
                         colors={colors}
                       />
@@ -1947,7 +2446,7 @@ export default function DashboardScreen() {
                         value={form.subCenter}
                         options={subCenters}
                         onSelect={(v) =>
-                          setForm((f) => ({ ...f, subCenter: v.id }))
+                          setForm((f) => ({ ...f, subCenter: String(v.id) }))
                         }
                         colors={colors}
                       />
@@ -1957,8 +2456,10 @@ export default function DashboardScreen() {
                   <DropdownField
                     label="VAT Type"
                     value={form.vatType}
-                    options={accountTitles}
-                    onSelect={(v) => setForm((f) => ({ ...f, vatType: v.id }))}
+                    options={vatTypes}
+                    onSelect={(v) =>
+                      setForm((f) => ({ ...f, vatType: String(v.id) }))
+                    }
                     colors={colors}
                   />
 
@@ -1983,10 +2484,15 @@ export default function DashboardScreen() {
 
                   {form.amount && form.vatType
                     ? (() => {
-                        const { vat, net } = calcVatAndNet(
-                          parseFloat(form.amount) || 0,
-                          form.vatType,
+                        const baseAmount = parseFloat(form.amount) || 0;
+                        const selectedVatType = vatTypes.find(
+                          (v) => v.id === form.vatType,
                         );
+                        const { vat } = calcVatAndNet(
+                          baseAmount,
+                          selectedVatType || form.vatType,
+                        );
+                        const totalAmount = baseAmount + vat;
                         return (
                           <View
                             style={[
@@ -2004,12 +2510,12 @@ export default function DashboardScreen() {
                                   { color: colors.textSecondary },
                                 ]}
                               >
-                                VAT Amount
+                                Base Amount
                               </Text>
                               <Text
-                                style={[s.vatValue, { color: colors.accent }]}
+                                style={[s.vatValue, { color: colors.text }]}
                               >
-                                {formatPeso(vat)}
+                                {formatPeso(baseAmount)}
                               </Text>
                             </View>
                             <View style={s.vatRow}>
@@ -2019,12 +2525,43 @@ export default function DashboardScreen() {
                                   { color: colors.textSecondary },
                                 ]}
                               >
-                                Net Amount
+                                VAT Amount
                               </Text>
                               <Text
-                                style={[s.vatValue, { color: colors.success }]}
+                                style={[s.vatValue, { color: colors.accent }]}
                               >
-                                {formatPeso(net)}
+                                {formatPeso(vat)}
+                              </Text>
+                            </View>
+                            <View
+                              style={[
+                                s.vatRow,
+                                {
+                                  paddingTop: 8,
+                                  borderTopWidth: 1,
+                                  borderTopColor: colors.border,
+                                  marginTop: 8,
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  s.vatLabel,
+                                  {
+                                    color: colors.textSecondary,
+                                    fontWeight: '700',
+                                  },
+                                ]}
+                              >
+                                Total Amount
+                              </Text>
+                              <Text
+                                style={[
+                                  s.vatValue,
+                                  { color: colors.primary, fontWeight: '800' },
+                                ]}
+                              >
+                                {formatPeso(totalAmount)}
                               </Text>
                             </View>
                           </View>
@@ -2079,7 +2616,7 @@ export default function DashboardScreen() {
                     value={form.accountTitle}
                     options={accountTitles}
                     onSelect={(v) =>
-                      setForm((f) => ({ ...f, accountTitle: v.id }))
+                      setForm((f) => ({ ...f, accountTitle: String(v.id) }))
                     }
                     colors={colors}
                     placeholder="Select account title…"
@@ -2112,7 +2649,7 @@ export default function DashboardScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* ── ITEM NET SUMMARY MODAL ── */}
+      {/* ITEM NET SUMMARY MODAL */}
       <Modal
         visible={itemNetModalVisible}
         transparent
@@ -2176,10 +2713,10 @@ export default function DashboardScreen() {
                 <ScrollView
                   style={{ flex: 1 }}
                   contentContainerStyle={s.modalBody}
-                  showsVerticalScrollIndicator={false}
+                  showsVerticalScrollIndicator={showWebScrollIndicator}
                   keyboardShouldPersistTaps="handled"
                 >
-                  {/* ── Item Selection ── */}
+                  {/* Item Selection */}
                   <Text style={[s.fieldLabel, { color: colors.textSecondary }]}>
                     Select Item (Optional)
                   </Text>
@@ -2281,6 +2818,7 @@ export default function DashboardScreen() {
                       </View>
                     )}
                   </TouchableOpacity>
+
                   <Text
                     style={[
                       s.fieldLabel,
@@ -2317,60 +2855,109 @@ export default function DashboardScreen() {
                     }}
                     editable={!itemNetForm.selectedItem}
                   />
+
+                  <Text
+                    style={[
+                      s.fieldLabel,
+                      { color: colors.textSecondary, marginTop: 4 },
+                    ]}
+                  >
+                    Item Code{' '}
+                    {itemNetForm.selectedItem?.itemCode
+                      ? '(from catalog)'
+                      : '(manual if empty, leave empty to auto-generate)'}
+                  </Text>
+                  <TextInput
+                    style={[
+                      s.input,
+                      {
+                        color: colors.text,
+                        backgroundColor: itemNetForm.selectedItem
+                          ? colors.border + '40'
+                          : colors.background,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                    placeholder="E.g. COFF-PRM-001"
+                    placeholderTextColor={colors.textSecondary}
+                    value={
+                      itemNetForm.selectedItem
+                        ? itemNetForm.selectedItem.itemCode
+                        : itemNetForm.itemCode
+                    }
+                    autoCapitalize="characters"
+                    onChangeText={(v) => {
+                      if (!itemNetForm.selectedItem) {
+                        setItemNetForm((f) => ({ ...f, itemCode: v }));
+                      }
+                    }}
+                    editable={
+                      !itemNetForm.selectedItem || itemNetForm.itemCode === ''
+                    }
+                  />
+
                   <View
                     style={{
                       flexDirection: isTablet ? 'row' : 'column',
                       gap: 12,
                     }}
                   >
-                    <View
-                      style={{
-                        flex: 1,
-                      }}
-                    >
+                    <View style={{ flex: 1 }}>
                       <DropdownField
                         label="Center / Dept"
-                        value={form.centerDept}
+                        value={itemNetForm.centerId}
                         options={centers}
                         onSelect={(v) =>
-                          setForm((f) => ({ ...f, centerDept: v.id }))
+                          setItemNetForm((f) => ({
+                            ...f,
+                            centerId: String(v.id),
+                          }))
                         }
                         colors={colors}
                       />
                     </View>
-                    <View
-                      style={{
-                        flex: 1,
-                      }}
-                    >
+                    <View style={{ flex: 1 }}>
                       <DropdownField
                         label="Sub Center"
-                        value={form.subCenter}
+                        value={itemNetForm.subCenterId}
                         options={subCenters}
                         onSelect={(v) =>
-                          setForm((f) => ({ ...f, subCenter: v.id }))
+                          setItemNetForm((f) => ({
+                            ...f,
+                            subCenterId: String(v.id),
+                          }))
                         }
                         colors={colors}
                       />
                     </View>
                   </View>
-                  {/* ── Item Name (manual fallback or override) ── */}
 
-                  {/* ── Account Title ── */}
                   <DropdownField
                     label="Account Title"
                     value={itemNetForm.accountTitleId}
                     options={accountTitles}
                     onSelect={(v) =>
-                      setItemNetForm((f) => ({ ...f, accountTitleId: v.id }))
+                      setItemNetForm((f) => ({
+                        ...f,
+                        accountTitleId: String(v.id),
+                      }))
                     }
                     colors={colors}
                     placeholder="Select account title…"
                   />
 
-                  {/* ── Amount ── */}
+                  <DropdownField
+                    label="VAT Type"
+                    value={itemNetForm.vatType}
+                    options={vatTypes}
+                    onSelect={(v) =>
+                      setItemNetForm((f) => ({ ...f, vatType: String(v.id) }))
+                    }
+                    colors={colors}
+                  />
+
                   <Text style={[s.fieldLabel, { color: colors.textSecondary }]}>
-                    Amount (₱)
+                    Cost (₱)
                   </Text>
                   <TextInput
                     style={[
@@ -2383,14 +2970,324 @@ export default function DashboardScreen() {
                     ]}
                     placeholder="0.00"
                     placeholderTextColor={colors.textSecondary}
-                    value={itemNetForm.amount}
+                    value={itemNetForm.costInputAmount}
                     onChangeText={(v) =>
-                      setItemNetForm((f) => ({ ...f, amount: v }))
+                      setItemNetForm((f) => ({ ...f, costInputAmount: v }))
                     }
                     keyboardType="decimal-pad"
                   />
 
-                  {/* ── Description ── */}
+                  {/* Cost Lines */}
+                  <View style={{ gap: 8, marginTop: 12 }}>
+                    {itemNetForm.costLines.length > 0 && (
+                      <View style={{ gap: 6 }}>
+                        {itemNetForm.costLines.map((line) => (
+                          <View
+                            key={line.id}
+                            style={{
+                              flexDirection: 'row',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              paddingVertical: 6,
+                              borderBottomWidth: 1,
+                              borderBottomColor: colors.border,
+                            }}
+                          >
+                            <Text style={{ color: colors.text, flex: 1 }}>
+                              {line.label}
+                            </Text>
+                            <Text style={{ color: colors.textSecondary }}>
+                              {formatPeso(line.amount)}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <TextInput
+                        style={[
+                          s.input,
+                          {
+                            flex: 1,
+                            color: colors.text,
+                            backgroundColor: colors.background,
+                            borderColor: colors.border,
+                          },
+                        ]}
+                        placeholder="Line label"
+                        placeholderTextColor={colors.textSecondary}
+                        value={itemNetForm.newCostLineLabel}
+                        onChangeText={(v) =>
+                          setItemNetForm((f) => ({ ...f, newCostLineLabel: v }))
+                        }
+                      />
+                      <TextInput
+                        style={[
+                          s.input,
+                          {
+                            flex: 1,
+                            color: colors.text,
+                            backgroundColor: colors.background,
+                            borderColor: colors.border,
+                          },
+                        ]}
+                        placeholder="Amount"
+                        placeholderTextColor={colors.textSecondary}
+                        value={itemNetForm.newCostLineAmount}
+                        onChangeText={(v) =>
+                          setItemNetForm((f) => ({
+                            ...f,
+                            newCostLineAmount: v,
+                          }))
+                        }
+                        keyboardType="decimal-pad"
+                      />
+                      <TouchableOpacity
+                        style={{
+                          flex: 0.8,
+                          backgroundColor: colors.primary,
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          borderRadius: 8,
+                          paddingVertical: 14,
+                        }}
+                        onPress={() => {
+                          const amount = parseFloat(
+                            itemNetForm.newCostLineAmount,
+                          );
+                          if (
+                            !itemNetForm.newCostLineLabel.trim() ||
+                            Number.isNaN(amount)
+                          ) {
+                            return;
+                          }
+                          setItemNetForm((f) => ({
+                            ...f,
+                            costLines: [
+                              ...f.costLines,
+                              {
+                                id: `costline-${Date.now()}-${f.costLines.length}`,
+                                label: f.newCostLineLabel.trim(),
+                                amount,
+                              },
+                            ],
+                            newCostLineLabel: '',
+                            newCostLineAmount: '',
+                          }));
+                        }}
+                      >
+                        <Text style={{ color: '#fff', fontWeight: '700' }}>
+                          Add
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* VAT Calculation Preview */}
+                  {(itemNetForm.costInputAmount ||
+                    itemNetForm.sellingPriceInput) &&
+                  itemNetForm.vatType ? (
+                    <View
+                      style={[
+                        s.vatPreview,
+                        {
+                          backgroundColor: colors.background,
+                          borderColor: colors.border,
+                          marginTop: 10,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 10,
+                          fontWeight: '700',
+                          color: colors.textSecondary,
+                          letterSpacing: 1,
+                          marginBottom: 8,
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        ERP Preview
+                      </Text>
+                      <View style={s.vatRow}>
+                        <Text
+                          style={[s.vatLabel, { color: colors.textSecondary }]}
+                        >
+                          Base Cost
+                        </Text>
+                        <Text style={[s.vatValue, { color: colors.text }]}>
+                          {formatPeso(itemNetPreview.baseCost)}
+                        </Text>
+                      </View>
+                      <View style={s.vatRow}>
+                        <Text
+                          style={[s.vatLabel, { color: colors.textSecondary }]}
+                        >
+                          VAT Input
+                        </Text>
+                        <Text style={[s.vatValue, { color: colors.accent }]}>
+                          {formatPeso(itemNetPreview.vatInput)}
+                        </Text>
+                      </View>
+                      <View style={s.vatRow}>
+                        <Text
+                          style={[s.vatLabel, { color: colors.textSecondary }]}
+                        >
+                          Selling Price
+                        </Text>
+                        <Text style={[s.vatValue, { color: colors.text }]}>
+                          {formatPeso(itemNetPreview.sellingPrice)}
+                        </Text>
+                      </View>
+                      <View style={s.vatRow}>
+                        <Text
+                          style={[s.vatLabel, { color: colors.textSecondary }]}
+                        >
+                          VAT Output
+                        </Text>
+                        <Text style={[s.vatValue, { color: colors.accent }]}>
+                          {formatPeso(itemNetPreview.vatOutput)}
+                        </Text>
+                      </View>
+                      <View
+                        style={[
+                          s.vatRow,
+                          {
+                            paddingTop: 8,
+                            borderTopWidth: 1,
+                            borderTopColor: colors.border,
+                            marginTop: 8,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[s.vatLabel, { color: colors.textSecondary }]}
+                        >
+                          OpEx Amount
+                        </Text>
+                        <Text style={[s.vatValue, { color: colors.text }]}>
+                          {formatPeso(itemNetPreview.opExAmount)}
+                        </Text>
+                      </View>
+                      <View style={s.vatRow}>
+                        <Text
+                          style={[s.vatLabel, { color: colors.textSecondary }]}
+                        >
+                          Gross Profit
+                        </Text>
+                        <Text
+                          style={[
+                            s.vatValue,
+                            {
+                              color:
+                                itemNetPreview.grossProfit >= 0
+                                  ? colors.success
+                                  : colors.error,
+                            },
+                          ]}
+                        >
+                          {formatPeso(itemNetPreview.grossProfit)}
+                        </Text>
+                      </View>
+                      <View style={s.vatRow}>
+                        <Text
+                          style={[s.vatLabel, { color: colors.textSecondary }]}
+                        >
+                          Net Profit
+                        </Text>
+                        <Text
+                          style={[
+                            s.vatValue,
+                            {
+                              color:
+                                itemNetPreview.netProfit >= 0
+                                  ? colors.success
+                                  : colors.error,
+                              fontWeight: '700',
+                            },
+                          ]}
+                        >
+                          {formatPeso(itemNetPreview.netProfit)}
+                        </Text>
+                      </View>
+                      {itemNetPreview.warning ? (
+                        <Text
+                          style={{
+                            color: colors.error,
+                            marginTop: 10,
+                            fontSize: 12,
+                          }}
+                        >
+                          {itemNetPreview.warning}
+                        </Text>
+                      ) : null}
+                    </View>
+                  ) : null}
+
+                  {/* OpEx & Selling Price */}
+                  <View style={{ gap: 12, marginTop: 10 }}>
+                    <Text
+                      style={[s.fieldLabel, { color: colors.textSecondary }]}
+                    >
+                      OpEx %
+                    </Text>
+                    <TextInput
+                      style={[
+                        s.input,
+                        {
+                          color: colors.text,
+                          backgroundColor: colors.background,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                      placeholder="e.g. 0.30 for 30%"
+                      placeholderTextColor={colors.textSecondary}
+                      value={itemNetForm.opExPct}
+                      onChangeText={(v) =>
+                        setItemNetForm((f) => ({ ...f, opExPct: v }))
+                      }
+                      keyboardType="decimal-pad"
+                    />
+
+                    <Text
+                      style={[s.fieldLabel, { color: colors.textSecondary }]}
+                    >
+                      Selling Price
+                    </Text>
+                    <TextInput
+                      style={[
+                        s.input,
+                        {
+                          color: colors.text,
+                          backgroundColor: itemNetForm.selectedItem
+                            ? colors.border + '40'
+                            : colors.background,
+                          borderColor: itemNetForm.selectedItem
+                            ? colors.primary
+                            : colors.border,
+                        },
+                      ]}
+                      placeholder="0.00"
+                      placeholderTextColor={colors.textSecondary}
+                      value={
+                        itemNetForm.selectedItem?.sellingPrice
+                          ? itemNetForm.selectedItem.sellingPrice
+                          : itemNetForm.sellingPriceInput
+                      }
+                      onChangeText={(v) => {
+                        if (!itemNetForm.selectedItem) {
+                          setItemNetForm((f) => ({
+                            ...f,
+                            sellingPriceInput: v,
+                          }));
+                        }
+                      }}
+                      editable={!itemNetForm.selectedItem}
+                      keyboardType="decimal-pad"
+                    />
+                  </View>
+
+                  {/* Description */}
                   <Text style={[s.fieldLabel, { color: colors.textSecondary }]}>
                     Description
                   </Text>
@@ -2420,11 +3317,26 @@ export default function DashboardScreen() {
                       s.submitBtn,
                       {
                         backgroundColor: colors.primary,
-                        opacity: !itemNetForm.amount ? 0.5 : 1,
+                        opacity:
+                          (!itemNetForm.costInputAmount &&
+                            itemNetForm.costLines.length === 0) ||
+                          !itemNetForm.vatType ||
+                          !itemNetForm.accountTitleId ||
+                          !itemNetForm.centerId ||
+                          !itemNetForm.subCenterId
+                            ? 0.5
+                            : 1,
                       },
                     ]}
                     onPress={handleItemNetSubmit}
-                    disabled={!itemNetForm.amount}
+                    disabled={
+                      (!itemNetForm.costInputAmount &&
+                        itemNetForm.costLines.length === 0) ||
+                      !itemNetForm.vatType ||
+                      !itemNetForm.accountTitleId ||
+                      !itemNetForm.centerId ||
+                      !itemNetForm.subCenterId
+                    }
                     activeOpacity={0.85}
                   >
                     <Text style={s.submitBtnText}>Add Item Summary</Text>
@@ -2437,7 +3349,7 @@ export default function DashboardScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* ── CATALOG SEARCH MODAL (rendered at root level to avoid z-index issues) ── */}
+      {/* CATALOG SEARCH MODAL */}
       <CatalogSearchModal
         visible={showCatalogSearch}
         onClose={() => setShowCatalogSearch(false)}

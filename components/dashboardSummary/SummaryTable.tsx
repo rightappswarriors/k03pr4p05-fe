@@ -15,6 +15,7 @@ import {
   TrendingUp,
   TrendingDown,
   Minus,
+  Trash2,
 } from 'lucide-react-native';
 import { SkeletonPulse } from '@/app/(erp)';
 import {
@@ -194,14 +195,8 @@ export function FinancialDetailModal({
         { label: 'Item Name', value: data.row.description },
         {
           label: 'Status',
-          value:
-            data.row.sellingPrice - data.row.costContribution >= 0
-              ? 'Income'
-              : 'Expense',
-          valueColor:
-            data.row.sellingPrice - data.row.costContribution >= 0
-              ? colors.success
-              : colors.error,
+          value: data.row.netProfit >= 0 ? 'Income' : 'Expense',
+          valueColor: data.row.netProfit >= 0 ? colors.success : colors.error,
         },
         { label: 'Item Code', value: data.row.itemCode },
         {
@@ -212,24 +207,29 @@ export function FinancialDetailModal({
           label: 'Selling Price',
           value: formatPeso(data.row.sellingPrice),
         },
-        { label: 'Computed Cost', value: formatPeso(data.row.computedCost) },
         {
           label: 'Cost Contribution',
           value: formatPeso(data.row.costContribution),
         },
         {
-          label: 'Profit',
-          value: formatPeso(
-            getProfitOrExpense(
-              data.row.sellingPrice,
-              data.row.costContribution,
-            ),
-          ),
+          label: 'OpEx Amount',
+          value: formatPeso(data.row.opExAmount),
+        },
+        {
+          label: 'Total Cost',
+          value: formatPeso(data.row.costContribution + data.row.opExAmount),
           valueColor:
-            getProfitOrExpense(
-              data.row.sellingPrice,
-              data.row.costContribution,
-            ) >= 0
+            getProfitOrExpense(data.row.netProfit) >= 0
+              ? colors.success
+              : colors.error,
+        },
+        {
+          label: data.row.netProfit > 0 ? 'Profit' : 'Loss (Net Profit)',
+          value: `${data.row.netProfit > 0 ? '' : '-'}${formatPeso(
+            getProfitOrExpense(data.row.netProfit),
+          )}`,
+          valueColor:
+            getProfitOrExpense(data.row.netProfit) >= 0
               ? colors.success
               : colors.error,
         },
@@ -294,6 +294,148 @@ export function FinancialDetailModal({
                 </Text>
               </View>
             ))}
+
+            {/* IMPROVED Cost Breakdown Section */}
+            {data.type === 'summary' &&
+            Array.isArray(data.row.costLines) &&
+            data.row.costLines.length > 0 ? (
+              <View
+                style={{
+                  marginTop: 8,
+                  paddingTop: 4,
+                  paddingHorizontal: 10,
+                }}
+              >
+                <Text
+                  style={{
+                    color: colors.text,
+                    fontSize: 14,
+                    fontWeight: '700',
+                    marginBottom: 12,
+                    marginLeft: 8,
+                  }}
+                >
+                  Cost Breakdown
+                </Text>
+
+                {/* Cost Lines */}
+                {data.row.costLines?.map((line, idx) => (
+                  <View
+                    key={`${line.label}-${idx}`}
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      paddingVertical: 8,
+                      paddingHorizontal: 8,
+                      backgroundColor:
+                        idx % 2 === 0 ? colors.background : 'transparent',
+                      borderRadius: 6,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: colors.textSecondary,
+                        fontSize: 13,
+                        flex: 1,
+                      }}
+                    >
+                      {line.label}
+                    </Text>
+                    <Text
+                      style={{
+                        color: colors.text,
+                        fontSize: 13,
+                        fontWeight: '600',
+                      }}
+                    >
+                      {formatPeso(line.amount)}
+                    </Text>
+                  </View>
+                ))}
+
+                {/* OpEx Amount */}
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    paddingVertical: 8,
+                    paddingHorizontal: 12,
+                    backgroundColor:
+                      data.row.costLines.length % 2 === 0
+                        ? colors.background
+                        : 'transparent',
+                    borderRadius: 6,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: colors.textSecondary,
+                      fontSize: 13,
+                      flex: 1,
+                    }}
+                  >
+                    Operating Expense
+                  </Text>
+                  <Text
+                    style={{
+                      color: colors.text,
+                      fontSize: 13,
+                      fontWeight: '600',
+                    }}
+                  >
+                    {formatPeso(data.row.opExAmount)}
+                  </Text>
+                </View>
+
+                {/* Divider */}
+                <View
+                  style={{
+                    height: 1,
+                    backgroundColor: colors.border,
+                    marginVertical: 8,
+                  }}
+                />
+
+                {/* Computed Cost Total */}
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+
+                    paddingVertical: 10,
+                    paddingHorizontal: 12,
+                    backgroundColor: colors.primary + '15',
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: colors.primary + '30',
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: colors.text,
+                      fontSize: 14,
+                      fontWeight: '700',
+                      flex: 1,
+                    }}
+                  >
+                    Computed Cost (Total)
+                  </Text>
+                  <Text
+                    style={{
+                      color:
+                        data.row.netProfit > 0 ? colors.success : colors.error,
+                      fontSize: 15,
+                      fontWeight: '800',
+                    }}
+                  >
+                    {formatPeso(data.row.computedCost + data.row.opExAmount)}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
             <View style={{ height: 20 }} />
           </ScrollView>
         </TouchableOpacity>
@@ -301,18 +443,6 @@ export function FinancialDetailModal({
     </Modal>
   );
 }
-
-// ─── PATCH for SummaryTable.tsx ──────────────────────────────────────────────
-// Add these two prop changes to your existing SummaryTable.tsx:
-//
-// 1. GISTable — add onDeleteRow prop
-// 2. FinancialCard — add onDelete prop
-//
-// Replace your existing GISTable and FinancialCard functions with these:
-
-// ─── GISTable (updated — add onDeleteRow prop) ────────────────────────────────
-
-import { Trash2 } from 'lucide-react-native';
 
 // Add onDeleteRow?: (row: GISRow) => void to your GISTable props:
 export function GISTable({
@@ -322,14 +452,21 @@ export function GISTable({
 }: {
   rows: GISRow[];
   colors: any;
-  onDeleteRow?: (row: GISRow) => void; // ← NEW
+  onDeleteRow?: (row: GISRow) => void;
 }) {
   const totalCredit = rows.reduce((s, r) => s + r.credit, 0);
   const totalDebit = rows.reduce((s, r) => s + r.debit, 0);
   const netIncome = totalCredit - totalDebit;
 
-  // Added delete column — COL_WIDTHS now has 7 entries
-  const COL_WIDTHS = [90, 110, 180, 130, 130, 120, 44];
+  const COL_CONFIG = [
+    { flex: 1, minWidth: 90 },
+    { flex: 1.2, minWidth: 110 },
+    { flex: 1.8, minWidth: 220 },
+    { flex: 1, minWidth: 130 },
+    { flex: 1, minWidth: 130 },
+    { flex: 1, minWidth: 120 },
+    { flex: 0.4, minWidth: 44 },
+  ];
   const HEADERS = [
     'Main',
     'Group',
@@ -343,18 +480,24 @@ export function GISTable({
     idx % 2 === 0 ? colors.card : colors.background;
 
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator>
-      <View>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator
+      contentContainerStyle={{ minWidth: '100%' }}
+      style={{ width: '100%' }}
+    >
+      <View style={{ minWidth: '100%' }}>
         {/* Header */}
         <View style={{ flexDirection: 'row', backgroundColor: colors.primary }}>
           {HEADERS.map((h, i) => (
             <View
               key={i}
               style={{
-                width: COL_WIDTHS[i],
+                flex: COL_CONFIG[i].flex,
+                minWidth: COL_CONFIG[i].minWidth,
                 padding: 10,
-                alignItems: i > 2 ?  "flex-end": "flex-start"  ,
-                justifyContent: i > 2 ? "flex-start": 'flex-end',
+                alignItems: i > 2 ? 'flex-end' : 'flex-start',
+                justifyContent: i > 2 ? 'flex-start' : 'flex-end',
               }}
             >
               <Text
@@ -383,8 +526,13 @@ export function GISTable({
               borderBottomColor: colors.border,
             }}
           >
-            {/** Main */}
-            <View style={{ width: COL_WIDTHS[0], padding: 10 }}>
+            <View
+              style={{
+                flex: COL_CONFIG[0].flex,
+                minWidth: COL_CONFIG[0].minWidth,
+                padding: 10,
+              }}
+            >
               <Text
                 style={{
                   fontSize: 12,
@@ -395,43 +543,50 @@ export function GISTable({
                 {row.main}
               </Text>
             </View>
-            {/** Group */}
-            <View style={{ width: COL_WIDTHS[1], padding: 10 }}>
+            <View
+              style={{
+                flex: COL_CONFIG[1].flex,
+                minWidth: COL_CONFIG[1].minWidth,
+                padding: 10,
+              }}
+            >
               <Text style={{ fontSize: 12, color: colors.textSecondary }}>
                 {row.group}
               </Text>
             </View>
-            {/** Description */}
-            <View style={{ width: COL_WIDTHS[2], padding: 10 }}>
+            <View
+              style={{
+                flex: COL_CONFIG[2].flex,
+                minWidth: COL_CONFIG[2].minWidth,
+                padding: 10,
+              }}
+            >
               <Text style={{ fontSize: 12, color: colors.text }}>
                 {row.description}
               </Text>
             </View>
             <View
               style={{
-                width: COL_WIDTHS[3],
+                flex: COL_CONFIG[3].flex,
+                minWidth: COL_CONFIG[3].minWidth,
                 padding: 10,
                 alignItems: 'flex-end',
                 justifyContent: 'flex-end',
               }}
             >
-              
-            {/** Debit */}
               <Text
                 style={{
                   fontSize: 12,
                   color: row.debit > 0 ? colors.error : colors.textSecondary,
-                  alignItems: 'flex-end',
-                  justifyContent: 'flex-end',
                 }}
               >
                 {row.debit > 0 ? formatPeso(row.debit) : '—'}
               </Text>
             </View>
-            {/** Credit */}
             <View
               style={{
-                width: COL_WIDTHS[4],
+                flex: COL_CONFIG[4].flex,
+                minWidth: COL_CONFIG[4].minWidth,
                 padding: 10,
                 alignItems: 'flex-end',
               }}
@@ -447,7 +602,8 @@ export function GISTable({
             </View>
             <View
               style={{
-                width: COL_WIDTHS[5],
+                flex: COL_CONFIG[5].flex,
+                minWidth: COL_CONFIG[5].minWidth,
                 padding: 10,
                 alignItems: 'flex-end',
                 justifyContent: 'flex-end',
@@ -463,10 +619,10 @@ export function GISTable({
                 {formatPeso(row.total)}
               </Text>
             </View>
-            {/* Delete button column */}
             <View
               style={{
-                width: COL_WIDTHS[6],
+                flex: COL_CONFIG[6].flex,
+                minWidth: COL_CONFIG[6].minWidth,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
@@ -494,7 +650,12 @@ export function GISTable({
         >
           <View
             style={{
-              width: COL_WIDTHS[0] + COL_WIDTHS[1] + COL_WIDTHS[2],
+              flex:
+                COL_CONFIG[0].flex + COL_CONFIG[1].flex + COL_CONFIG[2].flex,
+              minWidth:
+                COL_CONFIG[0].minWidth +
+                COL_CONFIG[1].minWidth +
+                COL_CONFIG[2].minWidth,
               padding: 10,
             }}
           >
@@ -506,7 +667,8 @@ export function GISTable({
           </View>
           <View
             style={{
-              width: COL_WIDTHS[3],
+              flex: COL_CONFIG[3].flex,
+              minWidth: COL_CONFIG[3].minWidth,
               padding: 10,
               alignItems: 'flex-end',
             }}
@@ -519,7 +681,8 @@ export function GISTable({
           </View>
           <View
             style={{
-              width: COL_WIDTHS[4],
+              flex: COL_CONFIG[4].flex,
+              minWidth: COL_CONFIG[4].minWidth,
               padding: 10,
               alignItems: 'flex-end',
             }}
@@ -532,7 +695,8 @@ export function GISTable({
           </View>
           <View
             style={{
-              width: COL_WIDTHS[5],
+              flex: COL_CONFIG[5].flex,
+              minWidth: COL_CONFIG[5].minWidth,
               padding: 10,
               alignItems: 'flex-end',
             }}
@@ -548,7 +712,12 @@ export function GISTable({
               {formatPeso(Math.abs(netIncome))}
             </Text>
           </View>
-          <View style={{ width: COL_WIDTHS[6] }} />
+          <View
+            style={{
+              flex: COL_CONFIG[6].flex,
+              minWidth: COL_CONFIG[6].minWidth,
+            }}
+          />
         </View>
       </View>
     </ScrollView>
@@ -574,12 +743,12 @@ export function FinancialCard({
   const name = isGIS ? data.row.description : data.row.description;
   const status = isGIS
     ? data.row.main
-    : getProfitOrExpense(data.row.sellingPrice, data.row.costContribution) >= 0
+    : getProfitOrExpense(data.row.netProfit) >= 0
       ? 'Income'
       : 'Expense';
   const amount = isGIS
     ? data.row.total
-    : getProfitOrExpense(data.row.sellingPrice, data.row.costContribution);
+    : getProfitOrExpense(data.row.netProfit);
   const statusColor = status === 'Income' ? colors.success : colors.error;
 
   return (
@@ -649,8 +818,13 @@ export function SummaryTable({
     0,
   );
 
-  // Tighter widths — Items col just wide enough, contrib col fits ₱xx.xx (xx%) on one line
-  const COL_WIDTHS = [160, 160, 110, 110, 70];
+  const COL_CONFIG = [
+    { flex: 2, minWidth: 160 },
+    { flex: 2, minWidth: 160 },
+    { flex: 1.2, minWidth: 130 },
+    { flex: 1, minWidth: 110 },
+    { flex: 0.8, minWidth: 90 },
+  ];
   const HEADERS = [
     'Items',
     'Contribution(%) Cost',
@@ -664,18 +838,24 @@ export function SummaryTable({
   const [modalVisible, setModalVisible] = React.useState(false);
   const [selectedRow, setSelectedRow] = React.useState<SummaryRow | null>(null);
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-      <View>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={{ minWidth: '100%' }}
+      style={{ width: '100%' }}
+    >
+      <View style={{ minWidth: '100%' }}>
         {/* Header */}
         <View style={{ flexDirection: 'row', backgroundColor: colors.accent }}>
           {HEADERS.map((h, i) => (
             <View
               key={h}
               style={{
-                width: COL_WIDTHS[i],
+                flex: COL_CONFIG[i].flex,
+                minWidth: COL_CONFIG[i].minWidth,
                 paddingHorizontal: 10,
                 paddingVertical: 10,
-                alignItems: i > 0 ?  "flex-end": "flex-start",
+                alignItems: i > 0 ? 'flex-end' : 'flex-start',
                 justifyContent: i > 0 ? 'flex-start' : 'flex-end',
               }}
             >
@@ -700,13 +880,12 @@ export function SummaryTable({
             row.sellingPrice > 0
               ? (row.costContribution / row.sellingPrice) * 100
               : 0;
-          const profit = getProfitOrExpense(
-            row.sellingPrice,
-            row.costContribution,
-          );
+          const profit = getProfitOrExpense(row.netProfit);
           const Icon: LucideIcon =
             profit > 0 ? TrendingUp : profit === 0 ? Minus : TrendingDown;
-          const profitMargin = (profit / row.sellingPrice) * 100;
+          const profitMargin = row.sellingPrice
+            ? (profit / row.sellingPrice) * 100
+            : 0;
           return (
             <View
               key={row.id}
@@ -720,7 +899,8 @@ export function SummaryTable({
               {/* Items */}
               <View
                 style={{
-                  width: COL_WIDTHS[0],
+                  flex: COL_CONFIG[0].flex,
+                  minWidth: COL_CONFIG[0].minWidth,
                   paddingHorizontal: 10,
                   paddingVertical: 10,
                   justifyContent: 'center',
@@ -742,7 +922,8 @@ export function SummaryTable({
 
               <View
                 style={{
-                  width: COL_WIDTHS[1],
+                  flex: COL_CONFIG[1].flex,
+                  minWidth: COL_CONFIG[1].minWidth,
                   paddingHorizontal: 10,
                   paddingVertical: 10,
                   alignItems: 'flex-end',
@@ -757,7 +938,7 @@ export function SummaryTable({
                   }}
                   numberOfLines={1}
                 >
-                  {formatPeso(row.costContribution)}{' '}
+                  {formatPeso(row.costContribution + row.opExAmount)}{' '}
                   <Text
                     style={{
                       fontSize: 11,
@@ -773,7 +954,8 @@ export function SummaryTable({
               {/* Selling Price */}
               <View
                 style={{
-                  width: COL_WIDTHS[2],
+                  flex: COL_CONFIG[2].flex,
+                  minWidth: COL_CONFIG[2].minWidth,
                   paddingHorizontal: 10,
                   paddingVertical: 10,
                   alignItems: 'flex-end',
@@ -788,7 +970,8 @@ export function SummaryTable({
               {/* Profit */}
               <View
                 style={{
-                  width: COL_WIDTHS[3],
+                  flex: COL_CONFIG[3].flex,
+                  minWidth: COL_CONFIG[3].minWidth,
                   paddingHorizontal: 10,
                   paddingVertical: 10,
                   alignItems: 'flex-end',
@@ -809,7 +992,8 @@ export function SummaryTable({
               <TouchableOpacity
                 activeOpacity={0.7}
                 style={{
-                  width: COL_WIDTHS[4],
+                  flex: COL_CONFIG[4].flex,
+                  minWidth: COL_CONFIG[4].minWidth,
                   paddingHorizontal: 8,
                   paddingVertical: 8,
                   flexDirection: 'row',
@@ -851,7 +1035,9 @@ export function SummaryTable({
                           : colors.error,
                   }}
                 >
-                  {profitMargin.toFixed(1)}%
+                  {Number.isFinite(profitMargin)
+                    ? `${profitMargin.toFixed(1)}%`
+                    : '0.0%'}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -861,13 +1047,13 @@ export function SummaryTable({
           <DetailModal
             visible={modalVisible}
             onClose={() => setModalVisible(false)}
-            title={selectedRow.description}
+            title={selectedRow.itemName || selectedRow.description}
             sellingPrice={selectedRow.sellingPrice}
             costContribution={selectedRow.costContribution}
-            profit={getProfitOrExpense(
-              selectedRow.sellingPrice,
-              selectedRow.costContribution,
-            )}
+            profit={getProfitOrExpense(selectedRow.netProfit)}
+            opExAmount={selectedRow.opExAmount}
+            costLines={selectedRow.costLines}
+            computedCost={selectedRow.computedCost}
           />
         )}
         {/* Footer totals */}
@@ -881,7 +1067,8 @@ export function SummaryTable({
         >
           <View
             style={{
-              width: COL_WIDTHS[0],
+              flex: COL_CONFIG[0].flex,
+              minWidth: COL_CONFIG[0].minWidth,
               paddingHorizontal: 10,
               paddingVertical: 10,
             }}
@@ -894,7 +1081,8 @@ export function SummaryTable({
           </View>
           <View
             style={{
-              width: COL_WIDTHS[1],
+              flex: COL_CONFIG[1].flex,
+              minWidth: COL_CONFIG[1].minWidth,
               paddingHorizontal: 10,
               paddingVertical: 10,
               alignItems: 'flex-end',
@@ -916,7 +1104,8 @@ export function SummaryTable({
           </View>
           <View
             style={{
-              width: COL_WIDTHS[2],
+              flex: COL_CONFIG[2].flex,
+              minWidth: COL_CONFIG[2].minWidth,
               paddingHorizontal: 10,
               paddingVertical: 10,
               alignItems: 'flex-end',
@@ -930,7 +1119,8 @@ export function SummaryTable({
           </View>
           <View
             style={{
-              width: COL_WIDTHS[3],
+              flex: COL_CONFIG[3].flex,
+              minWidth: COL_CONFIG[3].minWidth,
               paddingHorizontal: 10,
               paddingVertical: 10,
               alignItems: 'flex-end',
@@ -946,6 +1136,12 @@ export function SummaryTable({
               {formatPeso(totalNet)}
             </Text>
           </View>
+          <View
+            style={{
+              flex: COL_CONFIG[4].flex,
+              minWidth: COL_CONFIG[4].minWidth,
+            }}
+          />
         </View>
       </View>
     </ScrollView>
@@ -959,7 +1155,11 @@ interface DetailModalProps {
   sellingPrice: number;
   costContribution: number;
   profit: number;
+  opExAmount: number;
+  costLines?: { label: string; amount: number }[];
+  computedCost: number;
 }
+
 export function DetailModal({
   visible,
   onClose,
@@ -967,13 +1167,16 @@ export function DetailModal({
   sellingPrice,
   costContribution,
   profit,
+  opExAmount = 0,
+  costLines = [],
+  computedCost,
 }: DetailModalProps) {
   const { colors } = useTheme();
   const profitMargin = sellingPrice > 0 ? (profit / sellingPrice) * 100 : 0;
   const contributionPct =
     sellingPrice > 0 ? (costContribution / sellingPrice) * 100 : 0;
+  const totalCost = costContribution + opExAmount;
 
-  const totalProfit = getProfitOrExpense(sellingPrice, costContribution);
   return (
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.backdrop}>
@@ -1007,13 +1210,31 @@ export function DetailModal({
             </View>
 
             <View style={styles.row}>
+              <Text style={[styles.label, { color: colors.textSecondary }]}>
+                OpEx Amount:
+              </Text>
+              <Text style={[styles.value, { color: colors.text }]}>
+                ₱{opExAmount.toFixed(2)}
+              </Text>
+            </View>
+
+            <View style={styles.row}>
+              <Text style={[styles.label, { color: colors.textSecondary }]}>
+                Total Cost:
+              </Text>
+              <Text style={[styles.value, { color: colors.text }]}>
+                ₱{totalCost.toFixed(2)}
+              </Text>
+            </View>
+
+            <View style={styles.row}>
               <Text
                 style={[
                   styles.label,
                   { color: profit >= 0 ? colors.success : colors.error },
                 ]}
               >
-                {totalProfit >= 0 ? 'Profit' : 'Loss'}:
+                {profit >= 0 ? 'Profit' : 'Loss'}:
               </Text>
               <Text
                 style={[
@@ -1032,15 +1253,180 @@ export function DetailModal({
                 Calculation:
               </Text>
               <Text style={[styles.calcText, { color: colors.textSecondary }]}>
-                Profit = Selling Price - Contribution Cost{'\n'}
-                Profit = ₱{sellingPrice.toFixed(2)} - ₱
-                {costContribution.toFixed(2)}
+                Contribution Cost ={' '}
+                <Text style={{ color: colors.error }}>
+                  {formatPeso(costContribution)}
+                </Text>{' '}
+                +{' '}
+                <Text style={{ color: colors.error }}>
+                  {formatPeso(opExAmount)}
+                </Text>
                 {'\n'}
-                Profit = ₱{profit.toFixed(2)}
+                Total Cost ={' '}
+                <Text style={{ color: colors.error }}>
+                  {formatPeso(totalCost)}
+                </Text>
+                {'\n'}
+                Profit ={' '}
+                <Text style={{ color: colors.success }}>
+                  Selling Price
+                </Text> -{' '}
+                <Text style={{ color: colors.error }}>Total Cost</Text>
+                {'\n'}
+                Profit ={' '}
+                <Text style={{ color: colors.success }}>
+                  ₱{sellingPrice.toFixed(2)}
+                </Text>{' '}
+                -{' '}
+                <Text style={{ color: colors.error }}>
+                  ₱{totalCost.toFixed(2)}
+                </Text>
+                {'\n'}
+                {profit >= 0 ? 'Profit' : 'Loss'} ={' '}
+                <Text
+                  style={{ color: profit >= 0 ? colors.success : colors.error }}
+                >
+                  ₱{profit.toFixed(2)}
+                </Text>
               </Text>
             </View>
-          </ScrollView>
 
+            {/* IMPROVED Cost Breakdown Section */}
+            {costLines.length > 0 ? (
+              <View
+                style={{
+                  marginTop: 16,
+                  borderTopWidth: 1,
+                  borderTopColor: colors.border,
+                  paddingTop: 8,
+                }}
+              >
+                <Text
+                  style={{
+                    color: colors.text,
+                    fontSize: 14,
+                    fontWeight: '700',
+                    marginBottom: 12,
+                  }}
+                >
+                  Cost Breakdown
+                </Text>
+
+                {/* Cost Lines */}
+                {costLines.map((line, idx) => (
+                  <View
+                    key={`${line.label}-${idx}`}
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      paddingVertical: 8,
+                      paddingHorizontal: 12,
+                      backgroundColor:
+                        idx % 2 === 0 ? colors.card : 'transparent',
+                      borderRadius: 6,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: colors.textSecondary,
+                        fontSize: 13,
+                        flex: 1,
+                      }}
+                    >
+                      {line.label}
+                    </Text>
+                    <Text
+                      style={{
+                        color: colors.text,
+                        fontSize: 13,
+                        fontWeight: '600',
+                      }}
+                    >
+                      {formatPeso(line.amount)}
+                    </Text>
+                  </View>
+                ))}
+
+                {/* OpEx Amount Row */}
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    paddingVertical: 8,
+                    paddingHorizontal: 12,
+                    backgroundColor:
+                      costLines.length % 2 === 0 ? colors.card : 'transparent',
+                    borderRadius: 6,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: colors.textSecondary,
+                      fontSize: 13,
+                      flex: 1,
+                    }}
+                  >
+                    Operating Expense
+                  </Text>
+                  <Text
+                    style={{
+                      color: colors.text,
+                      fontSize: 13,
+                      fontWeight: '600',
+                    }}
+                  >
+                    {formatPeso(opExAmount)}
+                  </Text>
+                </View>
+
+                {/* Divider */}
+                <View
+                  style={{
+                    height: 1,
+                    backgroundColor: colors.border,
+                    marginVertical: 10,
+                  }}
+                />
+
+                {/* Computed Cost Total */}
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    paddingVertical: 12,
+                    paddingHorizontal: 12,
+                    backgroundColor: colors.primary + '15',
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: colors.primary + '30',
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: colors.text,
+                      fontSize: 14,
+                      fontWeight: '700',
+                      flex: 1,
+                    }}
+                  >
+                    Computed Cost (Total)
+                  </Text>
+                  <Text
+                    style={{
+                      color: colors.primary,
+                      fontSize: 15,
+                      fontWeight: '800',
+                    }}
+                  >
+                    {formatPeso(computedCost)}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+          </ScrollView>
           <Pressable
             onPress={onClose}
             style={[styles.closeButton, { backgroundColor: colors.accent }]}
@@ -1064,6 +1450,7 @@ const styles = StyleSheet.create({
   },
   modalContainer: {
     width: '85%',
+    maxWidth: 500, // ← ADDED: Limit width on desktop
     borderRadius: 12,
     padding: 16,
   },

@@ -1,8 +1,47 @@
 import { gql } from 'graphql-request';
 import { graphQLRequest } from './apiClient';
 import { formatGraphQLError } from '@/utils/errorFormatter';
-
+// example service
 export class SalesService {
+  static async getTransactionsByYear(year: string): Promise<any[]> {
+    // Calculate start and end dates for the year
+    const startDate = `${year}-01-01T00:00:00.000Z`;
+    const endDate = `${year}-12-31T23:59:59.999Z`;
+
+    const QUERY = gql`
+      query GetTransactionsByOrgId($startDate: String, $endDate: String) {
+        getTransactionsByOrgId(startDate: $startDate, endDate: $endDate) {
+          id
+          total
+          subtotal
+          vatAmount
+          paymentMethod
+          status
+          createdAt
+          items {
+            itemId
+            quantity
+            priceAtSale
+          }
+        }
+      }
+    `;
+    
+    try {
+      const response = await graphQLRequest<{ getTransactionsByOrgId: any[] }>(
+        QUERY,
+        { startDate, endDate }
+      );
+      console.log('Transactions by year response:', response);
+      return response.getTransactionsByOrgId ?? [];
+    } catch (error) {
+      console.error('Failed to get transactions by year:', error);
+      const message = formatGraphQLError(error);
+      console.error('Error message:', message);
+      return [];
+    }
+  }
+
   static async getTransactions(outletId: number, startDate?: string, endDate?: string): Promise<any[]> {
     const QUERY = gql`
       query GetTransactionsByStoreId($outletId: Int!, $startDate: String, $endDate: String) {
@@ -16,7 +55,6 @@ export class SalesService {
           cashReceived
           change
           paymentMethod
-          
           status
           createdAt
           itemsSold {
@@ -36,7 +74,7 @@ export class SalesService {
     return response.getTransactionsByStoreId;
   }
 
-  static async getTransactionsByOrgId(startDate?: string, endDate?: string): Promise<any[]> {
+  static async getTransactionsByOrgId(startDate?: string, endDate?: string, year?: string): Promise<any[]> {
     const QUERY = gql`
     query GetTransactionsByOrgId($startDate: String, $endDate: String) {
       getTransactionsByOrgId(startDate: $startDate, endDate: $endDate) {

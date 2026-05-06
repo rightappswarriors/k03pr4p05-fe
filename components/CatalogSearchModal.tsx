@@ -31,6 +31,7 @@ async function searchCatalog(
       id: item.id.toString(),
       name: item.name,
       barcode: item.barcode,
+      itemCode: item.itemCode,
       brand: item.brandDetails?.name,
       category: item.category?.name,
       image: item.media?.[0]?.url,

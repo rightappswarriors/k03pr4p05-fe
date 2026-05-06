@@ -7,10 +7,21 @@ export type VatType =
   | "Zero Rated";
 
   
+export function calVatAmount(grossAmount: number, vatRate?: number): number {
+
+  return parseFloat((grossAmount * (vatRate || 0)).toFixed(2));
+}
 export function calcVatAndNet(
   grossAmount: number,
-  vatType: string
+  vatType: string | { rate: number; name?: string }
 ): { vat: number; net: number } {
+  // If vatType is an object with rate, use it directly
+  if (typeof vatType === 'object' && vatType.rate !== undefined) {
+    const vat = grossAmount * vatType.rate;
+    return { vat: parseFloat(vat.toFixed(2)), net: grossAmount };
+  }
+
+  // Fallback to string matching for backward compatibility
   switch (vatType) {
     case "VAT Inclusive (12%)": {
       const net = grossAmount / 1.12;
@@ -32,8 +43,14 @@ export function calcVatAndNet(
  
 export function getProfitOrExpense(
   sellingPrice: number,
-  costContribution: number
+  costContribution?: number
 ): number {
+  if (costContribution === undefined) {
+    return sellingPrice; // treat as profit if cost contribution is missing
+  }
+  if (!Number.isFinite(sellingPrice) || !Number.isFinite(costContribution)) {
+    return 0;
+  }
   return sellingPrice - costContribution;
 }
 

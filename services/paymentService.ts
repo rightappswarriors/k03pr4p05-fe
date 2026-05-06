@@ -2,8 +2,9 @@ import { Alert, Platform } from 'react-native';
 import { PrinterService } from '@/services/printerService';
 import { TransactionService } from '@/services/orderService';
 import { SalesService } from '@/services/salesService';
-import type { Outlet, Receipt, User } from '@/types';
-import { calculateTotal } from '@/hooks/calculateTotal';
+import type { Outlet, Receipt, User, DEFAULT_VAT_RATE } from '@/types';
+import { DEFAULT_VAT_RATE as VAT_RATE } from '@/types';
+import { calculateTotal, calculateItemVat } from '@/hooks/calculateTotal';
 
 export class ReceiptService {
   static async processAndPrintReceipt({
@@ -38,11 +39,22 @@ export class ReceiptService {
   promoDiscountAmt?: number;
 }) {
   try {
+    let printWindow: Window | null = null;
+    if (Platform.OS === 'web') {
+      printWindow = window.open('', '_blank', 'width=500,height=800');
+      if (!printWindow) {
+        window.alert('Unable to open print window. Please allow popups for this site.');
+        onFail?.();
+        return;
+      }
+    }
+
     const { total, subtotal, vatAmount, discount, discountRate } =
       calculateTotal(items, outlet, {
         type: discountOption as any,
         applyVatExempt: Boolean(isVatExempt),
-      });
+      },
+      Boolean(isVatExempt));
 
     if (paymentMethod === 'CASH') {
       if (!cashReceived || cashReceived < total) {
@@ -54,15 +66,23 @@ export class ReceiptService {
 
     const change = cashReceived - total;
 
-    const receiptData: Receipt = {
-      outlet,
-      transaction: {
-        id: `TXN-${Date.now()}`,
-        date: new Date().toISOString(),
-        timestamp: new Date().toLocaleString(),
-        cashier: 'POS System',
-      },
-      items: items.map((data) => ({
+    // Calculate per-item VAT
+    const itemsWithVat = items.map((data) => {
+      let itemVat = 0;
+      if (outlet.isVatRegistered && data.vatExempt !== true && !isVatExempt) {
+        const itemPrice = data.priceAtSale ?? data.price;
+        const discountQty = (data as any).discountQuantity ?? 0;
+        const discountRate = (data as any).discountRate ?? 0;
+        
+        const discountedPrice = itemPrice * (1 - discountRate);
+        const discountedTotal = discountedPrice * discountQty;
+        const regularTotal = itemPrice * (data.quantity - discountQty);
+        const lineTotal = discountedTotal + regularTotal;
+        
+        itemVat = lineTotal * VAT_RATE;
+      }
+      
+      return {
         id: data.id,
         name: data.name,
         price: data.price,
@@ -72,9 +92,22 @@ export class ReceiptService {
         unitName: data.unitName,
         unitLabel: data.unitLabel,
         subtotal: (data.priceAtSale ?? data.price) * data.quantity,
-        vatable: data.vatable,
+        discountAmount: data.discountAmount ?? 0, // ← per-item discount
+        vatExempt: data.vatExempt,
         barcode: data.barcode,
-      })),
+        itemVatAmount: itemVat, // ← per-item VAT
+      };
+    });
+
+    const receiptData: Receipt = {
+      outlet,
+      transaction: {
+        id: `TXN-${Date.now()}`,
+        date: new Date().toISOString(),
+        timestamp: new Date().toLocaleString(),
+        cashier: 'POS System',
+      },
+      items: itemsWithVat,
       totals: {
         subtotal: parseFloat(subtotal.toFixed(2)),
         vatAmount: parseFloat(vatAmount.toFixed(2)),
@@ -118,6 +151,7 @@ export class ReceiptService {
       priceAtSale: data.priceAtSale ?? data.price,
       unitId: data.unitId ? Number(data.unitId) : undefined,
       unitName: data.unitName,
+      discountAmount: data.discountAmount ?? 0, // ← new — per-item discount
     }));
 
     await SalesService.createTransaction({
@@ -149,7 +183,10 @@ export class ReceiptService {
     });
 
     // ← await print, no setTimeout
-    await PrinterService.printOrderReceipt(receiptData);
+    const printed = await PrinterService.printOrderReceipt(receiptData, printWindow);
+    if (!printed) {
+      throw new Error('Unable to print receipt.');
+    }
 
     if (Platform.OS === 'web') {
       alert('Transaction completed successfully!');
@@ -163,7 +200,12 @@ export class ReceiptService {
     ]);
   } catch (error: any) {
     console.error('Error printing receipt:', error);
-    Alert.alert('Error', error?.message ?? 'Failed to process the receipt.');
+    const errorMessage = error?.message ?? 'Failed to process the receipt.';
+    if (Platform.OS === 'web') {
+      alert(errorMessage);
+    } else {
+      Alert.alert('Error', errorMessage);
+    }
     onFail?.();
   }
 }

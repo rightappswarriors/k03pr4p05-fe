@@ -1,5 +1,6 @@
 // components/pos/ReceiptModal.tsx
-import React, { useRef, useEffect, useState } from 'react';
+
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import {
   Modal,
   View,
@@ -9,6 +10,8 @@ import {
   StyleSheet,
   ScrollView,
   Image,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { CustomCheckbox } from '@/components/pos/checkbox/CustomCheckbox';
 import { PaymentBottomSheetRef } from '@/types';
@@ -21,11 +24,12 @@ import {
   Store,
 } from 'lucide-react-native';
 import type { DiscountType } from '@/types';
+import { DEFAULT_VAT_RATE as VAT_RATE } from '@/types';
 import { useTheme } from '@/contexts/ThemeContext';
 import { usePOS } from '@/contexts/POSContext';
 import { calculateTotal } from '@/hooks/calculateTotal';
-import DiscountModal from './DiscountModal';
 import PaymentBottomSheet from '@/components/pos/paymentMethod/PaymentBottomSheet';
+import { ItemDiscountModal } from './ItemDiscountModal';
 import RootView from '@/components/ui/RootView';
 import { useAuth } from '@/contexts/AuthContext';
 import { ReceiptService } from '@/services/paymentService';
@@ -41,112 +45,44 @@ interface ReceiptModalProps {
   onOrderPlaced?: () => void;
 }
 
-export function ReceiptModal({
-  visible,
-  onClose,
-  onOrderPlaced,
-}: ReceiptModalProps) {
-  const paymentSheetRef = useRef<PaymentBottomSheetRef>(null);
-  const isConnected = useNetworkStatus();
-  const { cartItems: items, clearCart, outlet } = usePOS();
-  const { colors } = useTheme();
-  const { isDesktop, isTablet } = useResponsive();
-  const isWide = isDesktop || isTablet;
-  const [vatExemptRefNo, setVatExemptRefNo] = useState('');
-  const [cashReceived, setCashReceived] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [discountOption, setDiscountOption] = useState<DiscountType>('NONE');
-  const [isDiscounted, setIsDiscounted] = useState(false);
-  const [applyVatExempt, setApplyVatExempt] = useState(false);
-  const [isVisible, setIsVisible] = useState(false);
-  const [selectedPromoId, setSelectedPromoId] = useState<number | undefined>(undefined);
+interface ItemDiscount {
+  discountAmount: number;
+  discountQuantity: number;
+  discountRate: number;
+}
 
-  useEffect(() => {
-    if (!isDiscounted) {
-      setDiscountOption('NONE');
-      setSelectedPromoId(undefined);
-      setApplyVatExempt(false);
-    }
-  }, [isDiscounted]);
+// ─────────────────────────────────────────────────────────────────────────────
+// ItemRow — fully outside ReceiptModal so React never remounts it on re-render
+// ─────────────────────────────────────────────────────────────────────────────
+interface ItemRowProps {
+  data: any;
+  colors: any;
+  onDiscountPress: (item: any) => void;
+  outlet?: any;
+  isVatExempt?: boolean;
+}
 
-  useEffect(() => {
-    if (discountOption === 'NONE') {
-      setSelectedPromoId(undefined);
-    }
-    if (!/SENIOR|PWD/.test(discountOption)) {
-      setApplyVatExempt(false);
-    }
-  }, [discountOption]);
-  if (!outlet) return null;
-
-  const isVatExemptOption = /SENIOR|PWD/.test(discountOption);
-  const isVatExemptActive = isVatExemptOption && applyVatExempt && isDiscounted;
-  const vatExemptType = discountOption.includes('PWD')
-    ? 'PWD'
-    : discountOption.includes('SENIOR')
-    ? 'SENIOR_CITIZEN'
-    : undefined;
-
-  const { total, subtotal, vatAmount, discount, discountRate, vatExemptAmount } =
-    calculateTotal(items, outlet, {
-      type: discountOption,
-      applyVatExempt: isVatExemptActive,
-    });
-
-  const { user } = useAuth();
-  const cashAmount = parseFloat(cashReceived) || 0;
-  const change = cashAmount - total;
-
-  if (!outlet || !user) return null;
-
-  const handlePrintReceipt = async () => {
-    setIsProcessing(true);
-    try {
-      await ReceiptService.processAndPrintReceipt({
-        items,
-        cashReceived: parseFloat(cashReceived) || 0,
-        paymentMethod: 'CASH',
-        discountOption,
-        outlet,
-        user,
-        isVatExempt: isVatExemptActive,
-        vatExemptType: isVatExemptActive ? vatExemptType : undefined,
-        vatExemptRefNo: isVatExemptActive ? vatExemptRefNo : undefined,
-        vatExemptAmount: isVatExemptActive ? vatExemptAmount : undefined,
-        outletPromoId: selectedPromoId ?? undefined,
-        promoDiscountAmt: discount,
-        onSuccess: () => {
-          setIsProcessing(false);
-          onOrderPlaced?.();
-          clearCart();
-          handleClose();
-        },
-        onFail: () => {
-          setIsProcessing(false);
-        },
-      });
-    } catch {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleClose = () => {
-    setCashReceived('');
-    setIsProcessing(false);
-    onClose();
-  };
-
-  // ── Item row ────────────────────────────────────────────────────────────────
-  const ItemRow = ({ data }: { data: any }) => {
+const ItemRow = React.memo(
+  ({ data, colors, onDiscountPress, outlet, isVatExempt }: ItemRowProps) => {
     const isWeight =
       data.unitName && WEIGHT_UNITS.includes(data.unitName.toLowerCase());
     const unitPrice = data.priceAtSale ?? data.price;
-    const lineTotal = unitPrice * data.quantity;
+    const discountAmount = data.discountAmount ?? 0;
+    const discountQty = data.discountQuantity ?? 0;
+    const discountRate = data.discountRate ?? 0;
+
+    const discountedPrice = unitPrice * (1 - discountRate);
+    const discountedTotal = discountedPrice * discountQty;
+    const regularTotal = unitPrice * (data.quantity - discountQty);
+    const lineTotal = discountedTotal + regularTotal;
+
+    // Use pre-calculated VAT amount
+    const itemVat = data.itemVatAmount ?? 0;
+    const lineTotalWithVat = lineTotal + itemVat;
 
     return (
       <View style={[rs.itemRow, { borderBottomColor: colors.border }]}>
         <View style={rs.itemLeft}>
-          {/* Image or placeholder */}
           {data.image ? (
             <Image source={{ uri: data.image }} style={rs.itemThumb} />
           ) : (
@@ -168,116 +104,220 @@ export function ReceiptModal({
             </View>
           )}
           <View style={{ flex: 1 }}>
-            <Text style={[rs.itemName, { color: colors.text }]}>
-              {data.name}
-            </Text>
+            <View
+              style={{
+                flexDirection: 'row',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <Text style={[rs.itemName, { color: colors.text }]}>
+                {data.name}
+              </Text>
+              {itemVat > 0 && (
+                <View style={rs.vatBadge}>
+                  <Text style={rs.vatBadgeText}>VAT 12%</Text>
+                </View>
+              )}
+            </View>
             <Text style={[rs.itemMeta, { color: colors.textSecondary }]}>
               {isWeight
                 ? `${data.quantity.toFixed(3)} ${data.unitName} × ₱${unitPrice.toFixed(2)}/${data.unitName}`
                 : `${data.quantity} ${data.unitLabel ?? 'pc'} × ₱${unitPrice.toFixed(2)}`}
             </Text>
+            {discountAmount > 0 && (
+              <Text style={[rs.itemMeta, { color: '#EF4444' }]}>
+                {discountQty} @ {(discountRate * 100).toFixed(0)}% off: -₱
+                {discountAmount.toFixed(2)}
+              </Text>
+            )}
+            {itemVat > 0 && (
+              <Text style={[rs.itemMeta, { color: colors.textSecondary }]}>
+                VAT (12%): ₱{itemVat.toFixed(2)}
+              </Text>
+            )}
           </View>
         </View>
-        <Text style={[rs.itemTotal, { color: colors.text }]}>
-          ₱{lineTotal.toFixed(2)}
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text style={[rs.itemTotal, { color: colors.text }]}>
+            ₱{lineTotalWithVat.toFixed(2)}
+          </Text>
+          <TouchableOpacity
+            onPress={() => onDiscountPress(data)}
+            style={{
+              marginTop: 4,
+              paddingHorizontal: 8,
+              paddingVertical: 4,
+              backgroundColor: discountAmount > 0 ? '#EF4444' : colors.primary,
+              borderRadius: 4,
+            }}
+          >
+            <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>
+              {discountAmount > 0 ? 'Edit Discount' : 'Discount'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  },
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TotalsBlock — outside ReceiptModal, receives all values as props
+// ─────────────────────────────────────────────────────────────────────────────
+interface TotalsBlockProps {
+  colors: any;
+  outlet: any;
+  subtotal: number;
+  vatAmount: number;
+  vatExemptAmount: number | undefined;
+  discount: number;
+  discountRate: number;
+  discountOption: DiscountType;
+  total: number;
+  isDiscounted: boolean;
+  isVatExemptOption: boolean;
+  applyVatExempt: boolean;
+  isVatExemptActive: boolean;
+}
+
+const TotalsBlock = React.memo(
+  ({
+    colors,
+    outlet,
+    subtotal,
+    vatAmount,
+    vatExemptAmount,
+    discount,
+    discountRate,
+    discountOption,
+    total,
+    isDiscounted,
+    isVatExemptOption,
+    applyVatExempt,
+    isVatExemptActive,
+  }: TotalsBlockProps) => (
+    <View style={[rs.totalsBlock, { borderColor: colors.border }]}>
+      <View style={rs.totalRow}>
+        <Text style={[rs.totalLabel, { color: colors.textSecondary }]}>
+          Subtotal
+        </Text>
+        <Text style={[rs.totalValue, { color: colors.text }]}>
+          ₱{subtotal.toFixed(2)}
         </Text>
       </View>
-    );
-  };
 
-  // ── Totals block ────────────────────────────────────────────────────────────
-  const TotalsBlock = () => {
-    const isSeniorOrPwd =
-      discountOption === 'SENIOR' || discountOption === 'PWD';
-    return (
-      <View style={[rs.totalsBlock, { borderColor: colors.border }]}>
+      {outlet.isVatRegistered && vatAmount > 0 && (
         <View style={rs.totalRow}>
           <Text style={[rs.totalLabel, { color: colors.textSecondary }]}>
-            Subtotal
+            VAT
           </Text>
           <Text style={[rs.totalValue, { color: colors.text }]}>
-            ₱{subtotal.toFixed(2)}
+            ₱{vatAmount.toFixed(2)}
           </Text>
         </View>
+      )}
 
-        {/* VAT line — hidden when SC/PWD (exempt) */}
-{outlet.isVatRegistered && !(isVatExemptOption && applyVatExempt) && (
-          <View style={rs.totalRow}>
-            <Text style={[rs.totalLabel, { color: colors.textSecondary }]}> 
-              VAT (
-              {outlet.vatType?.rate
-                ? outlet.vatType.rate * 100
-                : outlet.VatPercent
-                  ? outlet.VatPercent * 100
-                  : 0}
-              %)
-            </Text>
-            <Text style={[rs.totalValue, { color: colors.text }]}> 
-              ₱{vatAmount.toFixed(2)}
-            </Text>
-          </View>
-        )}
-
-        {isVatExemptActive && vatExemptAmount !== undefined && (
-          <View style={rs.totalRow}>
-            <Text style={[rs.totalLabel, { color: '#10B981' }]}> 
-              VAT Exempted
-            </Text>
-            <Text style={[rs.totalValue, { color: '#10B981' }]}> 
-              -₱{vatExemptAmount.toFixed(2)}
-            </Text>
-          </View>
-        )}
-
-        {/* Discount line */}
-        {isDiscounted && discount > 0 && (
-          <View style={rs.totalRow}>
-            <Text style={[rs.totalLabel, { color: colors.textSecondary }]}> 
-              Discount {discountOption} ({discountRate.toFixed(0)}%)
-            </Text>
-            <Text style={[rs.totalValue, { color: '#EF4444' }]}>
-              -₱{discount.toFixed(2)}
-            </Text>
-          </View>
-        )}
-
-        <View
-          style={[rs.totalRow, rs.grandRow, { borderTopColor: colors.border }]}
-        >
-          <Text style={[rs.grandLabel, { color: colors.text }]}>Total</Text>
-          <Text style={[rs.grandValue, { color: colors.accent }]}>
-            ₱{total.toFixed(2)}
+      {isVatExemptActive && vatExemptAmount !== undefined && (
+        <View style={rs.totalRow}>
+          <Text style={[rs.totalLabel, { color: '#10B981' }]}>
+            VAT Exempted
+          </Text>
+          <Text style={[rs.totalValue, { color: '#10B981' }]}>
+            -₱{vatExemptAmount.toFixed(2)}
           </Text>
         </View>
+      )}
+
+      {isDiscounted && discount > 0 && (
+        <View style={rs.totalRow}>
+          <Text style={[rs.totalLabel, { color: colors.textSecondary }]}>
+            Discount {discountOption} ({(discountRate * 100).toFixed(0)}%)
+          </Text>
+          <Text style={[rs.totalValue, { color: '#EF4444' }]}>
+            -₱{discount.toFixed(2)}
+          </Text>
+        </View>
+      )}
+
+      <View
+        style={[rs.totalRow, rs.grandRow, { borderTopColor: colors.border }]}
+      >
+        <Text style={[rs.grandLabel, { color: colors.text }]}>Total</Text>
+        <Text style={[rs.grandValue, { color: colors.accent }]}>
+          ₱{total.toFixed(2)}
+        </Text>
       </View>
-    );
-  };
+    </View>
+  ),
+);
 
-  // ── Payment block ───────────────────────────────────────────────────────────
-  const PaymentBlock = () => (
+// ─────────────────────────────────────────────────────────────────────────────
+// PaymentBlock — outside ReceiptModal, receives all state/setters as props
+// ─────────────────────────────────────────────────────────────────────────────
+interface PaymentBlockProps {
+  colors: any;
+  outlet: any;
+  isConnected: boolean;
+  isDiscounted: boolean;
+  isVatExemptOption: boolean;
+  applyVatExempt: boolean;
+  onToggleVatExempt: () => void;
+  discountOption: DiscountType;
+  onOpenDiscountModal: () => void;
+  setIsDiscounted: (val: boolean) => void;
+  setDiscountOption: (val: DiscountType) => void;
+  setSelectedPromoId: (val: number | undefined) => void;
+  subtotal: number;
+  vatAmount: number;
+  vatExemptRefNo: string;
+  setVatExemptRefNo: (val: string) => void;
+  cashReceived: string;
+  setCashReceived: (val: string) => void;
+  cashAmount: number;
+  change: number;
+  total: number;
+  paymentSheetRef: React.RefObject<PaymentBottomSheetRef | null>;
+}
+
+const PaymentBlock = React.memo(
+  ({
+    colors,
+    outlet,
+    isConnected,
+    isDiscounted,
+    isVatExemptOption,
+    applyVatExempt,
+    onToggleVatExempt,
+    discountOption,
+    onOpenDiscountModal,
+    setIsDiscounted,
+    setDiscountOption,
+    setSelectedPromoId,
+    subtotal,
+    vatAmount,
+    vatExemptRefNo,
+    setVatExemptRefNo,
+    cashReceived,
+    setCashReceived,
+    cashAmount,
+    change,
+    total,
+    paymentSheetRef,
+  }: PaymentBlockProps) => (
     <View style={rs.paymentBlock}>
       {/* Discount + payment method row */}
       <View style={rs.paymentTopRow}>
         <View style={rs.paymentTopLeft}>
-          <CustomCheckbox
-            label="Apply Discount"
-            checked={isDiscounted}
-            onPress={() => {
-              if (!isDiscounted) setIsDiscounted(true);
-              setIsVisible(!isVisible);
-            }}
-            colors={colors}
-          />
-          {isVatExemptOption && isDiscounted && (
-            <View style={rs.vatExemptCheckbox}>
-              <CustomCheckbox
-                label="VAT Exempt"
-                checked={applyVatExempt}
-                onPress={() => setApplyVatExempt((prev) => !prev)}
-                colors={colors}
-              />
-            </View>
-          )}
+          <View style={rs.vatExemptCheckbox}>
+            <CustomCheckbox
+              label="VAT Exempt"
+              checked={applyVatExempt}
+              onPress={onToggleVatExempt}
+              colors={colors}
+            />
+          </View>
         </View>
         <TouchableOpacity
           style={rs.payMethodBtn}
@@ -311,35 +351,35 @@ export function ReceiptModal({
           </Text>
         </TouchableOpacity>
       </View>
-      <DiscountModal
-        isVisible={isVisible}
-        onClose={() => setIsVisible(false)}
-        isDiscounted={isDiscounted}
-        setIsDiscounted={() => setIsDiscounted(!isDiscounted)}
-        discountOption={discountOption}
-        setDiscountOption={setDiscountOption}
-        setSelectedPromoId={setSelectedPromoId}
-        subtotal={subtotal} // ← add
-        vatAmount={vatAmount} // ← add
-        vatExemptRefNo={vatExemptRefNo} // ← move from PaymentBlock
-        setVatExemptRefNo={setVatExemptRefNo} // ← move from PaymentBlock
-      />
-      {isVatExemptOption && (
+
+      {/* SC/PWD ID Input */}
+      {applyVatExempt && (
         <View
           style={[
             rs.cashRow,
-            { backgroundColor: colors.background, borderColor: applyVatExempt ? '#10B981' : colors.border },
+            {
+              backgroundColor: colors.background,
+              borderColor: applyVatExempt ? '#10B981' : colors.border,
+            },
           ]}
         >
-          <Text style={{ fontSize: 13, color: applyVatExempt ? '#10B981' : colors.textSecondary, fontWeight: '600' }}>
-            {discountOption.includes('PWD') ? 'PWD' : 'SC'} ID
+          <Text
+            style={{
+              fontSize: 13,
+              color: applyVatExempt ? '#10B981' : colors.textSecondary,
+              fontWeight: '600',
+            }}
+          >
+            SC/PWD ID
           </Text>
           <TextInput
             style={[rs.cashInput, { color: colors.text }]}
-            placeholder={`Enter ${discountOption.includes('PWD') ? 'PWD' : 'Senior Citizen'} ID No.`}
+            placeholder="Enter Senior Citizen or PWD ID No."
             placeholderTextColor={colors.textSecondary}
             value={vatExemptRefNo}
             onChangeText={setVatExemptRefNo}
+            editable={true}
+            selectTextOnFocus={false}
           />
         </View>
       )}
@@ -359,6 +399,8 @@ export function ReceiptModal({
           value={cashReceived}
           onChangeText={setCashReceived}
           keyboardType="numeric"
+          editable={true}
+          selectTextOnFocus={false}
         />
       </View>
 
@@ -392,7 +434,237 @@ export function ReceiptModal({
         </View>
       )}
     </View>
+  ),
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ReceiptModal — only state and coordination logic lives here
+// ─────────────────────────────────────────────────────────────────────────────
+export function ReceiptModal({
+  visible,
+  onClose,
+  onOrderPlaced,
+}: ReceiptModalProps) {
+  const paymentSheetRef = useRef<PaymentBottomSheetRef>(null);
+  const isConnected = useNetworkStatus();
+  const { cartItems: items, clearCart, outlet } = usePOS();
+  const { colors } = useTheme();
+  const { isDesktop, isTablet } = useResponsive();
+  const { user } = useAuth();
+  const isWide = isDesktop || isTablet;
+
+  const [vatExemptRefNo, setVatExemptRefNo] = useState('');
+  const [cashReceived, setCashReceived] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [discountOption, setDiscountOption] = useState<DiscountType>('NONE');
+  const [isDiscounted, setIsDiscounted] = useState(false);
+  const [applyVatExempt, setApplyVatExempt] = useState(false);
+  const [selectedPromoId, setSelectedPromoId] = useState<number | undefined>(
+    undefined,
   );
+  const [itemDiscounts, setItemDiscounts] = useState<
+    Record<string, ItemDiscount>
+  >({});
+  const [discountModalVisible, setDiscountModalVisible] = useState(false);
+  const [selectedDiscountItem, setSelectedDiscountItem] = useState<any>(null);
+
+  useEffect(() => {
+    if (!isDiscounted) {
+      setDiscountOption('NONE');
+      setSelectedPromoId(undefined);
+    }
+  }, [isDiscounted]);
+
+  useEffect(() => {
+    if (discountOption === 'NONE') {
+      setSelectedPromoId(undefined);
+    }
+  }, [discountOption]);
+
+  // ── All hooks must come before any early return ──────────────────────────
+  const handleClose = useCallback(() => {
+    setCashReceived('');
+    setIsProcessing(false);
+    onClose();
+  }, [onClose]);
+
+  const handleItemDiscountPress = useCallback((item: any) => {
+    setSelectedDiscountItem(item);
+    setDiscountModalVisible(true);
+  }, []);
+
+  const handleToggleVatExempt = useCallback(() => {
+    setApplyVatExempt((prev) => !prev);
+  }, []);
+
+  // Placeholder for future discount modal — wire up your own modal here
+  const handleOpenDiscountModal = useCallback(() => {
+    // TODO: open your discount selection modal
+  }, []);
+
+  // ── Early return after all hooks ─────────────────────────────────────────
+  if (!outlet || !user) return null;
+
+  // ── Derived values (not hooks, safe after early return) ──────────────────
+  const isVatExemptOption = /SENIOR|PWD/.test(discountOption);
+  const isVatExemptActive = applyVatExempt; // Just use applyVatExempt directly
+  const vatExemptType = 'SENIOR_CITIZEN'; // Default to senior citizen for VAT exempt
+
+  const itemsWithDiscounts = items.map((item) => ({
+    ...item,
+    discountAmount: itemDiscounts[item.id]?.discountAmount || 0,
+    discountQuantity: itemDiscounts[item.id]?.discountQuantity || 0,
+    discountRate: itemDiscounts[item.id]?.discountRate || 0,
+  }));
+
+  // First, calculate totals - this will determine VAT amounts based on isVatExemptActive
+  const {
+    total,
+    subtotal,
+    vatAmount,
+    discount,
+    discountRate,
+    vatExemptAmount,
+  } = calculateTotal(
+    itemsWithDiscounts,
+    outlet,
+    {
+      type: discountOption,
+      applyVatExempt: false, // Don't apply VAT exempt discount in calculateTotal
+    },
+    isVatExemptActive, // But pass the flag to remove VAT
+  );
+
+  // Then calculate itemVatAmount for display purposes AFTER getting the calculation
+  const itemsWithVat = itemsWithDiscounts.map((item) => {
+    let itemVat = 0;
+    if (
+      outlet?.isVatRegistered &&
+      item.vatExempt !== true &&
+      !isVatExemptActive // This will now properly be false when VAT Exempt is checked
+    ) {
+      const unitPrice = item.priceAtSale ?? item.price;
+      const discountQty = item.discountQuantity ?? 0;
+      const discountRate = item.discountRate ?? 0;
+
+      const discountedPrice = unitPrice * (1 - discountRate);
+      const discountedTotal = discountedPrice * discountQty;
+      const regularTotal = unitPrice * (item.quantity - discountQty);
+      const lineTotal = discountedTotal + regularTotal;
+
+      itemVat = lineTotal * VAT_RATE;
+    }
+
+    return {
+      ...item,
+      itemVatAmount: itemVat,
+    };
+  });
+
+  console.log('ReceiptModal totals:', {
+    total,
+    subtotal,
+    vatAmount,
+    discount,
+    discountRate,
+    vatExemptAmount,
+    isVatExemptActive,
+  });
+
+  const cashAmount = parseFloat(cashReceived) || 0;
+  const change = cashAmount - total;
+
+  const applyItemDiscount = (discountData: ItemDiscount) => {
+    if (selectedDiscountItem) {
+      setItemDiscounts((prev) => ({
+        ...prev,
+        [selectedDiscountItem.id]: discountData,
+      }));
+    }
+  };
+
+  const handlePrintReceipt = async () => {
+    setIsProcessing(true);
+
+    // ✅ Open synchronously inside the click handler, BEFORE any await
+    const printWindow =
+      Platform.OS === 'web'
+        ? window.open('', '_blank', 'width=500,height=800')
+        : null;
+
+    try {
+      await ReceiptService.processAndPrintReceipt({
+        items: itemsWithVat,
+        cashReceived: parseFloat(cashReceived) || 0,
+        paymentMethod: 'CASH',
+        discountOption,
+        outlet,
+        user,
+        isVatExempt: isVatExemptActive,
+        vatExemptType: isVatExemptActive ? vatExemptType : undefined,
+        vatExemptRefNo: isVatExemptActive ? vatExemptRefNo : undefined,
+        vatExemptAmount: isVatExemptActive ? vatExemptAmount : undefined,
+        outletPromoId: selectedPromoId ?? undefined,
+        promoDiscountAmt: discount,
+        printWindow, // ✅ pass it in
+        onSuccess: () => {
+          setIsProcessing(false);
+          onOrderPlaced?.();
+          clearCart();
+          handleClose();
+        },
+        onFail: () => {
+          setIsProcessing(false);
+          printWindow?.close(); // ✅ clean up on failure
+        },
+      });
+    } catch {
+      setIsProcessing(false);
+      printWindow?.close(); // ✅ clean up on error
+    }
+  };
+
+  // Shared props passed down to avoid re-creating objects inline
+  const totalsProps: TotalsBlockProps = {
+    colors,
+    outlet,
+    subtotal,
+    vatAmount,
+    vatExemptAmount,
+    discount,
+    discountRate,
+    discountOption,
+    total,
+    isDiscounted,
+    isVatExemptOption,
+    applyVatExempt,
+    isVatExemptActive,
+  };
+
+  const paymentProps: PaymentBlockProps = {
+    colors,
+    outlet,
+    isConnected,
+    isDiscounted,
+    isVatExemptOption,
+    applyVatExempt,
+    onToggleVatExempt: handleToggleVatExempt,
+    discountOption,
+    onOpenDiscountModal: handleOpenDiscountModal,
+    setIsDiscounted,
+    setDiscountOption,
+    setSelectedPromoId,
+    subtotal,
+    vatAmount,
+    vatExemptRefNo,
+    setVatExemptRefNo,
+    cashReceived,
+    setCashReceived,
+    cashAmount,
+    change,
+    total,
+    paymentSheetRef,
+  };
 
   return (
     <>
@@ -402,139 +674,177 @@ export function ReceiptModal({
         transparent
         onRequestClose={onClose}
       >
-        <RootView style={rs.overlay}>
-          <TouchableOpacity
-            style={StyleSheet.absoluteFillObject}
-            activeOpacity={1}
-            onPress={onClose}
-          />
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+        >
+          <RootView style={rs.overlay}>
+            <TouchableOpacity
+              style={StyleSheet.absoluteFillObject}
+              activeOpacity={1}
+              onPress={onClose}
+            />
 
-          <View
-            style={[
-              rs.modal,
-              isWide && rs.wideModal,
-              { backgroundColor: colors.card },
-            ]}
-          >
-            {/* Header */}
-            <View style={[rs.header, { borderBottomColor: colors.border }]}>
-              <View style={rs.headerLeft}>
-                {outlet.bannerImage ? (
-                  <Image source={{ uri: outlet.bannerImage }} style={rs.logo} />
-                ) : (
+            <View
+              style={[
+                rs.modal,
+                isWide && rs.wideModal,
+                { backgroundColor: colors.card },
+              ]}
+            >
+              {/* Header */}
+              <View style={[rs.header, { borderBottomColor: colors.border }]}>
+                <View style={rs.headerLeft}>
+                  {outlet.bannerImage ? (
+                    <Image
+                      source={{ uri: outlet.bannerImage }}
+                      style={rs.logo}
+                    />
+                  ) : (
+                    <View
+                      style={[
+                        rs.logo,
+                        {
+                          backgroundColor: colors.border,
+                          borderRadius: 25,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        },
+                      ]}
+                    >
+                      <Store size={20} color={colors.textSecondary} />
+                    </View>
+                  )}
+                  <View>
+                    <Text style={[rs.outletName, { color: colors.text }]}>
+                      {outlet.name}
+                    </Text>
+                    <Text
+                      style={[rs.receiptSub, { color: colors.textSecondary }]}
+                    >
+                      Receipt ·{' '}
+                      {outlet.isVatRegistered ? 'VAT Registered' : 'Non-VAT'}
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity onPress={handleClose} style={rs.closeBtn}>
+                  <X size={22} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Body */}
+              {isWide ? (
+                <View style={rs.wideBody}>
                   <View
+                    style={[rs.wideLeft, { borderRightColor: colors.border }]}
+                  >
+                    <Text style={[rs.sectionTitle, { color: colors.text }]}>
+                      Items ({items.length})
+                    </Text>
+                    <ScrollView showsVerticalScrollIndicator={false}>
+                      {itemsWithVat.map((data) => (
+                        <ItemRow
+                          key={data.id}
+                          data={data}
+                          colors={colors}
+                          onDiscountPress={handleItemDiscountPress}
+                          outlet={outlet}
+                          isVatExempt={isVatExemptActive}
+                        />
+                      ))}
+                    </ScrollView>
+                    <TotalsBlock {...totalsProps} />
+                  </View>
+                  <View style={rs.wideRight}>
+                    <Text style={[rs.sectionTitle, { color: colors.text }]}>
+                      Payment
+                    </Text>
+                    <PaymentBlock {...paymentProps} />
+                  </View>
+                </View>
+              ) : (
+                <ScrollView
+                  style={[
+                    rs.mobileBody,
+                    { backgroundColor: colors.background },
+                  ]}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  <Text
                     style={[
-                      rs.logo,
-                      {
-                        backgroundColor: colors.border,
-                        borderRadius: 25,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      },
+                      rs.sectionTitle,
+                      { color: colors.text, marginBottom: 8 },
                     ]}
                   >
-                    <Store size={20} color={colors.textSecondary} />
-                  </View>
-                )}
-                <View>
-                  <Text style={[rs.outletName, { color: colors.text }]}>
-                    {outlet.name}
-                  </Text>
-                  <Text
-                    style={[rs.receiptSub, { color: colors.textSecondary }]}
-                  >
-                    Receipt ·{' '}
-                    {outlet.isVatRegistered ? 'VAT Registered' : 'Non-VAT'}
-                  </Text>
-                </View>
-              </View>
-              <TouchableOpacity onPress={handleClose} style={rs.closeBtn}>
-                <X size={22} color={colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-
-            {/* Body — single column on mobile, two column on desktop */}
-            {isWide ? (
-              <View style={rs.wideBody}>
-                {/* Left: items */}
-                <View
-                  style={[rs.wideLeft, { borderRightColor: colors.border }]}
-                >
-                  <Text style={[rs.sectionTitle, { color: colors.text }]}>
                     Items ({items.length})
                   </Text>
-                  <ScrollView showsVerticalScrollIndicator={false}>
-                    {items.map((data) => (
-                      <ItemRow key={data.id} data={data} />
-                    ))}
-                  </ScrollView>
-                  <TotalsBlock />
-                </View>
-                {/* Right: payment */}
-                <View style={rs.wideRight}>
-                  <Text style={[rs.sectionTitle, { color: colors.text }]}>
+                  {itemsWithVat.map((data) => (
+                    <ItemRow
+                      key={data.id}
+                      data={data}
+                      colors={colors}
+                      onDiscountPress={handleItemDiscountPress}
+                      outlet={outlet}
+                      isVatExempt={isVatExemptActive}
+                    />
+                  ))}
+                  <TotalsBlock {...totalsProps} />
+                  <Text
+                    style={[
+                      rs.sectionTitle,
+                      { color: colors.text, marginTop: 16, marginBottom: 8 },
+                    ]}
+                  >
                     Payment
                   </Text>
-                  <PaymentBlock />
-                </View>
-              </View>
-            ) : (
-              <ScrollView
-                style={[rs.mobileBody, { backgroundColor: colors.background }]}
-              >
-                <Text
-                  style={[
-                    rs.sectionTitle,
-                    { color: colors.text, marginBottom: 8 },
-                  ]}
-                >
-                  Items ({items.length})
-                </Text>
-                {items.map((data) => (
-                  <ItemRow key={data.id} data={data} />
-                ))}
-                <TotalsBlock />
-                <Text
-                  style={[
-                    rs.sectionTitle,
-                    { color: colors.text, marginTop: 16, marginBottom: 8 },
-                  ]}
-                >
-                  Payment
-                </Text>
-                <PaymentBlock />
-              </ScrollView>
-            )}
+                  <PaymentBlock {...paymentProps} />
+                </ScrollView>
+              )}
 
-            {/* Footer */}
-            <View style={[rs.footer, { borderTopColor: colors.border }]}>
-              <TouchableOpacity
-                onPress={handleClose}
-                style={[rs.cancelBtn, { borderColor: colors.border }]}
-              >
-                <Text style={[rs.cancelTxt, { color: colors.textSecondary }]}>
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handlePrintReceipt}
-                style={[
-                  rs.printBtn,
-                  { backgroundColor: colors.accent },
-                  (cashAmount < total || isProcessing) && rs.disabledBtn,
-                ]}
-                disabled={cashAmount < total || isProcessing}
-              >
-                <Printer size={18} color="white" />
-                <Text style={rs.printTxt}>
-                  {isProcessing ? 'Processing…' : 'Print Receipt'}
-                </Text>
-              </TouchableOpacity>
+              {/* Footer */}
+              <View style={[rs.footer, { borderTopColor: colors.border }]}>
+                <TouchableOpacity
+                  onPress={handleClose}
+                  style={[rs.cancelBtn, { borderColor: colors.border }]}
+                >
+                  <Text style={[rs.cancelTxt, { color: colors.textSecondary }]}>
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handlePrintReceipt}
+                  style={[
+                    rs.printBtn,
+                    { backgroundColor: colors.accent },
+                    (cashAmount < total || isProcessing) && rs.disabledBtn,
+                  ]}
+                  disabled={cashAmount < total || isProcessing}
+                >
+                  <Printer size={18} color="white" />
+                  <Text style={rs.printTxt}>
+                    {isProcessing ? 'Processing…' : 'Print Receipt'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
-          <PaymentBottomSheet ref={paymentSheetRef} />
-        </RootView>
+            <PaymentBottomSheet ref={paymentSheetRef} />
+          </RootView>
+        </KeyboardAvoidingView>
       </Modal>
+
+      {/* Item Discount Modal */}
+      {selectedDiscountItem && (
+        <ItemDiscountModal
+          visible={discountModalVisible}
+          onClose={() => {
+            setDiscountModalVisible(false);
+            setSelectedDiscountItem(null);
+          }}
+          item={selectedDiscountItem}
+          outlet={outlet}
+          onApply={applyItemDiscount}
+        />
+      )}
     </>
   );
 }
@@ -560,7 +870,7 @@ const rs = StyleSheet.create({
     elevation: 10,
   },
   wideModal: {
-    maxWidth: 820, // two-column on desktop
+    maxWidth: 820,
     height: '88%',
   },
   header: {
@@ -576,25 +886,11 @@ const rs = StyleSheet.create({
   outletName: { fontSize: 16, fontWeight: '800' },
   receiptSub: { fontSize: 12, marginTop: 1 },
   closeBtn: { padding: 6 },
-
-  // Wide two-column body
   wideBody: { flex: 1, flexDirection: 'row' },
-  wideLeft: {
-    flex: 1,
-    padding: 20,
-    borderRightWidth: 1,
-  },
-  wideRight: {
-    width: 300,
-    padding: 20,
-  },
-
-  // Mobile single column body
+  wideLeft: { flex: 1, padding: 20, borderRightWidth: 1 },
+  wideRight: { width: 300, padding: 20 },
   mobileBody: { flex: 1, padding: 16 },
-
   sectionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 12 },
-
-  // Item row
   itemRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -606,6 +902,17 @@ const rs = StyleSheet.create({
   itemLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
   itemThumb: { width: 36, height: 36, borderRadius: 8 },
   itemName: { fontSize: 13, fontWeight: '600', marginBottom: 2 },
+  vatBadge: {
+    backgroundColor: '#D1FAE5',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  vatBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#047857',
+  },
   itemMeta: { fontSize: 11 },
   itemTotal: {
     fontSize: 14,
@@ -613,14 +920,7 @@ const rs = StyleSheet.create({
     minWidth: 70,
     textAlign: 'right',
   },
-
-  // Totals
-  totalsBlock: {
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    gap: 6,
-  },
+  totalsBlock: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, gap: 6 },
   totalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -631,21 +931,16 @@ const rs = StyleSheet.create({
   grandRow: { paddingTop: 10, marginTop: 6, borderTopWidth: 1 },
   grandLabel: { fontSize: 16, fontWeight: '800' },
   grandValue: { fontSize: 20, fontWeight: '800' },
-
-  // Payment
   paymentBlock: { gap: 12 },
   paymentTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  paymentTopLeft: {
-    flex: 1,
-    gap: 8,
-  },
-  vatExemptCheckbox: {
-    marginTop: 8,
-  },
+  paymentTopLeft: { flex: 1, gap: 8 },
+  vatExemptCheckbox: { marginTop: 8 },
+  discountBtn: { paddingVertical: 4 },
+  discountBtnTxt: { fontSize: 13, fontWeight: '600' },
   payMethodBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   payMethodTxt: { fontSize: 13, fontWeight: '600' },
   cashRow: {
@@ -658,20 +953,8 @@ const rs = StyleSheet.create({
     gap: 8,
   },
   cashInput: { flex: 1, fontSize: 16 },
-  changeBlock: {
-    borderRadius: 10,
-    borderWidth: 1,
-    padding: 12,
-    gap: 4,
-  },
-
-  // Footer
-  footer: {
-    flexDirection: 'row',
-    padding: 16,
-    gap: 10,
-    borderTopWidth: 1,
-  },
+  changeBlock: { borderRadius: 10, borderWidth: 1, padding: 12, gap: 4 },
+  footer: { flexDirection: 'row', padding: 16, gap: 10, borderTopWidth: 1 },
   cancelBtn: {
     flex: 1,
     paddingVertical: 13,

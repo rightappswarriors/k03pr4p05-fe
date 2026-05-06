@@ -26,12 +26,15 @@ import {
   Settings,
   Shield,
   X,
+  CreditCard,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
+import SubscriptionManagementScreen from '@/screens/admin/SubscriptionManagementScreen';
+
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
-type AdminRoute = 'Dashboard' | 'GlobalCategories' | 'GlobalGroups' | 'Settings';
+type AdminRoute = 'Dashboard' | 'GlobalCategories' | 'GlobalGroups' | 'Subscriptions' | 'Settings';
 
 const DRAWER_WIDTH = 240;
 
@@ -61,11 +64,13 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { key: 'Dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { key: 'GlobalCategories', label: 'Item Categories', icon: FolderOpen },
-  { key: 'GlobalGroups', label: 'Item Groups', icon: Layers },
-  { key: 'Settings', label: 'Settings', icon: Settings },
+  { key: 'Dashboard',       label: 'Dashboard',      icon: LayoutDashboard },
+  { key: 'GlobalCategories',label: 'Item Categories', icon: FolderOpen },
+  { key: 'GlobalGroups',    label: 'Item Groups',     icon: Layers },
+  { key: 'Subscriptions',   label: 'Subscriptions',   icon: CreditCard },   // ← add
+  { key: 'Settings',        label: 'Settings',        icon: Settings },
 ];
+
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
@@ -281,6 +286,7 @@ function buildScreenMap(): Record<AdminRoute, React.ReactElement> {
     Dashboard: <AdminDashboardScreen />,
     GlobalCategories: <GlobalCategoriesScreen />,
     GlobalGroups: <PlaceholderScreen title="Item Groups" />,
+    Subscriptions:    <SubscriptionManagementScreen />,     
     Settings: <PlaceholderScreen title="Settings" />,
   };
 }

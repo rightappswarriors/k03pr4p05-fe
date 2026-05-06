@@ -1,5 +1,6 @@
 import { gql } from 'graphql-request';
 import { graphQLRequest } from './apiClient';
+import { formatGraphQLError } from '@/utils/errorFormatter';
 
 export class FinanceService {
   // ✅ Fix — remove the empty parens
@@ -114,7 +115,6 @@ export class FinanceService {
     description: string;
     debit: number;
     credit: number;
-    total: number;
     centerId: number;
     subCenterId: number;
     accountTitleId: number;
@@ -127,7 +127,6 @@ export class FinanceService {
         $description: String!
         $debit: Float!
         $credit: Float!
-        $total: Float!
         $centerId: Int!
         $subCenterId: Int!
         $accountTitleId: Int!
@@ -139,7 +138,6 @@ export class FinanceService {
           description: $description
           debit: $debit
           credit: $credit
-          total: $total
           centerId: $centerId
           subCenterId: $subCenterId
           accountTitleId: $accountTitleId
@@ -155,6 +153,7 @@ export class FinanceService {
           debit
           credit
           total
+          createdAt
           accountTitle {
             id
             label
@@ -175,10 +174,18 @@ export class FinanceService {
     return response.createGISRow;
   }
 
-  static async updateGISRow(id: number, accountTitleId: number, amount: number, description: string, centerId?: number, subCenterId?: number): Promise<any> {
+  static async updateGISRow(
+    id: number,
+    accountTitleId?: number,
+    centerId?: number,
+    subCenterId?: number,
+    debit?: number,
+    credit?: number,
+    description?: string,
+  ): Promise<any> {
     const MUTATION = gql`
-      mutation UpdateGISRow($id: Int!, $accountTitleId: Int, $amount: Float, $description: String, $centerId: Int, $subCenterId: Int) {
-        updateGISRow(id: $id, accountTitleId: $accountTitleId, amount: $amount, description: $description, centerId: $centerId, subCenterId: $subCenterId) {
+      mutation UpdateGISRow($id: Int!, $accountTitleId: Int, $centerId: Int, $subCenterId: Int, $debit: Float, $credit: Float, $description: String) {
+        updateGISRow(id: $id, accountTitleId: $accountTitleId, centerId: $centerId, subCenterId: $subCenterId, debit: $debit, credit: $credit, description: $description) {
           id
           main
           group
@@ -210,17 +217,18 @@ export class FinanceService {
     const response = await graphQLRequest<{ updateGISRow: any }>(MUTATION, {
       id,
       accountTitleId,
-      amount,
-      description,
       centerId,
       subCenterId,
+      debit,
+      credit,
+      description,
     });
     return response.updateGISRow;
   }
 
-  static async deleteGISRow(id: string): Promise<any> {
+  static async deleteGISRow(id: number): Promise<any> {
     const MUTATION = gql`
-      mutation DeleteGISRow($id: String!) {
+      mutation DeleteGISRow($id: Int!) {
         deleteGISRow(id: $id) {
           id
         }
@@ -229,6 +237,27 @@ export class FinanceService {
     await graphQLRequest<{ deleteGISRow: any }>(MUTATION, { id });
   }
 
+  static async getSummaryRowFinance(startDate: string, endDate: string): Promise<any[]> {
+    const QUERY = gql`
+    query SummaryRowExpenses($startDate: String, $endDate: String) {
+      summaryRowExpenses(startDate: $startDate, endDate: $endDate) {
+        id
+        status
+        netProfit
+        createdAt
+      }
+    }
+    `
+    try {
+      const response = await graphQLRequest<{ summaryRowExpenses: any[] }>(QUERY, { startDate, endDate });
+      return response.summaryRowExpenses ?? [];
+    
+    } catch (error) {
+      const errorMessge = formatGraphQLError(error)
+      console.error("Error fetching summary row expenses:", errorMessge);
+      return Promise.resolve([]); // Return an empty array on error
+    }
+  }
   static async getSummaryRows(startDate?: string, endDate?: string): Promise<any[]> {
     const QUERY = gql`
     query SummaryRows($startDate: String, $endDate: String) {
@@ -245,8 +274,11 @@ export class FinanceService {
         accountTitleId
         status
         itemName
+        costLines
+        netProfit
         itemId
         orgId
+        opExAmount
         createdAt
         item {
           id
@@ -279,75 +311,109 @@ export class FinanceService {
    * @param subCenterId  Optional: subcenter ID
    * @param itemId      Optional: catalog item ID (from CatalogSearchModal)
    * @param itemName    Optional: item name — either resolved from catalog or entered manually
+   * @param amount      Optional: amount (with VAT applied)
    */
   static async createSummaryRow(
+    orgId?: number,
     accountTitleId?: number,
+    vatTypeId?: number,
     centerId?: number,
     subCenterId?: number,
     itemId?: number,
     itemName?: string,
+    costLines?: any[],
+    costInputAmount?: number,
+    costInputVatInclusive?: boolean,
+    sellingPriceInput?: number,
+    sellingPriceVatInclusive?: boolean,
+    opExPct?: number,
+    description?: string,
+    itemCode?: string,
   ): Promise<any> {
     const MUTATION = gql`
-      mutation CreateSummaryRow(
-        $accountTitleId: Int
-        $centerId: Int
-        $subCenterId: Int
-        $itemId: Int
-        $itemName: String
+    mutation CreateSummaryRow(
+      $orgId: Int!
+      $accountTitleId: Int!
+      $vatTypeId: Int!
+      $centerId: Int!
+      $subCenterId: Int!
+      $itemId: Int
+      $itemName: String
+      $costLines: Json
+      $costInputAmount: Float
+      $costInputVatInclusive: Boolean!
+      $sellingPriceInput: Float
+      $sellingPriceVatInclusive: Boolean!
+      $opExPct: Float!
+      $description: String
+      $itemCode: String
+    ) {
+      createSummaryRow(
+        orgId: $orgId
+        accountTitleId: $accountTitleId
+        vatTypeId: $vatTypeId
+        centerId: $centerId
+        subCenterId: $subCenterId
+        itemId: $itemId
+        itemName: $itemName
+        costLines: $costLines
+        costInputAmount: $costInputAmount
+        costInputVatInclusive: $costInputVatInclusive
+        sellingPriceInput: $sellingPriceInput
+        sellingPriceVatInclusive: $sellingPriceVatInclusive
+        opExPct: $opExPct
+        description: $description
+        itemCode: $itemCode
       ) {
-        createSummaryRow(
-          accountTitleId: $accountTitleId
-          centerId: $centerId
-          subCenterId: $subCenterId
-          itemId: $itemId
-          itemName: $itemName
-        ) {
-          id
-          itemCode
-          description
-          opExPct
-          computedCost
-          costContribution
-          sellingPrice
-          centerId
-          subCenterId
-          accountTitleId
-          status
-          itemName
-          itemId
-          orgId
-          createdAt
-          item {
-            id
-            name
-          }
-          accountTitle {
-            id
-            label
-            code
-          }
-          center {
-            id
-            label
-          }
-          subCenter {
-            id
-            label
-          }
-        }
+        id
+        itemCode
+        itemName
+        description
+        baseCost
+        costLines
+        vatInput
+        sellingPrice
+        vatOutput
+        opExPct
+        opExAmount
+        grossProfit
+        netProfit
+        status
+        amount
+        computedCost
+        costContribution
+        centerId
+        subCenterId
+        accountTitleId
+        orgId
+        createdAt
+        item { id name }
+        accountTitle { id label code }
+        center { id label }
+        subCenter { id label }
       }
-    `;
+    }
+  `;
 
     const response = await graphQLRequest<{ createSummaryRow: any }>(MUTATION, {
+      orgId,
       accountTitleId,
+      vatTypeId,
       centerId,
       subCenterId,
       itemId,
       itemName,
+      costLines,
+      costInputAmount,
+      costInputVatInclusive,
+      sellingPriceInput,
+      sellingPriceVatInclusive,
+      opExPct,
+      description,
+      itemCode,
     });
     return response.createSummaryRow;
   }
-
   static async updateSummaryRow(
     id: number,
     accountTitleId?: number,
@@ -355,6 +421,7 @@ export class FinanceService {
     subCenterId?: number,
     itemId?: number,
     itemName?: string,
+    costLines?: any[],
   ): Promise<any> {
     const MUTATION = gql`
       mutation UpdateSummaryRow(
@@ -364,6 +431,7 @@ export class FinanceService {
         $subCenterId: Int
         $itemId: Int
         $itemName: String
+        $costLines: Json
       ) {
         updateSummaryRow(
           id: $id
@@ -372,12 +440,15 @@ export class FinanceService {
           subCenterId: $subCenterId
           itemId: $itemId
           itemName: $itemName
+          costLines: $costLines
         ) {
           id
           itemCode
           description
           opExPct
+          opExAmount
           computedCost
+          costLines
           costContribution
           sellingPrice
           centerId
@@ -392,6 +463,7 @@ export class FinanceService {
             id
             name
           }
+          costLines
           accountTitle {
             id
             label
@@ -416,6 +488,7 @@ export class FinanceService {
       subCenterId,
       itemId,
       itemName,
+      costLines,
     });
     return response.updateSummaryRow;
   }

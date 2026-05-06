@@ -34,9 +34,10 @@ import { MediaService } from '@/services/mediaService';
 import { VatTypeService } from '@/services/vatTypeService';
 import { CategoryPickerModal } from '@/components/CategoryPickerModal';
 import { CostLine } from '@/types';
+import { autoCode } from '@/utils/autoCode';
+import { useResponsive } from '@/hooks/useResponsive';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
 
 export interface InventoryItem {
   id: string;
@@ -48,6 +49,7 @@ export interface InventoryItem {
   sellingPrice: number;
   lowStock: boolean;
   imageUrl?: string;
+  itemCode?: string;
   imagePath?: string;
   costLines?: CostLine[];
   opExPct?: number;
@@ -65,6 +67,7 @@ interface UpdateItemPayload {
   description?: string;
   barcode?: string;
   brand?: string;
+  itemCode?: string;
   sellingPrice: number; // nonNull in schema
   categoryId?: number; // global
   orgCategoryId?: number; // ✅ org
@@ -408,6 +411,7 @@ function EditItemModal({
   // ── Pre-fill state from item ──────────────────────────────────────────────
   const [name, setName] = useState('');
   const [sku, setSku] = useState('');
+  const [itemCode, setItemCode] = useState('');
   const [stock, setStock] = useState('0');
   const [minStock, setMinStock] = useState('10');
   const [price, setPrice] = useState('');
@@ -446,6 +450,7 @@ function EditItemModal({
     if (!item || !visible) return;
     setName(item.name);
     setSku(item.sku);
+    setItemCode(item.itemCode || '');
     setStock(String(item.stock));
     setMinStock(String(item.minStock));
     setPrice(String(item.sellingPrice));
@@ -526,7 +531,7 @@ function EditItemModal({
         finalImageUrl = undefined;
         finalImagePath = undefined;
       }
-
+      const finalCode = itemCode?.trim() || autoCode(name)
       // Build the UpdateItemInput payload
       // sellingPrice is nonNull in the schema — always required
       const payload: UpdateItemPayload = {
@@ -543,6 +548,7 @@ function EditItemModal({
         vatTypeId: selectedVatTypeId ?? undefined, // ✅
         image: finalImageUrl,
         costLines: costLines.map(({ label, amount }) => ({ label, amount })),
+        itemCode: finalCode,
         // ✅ mutually exclusive
         ...(selectedCategoryId && !selectedCategoryIsGlobal
           ? { orgCategoryId: selectedCategoryId, categoryId: undefined }
@@ -838,6 +844,17 @@ function EditItemModal({
                   onChangeText={setMinStock}
                   keyboardType="number-pad"
                   placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.label}>Item Code</Text>
+                <TextInput
+                  style={s.input}
+                  placeholder="Item code example: RICE-GAN-25"
+                  placeholderTextColor={colors.textSecondary}
+                  value={itemCode}
+                  onChangeText={setItemCode}
+                  autoCapitalize="characters"
                 />
               </View>
             </View>
@@ -1164,13 +1181,14 @@ function ItemDetailModal({
   onEdit: (item: InventoryItem) => void;
   colors: any;
 }) {
-  if (!item) return null;
+  const { isDesktop } = useResponsive()
   const [qty, setQty] = useState(0);
+  const [distribution, setDistribution] = useState<any>(null);
+  const [distLoading, setDistLoading] = useState(false);
+  if (!item) return null;
   const maxStock = Math.max(item.stock, item.minStock * 4, 200);
   const ratio = Math.min(item.stock / maxStock, 1);
   const barColor = item.lowStock ? colors.error : colors.success;
-  const [distribution, setDistribution] = useState<any>(null);
-  const [distLoading, setDistLoading] = useState(false);
   React.useEffect(() => {
     if (!visible || !item) return;
     setDistLoading(true);
@@ -1278,7 +1296,7 @@ function ItemDetailModal({
         </View>
 
         <ScrollView
-          contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+          contentContainerStyle={{ padding: 16, paddingBottom: 40, width: isDesktop ? 900 : '100%', alignSelf: 'center' }}
           showsVerticalScrollIndicator={false}
         >
           {/* Stock level */}
@@ -1947,6 +1965,7 @@ function AddItemModal({
   colors: any;
 }) {
   const [name, setName] = useState('');
+  const [itemCode, setItemCode] = useState('');
   const [sku, setSku] = useState('');
   const [category, setCategory] = useState('Groceries');
   const [stock, setStock] = useState('0');
@@ -2031,9 +2050,11 @@ function AddItemModal({
         finalImageUrl = itemImageUri;
       }
 
+      const finalCode = itemCode.trim() || autoCode(name);
       const createdItem = await InventoryService.createItem({
         name: name.trim(),
         stock: parseInt(stock) || 0,
+        itemCode: finalCode,
         barcode: sku.trim() || `SKU-${Date.now().toString().slice(-6)}`,
         sellingPrice: parseFloat(price) || 0,
         vatExempt: !selectedVatTypeId ? vatExempt : undefined,
@@ -2324,6 +2345,17 @@ function AddItemModal({
                   keyboardType="number-pad"
                 />
               </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.label}>Item Code</Text>
+                <TextInput
+                  style={s.input}
+                  placeholder="Item code example: RICE-GAN-25"
+                  placeholderTextColor={colors.textSecondary}
+                  value={itemCode}
+                  onChangeText={setItemCode}
+                  autoCapitalize="characters"
+                />
+              </View>
             </View>
 
             {/* Stock Label */}
@@ -2612,6 +2644,7 @@ export default function InventoryScreen() {
               sku: it.barcode || it.skuNumber || `SKU-${it.id}`,
               stock: Number(it.stock || 0),
               minStock: Number(it.minQuantity || 10),
+              itemCode: it.itemCode || undefined,
               stockLabel: it.stockLabel ?? 'piece',
               stockDescription: it.stockDescription ?? undefined,
               category:

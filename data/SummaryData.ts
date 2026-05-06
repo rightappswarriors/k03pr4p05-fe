@@ -11,20 +11,36 @@ export interface GISRow {
   debit: number;
   credit: number;
   total: number;
+  amount?: number;
+  createdAt?: string;
 }
 
 export interface SummaryRow {
   id: string;
   itemCode: string;
+  itemName?: string;
+  itemId?: string;
+  costLines?: { label: string; amount: number }[];
   description: string;
-  opExPct: number;   // OpEx contribution as a decimal e.g. 0.12
+  amount?: number;
+  baseCost: number;
+  centerId?: number;
+  subCenterId?: number;
+  accountTitleId?: number;
+  orgId?: number;
+  vatInput: number;
+  sellingPrice: number;
+  vatOutput: number;
+  opExPct: number; // OpEx contribution as a decimal e.g. 0.12
+  opExAmount: number;
+  grossProfit: number;
+  netProfit: number;
+  status?: string;
   computedCost: number;
   costContribution: number;
-  sellingPrice: number;
-  status?: string
+  createdAt: string;
 }
 
-// ─── Expense Summary (GIS) ────────────────────────────────────────────────────
 
 export const INITIAL_GIS_ROWS: GISRow[] = [
   { id: "g01", main: "Income", group: "Sales Revenue", code: "REV-001", description: "Retail Sales - Main Branch", debit: 0, credit: 520000, total: 520000 },
@@ -49,9 +65,9 @@ export const INITIAL_GIS_ROWS: GISRow[] = [
   { id: "g20", main: "Income", group: "Sales Revenue", code: "REV-003", description: "Kompra Online Orders Revenue", debit: 0, credit: 128000, total: 128000 },
 ];
 
-// ─── Item Net Summary ─────────────────────────────────────────────────────────
 
-export const INITIAL_SUMMARY_ROWS: SummaryRow[] = [
+
+export const INITIAL_SUMMARY_ROWS = [
   { id: "s01", itemCode: "RICE-GAN-25", description: "Ganador Rice 25kg", opExPct: 0.08, computedCost: 1050, costContribution: 1084, sellingPrice: 1200 },
   { id: "s02", itemCode: "RICE-NFA-25", description: "NFA Rice 25kg", opExPct: 0.08, computedCost: 820, costContribution: 846, sellingPrice: 950 },
   { id: "s03", itemCode: "CAN-CTF-155", description: "Century Tuna Flakes", opExPct: 0.12, computedCost: 28, costContribution: 29, sellingPrice: 38 },

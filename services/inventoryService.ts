@@ -2,6 +2,7 @@ import { gql } from 'graphql-request';
 import { graphQLRequest } from './apiClient';
 import { AuthService } from './authService';
 import { getGraphQLClient } from '@/utils/constants';
+import { MediaService } from './mediaService';
 
 export class InventoryService {
   static async getItemStockDistribution(itemId: number): Promise<any> {
@@ -104,112 +105,9 @@ export class InventoryService {
     return { uri, name, type };
   }
 
-  static async uploadMedia(file: any, orgId: string) {
-    if (!orgId) throw new Error('orgId is required for media upload');
-    const mediaFile = this.normalizeMediaFile(file);
 
-    const formData = new FormData();
-    formData.append('orgId', orgId);
-    formData.append('file', mediaFile as any);
 
-    const response = await fetch(`${this.getMediaServerUrl()}/upload`, {
-      method: 'POST',
-      body: formData,
-      headers: {
-        Accept: 'application/json',
-      },
-    });
 
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`Media upload failed: ${response.status} ${text}`);
-    }
-
-    const result = await response.json();
-    if (!result?.success) {
-      throw new Error(result?.error || 'Media upload failed');
-    }
-
-    const publicUrl = result.data?.publicUrl || result.data?.url;
-    const filePath = result.data?.filePath || result.data?.path;
-
-    if (!publicUrl || !filePath) {
-      throw new Error('Invalid response from media server');
-    }
-
-    return { publicUrl, filePath };
-  }
-
-  static async deleteMedia(path: string) {
-    if (!path) throw new Error('path is required for media deletion');
-
-    try {
-      const response = await fetch(`${this.getMediaServerUrl()}/delete`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: JSON.stringify({ path }),
-      });
-
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Media delete failed: ${response.status} ${text}`);
-      }
-
-      const result = await response.json();
-      if (!result?.success) {
-        throw new Error(result?.error || 'Media delete failed');
-      }
-
-      return result.data;
-    } catch (error) {
-      console.warn('Failed to delete media (continuing):', error);
-      return null;
-    }
-  }
-
-  static async updateMedia(file: any, oldPath: string, orgId: string) {
-    if (!oldPath) {
-      this.uploadMedia(file, orgId);
-      return;
-    };
-    if (!orgId) throw new Error('orgId is required for media update');
-
-    const mediaFile = this.normalizeMediaFile(file);
-    const formData = new FormData();
-    formData.append('orgId', orgId);
-    formData.append('oldPath', oldPath);
-    formData.append('file', mediaFile as any);
-
-    const response = await fetch(`${this.getMediaServerUrl()}/update`, {
-      method: 'PUT',
-      body: formData,
-      headers: {
-        Accept: 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`Media update failed: ${response.status} ${text}`);
-    }
-
-    const result = await response.json();
-    if (!result?.success) {
-      throw new Error(result?.error || 'Media update failed');
-    }
-
-    const publicUrl = result.data?.publicUrl || result.data?.url;
-    const filePath = result.data?.filePath || result.data?.path;
-
-    if (!publicUrl || !filePath) {
-      throw new Error('Invalid response from media server');
-    }
-
-    return { publicUrl, filePath };
-  }
   static async getDashboardInventoryStats(): Promise<{
     skuCount: number;
     totalUnits: number;
@@ -252,6 +150,7 @@ export class InventoryService {
         getItems(query: $query, size: $size) {
           id
           name
+          itemCode
           barcode
           description
           categoryId
@@ -336,6 +235,7 @@ export class InventoryService {
     stock: number;
     sellingPrice: number;
     image?: string;
+    itemCode?: string;
     vatExempt?: boolean;
     vatTypeId?: number;         // ✅ add
     assembly?: boolean;
@@ -357,6 +257,7 @@ export class InventoryService {
         orgCategoryId
         stock
         opExPct
+        itemCode
         sellingPrice
         minQuantity
         costLines { label amount }
@@ -396,6 +297,7 @@ export class InventoryService {
           brandId
           categoryId
           stock
+          itemCode
           sellingPrice
           costLines { label amount}
           category { id name }
@@ -425,7 +327,7 @@ export class InventoryService {
   static async deleteItem(itemId: number, imagePath?: string): Promise<any> {
     if (imagePath) {
       try {
-        await this.deleteMedia(imagePath);
+        await MediaService.deleteMedia(imagePath);
       } catch (err) {
         console.warn('deleteMedia failed, proceeding with item delete:', err);
       }

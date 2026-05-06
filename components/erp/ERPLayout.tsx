@@ -46,6 +46,7 @@ import SalesAnalyticsScreen from '@/screens/SalesAnalyticsScreen';
 import MasterFileScreen from '@/screens/MasterFileScreen';
 import RestockSchedulingScreen from '@/screens/RestockSchedulingScreen';
 import AuditLogScreen from '@/screens/AuditLogScreen';
+import { useAuth } from '@/contexts/AuthContext';
 
 // ─── DEV: Plan Toggle FAB ─────────────────────────────────────────────────────
 // Floating badge for presentations and testing — tap to switch Basic ↔ Gold.
@@ -392,7 +393,9 @@ const SidebarContent = memo(function SidebarContent({
     inputRange: [0, 1],
     outputRange: ['0deg', '180deg'],
   });
-
+  const { user } = useAuth()
+  if (!user) return null; // or a placeholder if user data is required for rendering
+  const organizationName = user.org?.name || 'Right ERP';
   return (
     <>
       <View style={styles.drawerHeader}>
@@ -400,7 +403,7 @@ const SidebarContent = memo(function SidebarContent({
           <Building2 size={18} color="#fff" strokeWidth={2} />
         </View>
         <View>
-          <Text style={styles.drawerLogo}>Right ERP</Text>
+          <Text style={styles.drawerLogo}>{organizationName}</Text>
           <Text style={styles.drawerSubtitle}>Enterprise Suite</Text>
         </View>
       </View>

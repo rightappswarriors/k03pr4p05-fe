@@ -9,17 +9,16 @@ import {
   TouchableOpacity,
   View,
   ActivityIndicator,
-  Platform,
 } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 import { X } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useResponsive } from '@/hooks/useResponsive';
 import ChartCard from '@/components/erp/ChartCard';
 import { BudgetModule } from '@/components/finance/BudgetModule';
 import { FinanceService, SalesService } from '@/services';
 import { SummaryRow } from '@/data/SummaryData';
 import { getProfitOrExpense } from '@/utils/moneyHelpers';
+import { useResponsive } from '@/hooks/useResponsive';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -38,6 +37,7 @@ interface MonthlyData {
   expenses: number;
 }
 
+// ─── Helper Functions ─────────────────────────────────────────────────────────
 // ─── Helper Functions ─────────────────────────────────────────────────────────
 
 const MONTH_NAMES = [
@@ -153,7 +153,6 @@ const calculateFromSummaryRows = (
     { loss: 0, profit: 0 },
   );
 };
-
 // Calculate YoY change
 const calculateYoYChange = (
   currentYearData: number,
@@ -172,338 +171,6 @@ const calculateYoYChange = (
     isUp,
   };
 };
-
-// ─── Tooltip Component ────────────────────────────────────────────────────────
-
-function CardTooltip({
-  visible,
-  value,
-  color,
-  position = 'bottom',
-}: {
-  visible: boolean;
-  value: string;
-  color: string;
-  position?: 'bottom' | 'top';
-}) {
-  if (!visible) return null;
-
-  return (
-    <View
-      style={[
-        tooltipStyles.container,
-        position === 'bottom' ? tooltipStyles.bottom : tooltipStyles.top,
-        { backgroundColor: color },
-      ]}
-    >
-      <Text style={tooltipStyles.text}>{value}</Text>
-      <View
-        style={[
-          tooltipStyles.arrow,
-          position === 'bottom' ? tooltipStyles.arrowUp : tooltipStyles.arrowDown,
-          { borderBottomColor: position === 'bottom' ? color : 'transparent', borderTopColor: position === 'top' ? color : 'transparent' },
-        ]}
-      />
-    </View>
-  );
-}
-
-const tooltipStyles = StyleSheet.create({
-  container: {
-    position: 'absolute',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    zIndex: 1000,
-    ...Platform.select({
-      web: {
-        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-      },
-      default: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 4,
-        elevation: 5,
-      },
-    }),
-  },
-  bottom: {
-    bottom: -45,
-    left: '50%',
-    transform: [{ translateX: -50 }],
-  },
-  top: {
-    top: -45,
-    left: '50%',
-    transform: [{ translateX: -50 }],
-  },
-  text: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  arrow: {
-    position: 'absolute',
-    width: 0,
-    height: 0,
-    borderLeftWidth: 6,
-    borderRightWidth: 6,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    left: '50%',
-    marginLeft: -6,
-  },
-  arrowUp: {
-    top: -6,
-    borderBottomWidth: 6,
-  },
-  arrowDown: {
-    bottom: -6,
-    borderTopWidth: 6,
-  },
-});
-
-// ─── Financial Card Component ─────────────────────────────────────────────────
-
-function FinancialCard({
-  label,
-  value,
-  subtitle,
-  isPrimary = false,
-  colors,
-  fullValue,
-  tooltipColor,
-}: {
-  label: string;
-  value: string;
-  subtitle: string;
-  isPrimary?: boolean;
-  colors: any;
-  fullValue: string;
-  tooltipColor: string;
-}) {
-  const [showTooltip, setShowTooltip] = useState(false);
-  const isWeb = Platform.OS === 'web';
-
-  const handlePress = () => {
-    if (!isWeb) {
-      setShowTooltip(true);
-      setTimeout(() => setShowTooltip(false), 2500);
-    }
-  };
-
-  // Inline styles for the card component
-  const cardStyles = {
-    finCard: { 
-      flex: 1, 
-      borderRadius: 14, 
-      padding: 20, 
-      borderWidth: 1 
-    },
-    finCardLabel: {
-      fontSize: 12,
-      fontWeight: '700' as const,
-      letterSpacing: 1,
-      textTransform: 'uppercase' as const,
-      marginBottom: 8,
-    },
-    finCardValue: {
-      fontSize: 28,
-      fontWeight: '900' as const,
-      letterSpacing: -1,
-      marginBottom: 4,
-    },
-    finCardSub: { 
-      fontSize: 13, 
-      fontWeight: '500' as const 
-    },
-  };
-
-  const cardContent = (
-    <View style={{ position: 'relative' }}>
-      <Text
-        style={[
-          cardStyles.finCardLabel,
-          {
-            color: isPrimary
-              ? 'rgba(255,255,255,0.65)'
-              : colors.textSecondary,
-          },
-        ]}
-      >
-        {label}
-      </Text>
-      <Text
-        style={[
-          cardStyles.finCardValue,
-          { color: isPrimary ? '#fff' : colors.text },
-        ]}
-      >
-        {value}
-      </Text>
-      <Text
-        style={[
-          cardStyles.finCardSub,
-          {
-            color: isPrimary
-              ? 'rgba(255,255,255,0.8)'
-              : subtitle.includes('▲')
-              ? colors.success
-              : subtitle.includes('▼')
-              ? colors.error
-              : colors.textSecondary,
-          },
-        ]}
-      >
-        {subtitle}
-      </Text>
-      <CardTooltip
-        visible={showTooltip}
-        value={fullValue}
-        color={tooltipColor}
-      />
-    </View>
-  );
-
-  if (isWeb) {
-    const WebView = View as any; // Type assertion for web-specific props
-    return (
-      <WebView
-        style={[
-          cardStyles.finCard,
-          {
-            backgroundColor: isPrimary ? colors.primary : colors.card,
-            borderColor: isPrimary ? 'transparent' : colors.border,
-          },
-        ]}
-        onMouseEnter={() => setShowTooltip(true)}
-        onMouseLeave={() => setShowTooltip(false)}
-      >
-        {cardContent}
-      </WebView>
-    );
-  }
-
-  return (
-    <TouchableOpacity
-      style={[
-        cardStyles.finCard,
-        {
-          backgroundColor: isPrimary ? colors.primary : colors.card,
-          borderColor: isPrimary ? 'transparent' : colors.border,
-        },
-      ]}
-      onPress={handlePress}
-      activeOpacity={0.85}
-    >
-      {cardContent}
-    </TouchableOpacity>
-  );
-}
-
-// ─── Chart Data Point Component ───────────────────────────────────────────────
-
-function ChartDataPoint({
-  x,
-  y,
-  index,
-  revenue,
-  expenses,
-  colors,
-  theme,
-}: {
-  x: number;
-  y: number;
-  index: number;
-  revenue: number;
-  expenses: number;
-  colors: any;
-  theme: string;
-}) {
-  const [showTooltip, setShowTooltip] = useState(false);
-  const isWeb = Platform.OS === 'web';
-
-  const containerStyle = {
-    position: 'absolute' as const,
-    left: x - 12,
-    top: y - 12,
-    width: 24,
-    height: 24,
-  };
-
-  const WebView = isWeb ? (View as any) : View;
-  const webProps = isWeb ? {
-    onMouseEnter: () => setShowTooltip(true),
-    onMouseLeave: () => setShowTooltip(false),
-  } : {};
-
-  return (
-    <WebView
-      style={containerStyle}
-      {...webProps}
-    >
-      <TouchableOpacity
-        onPress={() => {
-          if (!isWeb) {
-            setShowTooltip(true);
-            setTimeout(() => setShowTooltip(false), 2500);
-          }
-        }}
-        style={{ width: '100%', height: '100%' }}
-      >
-        {showTooltip && (
-          <View
-            style={{
-              position: 'absolute',
-              bottom: 30,
-              left: -40,
-              backgroundColor: colors.card,
-              padding: 10,
-              borderRadius: 8,
-              borderWidth: 1,
-              borderColor: colors.border,
-              minWidth: 120,
-              zIndex: 1000,
-              ...Platform.select({
-                web: {
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                },
-                default: {
-                  shadowColor: '#000',
-                  shadowOffset: { width: 0, height: 2 },
-                  shadowOpacity: 0.25,
-                  shadowRadius: 4,
-                  elevation: 5,
-                },
-              }),
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 11,
-                color: colors.success,
-                fontWeight: '700',
-                marginBottom: 4,
-              }}
-            >
-              Revenue: {fmtFull(revenue)}
-            </Text>
-            <Text
-              style={{
-                fontSize: 11,
-                color: colors.error,
-                fontWeight: '700',
-              }}
-            >
-              Expenses: {fmtFull(expenses)}
-            </Text>
-          </View>
-        )}
-      </TouchableOpacity>
-    </WebView>
-  );
-}
 
 // ─── Month Detail Modal ───────────────────────────────────────────────────────
 
@@ -816,8 +483,6 @@ const mdm = StyleSheet.create({
 export default function FinanceScreen() {
   const { colors, theme } = useTheme();
   const { width } = Dimensions.get('window');
-  const isDesktop = width >= 1024;
-  
   const isTablet = width >= 768;
   const chartWidth = isTablet
     ? Math.min((width - 280) * 0.95, 580)
@@ -828,7 +493,7 @@ export default function FinanceScreen() {
   const [selectedMonth, setSelectedMonth] = useState<MonthDetail | null>(null);
   const [monthModalOpen, setMonthModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
-
+  const { isDesktop} = useResponsive();
   // Data state
   const [currentYearData, setCurrentYearData] = useState<MonthlyData[]>([]);
   const [previousYearData, setPreviousYearData] = useState<MonthlyData[]>([]);
@@ -836,6 +501,7 @@ export default function FinanceScreen() {
   const [summaryRows, setSummaryRows] = useState<any[]>([]);
   const [availableYears, setAvailableYears] = useState<Year[]>([]);
 
+  // Load available years and data
   // Load available years and data
   useEffect(() => {
     (async () => {
@@ -1006,26 +672,16 @@ export default function FinanceScreen() {
     legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     legendDot: { width: 10, height: 10, borderRadius: 5 },
     legendText: { fontSize: 13, fontWeight: '600', color: colors.text },
-    monthsGrid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 12,
-    },
     monthRow: {
       backgroundColor: colors.card,
       borderRadius: 10,
       padding: 14,
+      marginBottom: 8,
       borderWidth: 1,
       borderColor: colors.border,
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      // Grid layout
-      width: isDesktop
-        ? `${(100 - 4) / 3}%` // 3 columns on desktop
-        : isTablet
-        ? `${(100 - 2) / 2}%` // 2 columns on tablet
-        : '100%', // Full width on mobile
     },
     monthLabel: {
       fontSize: 14,
@@ -1093,31 +749,68 @@ export default function FinanceScreen() {
       {/* Financial Summary Cards */}
       <Text style={styles.sectionTitle}>Financial Summary · {activeYear}</Text>
       <View style={styles.cardsRow}>
-        <FinancialCard
-          label="Revenue"
-          value={fmt(totals.revenue)}
-          subtitle={`${totals.revenueYoY.percentage} vs ${parseInt(activeYear) - 1}`}
-          fullValue={fmtFull(totals.revenue)}
-          tooltipColor={colors.success}
-          colors={colors}
-        />
-        <FinancialCard
-          label="Expenses"
-          value={fmt(totals.expenses)}
-          subtitle={`${totals.expensesYoY.percentage} vs ${parseInt(activeYear) - 1}`}
-          fullValue={fmtFull(totals.expenses)}
-          tooltipColor={colors.error}
-          colors={colors}
-        />
-        <FinancialCard
-          label="Net Profit"
-          value={fmt(totals.profit)}
-          subtitle={`${totals.profitMargin}% margin`}
-          fullValue={fmtFull(totals.profit)}
-          tooltipColor={totals.profit >= 0 ? colors.success : colors.error}
-          isPrimary
-          colors={colors}
-        />
+        <View
+          style={[
+            styles.finCard,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
+          <Text style={[styles.finCardLabel, { color: colors.textSecondary }]}>
+            Revenue
+          </Text>
+          <Text style={[styles.finCardValue, { color: colors.text }]}>
+            {fmt(totals.revenue)}
+          </Text>
+          <Text
+            style={[
+              styles.finCardSub,
+              { color: totals.revenueYoY.isUp ? colors.success : colors.error },
+            ]}
+          >
+            {totals.revenueYoY.percentage} vs {parseInt(activeYear) - 1}
+          </Text>
+        </View>
+        <View
+          style={[
+            styles.finCard,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
+          <Text style={[styles.finCardLabel, { color: colors.textSecondary }]}>
+            Expenses
+          </Text>
+          <Text style={[styles.finCardValue, { color: colors.text }]}>
+            {fmt(totals.expenses)}
+          </Text>
+          <Text
+            style={[
+              styles.finCardSub,
+              {
+                color: totals.expensesYoY.isUp ? colors.error : colors.success,
+              },
+            ]}
+          >
+            {totals.expensesYoY.percentage} vs {parseInt(activeYear) - 1}
+          </Text>
+        </View>
+        <View
+          style={[
+            styles.finCard,
+            { backgroundColor: colors.primary, borderColor: 'transparent' },
+          ]}
+        >
+          <Text
+            style={[styles.finCardLabel, { color: 'rgba(255,255,255,0.65)' }]}
+          >
+            Net Profit
+          </Text>
+          <Text style={[styles.finCardValue, { color: '#fff' }]}>
+            {fmt(totals.profit)}
+          </Text>
+          <Text style={[styles.finCardSub, { color: 'rgba(255,255,255,0.8)' }]}>
+            {totals.profitMargin}% margin
+          </Text>
+        </View>
       </View>
 
       {/* Revenue vs Expenses Chart */}
@@ -1179,50 +872,46 @@ export default function FinanceScreen() {
 
       {/* Monthly Breakdown */}
       <Text style={styles.sectionTitle}>Monthly Breakdown · {activeYear}</Text>
-      <View style={styles.monthsGrid}>
-        {currentYearData.map((monthData) => {
-          const profit = monthData.revenue - monthData.expenses;
-          const isPos = profit >= 0;
-          return (
-            <TouchableOpacity
-              key={monthData.month}
-              style={styles.monthRow}
-              onPress={() => {
-                setSelectedMonth({
-                  month: monthData.month,
-                  revenue: monthData.revenue,
-                  expenses: monthData.expenses,
-                  profit,
-                });
-                setMonthModalOpen(true);
-              }}
-              activeOpacity={0.78}
-            >
-              <Text style={styles.monthLabel}>{monthData.month}</Text>
-              <View style={{ flex: 1, paddingHorizontal: 8 }}>
-                <Text style={[styles.monthSub, { color: colors.success }]}>
-                  Rev: {fmt(monthData.revenue)}
-                </Text>
-                <Text style={[styles.monthSub, { color: colors.error }]}>
-                  Exp: {fmt(monthData.expenses)}
-                </Text>
-              </View>
-              <View style={{ alignItems: 'flex-end' }}>
-                <Text
-                  style={[
-                    styles.monthProfit,
-                    { color: isPos ? colors.success : colors.error },
-                  ]}
-                >
-                  {isPos ? '+' : ''}
-                  {fmt(profit)}
-                </Text>
-                <Text style={styles.tapHint}>Details →</Text>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+      {currentYearData.map((monthData) => {
+        const profit = monthData.revenue - monthData.expenses;
+        const isPos = profit >= 0;
+        return (
+          <TouchableOpacity
+            key={monthData.month}
+            style={styles.monthRow}
+            onPress={() => {
+              setSelectedMonth({
+                month: monthData.month,
+                revenue: monthData.revenue,
+                expenses: monthData.expenses,
+                profit,
+              });
+              setMonthModalOpen(true);
+            }}
+            activeOpacity={0.78}
+          >
+            <Text style={styles.monthLabel}>{monthData.month}</Text>
+            <View style={{ flex: 1, paddingHorizontal: 8 }}>
+              <Text style={styles.monthSub}>Rev: {fmt(monthData.revenue)}</Text>
+              <Text style={styles.monthSub}>
+                Exp: {fmt(monthData.expenses)}
+              </Text>
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text
+                style={[
+                  styles.monthProfit,
+                  { color: isPos ? colors.success : colors.error },
+                ]}
+              >
+                {isPos ? '+' : ''}
+                {fmt(profit)}
+              </Text>
+              <Text style={styles.tapHint}>Details →</Text>
+            </View>
+          </TouchableOpacity>
+        );
+      })}
 
       {/* Budget Module */}
       <Text style={styles.sectionTitle}>Budget Planning</Text>

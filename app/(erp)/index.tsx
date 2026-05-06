@@ -273,37 +273,42 @@ export function DropdownField({
                 </Text>
               </View>
             ) : (
-              options.map((item) => (
-                <TouchableOpacity
-                  key={item.id}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: 14,
-                    borderBottomWidth: 1,
-                    borderBottomColor: colors.border,
-                    backgroundColor:
-                      item.id === value ? colors.primary + '15' : 'transparent',
-                  }}
-                  onPress={() => {
-                    onSelect(item);
-                    setOpen(false);
-                  }}
-                >
-                  <Text style={{ fontSize: 13, color: colors.text, flex: 1 }}>
-                    {item.label}
-                  </Text>
+              <ScrollView
+                style={{ maxHeight: 380 }}
+                showsVerticalScrollIndicator={Platform.OS === 'web'}
+              >
+                {options.map((item) => (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: 14,
+                      borderBottomWidth: 1,
+                      borderBottomColor: colors.border,
+                      backgroundColor:
+                        item.id === value ? colors.primary + '15' : 'transparent',
+                    }}
+                    onPress={() => {
+                      onSelect(item);
+                      setOpen(false);
+                    }}
+                  >
+                    <Text style={{ fontSize: 13, color: colors.text, flex: 1 }}>
+                      {item.label}
+                    </Text>
 
-                  {item.id === value && (
-                    <CheckCircle2
-                      size={16}
-                      color={colors.primary}
-                      strokeWidth={2}
-                    />
-                  )}
-                </TouchableOpacity>
-              ))
+                    {item.id === value && (
+                      <CheckCircle2
+                        size={16}
+                        color={colors.primary}
+                        strokeWidth={2}
+                      />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             )}
           </View>
         </TouchableOpacity>
@@ -330,6 +335,7 @@ function AddBranchModal({
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const { isMobile } = useResponsive(); // ← already imported
 
   const handleAdd = async () => {
     if (!name.trim()) {
@@ -363,34 +369,50 @@ function AddBranchModal({
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
+      animationType={isMobile ? 'slide' : 'fade'}
       onRequestClose={onClose}
     >
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <View style={s.modalBackdrop}>
+        {/* Backdrop */}
+        <TouchableOpacity
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.48)',
+            // On web: centre the sheet; on mobile: push it to bottom
+            justifyContent: isMobile ? 'flex-end' : 'center',
+            alignItems: 'center',
+          }}
+          activeOpacity={1}
+          onPress={onClose}
+        >
+          {/* Sheet — stops touch propagation so tapping inside won't close */}
           <TouchableOpacity
-            style={{ flex: 1 }}
             activeOpacity={1}
-            onPress={onClose}
-          />
-          {/* On wide screens, cap modal width and centre it */}
-          <View style={{ alignItems: 'center', width: '100%' }}>
+            style={{ width: isMobile ? '100%' : 560, alignSelf: 'center' }}
+          >
             <View
               style={[
                 s.modalSheet,
                 {
                   backgroundColor: colors.surface,
-                  maxWidth: 560,
-                  width: '100%',
+                  // Mobile: square top corners become pill bottom sheet
+                  borderRadius: isMobile ? 0 : 16,
+                  borderTopLeftRadius: 16,
+                  borderTopRightRadius: 16,
+                  maxHeight: '100%',
                 },
               ]}
             >
-              <View
-                style={[s.modalHandle, { backgroundColor: colors.border }]}
-              />
+              {/* Drag handle — only visible on mobile */}
+              {isMobile && (
+                <View
+                  style={[s.modalHandle, { backgroundColor: colors.border }]}
+                />
+              )}
+
               <View
                 style={[s.modalHeader, { borderBottomColor: colors.border }]}
               >
@@ -401,6 +423,7 @@ function AddBranchModal({
                   <X size={20} color={colors.textSecondary} strokeWidth={2} />
                 </TouchableOpacity>
               </View>
+
               <ScrollView
                 contentContainerStyle={s.modalBody}
                 keyboardShouldPersistTaps="handled"
@@ -490,8 +513,8 @@ function AddBranchModal({
                 </TouchableOpacity>
               </ScrollView>
             </View>
-          </View>
-        </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -973,18 +996,20 @@ export const s = StyleSheet.create({
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.48)',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
   },
   modalSheet: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    height: '70%',
+    borderRadius: 16,
+    maxHeight: '85%',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
+    shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.18,
     shadowRadius: 16,
     elevation: 20,
     alignSelf: 'center',
+    width: '100%',
   },
   modalHandle: {
     width: 40,
@@ -1003,7 +1028,7 @@ export const s = StyleSheet.create({
     borderBottomWidth: 1,
   },
   modalTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
-  modalBody: { paddingHorizontal: 20, paddingTop: 16 },
+  modalBody: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 20 },
   fieldLabel: {
     fontSize: 12,
     fontWeight: '600',

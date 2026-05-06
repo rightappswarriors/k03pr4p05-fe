@@ -47,12 +47,12 @@ export class PrinterService {
     }
   }
 
-  static async printOrderReceipt(receipt: Receipt): Promise<boolean> {
+  static async printOrderReceipt(receipt: Receipt, printWindow?: Window | null): Promise<boolean> {
 
     try {
       const receiptHTML = this.generateOrderReceiptHtml(receipt);
 
-      return await this.sendPrintJob(receiptHTML, false);
+      return await this.sendPrintJob(receiptHTML, false, printWindow);
     } catch (error: any) {
       throw new Error(`Receipt printing failed: ${error.message}`);
     }
@@ -60,23 +60,53 @@ export class PrinterService {
 
   private static async sendPrintJob(
     content: string,
-    isTest: boolean = false
+    isTest: boolean = false,
+    printWindow?: Window | null,
   ): Promise<boolean> {
     try {
       const htmlContent = await this.convertContentToHtml(content);
       // In sendPrintJob, web path:
       if (Platform.OS === 'web') {
-        const printWindow = window.open('', '_blank', 'width=500,height=800');
-        if (printWindow) {
-          printWindow.document.write(content);
-          printWindow.document.close();
-          printWindow.focus();
-          printWindow.print();
-          printWindow.close();
-          return true;  // ← was returning false before
+        const targetWindow = printWindow;
+        if (!targetWindow) {
+          window.alert('Print window could not be opened.');
+          return false;
         }
-        alert('Unable to open print window.');
-        return false;
+
+        return new Promise<boolean>((resolve, reject) => {
+          try {
+            // ✅ Use Blob URL instead of document.write() — works reliably on desktop
+            const blob = new Blob([htmlContent], { type: 'text/html' });
+            const blobUrl = URL.createObjectURL(blob);
+
+            targetWindow.location.href = blobUrl;
+
+            targetWindow.onload = () => {
+              try {
+                URL.revokeObjectURL(blobUrl); // clean up memory
+                targetWindow.focus();
+                targetWindow.print();
+                resolve(true);
+              } catch (err) {
+                reject(err);
+              }
+            };
+
+            // Fallback if onload doesn't fire
+            setTimeout(() => {
+              try {
+                targetWindow.focus();
+                targetWindow.print();
+                resolve(true);
+              } catch (err) {
+                reject(err);
+              }
+            }, 1000);
+
+          } catch (error) {
+            reject(error);
+          }
+        });
       } else {
         await Print.printAsync({
           html: htmlContent,
@@ -145,19 +175,51 @@ Thank you for testing!
         const isWeight = item.unitName &&
           WEIGHT_UNITS.includes(item.unitName.toLowerCase());
         const unitPrice = item.priceAtSale ?? item.price;
-        const lineTotal = unitPrice * item.quantity;
+        const discountQty = (item as any).discountQuantity ?? 0;
+        const discountRate = (item as any).discountRate ?? 0;
+        const discountAmount = (item as any).discountAmount ?? 0;
+        const itemVat = item.itemVatAmount ?? 0;
+
+        // Calculate discounted and regular portions
+        const discountedPrice = unitPrice * (1 - discountRate);
+        const discountedTotal = discountedPrice * discountQty;
+        const regularTotal = unitPrice * (item.quantity - discountQty);
+        const lineTotal = discountedTotal + regularTotal;
+        const lineTotalWithVat = lineTotal + itemVat;
 
         const qtyLabel = isWeight
           ? `${item.quantity.toFixed(3)} ${item.unitName} x Php ${unitPrice.toFixed(2)}/${item.unitName}`
           : `${item.quantity} ${item.unitLabel ?? 'pc'} x Php ${unitPrice.toFixed(2)}`;
 
-        return `
+        let itemRow = `
         <tr>
           <td>${item.name}</td>
           <td>${qtyLabel}</td>
-          <td class="right">Php ${lineTotal.toFixed(2)}</td>
-        </tr>
-      `;
+          <td class="right">Php ${lineTotalWithVat.toFixed(2)}</td>
+        </tr>`;
+
+        // Add discount details if there's a discount
+        if (discountQty > 0 && discountRate > 0) {
+          const discountDisplay = `${discountQty} @ ${(discountRate * 100).toFixed(0)}% off`;
+          itemRow += `
+        <tr>
+          <td style="padding-left: 10px; color: #666; font-size: 9px;">  ${discountDisplay}</td>
+          <td style="color: #666; font-size: 9px;">-Php ${discountAmount.toFixed(2)}</td>
+          <td></td>
+        </tr>`;
+        }
+
+        // Add VAT details if there's VAT
+        if (itemVat > 0) {
+          itemRow += `
+        <tr>
+          <td style="padding-left: 10px; color: #666; font-size: 9px;">  VAT (12%)</td>
+          <td style="color: #666; font-size: 9px;">Php ${itemVat.toFixed(2)}</td>
+          <td></td>
+        </tr>`;
+        }
+
+        return itemRow;
       })
       .join('');
 

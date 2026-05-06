@@ -7,19 +7,25 @@
 //   - Enter a budget amount for each month + beginning balance
 //   - Compare budgeted vs actual (actual comes from GIS expense rows)
 //   - Shows variance: over/under budget per month
+//   - Warns if cumulative monthly budgets exceed beginning balance
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+  LayoutAnimation,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
+  UIManager,
   View,
 } from 'react-native';
-import { Plus, X } from 'lucide-react-native';
+import { Plus, X, AlertTriangle } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
+import { BudgetService } from '@/services/budgetService';
+import { useResponsive } from '@/hooks/useResponsive';
 import type { GISRow } from '@/data/SummaryData';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -57,7 +63,10 @@ const ACCOUNT_OPTIONS = [
   'Other Operating Expenses',
 ];
 
-const YEAR_OPTIONS = ['2024', '2025', '2026', '2027'];
+const getBudgetYearOptions = () => {
+  const currentYear = new Date().getFullYear();
+  return [currentYear, currentYear + 1, currentYear + 2].map(String);
+};
 
 interface BudgetEntry {
   id: string;
@@ -94,7 +103,8 @@ function BudgetEntryModal({
   colors: any;
   existing?: BudgetEntry;
 }) {
-  const [year, setYear] = useState(existing?.year ?? '2026');
+  const defaultYear = existing?.year ?? getBudgetYearOptions()[0];
+  const [year, setYear] = useState(defaultYear);
   const [account, setAccount] = useState(existing?.account ?? '');
   const [begBal, setBegBal] = useState(String(existing?.begBal ?? 0));
   const [showAccounts, setShowAccounts] = useState(false);
@@ -106,7 +116,22 @@ function BudgetEntryModal({
   );
   const [error, setError] = useState('');
 
+  useEffect(() => {
+    setYear(existing?.year ?? getBudgetYearOptions()[0]);
+    setAccount(existing?.account ?? '');
+    setBegBal(String(existing?.begBal ?? 0));
+    setMonthVals(
+      MONTHS.reduce(
+        (acc, m) => ({ ...acc, [m]: String(existing?.months[m] ?? 0) }),
+        {} as Record<Month, string>,
+      ),
+    );
+  }, [existing]);
+
   const total = MONTHS.reduce((s, m) => s + (parseFloat(monthVals[m]) || 0), 0);
+  const begBalNum = parseFloat(begBal) || 0;
+  const remainingBudget = begBalNum - total;
+  const isOverBudget = remainingBudget < 0;
 
   const handleSave = () => {
     if (!account) {
@@ -249,7 +274,36 @@ function BudgetEntryModal({
       justifyContent: 'space-between',
       alignItems: 'center',
     },
+    warningBox: {
+      backgroundColor: colors.error + '15',
+      borderRadius: 10,
+      padding: 12,
+      marginTop: 12,
+      borderWidth: 1,
+      borderColor: colors.error,
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 10,
+    },
+    warningText: {
+      fontSize: 12,
+      color: colors.error,
+      flex: 1,
+      lineHeight: 18,
+    },
+    balanceRow: {
+      backgroundColor: isOverBudget ? colors.error + '15' : colors.success + '15',
+      borderRadius: 10,
+      padding: 12,
+      marginTop: 8,
+      borderWidth: 1,
+      borderColor: isOverBudget ? colors.error : colors.success,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
   });
+  const { isDesktop } = useResponsive();
 
   return (
     <Modal
@@ -281,23 +335,27 @@ function BudgetEntryModal({
           >
             <Text style={s.label}>YEAR</Text>
             <View style={s.yearRow}>
-              {YEAR_OPTIONS.map((y) => (
-                <TouchableOpacity
-                  key={y}
-                  style={[s.yearPill, year === y && s.yearAct]}
-                  onPress={() => setYear(y)}
-                >
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      fontWeight: '700',
-                      color: year === y ? '#fff' : colors.text,
-                    }}
+              {Array.from(
+                new Set([...getBudgetYearOptions(), existing?.year ?? year]),
+              )
+                .filter(Boolean)
+                .map((y) => (
+                  <TouchableOpacity
+                    key={y}
+                    style={[s.yearPill, year === y && s.yearAct]}
+                    onPress={() => setYear(y)}
                   >
-                    {y}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        fontWeight: '700',
+                        color: year === y ? '#fff' : colors.text,
+                      }}
+                    >
+                      {y}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
             </View>
 
             <Text style={s.label}>ACCOUNT *</Text>
@@ -384,6 +442,40 @@ function BudgetEntryModal({
               </Text>
             </View>
 
+            {/* Remaining Balance Calculation */}
+            <View style={s.balanceRow}>
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: '700',
+                  color: isOverBudget ? colors.error : colors.success,
+                }}
+              >
+                REMAINING BALANCE
+              </Text>
+              <Text
+                style={{
+                  fontSize: 16,
+                  fontWeight: '900',
+                  color: isOverBudget ? colors.error : colors.success,
+                }}
+              >
+                ₱{remainingBudget.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+              </Text>
+            </View>
+
+            {/* Warning if over budget */}
+            {isOverBudget && (
+              <View style={s.warningBox}>
+                <AlertTriangle size={18} color={colors.error} strokeWidth={2.5} />
+                <Text style={s.warningText}>
+                  <Text style={{ fontWeight: '700' }}>Budget Exceeded!</Text>
+                  {'\n'}
+                  Your monthly budgets total ₱{total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}, which is ₱{Math.abs(remainingBudget).toLocaleString('en-PH', { minimumFractionDigits: 2 })} more than your beginning balance of ₱{begBalNum.toLocaleString('en-PH', { minimumFractionDigits: 2 })}. Consider adjusting your monthly amounts or increasing the beginning balance.
+                </Text>
+              </View>
+            )}
+
             {error ? <Text style={s.errTxt}>{error}</Text> : null}
             <TouchableOpacity
               style={s.saveBtn}
@@ -412,21 +504,100 @@ export function BudgetModule({
   const [budgets, setBudgets] = useState<BudgetEntry[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [editEntry, setEditEntry] = useState<BudgetEntry | undefined>();
-  const [activeYear, setActiveYear] = useState('2026');
+  const [activeYear, setActiveYear] = useState(getBudgetYearOptions()[0]);
+  const [openBudgetId, setOpenBudgetId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      UIManager.setLayoutAnimationEnabledExperimental?.(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadBudgets = async () => {
+      setLoading(true);
+      try {
+        const rows = await BudgetService.getBudgetEntries();
+        if (!mounted) return;
+        setBudgets(
+          rows.map((item) => ({
+            id: String(item.id),
+            year: String(item.year),
+            account: item.account,
+            begBal: Number(item.begBal ?? 0),
+            months: {
+              ...MONTHS.reduce((acc, m) => ({ ...acc, [m]: 0 }), {} as Record<Month, number>),
+              ...(item.months ?? {}),
+            },
+          })),
+        );
+      } catch (error) {
+        console.warn('Unable to load budgets', error);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+    loadBudgets();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const yearOptions = useMemo(() => {
+    const years = new Set<string>([...getBudgetYearOptions(), ...budgets.map((b) => b.year)]);
+    return Array.from(years).sort((a, b) => Number(a) - Number(b));
+  }, [budgets]);
 
   const yearBudgets = budgets.filter((b) => b.year === activeYear);
 
-  const saveBudget = (entry: BudgetEntry) => {
-    setBudgets((prev) => {
-      const exists = prev.find((b) => b.id === entry.id);
-      return exists
-        ? prev.map((b) => (b.id === entry.id ? entry : b))
-        : [entry, ...prev];
-    });
+  const saveBudget = async (entry: BudgetEntry) => {
+    try {
+      const payload = {
+        year: Number(entry.year),
+        account: entry.account,
+        begBal: entry.begBal,
+        months: entry.months,
+      };
+      const saved = entry.id.startsWith('bgt_')
+        ? await BudgetService.createBudgetEntry(payload.year, payload.account, payload.begBal, payload.months)
+        : await BudgetService.updateBudgetEntry(Number(entry.id), payload.year, payload.account, payload.begBal, payload.months);
+
+      const persisted: BudgetEntry = {
+        id: String(saved.id),
+        year: String(saved.year),
+        account: saved.account,
+        begBal: Number(saved.begBal ?? 0),
+        months: {
+          ...MONTHS.reduce((acc, m) => ({ ...acc, [m]: 0 }), {} as Record<Month, number>),
+          ...(saved.months ?? {}),
+        },
+      };
+
+      setBudgets((prev) => {
+        const exists = prev.find((b) => b.id === persisted.id);
+        return exists
+          ? prev.map((b) => (b.id === persisted.id ? persisted : b))
+          : [persisted, ...prev];
+      });
+      setActiveYear(persisted.year);
+    } catch (error) {
+      console.warn('Unable to save budget', error);
+    }
   };
 
-  const deleteBudget = (id: string) => {
-    setBudgets((prev) => prev.filter((b) => b.id !== id));
+  const deleteBudget = async (id: string) => {
+    try {
+      await BudgetService.deleteBudgetEntry(Number(id));
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setBudgets((prev) => prev.filter((b) => b.id !== id));
+      if (openBudgetId === id) {
+        setOpenBudgetId(null);
+      }
+    } catch (error) {
+      console.warn('Unable to delete budget', error);
+    }
   };
 
   const s = StyleSheet.create({
@@ -528,6 +699,25 @@ export function BudgetModule({
       letterSpacing: 0.5,
     },
     delBtn: { padding: 6 },
+    budgetWarning: {
+      backgroundColor: colors.error + '15',
+      borderLeftWidth: 3,
+      borderLeftColor: colors.error,
+      padding: 10,
+      marginHorizontal: 14,
+      marginTop: 8,
+      marginBottom: 4,
+      borderRadius: 6,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    budgetWarningText: {
+      fontSize: 11,
+      color: colors.error,
+      flex: 1,
+      lineHeight: 16,
+    },
   });
 
   return (
@@ -548,7 +738,7 @@ export function BudgetModule({
 
       {/* Year selector */}
       <View style={s.yearRow}>
-        {YEAR_OPTIONS.map((y) => (
+        {yearOptions.map((y) => (
           <TouchableOpacity
             key={y}
             style={[s.yearPill, activeYear === y && s.yearAct]}
@@ -579,6 +769,9 @@ export function BudgetModule({
         yearBudgets.map((entry) => {
           const annualTotal = MONTHS.reduce((s, m) => s + entry.months[m], 0);
           const actual = getActualForAccount(entry.account, gisRows);
+          const remainingBudget = entry.begBal - annualTotal;
+          const isOverBudget = remainingBudget < 0;
+
           return (
             <View key={entry.id} style={s.card}>
               <View style={s.cardHead}>
@@ -599,42 +792,66 @@ export function BudgetModule({
                   <View style={{ flexDirection: 'row', gap: 8 }}>
                     <TouchableOpacity
                       onPress={() => {
-                        setEditEntry(entry);
-                        setModalOpen(true);
+                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                        setOpenBudgetId((prev) => (prev === entry.id ? null : entry.id));
                       }}
                     >
                       <Text
                         style={{
                           fontSize: 11,
-                          color: colors.primary,
-                          fontWeight: '600',
+                          color: colors.textSecondary,
+                          fontWeight: '700',
                         }}
                       >
-                        Edit
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => deleteBudget(entry.id)}>
-                      <Text
-                        style={{
-                          fontSize: 11,
-                          color: colors.error,
-                          fontWeight: '600',
-                        }}
-                      >
-                        Delete
+                        {openBudgetId === entry.id ? 'Collapse' : 'Details'}
                       </Text>
                     </TouchableOpacity>
                   </View>
                 </View>
               </View>
 
+              {/* Warning if budget exceeds beginning balance */}
+              {isOverBudget && (
+                <View style={s.budgetWarning}>
+                  <AlertTriangle size={16} color={colors.error} strokeWidth={2.5} />
+                  <Text style={s.budgetWarningText}>
+                    <Text style={{ fontWeight: '700' }}>Over Budget:</Text> Monthly totals exceed beginning balance by ₱{Math.abs(remainingBudget).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                  </Text>
+                </View>
+              )}
+
+              <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 14, paddingVertical: 10 }}>
+                <TouchableOpacity
+                  onPress={() => {
+                    setEditEntry(entry);
+                    setModalOpen(true);
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      color: colors.primary,
+                      fontWeight: '600',
+                    }}
+                  >
+                    Edit
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => deleteBudget(entry.id)}>
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      color: colors.error,
+                      fontWeight: '600',
+                    }}
+                  >
+                    Delete
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
               {/* Column headers */}
-              <View
-                style={[
-                  s.colHead,
-                  { flexDirection: 'row', justifyContent: 'space-between' },
-                ]}
-              >
+              <View style={[s.colHead, { flexDirection: 'row', justifyContent: 'space-between' }]}>
                 <Text style={[s.colHdTxt, { width: 36 }]}>MO</Text>
                 <Text style={[s.colHdTxt, { flex: 1, textAlign: 'right' }]}>
                   BUDGETED
@@ -647,45 +864,37 @@ export function BudgetModule({
                 </Text>
               </View>
 
-              <View style={s.monthGrid}>
-                {MONTHS.map((m) => {
-                  const budgeted = entry.months[m];
-                  // Distribute actual evenly across months for now (real version connects to transactions by date)
-                  const monthActual = budgeted > 0 ? actual / 12 : 0;
-                  const variance = budgeted - monthActual;
-                  const isOver = variance < 0;
-                  return (
-                    <View key={m} style={s.monthRow}>
-                      <Text style={s.mName}>{m}</Text>
-                      <Text style={s.mBudget}>
-                        ₱{budgeted.toLocaleString()}
-                      </Text>
-                      <Text
-                        style={[s.mActual, { color: colors.textSecondary }]}
-                      >
-                        {monthActual > 0 ? `₱${monthActual.toFixed(0)}` : '—'}
-                      </Text>
-                      <Text
-                        style={[
-                          s.mVariance,
-                          {
-                            color:
-                              budgeted === 0
-                                ? colors.textSecondary
-                                : isOver
-                                  ? colors.error
-                                  : colors.success,
-                          },
-                        ]}
-                      >
-                        {budgeted === 0
-                          ? '—'
-                          : `${isOver ? '▼' : '▲'} ₱${Math.abs(variance).toFixed(0)}`}
-                      </Text>
-                    </View>
-                  );
-                })}
-              </View>
+              {openBudgetId === entry.id ? (
+                <View style={s.monthGrid}>
+                  {MONTHS.map((m) => {
+                    const budgeted = entry.months[m];
+                    const monthActual = budgeted > 0 ? actual / 12 : 0;
+                    const variance = budgeted - monthActual;
+                    const isOver = variance < 0;
+                    const varianceColor = budgeted === 0 ? colors.textSecondary : isOver ? colors.error : colors.success;
+                    return (
+                      <View key={m} style={s.monthRow}>
+                        <Text style={s.mName}>{m}</Text>
+                        <Text style={s.mBudget}>
+                          ₱{budgeted.toLocaleString()}
+                        </Text>
+                        <Text
+                          style={[s.mActual, { color: colors.textSecondary }]}
+                        >
+                          {monthActual > 0 ? `₱${monthActual.toFixed(0)}` : '—'}
+                        </Text>
+                        <Text
+                          style={[s.mVariance, { color: varianceColor }]}
+                        >
+                          {budgeted === 0
+                            ? '—'
+                            : `${isOver ? '▼' : '▲'} ₱${Math.abs(variance).toFixed(0)}`}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              ) : null}
             </View>
           );
         })

@@ -1,7 +1,6 @@
 import { gql } from "graphql-request";
 import { graphQLRequest } from "./apiClient";
 import { formatGraphQLError } from "@/utils/errorFormatter";
-
 export interface PromoTypeItem {
   id: number;
   name: string;

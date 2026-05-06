@@ -56,6 +56,7 @@ import { useResponsiveGrid } from '@/hooks/useResponsiveGrid';
 import { formatPeso } from '@/utils/moneyHelpers';
 import { VatTypeItem, VatTypeService } from '@/services/vatTypeService';
 import { PromoTypeItem, PromoTypeService } from '@/services/promoTypeService';
+import { autoCode } from '@/utils/autoCode';
 
 export const FILTERS: DateRangeFilter[] = [
   'today',
@@ -593,14 +594,7 @@ function AddOutletModal({
       setForm((prev) => ({ ...prev, bannerImage: result.assets[0].uri }));
   };
 
-  const autoCode = (name: string) => {
-    const prefix = name
-      .trim()
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, '')
-      .slice(0, 4);
-    return prefix + Date.now().toString().slice(-4);
-  };
+
 
   const handleAdd = async () => {
     if (!form.name.trim()) {

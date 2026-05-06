@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 /**
   * Get all organization-level items
   * Used to fetch items available in the organization that can be added to outlets
@@ -9,23 +11,39 @@ export class MediaService {
         return (process.env.EXPO_PUBLIC_MEDIA_SERVER_URL || 'http://10.0.2.2:3001').replace(/\/$/, '');
     }
 
-    static normalizeMediaFile(file: any) {
+    static async normalizeMediaFile(file: any) {
         const uri = file?.uri;
         if (!uri) {
             throw new Error('Media file URI is required');
         }
+
         const name = file.name || uri.split('/').pop() || `upload_${Date.now()}`;
         const type =
             file.type ||
             (name.match(/\.([a-zA-Z0-9]+)$/)?.[1]
                 ? `image/${name.split('.').pop()}`
                 : 'image/jpeg');
+
+        if (Platform.OS === 'web') {
+            if (file instanceof File || file instanceof Blob) {
+                return file;
+            }
+
+            const response = await fetch(uri);
+            if (!response.ok) {
+                throw new Error('Unable to fetch selected file for upload');
+            }
+
+            const blob = await response.blob();
+            return new File([blob], name, { type });
+        }
+
         return { uri, name, type };
     }
 
     static async uploadMedia(file: any, orgId: string) {
         if (!orgId) throw new Error('orgId is required for media upload');
-        const mediaFile = this.normalizeMediaFile(file);
+        const mediaFile = await this.normalizeMediaFile(file);
 
         const formData = new FormData();
         formData.append('orgId', orgId);
@@ -91,12 +109,11 @@ export class MediaService {
 
     static async updateMedia(file: any, oldPath: string, orgId: string) {
         if (!oldPath) {
-            this.uploadMedia(file, orgId);
-            return;
-        };
+            return this.uploadMedia(file, orgId);
+        }
         if (!orgId) throw new Error('orgId is required for media update');
 
-        const mediaFile = this.normalizeMediaFile(file);
+        const mediaFile = await this.normalizeMediaFile(file);
         const formData = new FormData();
         formData.append('orgId', orgId);
         formData.append('oldPath', oldPath);

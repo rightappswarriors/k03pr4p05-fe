@@ -3,6 +3,7 @@ export { InventoryService } from './inventoryService';
 export { SalesService } from './salesService';
 export { HrService } from './hrService';
 export { FinanceService } from './financeService';
+export { BudgetService } from './budgetService';
 export { MasterFileService } from './masterFileService';
 export { SubscriptionService } from './subscriptionService';
 export { graphQLRequest } from './apiClient';

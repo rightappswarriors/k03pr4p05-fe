@@ -186,8 +186,8 @@ export class AdminService {
   }
   static async getOutletsByBranch(branchId: string): Promise<AdminOutlet[]> {
     const GET_BRANCHOUTLETS = gql`
-      query GetOutletsByBranch($branchId: ID!) {
-        getOutletsByBranch(branchId: $branchId) {
+      query getOutletsByBranchIDD($branchId: ID!) {
+        getOutletsByBranchIDD(branchId: $branchId) {
           id
           name
           outletType

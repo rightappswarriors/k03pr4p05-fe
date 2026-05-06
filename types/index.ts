@@ -1,3 +1,6 @@
+// VAT Configuration
+export const DEFAULT_VAT_RATE = 0.12; // 12% VAT
+
 export interface Item {
   id: string;
   name: string;
@@ -8,7 +11,7 @@ export interface Item {
   brand?: string;
   categoryId?: string;
   color?: string;
-  vatable?: boolean;
+  vatExempt?: boolean;
   units?: ItemUnit[];      // ← new
 }
 export interface CartItem {
@@ -21,8 +24,13 @@ export interface CartItem {
   unitName?: string;       // ← new — display label e.g. "kg"
   unitLabel?: string;      // ← new — full label e.g. "Per Kilo"
   priceAtSale: number;     // ← new — unit price at time of add
-  vatable?: boolean;       // ← add this
+  discountAmount?: number; // ← new — per-item discount amount
+
+  discountQuantity?: number; // ← new — per-item discount amount
+  discountRate?: number; // ← new — per-item discount amount
+  vatExempt?: boolean;       // ← renamed from vatable
   barcode?: string;
+  itemVatAmount?: number;  // ← new — per-item VAT (12% by default, 0 if vatExempt=true)
 }
 
 export type OutletPromoInput = {
@@ -204,8 +212,10 @@ export interface ReceiptItem {
   unitName?: string;       // "kg", "dozen", "piece"
   unitLabel?: string;      // "Per Kilo", "Per Dozen"
   subtotal: number;        // priceAtSale * quantity
-  vatable?: boolean;
+  discountAmount?: number; // ← new — per-item discount
+  vatExempt?: boolean;
   barcode?: string;
+  itemVatAmount?: number;  // ← new — per-item VAT
 }
 export interface Transaction {
   id: string;
@@ -459,6 +469,7 @@ export interface CostLine {
 export interface CatalogItem {
   id: string;
   name: string;
+  itemCode: string;
   barcode: string;
   brand?: string;
   category?: string;

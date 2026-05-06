@@ -1,6 +1,4 @@
 // screens/SalesAnalyticsScreen.tsx
-// Always renders the full analytics UI — branches and items are fetched
-// independently so the layout is never empty even with zero sales data.
 
 import React, {
   useCallback,
@@ -16,6 +14,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -42,8 +41,10 @@ import {
   type SalesAnalyticsPayload,
   type BranchPerformance,
   type ItemPerformance,
+  type PaginatedItemAnalyticsPayload,
 } from '@/services/analyticsService';
 import { formatShortDate } from '@/utils/dateHelpers';
+import ItemControls from '@/components/ItemControls';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -52,15 +53,6 @@ interface RawBranch {
   name: string;
   address: string;
   isActive: boolean;
-}
-
-interface RawItem {
-  id: number;
-  name: string;
-  image?: string | null;
-  sellingPrice: number;
-  totalCost: number;
-  orgCategory?: { name: string } | null;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -92,9 +84,12 @@ const fmtM = (n: number) =>
       ? `₱${(n / 1_000).toFixed(0)}K`
       : `₱${n.toFixed(0)}`;
 
-const fmtFull = (n: number) =>
+const fmtFull = (n: number, decimals = 0) =>
   (n < 0 ? '-₱' : '₱') +
-  Math.abs(n).toLocaleString('en-PH', { minimumFractionDigits: 0 });
+  Math.abs(n).toLocaleString('en-PH', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
 
 const fmtPct = (n: number) => `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`;
 
@@ -397,6 +392,10 @@ const dfb = StyleSheet.create({
   chipText: { fontSize: 12, fontWeight: '600' },
 });
 
+// ─── Item Controls (Search + Take + Pagination) ───────────────────────────────
+
+
+
 // ─── Branch Card ──────────────────────────────────────────────────────────────
 
 function BranchCard({
@@ -413,8 +412,6 @@ function BranchCard({
   const hasData = !!analytics && analytics.totalRevenue > 0;
   const profitable = hasData ? analytics!.isProfitable : false;
   const up = hasData ? analytics!.deltaRevenue >= 0 : true;
-
-  // Potential margin even without sales, based on no data
   const borderColor = hasData
     ? profitable
       ? '#10B98144'
@@ -433,7 +430,6 @@ function BranchCard({
         },
       ]}
     >
-      {/* Header row */}
       <View style={brc.header}>
         <View style={{ flex: 1 }}>
           <View
@@ -456,7 +452,6 @@ function BranchCard({
             {branch.address}
           </Text>
         </View>
-
         {hasData ? (
           <View
             style={[
@@ -487,7 +482,6 @@ function BranchCard({
         )}
       </View>
 
-      {/* 4-stat row */}
       <View style={brc.statsRow}>
         {[
           {
@@ -524,7 +518,6 @@ function BranchCard({
         ))}
       </View>
 
-      {/* Footer */}
       <View style={[brc.footer, { borderTopColor: colors.border }]}>
         {hasData ? (
           <>
@@ -611,35 +604,26 @@ const brc = StyleSheet.create({
 });
 
 // ─── Item Row ─────────────────────────────────────────────────────────────────
+// NOTE: now takes ItemPerformance directly from the backend paginated response
 
 function ItemRow({
   item,
   rank,
-  analytics,
   maxRevenue,
   colors,
   onPress,
 }: {
-  item: RawItem;
+  item: ItemPerformance;
   rank: number;
-  analytics?: ItemPerformance;
   maxRevenue: number;
   colors: any;
   onPress: () => void;
 }) {
-  const hasData = !!analytics && analytics.totalRevenue > 0;
-  const isLoss = hasData && analytics!.grossProfit < 0;
-  const meta = analytics ? STATUS_META[analytics.status] : null;
+  const hasData = item.totalRevenue > 0;
+  const isLoss = hasData && item.grossProfit < 0;
+  const meta = STATUS_META[item.status];
   const barW =
-    hasData && maxRevenue > 0
-      ? (analytics!.totalRevenue / maxRevenue) * 100
-      : 0;
-
-  // Show potential margin using item prices even without sales
-  const potentialMarginPct =
-    item.sellingPrice > 0
-      ? ((item.sellingPrice - item.totalCost) / item.sellingPrice) * 100
-      : 0;
+    hasData && maxRevenue > 0 ? (item.totalRevenue / maxRevenue) * 100 : 0;
 
   return (
     <TouchableOpacity
@@ -655,7 +639,6 @@ function ItemRow({
       activeOpacity={0.82}
     >
       <View style={itr.topRow}>
-        {/* Rank badge */}
         <View
           style={[
             itr.rankBadge,
@@ -680,19 +663,17 @@ function ItemRow({
           </Text>
         </View>
 
-        {/* Name + category */}
         <View style={{ flex: 1, marginHorizontal: 10 }}>
           <Text style={[itr.name, { color: colors.text }]} numberOfLines={1}>
-            {item.name}
+            {item.itemName}
           </Text>
-          {item.orgCategory?.name && (
+          {item.categoryName && (
             <Text style={[itr.cat, { color: colors.textSecondary }]}>
-              {item.orgCategory.name}
+              {item.categoryName}
             </Text>
           )}
         </View>
 
-        {/* Right side: revenue or price */}
         <View style={{ alignItems: 'flex-end' }}>
           <Text
             style={[
@@ -706,17 +687,14 @@ function ItemRow({
               },
             ]}
           >
-            {hasData ? fmtM(analytics!.totalRevenue) : fmtM(item.sellingPrice)}
+            {hasData ? fmtM(item.totalRevenue) : '₱0'}
           </Text>
           <Text style={[itr.sub, { color: colors.textSecondary }]}>
-            {hasData
-              ? `${analytics!.unitsSold.toLocaleString()} sold`
-              : 'selling price'}
+            {hasData ? `${item.unitsSold.toLocaleString()} sold` : 'no sales'}
           </Text>
         </View>
       </View>
 
-      {/* Progress bar — shows empty track when no sales */}
       <View style={[itr.track, { backgroundColor: colors.border + '55' }]}>
         {barW > 0 && (
           <View
@@ -735,26 +713,27 @@ function ItemRow({
         )}
       </View>
 
-      {/* Footer */}
       <View style={itr.footer}>
         <Text style={[itr.meta, { color: colors.textSecondary }]}>
           {hasData
-            ? `Margin ${analytics!.profitMargin.toFixed(1)}%  ·  ${fmtM(analytics!.grossProfit)} profit`
-            : `Cost ${fmtM(item.totalCost)}  ·  Potential margin ${potentialMarginPct.toFixed(1)}%`}
+            ? `Margin ${item.profitMargin.toFixed(1)}%  ·  ${fmtM(item.grossProfit)} profit`
+            : 'No sales in this period'}
         </Text>
-        {hasData && meta ? (
-          <View style={[itr.badge, { backgroundColor: meta.bg }]}>
-            <Text style={[itr.badgeTxt, { color: meta.text }]}>
-              {meta.label}
-            </Text>
-          </View>
-        ) : (
-          <View style={[itr.badge, { backgroundColor: colors.border + '55' }]}>
-            <Text style={[itr.badgeTxt, { color: colors.textSecondary }]}>
-              No sales
-            </Text>
-          </View>
-        )}
+        <View
+          style={[
+            itr.badge,
+            { backgroundColor: hasData ? meta.bg : colors.border + '55' },
+          ]}
+        >
+          <Text
+            style={[
+              itr.badgeTxt,
+              { color: hasData ? meta.text : colors.textSecondary },
+            ]}
+          >
+            {hasData ? meta.label : 'No sales'}
+          </Text>
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -788,30 +767,25 @@ const itr = StyleSheet.create({
 });
 
 // ─── Item Detail Modal ────────────────────────────────────────────────────────
+// Also updated to take ItemPerformance directly
 
 function ItemDetailModal({
   item,
-  analytics,
   rank,
   visible,
   onClose,
   colors,
 }: {
-  item: RawItem | null;
-  analytics?: ItemPerformance;
+  item: ItemPerformance | null;
   rank: number;
   visible: boolean;
   onClose: () => void;
   colors: any;
 }) {
   if (!item) return null;
-  const hasData = !!analytics && analytics.totalRevenue > 0;
-  const isLoss = hasData && analytics!.grossProfit < 0;
-  const meta = analytics ? STATUS_META[analytics.status] : STATUS_META.stable;
-  const potentialMargin =
-    item.sellingPrice > 0
-      ? ((item.sellingPrice - item.totalCost) / item.sellingPrice) * 100
-      : 0;
+  const hasData = item.totalRevenue > 0;
+  const isLoss = hasData && item.grossProfit < 0;
+  const meta = STATUS_META[item.status];
 
   return (
     <Modal
@@ -861,9 +835,9 @@ function ItemDetailModal({
                 </View>
               </View>
               <Text style={[mdl.name, { color: colors.text }]}>
-                {item.name}
+                {item.itemName}
               </Text>
-              {item.orgCategory?.name && (
+              {item.categoryName && (
                 <Text
                   style={{
                     fontSize: 12,
@@ -871,7 +845,7 @@ function ItemDetailModal({
                     marginTop: 2,
                   }}
                 >
-                  {item.orgCategory.name}
+                  {item.categoryName}
                 </Text>
               )}
             </View>
@@ -887,12 +861,12 @@ function ItemDetailModal({
             {[
               {
                 label: 'Total Revenue',
-                value: hasData ? fmtFull(analytics!.totalRevenue) : '₱0',
+                value: hasData ? fmtFull(item.totalRevenue) : '₱0',
                 color: hasData ? colors.accent : colors.textSecondary,
               },
               {
                 label: 'Gross Profit',
-                value: hasData ? fmtFull(analytics!.grossProfit) : '₱0',
+                value: hasData ? fmtFull(item.grossProfit) : '₱0',
                 color: hasData
                   ? isLoss
                     ? '#EF4444'
@@ -900,26 +874,24 @@ function ItemDetailModal({
                   : colors.textSecondary,
               },
               {
-                label: 'Selling Price',
-                value: fmtFull(item.sellingPrice),
-                color: colors.text,
-              },
-              {
-                label: 'Unit Cost',
-                value: fmtFull(item.totalCost),
+                label: 'Revenue/Unit',
+                value: hasData ? fmtFull(item.revenuePerUnit, 2) : '—',
                 color: colors.text,
               },
               {
                 label: 'Units Sold',
-                value: hasData ? analytics!.unitsSold.toLocaleString() : '0',
+                value: hasData ? item.unitsSold.toLocaleString() : '0',
                 color: hasData ? colors.text : colors.textSecondary,
               },
               {
                 label: 'Profit Margin',
-                value: hasData
-                  ? `${analytics!.profitMargin.toFixed(1)}%`
-                  : `${potentialMargin.toFixed(1)}%`,
+                value: `${item.profitMargin.toFixed(1)}%`,
                 color: isLoss ? '#EF4444' : '#10B981',
+              },
+              {
+                label: 'Total Cost',
+                value: hasData ? fmtFull(item.totalCost) : '—',
+                color: colors.text,
               },
             ].map((s) => (
               <View
@@ -945,9 +917,9 @@ function ItemDetailModal({
               <View
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
               >
-                {analytics!.trend === 'up' ? (
+                {item.trend === 'up' ? (
                   <TrendingUp size={14} color="#10B981" strokeWidth={2} />
-                ) : analytics!.trend === 'down' ? (
+                ) : item.trend === 'down' ? (
                   <TrendingDown size={14} color="#EF4444" strokeWidth={2} />
                 ) : (
                   <BarChart2
@@ -961,14 +933,14 @@ function ItemDetailModal({
                     fontSize: 13,
                     fontWeight: '700',
                     color:
-                      analytics!.trend === 'up'
+                      item.trend === 'up'
                         ? '#10B981'
-                        : analytics!.trend === 'down'
+                        : item.trend === 'down'
                           ? '#EF4444'
                           : colors.textSecondary,
                   }}
                 >
-                  {fmtPct(analytics!.trendPct)} vs previous period
+                  {fmtPct(item.trendPct)} vs previous period
                 </Text>
               </View>
             </View>
@@ -1128,19 +1100,34 @@ export default function SalesAnalyticsScreen() {
   const [customEnd, setCustomEnd] = useState<Date | undefined>();
   const [heroLoading, setHeroLoading] = useState(true);
   const [branchLoading, setBranchLoading] = useState(true);
-  const [itemLoading, setItemLoading] = useState(true);
   const [rawBranches, setRawBranches] = useState<RawBranch[]>([]);
-  const [rawItems, setRawItems] = useState<RawItem[]>([]);
   const [analytics, setAnalytics] = useState<SalesAnalyticsPayload | null>(
     null,
   );
+
+  // Item pagination state
   const [itemSection, setItemSection] = useState<'top' | 'bottom'>('top');
-  const [selectedItem, setSelectedItem] = useState<RawItem | null>(null);
-  const [selectedAn, setSelectedAn] = useState<ItemPerformance | undefined>();
+  const [itemSearch, setItemSearch] = useState('');
+  const [itemTake, setItemTake] = useState('20');
+  const [itemPage, setItemPage] = useState(1);
+  const [itemPaginated, setItemPaginated] =
+    useState<PaginatedItemAnalyticsPayload | null>(null);
+  const [itemPagLoading, setItemPagLoading] = useState(false);
+
+  // Modal state
+  const [selectedItem, setSelectedItem] = useState<ItemPerformance | null>(
+    null,
+  );
   const [selectedRank, setSelectedRank] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
 
-  // ── One-time: load branches + items ───────────────────────────────────────
+  // ── takeNum derived ────────────────────────────────────────────────────────
+  const takeNum = useMemo(() => {
+    const n = parseInt(itemTake, 10);
+    return isNaN(n) || n <= 0 ? 20 : n;
+  }, [itemTake]);
+
+  // ── Load branches once ─────────────────────────────────────────────────────
   useEffect(() => {
     (async () => {
       try {
@@ -1159,7 +1146,6 @@ export default function SalesAnalyticsScreen() {
           BRANCHES_GQL,
           {},
         );
-        console.log(bRes);
         setRawBranches(bRes.getOrgBranches ?? []);
       } catch (e) {
         console.warn('branch fetch error', e);
@@ -1167,36 +1153,10 @@ export default function SalesAnalyticsScreen() {
       } finally {
         setBranchLoading(false);
       }
-
-      try {
-        setItemLoading(true);
-        // Reuse the existing items query from item.query.ts
-        const ITEMS_GQL = gql`
-          query GetItemsForAnalytics {
-            items {
-              id
-              name
-              image
-              sellingPrice
-              totalCost
-              orgCategory {
-                name
-              }
-            }
-          }
-        `;
-        const iRes = await graphQLRequest<{ items: RawItem[] }>(ITEMS_GQL);
-        setRawItems(iRes.items ?? []);
-      } catch (e) {
-        console.warn('items fetch error', e);
-        setRawItems([]);
-      } finally {
-        setItemLoading(false);
-      }
     })();
   }, []);
 
-  // ── Reload analytics on filter change ─────────────────────────────────────
+  // ── Load summary analytics on preset/date change ───────────────────────────
   const loadAnalytics = useCallback(async () => {
     setHeroLoading(true);
     try {
@@ -1224,42 +1184,70 @@ export default function SalesAnalyticsScreen() {
     loadAnalytics();
   }, [loadAnalytics]);
 
-  // ── Derived maps ──────────────────────────────────────────────────────────
+  // ── Paginated item loader ──────────────────────────────────────────────────
+  const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const triggerItemLoad = useCallback(
+    (search: string, take: number, page: number, section: 'top' | 'bottom') => {
+      if (searchDebounce.current) clearTimeout(searchDebounce.current);
+      const delay = search ? 350 : 0;
+      searchDebounce.current = setTimeout(async () => {
+        setItemPagLoading(true);
+        try {
+          const dateRange =
+            preset === 'custom' && customStart && customEnd
+              ? {
+                  startDate: customStart.toISOString(),
+                  endDate: customEnd.toISOString(),
+                }
+              : undefined;
+          const result = await AnalyticsService.getItemAnalyticsPaginated(
+            preset,
+            {
+              dateRange,
+              take,
+              page,
+              search,
+              section,
+            },
+          );
+          setItemPaginated(result);
+        } catch (e) {
+          console.warn('item paginated load error', e);
+        } finally {
+          setItemPagLoading(false);
+        }
+      }, delay);
+    },
+    [preset, customStart, customEnd],
+  );
+
+  // Reset to page 1 and reload when search/take/section/preset changes
+  useEffect(() => {
+    setItemPage(1);
+    triggerItemLoad(itemSearch, takeNum, 1, itemSection);
+  }, [itemSearch, takeNum, itemSection, preset, customStart, customEnd]);
+
+  // Reload when only page changes
+  useEffect(() => {
+    triggerItemLoad(itemSearch, takeNum, itemPage, itemSection);
+  }, [itemPage]);
+
+  // ── Derived from paginated response ───────────────────────────────────────
+  const pagedItems = itemPaginated?.items ?? [];
+  const totalItemPages = itemPaginated?.totalPages ?? 1;
+  const totalItemCount = itemPaginated?.total ?? 0;
+  const maxRevenue = useMemo(
+    () => Math.max(...pagedItems.map((i) => i.totalRevenue), 1),
+    [pagedItems],
+  );
+
+  // ── Branch map ────────────────────────────────────────────────────────────
   const branchMap = useMemo(() => {
     const m: Record<number, BranchPerformance> = {};
     analytics?.branches.forEach((b) => (m[b.branchId] = b));
     return m;
   }, [analytics]);
-
-  const itemAnalyticsMap = useMemo(() => {
-    const m: Record<number, ItemPerformance> = {};
-    analytics?.topItems.forEach((i) => (m[i.itemId] = i));
-    analytics?.bottomItems.forEach((i) => (m[i.itemId] = i));
-    return m;
-  }, [analytics]);
-
-  // Ordered item list: if analytics exist order by revenue, else alphabetical
-  const displayItems = useMemo<RawItem[]>(() => {
-    if (!analytics || analytics.topItems.length === 0) {
-      return [...rawItems].sort((a, b) => a.name.localeCompare(b.name));
-    }
-    const sourceList =
-      itemSection === 'top' ? analytics.topItems : analytics.bottomItems;
-    const ordered = sourceList
-      .map((ai) => rawItems.find((r) => r.id === ai.itemId))
-      .filter(Boolean) as RawItem[];
-    const orderedIds = new Set(ordered.map((r) => r.id));
-    const rest = rawItems
-      .filter((r) => !orderedIds.has(r.id))
-      .sort((a, b) => a.name.localeCompare(b.name));
-    return [...ordered, ...rest];
-  }, [rawItems, analytics, itemSection]);
-
-  const maxRevenue = useMemo(
-    () =>
-      Math.max(...(analytics?.topItems.map((i) => i.totalRevenue) ?? []), 1),
-    [analytics],
-  );
 
   // ── Chart ─────────────────────────────────────────────────────────────────
   const chartConfig = useMemo(
@@ -1280,6 +1268,13 @@ export default function SalesAnalyticsScreen() {
     [colors, theme],
   );
 
+  const trendScale = useMemo(() => {
+    const maxVal = Math.max(...(analytics?.trend.map((p) => p.revenue) ?? [0]));
+    return maxVal >= 100_000 ? 1000 : 1;
+  }, [analytics]);
+
+  const trendScaleLabel = trendScale === 1000 ? '₱ in thousands' : '₱ (actual)';
+
   const trendChart = useMemo(() => {
     const pts = analytics?.trend ?? [];
     if (!pts.length) return null;
@@ -1291,18 +1286,19 @@ export default function SalesAnalyticsScreen() {
       labels: s.map((p) => p.label),
       datasets: [
         {
-          data: s.map((p) => Math.round(p.revenue / 1000)),
+          data: s.map((p) => Math.round(p.revenue / trendScale)),
           color: (o = 1) => `rgba(27,58,107,${o})`,
           strokeWidth: 2,
         },
         {
-          data: s.map((p) => Math.round(p.cost / 1000)),
+          data: s.map((p) => Math.round(p.cost / trendScale)),
           color: (o = 1) => `rgba(232,119,34,${o})`,
           strokeWidth: 2,
         },
       ],
+      filteredPts: s,
     };
-  }, [analytics]);
+  }, [analytics, trendScale]);
 
   const s = analytics?.summary;
   const periodLabel =
@@ -1316,7 +1312,7 @@ export default function SalesAnalyticsScreen() {
             ? `${formatShortDate(customStart)} – ${formatShortDate(customEnd)}`
             : 'All Time';
 
-  // ── Layout ────────────────────────────────────────────────────────────────
+  // ── Layout styles ─────────────────────────────────────────────────────────
   const styles = useMemo(
     () =>
       StyleSheet.create({
@@ -1434,7 +1430,7 @@ export default function SalesAnalyticsScreen() {
         colors={colors}
       />
 
-      {/* ── Hero ───────────────────────────────────────────────────────────── */}
+      {/* ── Hero ─────────────────────────────────────────────────────────── */}
       {heroLoading ? (
         <HeroSkeleton colors={colors} />
       ) : (
@@ -1515,7 +1511,7 @@ export default function SalesAnalyticsScreen() {
         </View>
       )}
 
-      {/* ── Trend charts (only when data exists) ───────────────────────────── */}
+      {/* ── Trend charts ──────────────────────────────────────────────────── */}
       {trendChart && (
         <>
           <Text style={[styles.sectionTitle, { marginTop: 20 }]}>
@@ -1525,7 +1521,7 @@ export default function SalesAnalyticsScreen() {
             <View style={styles.chartFlex}>
               <ChartCard
                 title="Revenue vs Cost"
-                subtitle={`${periodLabel} · ₱ in thousands`}
+                subtitle={`${periodLabel} · ${trendScaleLabel}`}
               >
                 <LineChart
                   data={trendChart}
@@ -1539,25 +1535,20 @@ export default function SalesAnalyticsScreen() {
                 />
               </ChartCard>
             </View>
-            {isDesktop && analytics?.trend && (
+            {isDesktop && (
               <View style={styles.chartFlex}>
                 <ChartCard
                   title="Gross Profit Trend"
-                  subtitle={`${periodLabel} · ₱ in thousands`}
+                  subtitle={`${periodLabel} · ${trendScaleLabel}`}
                 >
                   <LineChart
                     data={{
                       labels: trendChart.labels,
                       datasets: [
                         {
-                          data: (analytics.trend.length > 8
-                            ? analytics.trend.filter(
-                                (_, i) =>
-                                  i % Math.ceil(analytics.trend.length / 8) ===
-                                  0,
-                              )
-                            : analytics.trend
-                          ).map((p) => Math.round(p.profit / 1000)),
+                          data: trendChart.filteredPts.map((p) =>
+                            Math.round(p.profit / trendScale),
+                          ),
                           color: (o = 1) => `rgba(16,185,129,${o})`,
                           strokeWidth: 2,
                         },
@@ -1575,23 +1566,19 @@ export default function SalesAnalyticsScreen() {
               </View>
             )}
           </View>
-          {!isDesktop && analytics?.trend && (
+          {!isDesktop && (
             <ChartCard
               title="Gross Profit Trend"
-              subtitle={`${periodLabel} · ₱ in thousands`}
+              subtitle={`${periodLabel} · ${trendScaleLabel}`}
             >
               <LineChart
                 data={{
                   labels: trendChart.labels,
                   datasets: [
                     {
-                      data: (analytics.trend.length > 8
-                        ? analytics.trend.filter(
-                            (_, i) =>
-                              i % Math.ceil(analytics.trend.length / 8) === 0,
-                          )
-                        : analytics.trend
-                      ).map((p) => Math.round(p.profit / 1000)),
+                      data: trendChart.filteredPts.map((p) =>
+                        Math.round(p.profit / trendScale),
+                      ),
                       color: (o = 1) => `rgba(16,185,129,${o})`,
                       strokeWidth: 2,
                     },
@@ -1662,15 +1649,31 @@ export default function SalesAnalyticsScreen() {
       <Text style={[styles.sectionTitle, { marginTop: 14 }]}>
         Item Performance
       </Text>
+
       <SectionToggle
         active={itemSection}
         onChange={setItemSection}
         colors={colors}
       />
 
-      {itemLoading ? (
+      <ItemControls
+        search={itemSearch}
+        onSearchChange={(v) => setItemSearch(v)}
+        take={itemTake}
+        onTakeChange={(v) => {
+          setItemTake(v);
+          setItemPage(1);
+        }}
+        page={itemPage}
+        totalPages={totalItemPages}
+        onPrev={() => setItemPage((p) => Math.max(1, p - 1))}
+        onNext={() => setItemPage((p) => Math.min(totalItemPages, p + 1))}
+        colors={colors}
+      />
+
+      {itemPagLoading ? (
         [1, 2, 3, 4, 5].map((i) => <ItemSkeleton key={i} colors={colors} />)
-      ) : displayItems.length === 0 ? (
+      ) : pagedItems.length === 0 ? (
         <View
           style={{
             backgroundColor: colors.card,
@@ -1685,32 +1688,80 @@ export default function SalesAnalyticsScreen() {
           <Text
             style={{ fontSize: 13, color: colors.textSecondary, marginTop: 8 }}
           >
-            No items found in inventory.
+            {itemSearch
+              ? `No items matching "${itemSearch}"`
+              : 'No items found in inventory.'}
           </Text>
         </View>
       ) : (
-        displayItems.map((item, idx) => (
-          <ItemRow
-            key={item.id}
-            item={item}
-            rank={idx + 1}
-            analytics={itemAnalyticsMap[item.id]}
-            maxRevenue={maxRevenue}
-            colors={colors}
-            onPress={() => {
-              setSelectedItem(item);
-              setSelectedAn(itemAnalyticsMap[item.id]);
-              setSelectedRank(idx + 1);
-              setModalOpen(true);
-            }}
-          />
-        ))
+        <>
+          {pagedItems.map((item, idx) => {
+            const rank = (itemPage - 1) * takeNum + idx + 1;
+            return (
+              <ItemRow
+                key={item.itemId}
+                item={item}
+                rank={rank}
+                maxRevenue={maxRevenue}
+                colors={colors}
+                onPress={() => {
+                  setSelectedItem(item);
+                  setSelectedRank(rank);
+                  setModalOpen(true);
+                }}
+              />
+            );
+          })}
+
+          {/* Bottom Next button */}
+          {totalItemPages > 1 && (
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'flex-end',
+                alignItems: 'center',
+                gap: 8,
+                marginTop: 6,
+              }}
+            >
+              <Text style={{ fontSize: 11, color: colors.textSecondary }}>
+                {totalItemCount} items · page {itemPage} of {totalItemPages}
+              </Text>
+              <TouchableOpacity
+                style={{
+                  paddingHorizontal: 16,
+                  paddingVertical: 8,
+                  borderRadius: 8,
+                  backgroundColor:
+                    itemPage < totalItemPages
+                      ? colors.primary
+                      : colors.border + '33',
+                  opacity: itemPage < totalItemPages ? 1 : 0.4,
+                }}
+                onPress={() =>
+                  setItemPage((p) => Math.min(totalItemPages, p + 1))
+                }
+                disabled={itemPage >= totalItemPages}
+              >
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontWeight: '700',
+                    color:
+                      itemPage < totalItemPages ? '#fff' : colors.textSecondary,
+                  }}
+                >
+                  Next ›
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </>
       )}
 
-      {/* Item modal */}
+      {/* Item detail modal */}
       <ItemDetailModal
         item={selectedItem}
-        analytics={selectedAn}
         rank={selectedRank}
         visible={modalOpen}
         onClose={() => setModalOpen(false)}
