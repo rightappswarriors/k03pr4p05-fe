@@ -15,7 +15,7 @@ export type SalesOrderStatus =
   | "CANCELLED";
 
 export interface SalesOrderItemInput {
-  itemId: number;
+  itemId?: number;              // optional — omit for custom items
   quantity: number;
   unitPrice: number;
   unitId?: number;
@@ -23,6 +23,10 @@ export interface SalesOrderItemInput {
   discountQuantity?: number;
   discountRate?: number;
   discountAmount?: number;
+  // ── Custom item fields ────────────────────────────────────────────────
+  isCustomItem?: boolean;       // true = manually entered by staff
+  customItemName?: string;      // name shown on order for custom items
+  vatExempt?: boolean;          // VAT override for custom items
 }
 
 export interface DeliveryInput {
@@ -52,7 +56,7 @@ export interface SalesOrderDelivery {
 export interface SalesOrderItem {
   id: number;
   salesOrderId: string;
-  itemId: number;
+  itemId?: number;              // nullable — absent for custom items
   quantity: number;
   unitPrice: number;
   totalPrice: number;
@@ -61,6 +65,10 @@ export interface SalesOrderItem {
   discountQuantity?: number;
   discountRate?: number;
   discountAmount?: number;
+  // ── Custom item fields ────────────────────────────────────────────────
+  isCustomItem: boolean;
+  customItemName?: string;
+  vatExempt: boolean;
   item?: {
     id: number;
     name: string;
@@ -209,6 +217,9 @@ const SALES_ORDER_FRAGMENT = gql`
       discountQuantity
       discountRate
       discountAmount
+      isCustomItem
+      customItemName
+      vatExempt
       item {
         id
         name
@@ -389,12 +400,8 @@ export class SalesOrderService {
     }
   }
 
-  // ─── FIX: outletId is now number | null ────────────────────────────────────
-  // Passing null fetches ALL org items (tagged with outlet name).
-  // The GQL variable is $outletId: Int (nullable) — removing the ! was the
-  // critical change; the old Int! would reject null at the GraphQL layer.
   static async getOutletInventoryItems(
-    outletId: number | null            // ← was: number
+    outletId: number | null
   ): Promise<InventoryItemForSales[]> {
     const QUERY = gql`
       query GetOutletInventoryItems($outletId: Int) {
@@ -434,19 +441,14 @@ export class SalesOrderService {
     try {
       const response = await graphQLRequest<{
         getOutletInventoryItems: InventoryItemForSales[];
-      }>(
-        QUERY,
-        // Pass null explicitly; graphql-request will send it as JSON null
-        // which the server correctly treats as "no outletId → all org items"
-        { outletId: outletId ?? null }
-      );
+      }>(QUERY, { outletId: outletId ?? null });
       return response.getOutletInventoryItems ?? [];
     } catch (error) {
       console.error("getOutletInventoryItems error:", formatGraphQLError(error));
       return [];
     }
   }
-  // NEW: Search inventory items with pagination
+
   static async searchInventoryItems(params: {
     outletId?: number | null;
     search?: string;

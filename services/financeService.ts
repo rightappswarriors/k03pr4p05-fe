@@ -3,7 +3,6 @@ import { graphQLRequest } from './apiClient';
 import { formatGraphQLError } from '@/utils/errorFormatter';
 
 export class FinanceService {
-  // ✅ Fix — remove the empty parens
   static async getAccountTitles(): Promise<any[]> {
     const QUERY = gql`
     query {
@@ -16,6 +15,7 @@ export class FinanceService {
     const response = await graphQLRequest<{ getAllAccountTitles: any[] }>(QUERY, {});
     return response.getAllAccountTitles;
   }
+  
   static async createAccountTitle(orgId: number, name: string, code: string): Promise<any> {
     const MUTATION = gql`
       mutation CreateAccountTitle($orgId: Int!, $name: String!, $code: String!) {
@@ -113,20 +113,20 @@ export class FinanceService {
     group: string;
     code: string;
     description: string;
-    debit: number;
-    credit: number;
+    debit?: number;
+    credit?: number;
     centerId: number;
     subCenterId: number;
     accountTitleId: number;
   }): Promise<any> {
     const MUTATION = gql`
       mutation CreateGISRow(
-        $main: String!
-        $group: String!
-        $code: String!
-        $description: String!
-        $debit: Float!
-        $credit: Float!
+        $main: String
+        $group: String
+        $code: String
+        $description: String
+        $debit: Float
+        $credit: Float
         $centerId: Int!
         $subCenterId: Int!
         $accountTitleId: Int!
@@ -182,10 +182,35 @@ export class FinanceService {
     debit?: number,
     credit?: number,
     description?: string,
+    main?: string,
+    group?: string,
+    code?: string,
   ): Promise<any> {
     const MUTATION = gql`
-      mutation UpdateGISRow($id: Int!, $accountTitleId: Int, $centerId: Int, $subCenterId: Int, $debit: Float, $credit: Float, $description: String) {
-        updateGISRow(id: $id, accountTitleId: $accountTitleId, centerId: $centerId, subCenterId: $subCenterId, debit: $debit, credit: $credit, description: $description) {
+      mutation UpdateGISRow(
+        $id: Int!
+        $accountTitleId: Int
+        $centerId: Int
+        $subCenterId: Int
+        $debit: Float
+        $credit: Float
+        $description: String
+        $main: String
+        $group: String
+        $code: String
+      ) {
+        updateGISRow(
+          id: $id
+          accountTitleId: $accountTitleId
+          centerId: $centerId
+          subCenterId: $subCenterId
+          debit: $debit
+          credit: $credit
+          description: $description
+          main: $main
+          group: $group
+          code: $code
+        ) {
           id
           main
           group
@@ -222,6 +247,9 @@ export class FinanceService {
       debit,
       credit,
       description,
+      main,
+      group,
+      code,
     });
     return response.updateGISRow;
   }
@@ -255,9 +283,10 @@ export class FinanceService {
     } catch (error) {
       const errorMessge = formatGraphQLError(error)
       console.error("Error fetching summary row expenses:", errorMessge);
-      return Promise.resolve([]); // Return an empty array on error
+      return Promise.resolve([]);
     }
   }
+  
   static async getSummaryRows(startDate?: string, endDate?: string): Promise<any[]> {
     const QUERY = gql`
     query SummaryRows($startDate: String, $endDate: String) {
@@ -304,15 +333,6 @@ export class FinanceService {
     return response.summaryRows ?? [];
   }
 
-  /**
-   * Create a Summary Row (Item Net Summary entry).
-   * @param accountTitleId  Optional account title reference
-   * @param centerId  Optional: center ID
-   * @param subCenterId  Optional: subcenter ID
-   * @param itemId      Optional: catalog item ID (from CatalogSearchModal)
-   * @param itemName    Optional: item name — either resolved from catalog or entered manually
-   * @param amount      Optional: amount (with VAT applied)
-   */
   static async createSummaryRow(
     orgId?: number,
     accountTitleId?: number,
@@ -414,6 +434,7 @@ export class FinanceService {
     });
     return response.createSummaryRow;
   }
+  
   static async updateSummaryRow(
     id: number,
     accountTitleId?: number,

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,9 @@ import {
   TouchableOpacity,
   Modal,
   Pressable,
+  TextInput,
+  Platform,
+  Dimensions,
 } from 'react-native';
 import {
   X,
@@ -16,6 +19,8 @@ import {
   TrendingDown,
   Minus,
   Trash2,
+  Edit2,
+  Save,
 } from 'lucide-react-native';
 import { SkeletonPulse } from '@/app/(erp)';
 import {
@@ -25,6 +30,8 @@ import {
 } from '@/utils/moneyHelpers';
 import { GISRow, SummaryRow } from '@/data/SummaryData';
 import { useTheme } from '@/contexts/ThemeContext';
+import { DropdownField } from '@/app/(erp)';
+import { FinanceService } from '@/services';
 
 export function SkeletonStatCard({ colors }: { colors: any }) {
   return (
@@ -147,6 +154,308 @@ interface FinancialCardSummary {
 }
 export type FinancialCardData = FinancialCardGIS | FinancialCardSummary;
 
+// ─── Edit GIS Row Modal ───────────────────────────────────────────────────────
+
+interface EditGISModalProps {
+  visible: boolean;
+  row: GISRow | null;
+  onClose: () => void;
+  onSave: (updatedRow: GISRow) => void;
+  colors: any;
+  accountTitles: { id: string; label: string }[];
+  centers: { id: string; label: string }[];
+  subCenters: { id: string; label: string }[];
+}
+
+function EditGISModal({
+  visible,
+  row,
+  onClose,
+  onSave,
+  colors,
+  accountTitles,
+  centers,
+  subCenters,
+}: EditGISModalProps) {
+  const [editForm, setEditForm] = useState({
+    description: row?.description || '',
+    debit: row?.debit?.toString() || '0',
+    credit: row?.credit?.toString() || '0',
+    accountTitleId: row?.accountTitleId?.toString() || '',
+    centerId: row?.centerId?.toString() || '',
+    subCenterId: row?.subCenterId?.toString() || '',
+    main: row?.main || 'Expenses',
+    group: row?.group || 'General',
+    code: row?.code || '',
+  });
+
+  const { width } = Dimensions.get('window');
+  const isTablet = width >= 768;
+
+  React.useEffect(() => {
+    if (row) {
+      setEditForm({
+        description: row.description || '',
+        debit: row.debit?.toString() || '0',
+        credit: row.credit?.toString() || '0',
+        accountTitleId: row.accountTitleId?.toString() || '',
+        centerId: row.centerId?.toString() || '',
+        subCenterId: row.subCenterId?.toString() || '',
+        main: row.main || 'Expenses',
+        group: row.group || 'General',
+        code: row.code || '',
+      });
+    }
+  }, [row]);
+
+  const handleSave = async () => {
+    if (!row) return;
+
+    try {
+      const updated = await FinanceService.updateGISRow(
+        Number(row.id),
+        Number(editForm.accountTitleId) || undefined,
+        Number(editForm.centerId) || undefined,
+        Number(editForm.subCenterId) || undefined,
+        parseFloat(editForm.debit) || 0,
+        parseFloat(editForm.credit) || 0,
+        editForm.description,
+        editForm.main,
+        editForm.group,
+        editForm.code,
+      );
+
+      onSave({
+        ...row,
+        description: editForm.description,
+        debit: parseFloat(editForm.debit) || 0,
+        credit: parseFloat(editForm.credit) || 0,
+        total:
+          (parseFloat(editForm.debit) || 0) -
+          (parseFloat(editForm.credit) || 0),
+        accountTitleId: Number(editForm.accountTitleId),
+        centerId: Number(editForm.centerId),
+        subCenterId: Number(editForm.subCenterId),
+        main: editForm.main,
+        group: editForm.group,
+        code: editForm.code,
+      });
+      onClose();
+    } catch (error) {
+      console.error('Failed to update GIS row:', error);
+    }
+  };
+
+  if (!row) return null;
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <TouchableOpacity style={em.backdrop} activeOpacity={1} onPress={onClose}>
+        <TouchableOpacity
+          style={[
+            em.sheet,
+            isTablet && em.sheetTablet,
+            { backgroundColor: colors.surface },
+          ]}
+          activeOpacity={1}
+          onPress={() => {}}
+        >
+          {/* Header */}
+          <View style={[em.header, { borderBottomColor: colors.border }]}>
+            <Edit2 size={20} color={colors.primary} strokeWidth={2} />
+            <Text style={[em.title, { color: colors.text }]}>Edit Entry</Text>
+            <TouchableOpacity
+              style={[em.closeBtn, { backgroundColor: colors.background }]}
+              onPress={onClose}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <X size={16} color={colors.text} strokeWidth={2.5} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Body */}
+          <ScrollView
+            contentContainerStyle={em.body}
+            showsVerticalScrollIndicator={Platform.OS === 'web'}
+          >
+            <Text style={[em.fieldLabel, { color: colors.textSecondary }]}>
+              Description
+            </Text>
+            <TextInput
+              style={[
+                em.input,
+                {
+                  color: colors.text,
+                  backgroundColor: colors.background,
+                  borderColor: colors.border,
+                },
+              ]}
+              placeholder="Entry description"
+              placeholderTextColor={colors.textSecondary}
+              value={editForm.description}
+              onChangeText={(v) =>
+                setEditForm((f) => ({ ...f, description: v }))
+              }
+              multiline
+              numberOfLines={2}
+            />
+
+            <View
+              style={{ flexDirection: isTablet ? 'row' : 'column', gap: 12 }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={[em.fieldLabel, { color: colors.textSecondary }]}>
+                  Debit (₱)
+                </Text>
+                <TextInput
+                  style={[
+                    em.input,
+                    {
+                      color: colors.text,
+                      backgroundColor: colors.background,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                  placeholder="0.00"
+                  placeholderTextColor={colors.textSecondary}
+                  value={editForm.debit}
+                  onChangeText={(v) => setEditForm((f) => ({ ...f, debit: v }))}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+
+              <View style={{ flex: 1 }}>
+                <Text style={[em.fieldLabel, { color: colors.textSecondary }]}>
+                  Credit (₱)
+                </Text>
+                <TextInput
+                  style={[
+                    em.input,
+                    {
+                      color: colors.text,
+                      backgroundColor: colors.background,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                  placeholder="0.00"
+                  placeholderTextColor={colors.textSecondary}
+                  value={editForm.credit}
+                  onChangeText={(v) =>
+                    setEditForm((f) => ({ ...f, credit: v }))
+                  }
+                  keyboardType="decimal-pad"
+                />
+              </View>
+            </View>
+
+            <View
+              style={[
+                em.totalPreview,
+                {
+                  backgroundColor: colors.background,
+                  borderColor: colors.border,
+                },
+              ]}
+            >
+              <Text style={[em.totalLabel, { color: colors.textSecondary }]}>
+                Total (Debit - Credit)
+              </Text>
+              <Text
+                style={[
+                  em.totalValue,
+                  {
+                    color:
+                      (parseFloat(editForm.debit) || 0) -
+                        (parseFloat(editForm.credit) || 0) >=
+                      0
+                        ? colors.success
+                        : colors.error,
+                  },
+                ]}
+              >
+                {formatPeso(
+                  (parseFloat(editForm.debit) || 0) -
+                    (parseFloat(editForm.credit) || 0),
+                )}
+              </Text>
+            </View>
+
+            <DropdownField
+              label="Account Title"
+              value={editForm.accountTitleId}
+              options={accountTitles}
+              onSelect={(v) =>
+                setEditForm((f) => ({ ...f, accountTitleId: String(v.id) }))
+              }
+              colors={colors}
+            />
+
+            <View
+              style={{ flexDirection: isTablet ? 'row' : 'column', gap: 12 }}
+            >
+              <View style={{ flex: 1 }}>
+                <DropdownField
+                  label="Center / Dept"
+                  value={editForm.centerId}
+                  options={centers}
+                  onSelect={(v) =>
+                    setEditForm((f) => ({ ...f, centerId: String(v.id) }))
+                  }
+                  colors={colors}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <DropdownField
+                  label="Sub Center"
+                  value={editForm.subCenterId}
+                  options={subCenters}
+                  onSelect={(v) =>
+                    setEditForm((f) => ({ ...f, subCenterId: String(v.id) }))
+                  }
+                  colors={colors}
+                />
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[
+                em.saveBtn,
+                {
+                  backgroundColor: colors.primary,
+                  opacity:
+                    !editForm.description ||
+                    !editForm.accountTitleId ||
+                    !editForm.centerId ||
+                    !editForm.subCenterId
+                      ? 0.5
+                      : 1,
+                },
+              ]}
+              onPress={handleSave}
+              disabled={
+                !editForm.description ||
+                !editForm.accountTitleId ||
+                !editForm.centerId ||
+                !editForm.subCenterId
+              }
+              activeOpacity={0.85}
+            >
+              <Save size={16} color="#fff" strokeWidth={2} />
+              <Text style={em.saveBtnText}>Save Changes</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Modal>
+  );
+}
+
 // ─── Detail Modal ─────────────────────────────────────────────────────────────
 
 export function FinancialDetailModal({
@@ -165,7 +474,7 @@ export function FinancialDetailModal({
 
   const fields: { label: string; value: string; valueColor?: string }[] = isGIS
     ? [
-        { label: 'Item Name', value: data.row.description },
+        { label: 'Description', value: data.row.description },
         {
           label: 'Category',
           value: data.row.main,
@@ -174,16 +483,17 @@ export function FinancialDetailModal({
         },
         { label: 'Item Code', value: data.row.code },
         { label: 'Group', value: data.row.group },
-        {
-          label: 'Debit',
-          value: data.row.debit > 0 ? formatPeso(data.row.debit) : '—',
-          valueColor: data.row.debit > 0 ? colors.error : colors.textSecondary,
-        },
+
         {
           label: 'Credit',
           value: data.row.credit > 0 ? formatPeso(data.row.credit) : '—',
           valueColor:
             data.row.credit > 0 ? colors.success : colors.textSecondary,
+        },
+        {
+          label: 'Debit',
+          value: data.row.debit > 0 ? formatPeso(data.row.debit) : '—',
+          valueColor: data.row.debit > 0 ? colors.error : colors.textSecondary,
         },
         {
           label: 'Net Total',
@@ -295,7 +605,6 @@ export function FinancialDetailModal({
               </View>
             ))}
 
-            {/* IMPROVED Cost Breakdown Section */}
             {data.type === 'summary' &&
             Array.isArray(data.row.costLines) &&
             data.row.costLines.length > 0 ? (
@@ -318,7 +627,6 @@ export function FinancialDetailModal({
                   Cost Breakdown
                 </Text>
 
-                {/* Cost Lines */}
                 {data.row.costLines?.map((line, idx) => (
                   <View
                     key={`${line.label}-${idx}`}
@@ -354,7 +662,6 @@ export function FinancialDetailModal({
                   </View>
                 ))}
 
-                {/* OpEx Amount */}
                 <View
                   style={{
                     flexDirection: 'row',
@@ -389,7 +696,6 @@ export function FinancialDetailModal({
                   </Text>
                 </View>
 
-                {/* Divider */}
                 <View
                   style={{
                     height: 1,
@@ -398,13 +704,11 @@ export function FinancialDetailModal({
                   }}
                 />
 
-                {/* Computed Cost Total */}
                 <View
                   style={{
                     flexDirection: 'row',
                     justifyContent: 'space-between',
                     alignItems: 'center',
-
                     paddingVertical: 10,
                     paddingHorizontal: 12,
                     backgroundColor: colors.primary + '15',
@@ -444,16 +748,30 @@ export function FinancialDetailModal({
   );
 }
 
-// Add onDeleteRow?: (row: GISRow) => void to your GISTable props:
+// ─── GIS Table with Edit Support ─────────────────────────────────────────────
+
 export function GISTable({
   rows,
   colors,
   onDeleteRow,
+  onEditRow,
+  accountTitles,
+  centers,
+  subCenters,
 }: {
   rows: GISRow[];
   colors: any;
   onDeleteRow?: (row: GISRow) => void;
+  onEditRow?: (row: GISRow) => void;
+  accountTitles?: { id: string; label: string }[];
+  centers?: { id: string; label: string }[];
+  subCenters?: { id: string; label: string }[];
 }) {
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [selectedRow, setSelectedRow] = useState<GISRow | null>(null);
+  const { width } = Dimensions.get('window');
+  const isDesktop = width >= 768;
+
   const totalCredit = rows.reduce((s, r) => s + r.credit, 0);
   const totalDebit = rows.reduce((s, r) => s + r.debit, 0);
   const netIncome = totalCredit - totalDebit;
@@ -465,7 +783,7 @@ export function GISTable({
     { flex: 1, minWidth: 130 },
     { flex: 1, minWidth: 130 },
     { flex: 1, minWidth: 120 },
-    { flex: 0.4, minWidth: 44 },
+    { flex: 0.6, minWidth: 60 },
   ];
   const HEADERS = [
     'Main',
@@ -479,110 +797,231 @@ export function GISTable({
   const rowsBg = (idx: number) =>
     idx % 2 === 0 ? colors.card : colors.background;
 
+  const handleRowClick = (row: GISRow) => {
+    if (isDesktop && onEditRow) {
+      setSelectedRow(row);
+      setEditModalVisible(true);
+    }
+  };
+
+  const handleSave = (updatedRow: GISRow) => {
+    if (onEditRow) {
+      onEditRow(updatedRow);
+    }
+    setEditModalVisible(false);
+  };
+
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator
-      contentContainerStyle={{ minWidth: '100%' }}
-      style={{ width: '100%' }}
-    >
-      <View style={{ minWidth: '100%' }}>
-        {/* Header */}
-        <View style={{ flexDirection: 'row', backgroundColor: colors.primary }}>
-          {HEADERS.map((h, i) => (
-            <View
-              key={i}
-              style={{
-                flex: COL_CONFIG[i].flex,
-                minWidth: COL_CONFIG[i].minWidth,
-                padding: 10,
-                alignItems: i > 2 ? 'flex-end' : 'flex-start',
-                justifyContent: i > 2 ? 'flex-start' : 'flex-end',
-              }}
-            >
-              <Text
+    <>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator
+        contentContainerStyle={{ minWidth: '100%' }}
+        style={{ width: '100%' }}
+      >
+        <View style={{ minWidth: '100%' }}>
+          {/* Header */}
+          <View
+            style={{ flexDirection: 'row', backgroundColor: colors.primary }}
+          >
+            {HEADERS.map((h, i) => (
+              <View
+                key={i}
                 style={{
-                  fontSize: 11,
-                  fontWeight: '700',
-                  color: '#fff',
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.5,
+                  flex: COL_CONFIG[i].flex,
+                  minWidth: COL_CONFIG[i].minWidth,
+                  padding: 10,
+                  alignItems: i > 2 ? 'flex-end' : 'flex-start',
+                  justifyContent: i > 2 ? 'flex-start' : 'flex-end',
                 }}
               >
-                {h}
-              </Text>
-            </View>
-          ))}
-        </View>
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: '700',
+                    color: '#fff',
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  {h}
+                </Text>
+              </View>
+            ))}
+          </View>
 
-        {/* Rows */}
-        {rows.map((row, idx) => (
+          {/* Rows */}
+          {rows.map((row, idx) => (
+            <TouchableOpacity
+              key={row.id}
+              style={{
+                flexDirection: 'row',
+                backgroundColor: rowsBg(idx),
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border,
+              }}
+              onPress={() => handleRowClick(row)}
+              activeOpacity={isDesktop ? 0.7 : 1}
+            >
+              <View
+                style={{
+                  flex: COL_CONFIG[0].flex,
+                  minWidth: COL_CONFIG[0].minWidth,
+                  padding: 10,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: '700',
+                    color:
+                      row.main === 'Income' ? colors.success : colors.error,
+                  }}
+                >
+                  {row.main}
+                </Text>
+              </View>
+              <View
+                style={{
+                  flex: COL_CONFIG[1].flex,
+                  minWidth: COL_CONFIG[1].minWidth,
+                  padding: 10,
+                }}
+              >
+                <Text style={{ fontSize: 12, color: colors.textSecondary }}>
+                  {row.group}
+                </Text>
+              </View>
+              <View
+                style={{
+                  flex: COL_CONFIG[2].flex,
+                  minWidth: COL_CONFIG[2].minWidth,
+                  padding: 10,
+                }}
+              >
+                <Text style={{ fontSize: 12, color: colors.text }}>
+                  {row.description}
+                </Text>
+              </View>
+
+              <View
+                style={{
+                  flex: COL_CONFIG[4].flex,
+                  minWidth: COL_CONFIG[4].minWidth,
+                  padding: 10,
+                  alignItems: 'flex-end',
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color:
+                      row.credit > 0 ? colors.success : colors.textSecondary,
+                  }}
+                >
+                  {row.credit > 0 ? formatPeso(row.credit) : '—'}
+                </Text>
+              </View>
+              <View
+                style={{
+                  flex: COL_CONFIG[3].flex,
+                  minWidth: COL_CONFIG[3].minWidth,
+                  padding: 10,
+                  alignItems: 'flex-end',
+                  justifyContent: 'flex-end',
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color: row.debit > 0 ? colors.error : colors.textSecondary,
+                  }}
+                >
+                  {row.debit > 0 ? formatPeso(row.debit) : '—'}
+                </Text>
+              </View>
+              <View
+                style={{
+                  flex: COL_CONFIG[5].flex,
+                  minWidth: COL_CONFIG[5].minWidth,
+                  padding: 10,
+                  alignItems: 'flex-end',
+                  justifyContent: 'flex-end',
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: '600',
+                    color: row.total >= 0 ? colors.success : colors.error,
+                  }}
+                >
+                  {formatPeso(row.total)}
+                </Text>
+              </View>
+              <View
+                style={{
+                  flex: COL_CONFIG[6].flex,
+                  minWidth: COL_CONFIG[6].minWidth,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                }}
+              >
+                {isDesktop && onEditRow && (
+                  <TouchableOpacity
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      handleRowClick(row);
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Edit2 size={14} color={colors.primary} strokeWidth={2} />
+                  </TouchableOpacity>
+                )}
+                {onDeleteRow && (
+                  <TouchableOpacity
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      onDeleteRow(row);
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Trash2 size={14} color={colors.error} strokeWidth={2} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </TouchableOpacity>
+          ))}
+
+          {/* Footer totals */}
           <View
-            key={row.id}
             style={{
               flexDirection: 'row',
-              backgroundColor: rowsBg(idx),
-              borderBottomWidth: 1,
-              borderBottomColor: colors.border,
+              backgroundColor: colors.primary + '22',
+              borderTopWidth: 2,
+              borderTopColor: colors.primary,
             }}
           >
             <View
               style={{
-                flex: COL_CONFIG[0].flex,
-                minWidth: COL_CONFIG[0].minWidth,
+                flex:
+                  COL_CONFIG[0].flex + COL_CONFIG[1].flex + COL_CONFIG[2].flex,
+                minWidth:
+                  COL_CONFIG[0].minWidth +
+                  COL_CONFIG[1].minWidth +
+                  COL_CONFIG[2].minWidth,
                 padding: 10,
               }}
             >
               <Text
-                style={{
-                  fontSize: 12,
-                  fontWeight: '700',
-                  color: row.main === 'Income' ? colors.success : colors.error,
-                }}
+                style={{ fontSize: 12, fontWeight: '800', color: colors.text }}
               >
-                {row.main}
+                NET INCOME / (LOSS)
               </Text>
             </View>
-            <View
-              style={{
-                flex: COL_CONFIG[1].flex,
-                minWidth: COL_CONFIG[1].minWidth,
-                padding: 10,
-              }}
-            >
-              <Text style={{ fontSize: 12, color: colors.textSecondary }}>
-                {row.group}
-              </Text>
-            </View>
-            <View
-              style={{
-                flex: COL_CONFIG[2].flex,
-                minWidth: COL_CONFIG[2].minWidth,
-                padding: 10,
-              }}
-            >
-              <Text style={{ fontSize: 12, color: colors.text }}>
-                {row.description}
-              </Text>
-            </View>
-            <View
-              style={{
-                flex: COL_CONFIG[3].flex,
-                minWidth: COL_CONFIG[3].minWidth,
-                padding: 10,
-                alignItems: 'flex-end',
-                justifyContent: 'flex-end',
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 12,
-                  color: row.debit > 0 ? colors.error : colors.textSecondary,
-                }}
-              >
-                {row.debit > 0 ? formatPeso(row.debit) : '—'}
-              </Text>
-            </View>
+
             <View
               style={{
                 flex: COL_CONFIG[4].flex,
@@ -594,10 +1033,25 @@ export function GISTable({
               <Text
                 style={{
                   fontSize: 12,
-                  color: row.credit > 0 ? colors.success : colors.textSecondary,
+                  fontWeight: '700',
+                  color: colors.success,
                 }}
               >
-                {row.credit > 0 ? formatPeso(row.credit) : '—'}
+                {formatPeso(totalCredit)}
+              </Text>
+            </View>
+            <View
+              style={{
+                flex: COL_CONFIG[3].flex,
+                minWidth: COL_CONFIG[3].minWidth,
+                padding: 10,
+                alignItems: 'flex-end',
+              }}
+            >
+              <Text
+                style={{ fontSize: 12, fontWeight: '700', color: colors.error }}
+              >
+                {formatPeso(totalDebit)}
               </Text>
             </View>
             <View
@@ -606,125 +1060,47 @@ export function GISTable({
                 minWidth: COL_CONFIG[5].minWidth,
                 padding: 10,
                 alignItems: 'flex-end',
-                justifyContent: 'flex-end',
               }}
             >
               <Text
                 style={{
-                  fontSize: 12,
-                  fontWeight: '600',
-                  color: row.total >= 0 ? colors.success : colors.error,
+                  fontSize: 13,
+                  fontWeight: '800',
+                  color: netIncome >= 0 ? colors.success : colors.error,
                 }}
               >
-                {formatPeso(row.total)}
+                {netIncome >= 0 ? '+' : '-'}
+                {formatPeso(Math.abs(netIncome))}
               </Text>
             </View>
             <View
               style={{
                 flex: COL_CONFIG[6].flex,
                 minWidth: COL_CONFIG[6].minWidth,
-                alignItems: 'center',
-                justifyContent: 'center',
               }}
-            >
-              {onDeleteRow && (
-                <TouchableOpacity
-                  onPress={() => onDeleteRow(row)}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Trash2 size={14} color={colors.error} strokeWidth={2} />
-                </TouchableOpacity>
-              )}
-            </View>
+            />
           </View>
-        ))}
-
-        {/* Footer totals */}
-        <View
-          style={{
-            flexDirection: 'row',
-            backgroundColor: colors.primary + '22',
-            borderTopWidth: 2,
-            borderTopColor: colors.primary,
-          }}
-        >
-          <View
-            style={{
-              flex:
-                COL_CONFIG[0].flex + COL_CONFIG[1].flex + COL_CONFIG[2].flex,
-              minWidth:
-                COL_CONFIG[0].minWidth +
-                COL_CONFIG[1].minWidth +
-                COL_CONFIG[2].minWidth,
-              padding: 10,
-            }}
-          >
-            <Text
-              style={{ fontSize: 12, fontWeight: '800', color: colors.text }}
-            >
-              NET INCOME / (LOSS)
-            </Text>
-          </View>
-          <View
-            style={{
-              flex: COL_CONFIG[3].flex,
-              minWidth: COL_CONFIG[3].minWidth,
-              padding: 10,
-              alignItems: 'flex-end',
-            }}
-          >
-            <Text
-              style={{ fontSize: 12, fontWeight: '700', color: colors.error }}
-            >
-              {formatPeso(totalDebit)}
-            </Text>
-          </View>
-          <View
-            style={{
-              flex: COL_CONFIG[4].flex,
-              minWidth: COL_CONFIG[4].minWidth,
-              padding: 10,
-              alignItems: 'flex-end',
-            }}
-          >
-            <Text
-              style={{ fontSize: 12, fontWeight: '700', color: colors.success }}
-            >
-              {formatPeso(totalCredit)}
-            </Text>
-          </View>
-          <View
-            style={{
-              flex: COL_CONFIG[5].flex,
-              minWidth: COL_CONFIG[5].minWidth,
-              padding: 10,
-              alignItems: 'flex-end',
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 13,
-                fontWeight: '800',
-                color: netIncome >= 0 ? colors.success : colors.error,
-              }}
-            >
-              {netIncome >= 0 ? '+' : '-'}
-              {formatPeso(Math.abs(netIncome))}
-            </Text>
-          </View>
-          <View
-            style={{
-              flex: COL_CONFIG[6].flex,
-              minWidth: COL_CONFIG[6].minWidth,
-            }}
-          />
         </View>
-      </View>
-    </ScrollView>
+      </ScrollView>
+
+      {/* Edit Modal */}
+      {selectedRow && accountTitles && centers && subCenters && (
+        <EditGISModal
+          visible={editModalVisible}
+          row={selectedRow}
+          onClose={() => setEditModalVisible(false)}
+          onSave={handleSave}
+          colors={colors}
+          accountTitles={accountTitles}
+          centers={centers}
+          subCenters={subCenters}
+        />
+      )}
+    </>
   );
 }
 
-// ─── FinancialCard (updated — add onDelete prop) ──────────────────────────────
+// ─── FinancialCard ────────────────────────────────────────────────────────────
 
 export function FinancialCard({
   data,
@@ -737,7 +1113,7 @@ export function FinancialCard({
   colors: any;
   cardWidth: number;
   onPress: (data: FinancialCardData) => void;
-  onDelete?: () => void; // ← NEW — only passed for GIS/expense cards
+  onDelete?: () => void;
 }) {
   const isGIS = data.type === 'gis';
   const name = isGIS ? data.row.description : data.row.description;
@@ -800,9 +1176,8 @@ export function FinancialCard({
     </TouchableOpacity>
   );
 }
+
 // ─── Summary Table (Item Net Summary) ────────────────────────────────────────
-// Columns: Items | Contribution(%) Cost | Total Sales | Net Sales
-// Example row: Keyboard  |  ₱100.00 (1%)  |  ₱350.00  |  ₱250.00
 
 export function SummaryTable({
   rows,
@@ -837,6 +1212,7 @@ export function SummaryTable({
 
   const [modalVisible, setModalVisible] = React.useState(false);
   const [selectedRow, setSelectedRow] = React.useState<SummaryRow | null>(null);
+
   return (
     <ScrollView
       horizontal
@@ -918,8 +1294,6 @@ export function SummaryTable({
                 </Text>
               </View>
 
-              {/* Contribution(%) Cost — ₱45.50 (39.3%) on one line */}
-
               <View
                 style={{
                   flex: COL_CONFIG[1].flex,
@@ -951,7 +1325,6 @@ export function SummaryTable({
                 </Text>
               </View>
 
-              {/* Selling Price */}
               <View
                 style={{
                   flex: COL_CONFIG[2].flex,
@@ -967,7 +1340,6 @@ export function SummaryTable({
                 </Text>
               </View>
 
-              {/* Profit */}
               <View
                 style={{
                   flex: COL_CONFIG[3].flex,
@@ -988,7 +1360,7 @@ export function SummaryTable({
                   {formatPeso(profit)}
                 </Text>
               </View>
-              {/* Status */}
+
               <TouchableOpacity
                 activeOpacity={0.7}
                 style={{
@@ -1002,11 +1374,11 @@ export function SummaryTable({
                   justifyContent: 'center',
                   backgroundColor:
                     profit > 0
-                      ? `${colors.success}33` // ~20% opacity
+                      ? `${colors.success}33`
                       : profit === 0
                         ? `${colors.text}33`
                         : `${colors.error}33`,
-                  borderRadius: 999, // fully rounded
+                  borderRadius: 999,
                 }}
                 onPress={() => {
                   setSelectedRow(row);
@@ -1043,6 +1415,7 @@ export function SummaryTable({
             </View>
           );
         })}
+
         {selectedRow && (
           <DetailModal
             visible={modalVisible}
@@ -1056,6 +1429,7 @@ export function SummaryTable({
             computedCost={selectedRow.computedCost}
           />
         )}
+
         {/* Footer totals */}
         <View
           style={{
@@ -1291,7 +1665,6 @@ export function DetailModal({
               </Text>
             </View>
 
-            {/* IMPROVED Cost Breakdown Section */}
             {costLines.length > 0 ? (
               <View
                 style={{
@@ -1312,7 +1685,6 @@ export function DetailModal({
                   Cost Breakdown
                 </Text>
 
-                {/* Cost Lines */}
                 {costLines.map((line, idx) => (
                   <View
                     key={`${line.label}-${idx}`}
@@ -1348,7 +1720,6 @@ export function DetailModal({
                   </View>
                 ))}
 
-                {/* OpEx Amount Row */}
                 <View
                   style={{
                     flexDirection: 'row',
@@ -1381,7 +1752,6 @@ export function DetailModal({
                   </Text>
                 </View>
 
-                {/* Divider */}
                 <View
                   style={{
                     height: 1,
@@ -1390,7 +1760,6 @@ export function DetailModal({
                   }}
                 />
 
-                {/* Computed Cost Total */}
                 <View
                   style={{
                     flexDirection: 'row',
@@ -1450,7 +1819,7 @@ const styles = StyleSheet.create({
   },
   modalContainer: {
     width: '85%',
-    maxWidth: 500, // ← ADDED: Limit width on desktop
+    maxWidth: 500,
     borderRadius: 12,
     padding: 16,
   },
@@ -1497,6 +1866,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+
 const sk = StyleSheet.create({
   statCard: {
     flex: 1,
@@ -1528,8 +1898,6 @@ const sk = StyleSheet.create({
     elevation: 1,
   },
 });
-
-// ─── Financial Card Styles ────────────────────────────────────────────────────
 
 const fc = StyleSheet.create({
   card: {
@@ -1563,8 +1931,6 @@ const fc = StyleSheet.create({
   },
   amount: { fontSize: 15, fontWeight: '800' },
 });
-
-// ─── Detail Modal Styles ──────────────────────────────────────────────────────
 
 const dm = StyleSheet.create({
   backdrop: {
@@ -1615,23 +1981,86 @@ const dm = StyleSheet.create({
   fieldValue: { fontSize: 13, fontWeight: '700', textAlign: 'right', flex: 1 },
 });
 
-// ─── View Toggle Styles ───────────────────────────────────────────────────────
-
-const vt = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    borderRadius: 9,
-    borderWidth: 1,
-    padding: 3,
-    gap: 3,
+const em = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.52)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
   },
-  btn: {
+  sheet: {
+    width: '100%',
+    maxWidth: 520,
+    borderRadius: 18,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.22,
+    shadowRadius: 20,
+    elevation: 20,
+    maxHeight: '85%',
+  },
+  sheetTablet: {
+    maxWidth: 600,
+  },
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 11,
-    paddingVertical: 6,
-    borderRadius: 7,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    gap: 12,
   },
-  label: { fontSize: 12, fontWeight: '600' },
+  title: { fontSize: 16, fontWeight: '800', letterSpacing: -0.2, flex: 1 },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  body: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 20 },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 6,
+    marginTop: 12,
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    fontSize: 14,
+    marginBottom: 12,
+  },
+  totalPreview: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  totalLabel: { fontSize: 13, fontWeight: '600' },
+  totalValue: { fontSize: 15, fontWeight: '800' },
+  saveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 10,
+    paddingVertical: 14,
+    marginTop: 16,
+  },
+  saveBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
 });

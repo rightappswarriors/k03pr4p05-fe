@@ -29,6 +29,7 @@ import {
   Filter,
   MapPin,
   Package,
+  PenLine,
   Plus,
   RefreshCcw,
   Search,
@@ -77,6 +78,9 @@ const ALL_STATUSES: SalesOrderStatus[] = [
 
 const DATE_FILTERS: DateFilter[] = ['All', 'Today', 'This Week', 'This Month'];
 
+// ─── Custom item color ────────────────────────────────────────────────────────
+const CUSTOM_ITEM_COLOR = '#F97316'; // orange — visually distinct from inventory items
+
 function isWithinRange(dateStr: string, filter: DateFilter): boolean {
   if (filter === 'All') return true;
   const d = new Date(dateStr);
@@ -112,8 +116,60 @@ function formatSalesDate(
   return date.toLocaleDateString('en-PH', options);
 }
 
+// ─── Cart Types ───────────────────────────────────────────────────────────────
+
+/** An item pulled from the inventory picker */
+interface InventoryCartEntry {
+  kind: 'inventory';
+  // Unique key for React + cart operations
+  cartKey: string;
+  inventoryItem: InventoryItemForSales;
+  selectedUnitId?: number;
+  selectedUnitName?: string;
+  unitPrice: number;
+  quantity: number;
+  discountQuantity?: number;
+  discountRate?: number;
+  discountAmount?: number;
+}
+
+/** A manually typed item — not linked to any inventory record */
+interface CustomCartEntry {
+  kind: 'custom';
+  // Unique key — we use a stable random string set at creation time
+  cartKey: string;
+  customItemName: string;
+  unitPrice: number;
+  quantity: number;
+  vatExempt: boolean;
+  discountQuantity?: number;
+  discountRate?: number;
+  discountAmount?: number;
+}
+
+type CartEntry = InventoryCartEntry | CustomCartEntry;
+
+/** Resolve the display name for any cart entry */
+function entryDisplayName(e: CartEntry): string {
+  return e.kind === 'inventory' ? e.inventoryItem.item.name : e.customItemName;
+}
+
+/** Resolve whether a cart entry is VAT-exempt */
+function entryVatExempt(e: CartEntry): boolean {
+  if (e.kind === 'custom') return e.vatExempt;
+  return e.inventoryItem.item.vatExempt === true;
+}
+
+// ─── Persisted Form State ─────────────────────────────────────────────────────
+
+interface PersistedFormState {
+  customer: string;
+  selectedBranchId: number | null;
+  selectedOutlet: OutletForSales | null;
+  cart: CartEntry[];
+}
+
 // ─── Shared Modal Styles ──────────────────────────────────────────────────────
-// All modals are centered — no bottom sheets
 
 function makeModalStyles(colors: any) {
   const { width, height } = Dimensions.get('window');
@@ -133,7 +189,6 @@ function makeModalStyles(colors: any) {
       width: modalWidth,
       maxHeight: height * 0.88,
       overflow: 'hidden',
-      // Shadow for depth
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 8 },
       shadowOpacity: 0.25,
@@ -260,10 +315,6 @@ function DeliveryFormModal({
       setError('Contact number is required.');
       return;
     }
-    if (!courierName.trim()) {
-      setError('Courier name is required.');
-      return;
-    }
     setError('');
     await onSubmit(orderId, {
       address: address.trim(),
@@ -289,16 +340,16 @@ function DeliveryFormModal({
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={s.overlay}>
-          {/* Backdrop dismiss */}
           <TouchableOpacity
             style={StyleSheet.absoluteFillObject}
             activeOpacity={1}
             onPress={handleClose}
           />
           <View style={s.sheet}>
-            {/* Header */}
             <View style={s.header}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <View
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+              >
                 <View
                   style={{
                     width: 32,
@@ -309,7 +360,11 @@ function DeliveryFormModal({
                     justifyContent: 'center',
                   }}
                 >
-                  <Truck size={16} color={STATUS_COLORS.SHIPPED} strokeWidth={2} />
+                  <Truck
+                    size={16}
+                    color={STATUS_COLORS.SHIPPED}
+                    strokeWidth={2}
+                  />
                 </View>
                 <View>
                   <Text style={s.title}>Delivery Details</Text>
@@ -408,7 +463,9 @@ function DeliveryFormModal({
               />
 
               {error ? (
-                <Text style={{ fontSize: 12, color: colors.error, marginTop: 8 }}>
+                <Text
+                  style={{ fontSize: 12, color: colors.error, marginTop: 8 }}
+                >
                   {error}
                 </Text>
               ) : null}
@@ -468,6 +525,18 @@ function OrderDetailModal({
   const sc = STATUS_COLORS[order.status];
   const canCancel = ['ORDERED', 'PROCESSING'].includes(order.status);
 
+  /** Resolve the display name for a SalesOrderItem */
+  const resolveItemName = (item: SalesOrder['items'][number]) => {
+    if (item.isCustomItem) return item.customItemName ?? 'Custom Item';
+    return item.item?.name ?? `Item #${item.itemId}`;
+  };
+
+  /** Whether an order item is VAT-exempt */
+  const resolveVatExempt = (item: SalesOrder['items'][number]) => {
+    if (item.isCustomItem) return item.vatExempt;
+    return item.item?.vatExempt === true;
+  };
+
   return (
     <Modal
       visible={visible}
@@ -476,7 +545,6 @@ function OrderDetailModal({
       onRequestClose={onClose}
     >
       <View style={odm.overlay}>
-        {/* Backdrop dismiss */}
         <TouchableOpacity
           style={StyleSheet.absoluteFillObject}
           activeOpacity={1}
@@ -503,7 +571,7 @@ function OrderDetailModal({
             contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
             showsVerticalScrollIndicator={false}
           >
-            {/* Status + date row */}
+            {/* Status + date */}
             <View
               style={[
                 odm.statusRow,
@@ -525,7 +593,7 @@ function OrderDetailModal({
               </Text>
             </View>
 
-            {/* Order Items — column layout */}
+            {/* Order Items */}
             <View
               style={[
                 odm.section,
@@ -539,66 +607,185 @@ function OrderDetailModal({
               <Text style={[odm.sectionTitle, { color: colors.textSecondary }]}>
                 ORDER ITEMS
               </Text>
-              {order.items.map((item, i) => (
-                <View
-                  key={item.id}
-                  style={[
-                    odm.itemRow,
-                    {
-                      borderBottomColor:
-                        i < order.items.length - 1
-                          ? colors.border
-                          : 'transparent',
-                    },
-                  ]}
-                >
-                  {/* Item name */}
-                  <Text style={[odm.itemName, { color: colors.text }]}>
-                    {item.item?.name ?? `Item #${item.itemId}`}
-                  </Text>
-                  {/* Qty × price row */}
-                  <View style={odm.itemMeta}>
-                    <Text style={[odm.itemQty, { color: colors.textSecondary }]}>
-                      {item.quantity} {item.unitName ?? 'pc'} × ₱
-                      {item.unitPrice.toLocaleString('en-PH', {
-                        minimumFractionDigits: 2,
-                      })}
-                    </Text>
-                    <Text style={[odm.itemTotal, { color: colors.accent }]}>
-                      ₱
-                      {item.totalPrice.toLocaleString('en-PH', {
-                        minimumFractionDigits: 2,
-                      })}
-                    </Text>
-                  </View>
-                  {/* VAT per item if enabled */}
-                  {showVatPerItem && item.item?.vatExempt === false && (
-                    <View style={{ marginTop: 4 }}>
-                      <Text style={{ fontSize: 12, color: colors.accent, fontWeight: '600' }}>
+              {order.items.map((item, i) => {
+                const isCustom = item.isCustomItem;
+                const isExempt = resolveVatExempt(item);
+                return (
+                  <View
+                    key={item.id}
+                    style={[
+                      odm.itemRow,
+                      {
+                        borderBottomColor:
+                          i < order.items.length - 1
+                            ? colors.border
+                            : 'transparent',
+                        // Subtle left accent for custom items
+                        borderLeftWidth: isCustom ? 3 : 0,
+                        borderLeftColor: CUSTOM_ITEM_COLOR,
+                        paddingLeft: isCustom ? 10 : 12,
+                      },
+                    ]}
+                  >
+                    {/* Name row with badges */}
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <Text
+                        style={[odm.itemName, { color: colors.text, flex: 1 }]}
+                        numberOfLines={2}
+                      >
+                        {resolveItemName(item)}
+                      </Text>
+                      {isCustom && (
+                        <View
+                          style={{
+                            backgroundColor: CUSTOM_ITEM_COLOR + '20',
+                            borderRadius: 5,
+                            paddingHorizontal: 6,
+                            paddingVertical: 2,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 9,
+                              fontWeight: '800',
+                              color: CUSTOM_ITEM_COLOR,
+                              letterSpacing: 0.5,
+                            }}
+                          >
+                            MANUAL
+                          </Text>
+                        </View>
+                      )}
+                      {isExempt && (
+                        <View
+                          style={{
+                            backgroundColor: '#10B981' + '20',
+                            borderRadius: 5,
+                            paddingHorizontal: 6,
+                            paddingVertical: 2,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 9,
+                              fontWeight: '800',
+                              color: '#10B981',
+                              letterSpacing: 0.5,
+                            }}
+                          >
+                            VAT-EXEMPT
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Qty × price */}
+                    <View style={odm.itemMeta}>
+                      <Text
+                        style={[odm.itemQty, { color: colors.textSecondary }]}
+                      >
+                        {item.quantity} {item.unitName ?? 'pc'} × ₱
+                        {item.unitPrice.toLocaleString('en-PH', {
+                          minimumFractionDigits: 2,
+                        })}
+                      </Text>
+                      <Text style={[odm.itemTotal, { color: colors.accent }]}>
+                        ₱
+                        {item.totalPrice.toLocaleString('en-PH', {
+                          minimumFractionDigits: 2,
+                        })}
+                      </Text>
+                    </View>
+
+                    {/* VAT breakdown per item toggle */}
+                    {showVatPerItem && !isExempt && (
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          color: colors.accent,
+                          fontWeight: '600',
+                          marginTop: 4,
+                        }}
+                      >
                         VAT (12%): ₱
-                        {((item.totalPrice - (item.discountAmount ?? 0)) * 0.12).toLocaleString('en-PH', {
-                          minimumFractionDigits: 2,
-                        })}
+                        {(
+                          (item.totalPrice - (item.discountAmount ?? 0)) *
+                          0.12
+                        ).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
                       </Text>
-                    </View>
-                  )}
-                  {/* Discount info if applied */}
-                  {item.discountQuantity && item.discountQuantity > 0 ? (
-                    <View style={{ marginTop: 6, gap: 4 }}>
-                      <Text style={{ fontSize: 12, color: '#10B981', fontWeight: '600' }}>
-                        {item.discountQuantity} of {item.quantity} discounted @{' '}
-                        {((item.discountRate ?? 0) * 100).toFixed(0)}%
-                      </Text>
-                      <Text style={{ fontSize: 12, color: '#10B981', fontWeight: '600' }}>
-                        Discount: -₱
-                        {(item.discountAmount ?? 0).toLocaleString('en-PH', {
-                          minimumFractionDigits: 2,
-                        })}
-                      </Text>
-                    </View>
-                  ) : null}
+                    )}
+
+                    {/* Discount info */}
+                    {item.discountQuantity && item.discountQuantity > 0 ? (
+                      <View style={{ marginTop: 6, gap: 2 }}>
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            color: '#10B981',
+                            fontWeight: '600',
+                          }}
+                        >
+                          {item.discountQuantity} of {item.quantity} discounted
+                          @ {((item.discountRate ?? 0) * 100).toFixed(0)}%
+                        </Text>
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            color: '#10B981',
+                            fontWeight: '600',
+                          }}
+                        >
+                          Discount: -₱
+                          {(item.discountAmount ?? 0).toLocaleString('en-PH', {
+                            minimumFractionDigits: 2,
+                          })}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              })}
+
+              {/* Custom items count note */}
+              {order.items.some((i) => i.isCustomItem) && (
+                <View
+                  style={{
+                    paddingHorizontal: 12,
+                    paddingBottom: 10,
+                    paddingTop: 4,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <PenLine
+                    size={11}
+                    color={CUSTOM_ITEM_COLOR}
+                    strokeWidth={2}
+                  />
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      color: CUSTOM_ITEM_COLOR,
+                      fontWeight: '600',
+                    }}
+                  >
+                    {order.items.filter((i) => i.isCustomItem).length} manually
+                    added item
+                    {order.items.filter((i) => i.isCustomItem).length > 1
+                      ? 's'
+                      : ''}{' '}
+                    in this order
+                  </Text>
                 </View>
-              ))}
+              )}
             </View>
 
             {/* Financial breakdown */}
@@ -615,8 +802,12 @@ function OrderDetailModal({
               <Text style={[odm.sectionTitle, { color: colors.textSecondary }]}>
                 FINANCIAL BREAKDOWN
               </Text>
-              <View style={[odm.detailRow, { borderBottomColor: colors.border }]}>
-                <Text style={[odm.detailLabel, { color: colors.textSecondary }]}>
+              <View
+                style={[odm.detailRow, { borderBottomColor: colors.border }]}
+              >
+                <Text
+                  style={[odm.detailLabel, { color: colors.textSecondary }]}
+                >
                   Subtotal
                 </Text>
                 <Text style={[odm.detailValue, { color: colors.text }]}>
@@ -630,7 +821,9 @@ function OrderDetailModal({
                 <View
                   style={[odm.detailRow, { borderBottomColor: colors.border }]}
                 >
-                  <Text style={[odm.detailLabel, { color: colors.textSecondary }]}>
+                  <Text
+                    style={[odm.detailLabel, { color: colors.textSecondary }]}
+                  >
                     Discount ({(order.discountRate * 100).toFixed(0)}%)
                   </Text>
                   <Text style={[odm.detailValue, { color: '#EF4444' }]}>
@@ -645,7 +838,9 @@ function OrderDetailModal({
                 <View
                   style={[odm.detailRow, { borderBottomColor: colors.border }]}
                 >
-                  <Text style={[odm.detailLabel, { color: colors.textSecondary }]}>
+                  <Text
+                    style={[odm.detailLabel, { color: colors.textSecondary }]}
+                  >
                     VAT ({(order.vatRate * 100).toFixed(0)}%)
                   </Text>
                   <Text style={[odm.detailValue, { color: colors.accent }]}>
@@ -656,9 +851,14 @@ function OrderDetailModal({
                   </Text>
                 </View>
               )}
-              <View style={[odm.detailRow, { borderBottomColor: 'transparent' }]}>
+              <View
+                style={[odm.detailRow, { borderBottomColor: 'transparent' }]}
+              >
                 <Text
-                  style={[odm.detailLabel, { color: colors.text, fontWeight: '700' }]}
+                  style={[
+                    odm.detailLabel,
+                    { color: colors.text, fontWeight: '700' },
+                  ]}
                 >
                   Total
                 </Text>
@@ -674,15 +874,27 @@ function OrderDetailModal({
                   })}
                 </Text>
               </View>
-              <View style={[odm.detailRow, { borderBottomColor: 'transparent', marginTop: 8 }]}>
-                <Text style={[odm.detailLabel, { color: colors.textSecondary }]}>
+              <View
+                style={[
+                  odm.detailRow,
+                  { borderBottomColor: 'transparent', marginTop: 8 },
+                ]}
+              >
+                <Text
+                  style={[odm.detailLabel, { color: colors.textSecondary }]}
+                >
                   Show VAT per Item
                 </Text>
                 <Switch
                   value={showVatPerItem}
                   onValueChange={setShowVatPerItem}
-                  trackColor={{ false: colors.border, true: colors.accent + '40' }}
-                  thumbColor={showVatPerItem ? colors.accent : colors.textSecondary}
+                  trackColor={{
+                    false: colors.border,
+                    true: colors.accent + '40',
+                  }}
+                  thumbColor={
+                    showVatPerItem ? colors.accent : colors.textSecondary
+                  }
                 />
               </View>
             </View>
@@ -699,7 +911,9 @@ function OrderDetailModal({
                   },
                 ]}
               >
-                <Text style={[odm.sectionTitle, { color: STATUS_COLORS.SHIPPED }]}>
+                <Text
+                  style={[odm.sectionTitle, { color: STATUS_COLORS.SHIPPED }]}
+                >
                   DELIVERY INFO
                 </Text>
                 {[
@@ -732,7 +946,10 @@ function OrderDetailModal({
                       ]}
                     >
                       <Text
-                        style={[odm.detailLabel, { color: colors.textSecondary }]}
+                        style={[
+                          odm.detailLabel,
+                          { color: colors.textSecondary },
+                        ]}
                       >
                         {label}
                       </Text>
@@ -775,10 +992,12 @@ function OrderDetailModal({
                 )}
               </TouchableOpacity>
             )}
-
             {order.status === 'PROCESSING' && (
               <TouchableOpacity
-                style={[odm.actionBtn, { backgroundColor: STATUS_COLORS.SHIPPED }]}
+                style={[
+                  odm.actionBtn,
+                  { backgroundColor: STATUS_COLORS.SHIPPED },
+                ]}
                 onPress={() => onShip(order.id)}
                 disabled={actionLoading}
                 activeOpacity={0.85}
@@ -787,7 +1006,6 @@ function OrderDetailModal({
                 <Text style={odm.actionBtnText}>Enter Delivery & Ship</Text>
               </TouchableOpacity>
             )}
-
             {order.status === 'SHIPPED' && (
               <TouchableOpacity
                 style={[
@@ -808,10 +1026,12 @@ function OrderDetailModal({
                 )}
               </TouchableOpacity>
             )}
-
             {canCancel && (
               <TouchableOpacity
-                style={[odm.actionBtn, { backgroundColor: '#EF4444', marginTop: 8 }]}
+                style={[
+                  odm.actionBtn,
+                  { backgroundColor: '#EF4444', marginTop: 8 },
+                ]}
                 onPress={() => onCancel(order.id)}
                 disabled={actionLoading}
                 activeOpacity={0.85}
@@ -827,7 +1047,6 @@ function OrderDetailModal({
 }
 
 const odm = StyleSheet.create({
-  // ── Centered modal overlay ────────────────────────────────────────────────
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
@@ -896,7 +1115,6 @@ const odm = StyleSheet.create({
     padding: 12,
     paddingBottom: 8,
   },
-  // ── Column item layout ────────────────────────────────────────────────────
   itemRow: {
     flexDirection: 'column',
     paddingHorizontal: 12,
@@ -904,23 +1122,14 @@ const odm = StyleSheet.create({
     borderBottomWidth: 1,
     gap: 4,
   },
-  itemName: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
+  itemName: { fontSize: 13, fontWeight: '700' },
   itemMeta: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  itemQty: {
-    fontSize: 12,
-  },
-  itemTotal: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  // ── Financial rows ────────────────────────────────────────────────────────
+  itemQty: { fontSize: 12 },
+  itemTotal: { fontSize: 13, fontWeight: '700' },
   detailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -949,26 +1158,562 @@ const odm = StyleSheet.create({
   actionBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 });
 
-// ─── Cart Item type for AddOrderModal ─────────────────────────────────────────
+// ─── Custom Item Form Modal ───────────────────────────────────────────────────
+// Opened when the user taps "Add Custom Item" in the products step.
 
-interface CartEntry {
-  inventoryItem: InventoryItemForSales;
-  selectedUnitId?: number;
-  selectedUnitName?: string;
-  unitPrice: number;
-  quantity: number;
-  discountQuantity?: number;
-  discountRate?: number;
-  discountAmount?: number;
-}
+function CustomItemFormModal({
+  visible,
+  onClose,
+  onAdd,
+  colors,
+  outletDiscountOptions,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onAdd: (entry: CustomCartEntry) => void;
+  colors: any;
+  outletDiscountOptions: OutletForSales['outletPromos'];
+}) {
+  const s = makeModalStyles(colors);
 
-// ─── Persisted Form State ─────────────────────────────────────────────────────
+  const [name, setName] = useState('');
+  const [priceText, setPriceText] = useState('');
+  const [qtyText, setQtyText] = useState('1');
+  const [vatExempt, setVatExempt] = useState(false);
+  const [discountQty, setDiscountQty] = useState(0);
+  const [discountRate, setDiscountRate] = useState(0);
+  const [discountOption, setDiscountOption] = useState('');
+  const [error, setError] = useState('');
 
-interface PersistedFormState {
-  customer: string;
-  selectedBranchId: number | null;
-  selectedOutlet: OutletForSales | null;
-  cart: CartEntry[];
+  const reset = () => {
+    setName('');
+    setPriceText('');
+    setQtyText('1');
+    setVatExempt(false);
+    setDiscountQty(0);
+    setDiscountRate(0);
+    setDiscountOption('');
+    setError('');
+  };
+
+  const handleClose = () => {
+    reset();
+    onClose();
+  };
+
+  const handleAdd = () => {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setError('Item name is required.');
+      return;
+    }
+    const price = parseFloat(priceText);
+    if (isNaN(price) || price <= 0) {
+      setError('Enter a valid price greater than 0.');
+      return;
+    }
+    const qty = parseFloat(qtyText);
+    if (isNaN(qty) || qty <= 0) {
+      setError('Enter a valid quantity greater than 0.');
+      return;
+    }
+
+    const clampedDiscountQty = Math.min(Math.max(discountQty, 0), qty);
+    const discountAmount = Number(
+      (clampedDiscountQty * price * discountRate).toFixed(2),
+    );
+
+    onAdd({
+      kind: 'custom',
+      cartKey: `custom-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      customItemName: trimmedName,
+      unitPrice: price,
+      quantity: qty,
+      vatExempt,
+      discountQuantity: clampedDiscountQty,
+      discountRate,
+      discountAmount,
+    });
+    reset();
+    onClose();
+  };
+
+  const quantity = parseFloat(qtyText) || 1;
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={handleClose}
+    >
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <View style={s.overlay}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFillObject}
+            activeOpacity={1}
+            onPress={handleClose}
+          />
+          <View style={s.sheet}>
+            {/* Header */}
+            <View style={s.header}>
+              <View
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+              >
+                <View
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 8,
+                    backgroundColor: CUSTOM_ITEM_COLOR + '20',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <PenLine
+                    size={16}
+                    color={CUSTOM_ITEM_COLOR}
+                    strokeWidth={2}
+                  />
+                </View>
+                <View>
+                  <Text style={s.title}>Add Custom Item</Text>
+                  <Text style={{ fontSize: 11, color: colors.textSecondary }}>
+                    Not linked to inventory
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity onPress={handleClose}>
+                <X size={20} color={colors.textSecondary} strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              contentContainerStyle={{ padding: 20, paddingBottom: 32 }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              {/* Item name */}
+              <Text style={s.label}>ITEM NAME *</Text>
+              <TextInput
+                style={s.input}
+                placeholder="e.g. Service Fee, Custom Product"
+                placeholderTextColor={colors.textSecondary}
+                value={name}
+                onChangeText={setName}
+                autoFocus
+              />
+
+              {/* Price + Qty */}
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.label}>UNIT PRICE (₱) *</Text>
+                  <TextInput
+                    style={s.input}
+                    placeholder="0.00"
+                    placeholderTextColor={colors.textSecondary}
+                    value={priceText}
+                    onChangeText={setPriceText}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.label}>QUANTITY *</Text>
+                  <TextInput
+                    style={s.input}
+                    placeholder="1"
+                    placeholderTextColor={colors.textSecondary}
+                    value={qtyText}
+                    onChangeText={setQtyText}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+              </View>
+
+              {/* VAT exempt toggle */}
+              <View
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginTop: 16,
+                  backgroundColor: colors.background,
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  padding: 12,
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      fontWeight: '700',
+                      color: colors.text,
+                    }}
+                  >
+                    VAT Exempt
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      color: colors.textSecondary,
+                      marginTop: 2,
+                    }}
+                  >
+                    Toggle on if this item is not subject to VAT
+                  </Text>
+                </View>
+                <Switch
+                  value={vatExempt}
+                  onValueChange={setVatExempt}
+                  trackColor={{ false: colors.border, true: '#10B981' + '60' }}
+                  thumbColor={vatExempt ? '#10B981' : colors.textSecondary}
+                />
+              </View>
+
+              {/* Discount section */}
+              <Text style={[s.label, { marginTop: 18 }]}>
+                DISCOUNT (OPTIONAL)
+              </Text>
+
+              <View
+                style={{
+                  backgroundColor: colors.background,
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  padding: 12,
+                  gap: 10,
+                }}
+              >
+                {/* Discount quantity stepper */}
+                <View>
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      color: colors.textSecondary,
+                      marginBottom: 8,
+                      fontWeight: '600',
+                    }}
+                  >
+                    Qty to Discount (max {quantity})
+                  </Text>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 10,
+                    }}
+                  >
+                    <TouchableOpacity
+                      onPress={() => setDiscountQty((p) => Math.max(0, p - 1))}
+                      style={[s.qtyButton, { width: 36, height: 36 }]}
+                    >
+                      <Text style={[s.qtyButtonText, { fontSize: 16 }]}>−</Text>
+                    </TouchableOpacity>
+                    <TextInput
+                      value={String(discountQty)}
+                      onChangeText={(t) => {
+                        const n = Number(t);
+                        if (!isNaN(n))
+                          setDiscountQty(Math.min(Math.max(0, n), quantity));
+                      }}
+                      keyboardType="number-pad"
+                      style={{
+                        width: 64,
+                        height: 36,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        borderRadius: 8,
+                        paddingHorizontal: 10,
+                        fontSize: 16,
+                        fontWeight: '700',
+                        color: colors.text,
+                        textAlign: 'center',
+                        backgroundColor: colors.card,
+                      }}
+                    />
+                    <TouchableOpacity
+                      onPress={() =>
+                        setDiscountQty((p) => Math.min(quantity, p + 1))
+                      }
+                      style={[
+                        s.qtyButton,
+                        {
+                          width: 36,
+                          height: 36,
+                          backgroundColor: colors.primary,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          s.qtyButtonText,
+                          { fontSize: 16, color: '#fff' },
+                        ]}
+                      >
+                        +
+                      </Text>
+                    </TouchableOpacity>
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color: colors.textSecondary,
+                        flex: 1,
+                      }}
+                    >
+                      {discountQty > 0
+                        ? `${discountQty} of ${quantity} will be discounted`
+                        : 'No discount applied'}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Discount rate — outlet promos + custom */}
+                {discountQty > 0 && (
+                  <View style={{ gap: 6 }}>
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color: colors.textSecondary,
+                        fontWeight: '600',
+                      }}
+                    >
+                      Discount Rate
+                    </Text>
+                    {outletDiscountOptions.slice(0, 3).map((opt) => (
+                      <TouchableOpacity
+                        key={opt.id}
+                        onPress={() => {
+                          setDiscountRate(opt.discount / 100);
+                          setDiscountOption(`${opt.discount}%`);
+                        }}
+                        style={{
+                          padding: 10,
+                          borderRadius: 10,
+                          borderWidth: 1,
+                          borderColor:
+                            discountOption === `${opt.discount}%`
+                              ? colors.primary
+                              : colors.border,
+                          backgroundColor:
+                            discountOption === `${opt.discount}%`
+                              ? colors.primary + '10'
+                              : colors.card,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color:
+                              discountOption === `${opt.discount}%`
+                                ? colors.primary
+                                : colors.text,
+                            fontWeight: '700',
+                          }}
+                        >
+                          {opt.discount}% off — {opt.promoType?.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+
+                    {/* Custom % input */}
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 8,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        borderRadius: 10,
+                        paddingHorizontal: 12,
+                        backgroundColor: colors.card,
+                      }}
+                    >
+                      <TextInput
+                        value={
+                          discountOption.includes('%') &&
+                          outletDiscountOptions.some(
+                            (o) => discountOption === `${o.discount}%`,
+                          )
+                            ? ''
+                            : discountOption
+                        }
+                        onChangeText={(text) => {
+                          setDiscountOption(text);
+                          const val = Number(text.replace('%', '').trim());
+                          if (!isNaN(val)) setDiscountRate(val / 100);
+                        }}
+                        keyboardType="numeric"
+                        placeholder="Custom %"
+                        placeholderTextColor={colors.textSecondary}
+                        style={{ flex: 1, color: colors.text, minHeight: 40 }}
+                      />
+                      <Text style={{ color: colors.textSecondary }}>%</Text>
+                    </View>
+
+                    {/* Live discount preview */}
+                    {discountRate > 0 && discountQty > 0 && (
+                      <View
+                        style={{
+                          backgroundColor: '#10B981' + '14',
+                          borderRadius: 8,
+                          padding: 10,
+                          flexDirection: 'row',
+                          justifyContent: 'space-between',
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            color: '#10B981',
+                            fontWeight: '600',
+                          }}
+                        >
+                          Discount amount
+                        </Text>
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            color: '#10B981',
+                            fontWeight: '800',
+                          }}
+                        >
+                          -₱
+                          {(
+                            discountQty *
+                            (parseFloat(priceText) || 0) *
+                            discountRate
+                          ).toLocaleString('en-PH', {
+                            minimumFractionDigits: 2,
+                          })}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+              </View>
+
+              {/* Line total preview */}
+              {parseFloat(priceText) > 0 && parseFloat(qtyText) > 0 && (
+                <View
+                  style={{
+                    marginTop: 12,
+                    backgroundColor: colors.card,
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    padding: 12,
+                    gap: 4,
+                  }}
+                >
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, color: colors.textSecondary }}>
+                      Line total
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color: colors.text,
+                        fontWeight: '700',
+                      }}
+                    >
+                      ₱
+                      {(
+                        (parseFloat(priceText) || 0) *
+                        (parseFloat(qtyText) || 0)
+                      ).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                    </Text>
+                  </View>
+                  {discountQty > 0 && discountRate > 0 && (
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                      }}
+                    >
+                      <Text
+                        style={{ fontSize: 12, color: colors.textSecondary }}
+                      >
+                        After discount
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          color: '#10B981',
+                          fontWeight: '700',
+                        }}
+                      >
+                        ₱
+                        {(
+                          (parseFloat(priceText) || 0) *
+                            (parseFloat(qtyText) || 0) -
+                          discountQty *
+                            (parseFloat(priceText) || 0) *
+                            discountRate
+                        ).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                      </Text>
+                    </View>
+                  )}
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, color: colors.textSecondary }}>
+                      VAT
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color: vatExempt ? colors.textSecondary : colors.accent,
+                        fontWeight: '600',
+                      }}
+                    >
+                      {vatExempt ? 'Exempt' : 'Applicable'}
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              {error ? (
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color: colors.error ?? '#EF4444',
+                    marginTop: 8,
+                  }}
+                >
+                  {error}
+                </Text>
+              ) : null}
+
+              <TouchableOpacity
+                style={[
+                  s.submitBtn,
+                  { backgroundColor: CUSTOM_ITEM_COLOR, marginTop: 20 },
+                ]}
+                onPress={handleAdd}
+                activeOpacity={0.85}
+              >
+                <PenLine size={16} color="#fff" strokeWidth={2} />
+                <Text style={s.submitBtnText}>Add to Order</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
 }
 
 // ─── Add Order Modal ──────────────────────────────────────────────────────────
@@ -995,11 +1740,18 @@ function AddOrderModal({
 
   const [step, setStep] = useState<'form' | 'products'>('form');
   const [customer, setCustomer] = useState(persistedStateRef.current.customer);
+
+  // Discount modal (inventory items)
   const [discountModalVisible, setDiscountModalVisible] = useState(false);
-  const [discountModalItemId, setDiscountModalItemId] = useState<number | null>(null);
+  const [discountModalCartKey, setDiscountModalCartKey] = useState<
+    string | null
+  >(null);
   const [discountModalQty, setDiscountModalQty] = useState(0);
   const [discountModalRate, setDiscountModalRate] = useState(0);
   const [discountModalOption, setDiscountModalOption] = useState<string>('');
+
+  // Custom item modal
+  const [customItemModalVisible, setCustomItemModalVisible] = useState(false);
 
   const [branches, setBranches] = useState<Branch[]>([]);
   const [outlets, setOutlets] = useState<OutletForSales[]>([]);
@@ -1013,7 +1765,9 @@ function AddOrderModal({
   const [loadingOutlets, setLoadingOutlets] = useState(false);
 
   const [cart, setCart] = useState<CartEntry[]>(persistedStateRef.current.cart);
-  const [inventoryItems, setInventoryItems] = useState<InventoryItemForSales[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<InventoryItemForSales[]>(
+    [],
+  );
   const [loadingItems, setLoadingItems] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
@@ -1050,11 +1804,8 @@ function AddOrderModal({
       take: number = 20,
       append: boolean = false,
     ) => {
-      if (append) {
-        setLoadingMore(true);
-      } else {
-        setLoadingItems(true);
-      }
+      if (append) setLoadingMore(true);
+      else setLoadingItems(true);
       try {
         const result = await SalesOrderService.searchInventoryItems({
           outletId,
@@ -1062,11 +1813,8 @@ function AddOrderModal({
           skip: skipVal,
           take,
         });
-        if (append) {
-          setInventoryItems((prev) => [...prev, ...result.items]);
-        } else {
-          setInventoryItems(result.items);
-        }
+        if (append) setInventoryItems((prev) => [...prev, ...result.items]);
+        else setInventoryItems(result.items);
         setHasMore(result.hasMore);
         setSkip(skipVal + result.items.length);
       } catch (err) {
@@ -1089,23 +1837,18 @@ function AddOrderModal({
   const prevOutletIdRef = useRef<number | null>(null);
   useEffect(() => {
     if (selectedOutlet?.id !== prevOutletIdRef.current) {
-      if (prevOutletIdRef.current !== null) {
-        setCart([]);
-      }
+      if (prevOutletIdRef.current !== null) setCart([]);
       prevOutletIdRef.current = selectedOutlet?.id ?? null;
     }
   }, [selectedOutlet]);
+
+  // ── Totals ─────────────────────────────────────────────────────────────────
 
   const subtotal = useMemo(
     () => cart.reduce((sum, e) => sum + e.unitPrice * e.quantity, 0),
     [cart],
   );
-
   const outletDiscountOptions = selectedOutlet?.outletPromos ?? [];
-  const defaultOutletDiscountRate =
-    outletDiscountOptions?.[0]?.discount != null
-      ? outletDiscountOptions[0].discount / 100
-      : 0;
 
   const totalItemDiscount = useMemo(
     () => cart.reduce((sum, e) => sum + (e.discountAmount ?? 0), 0),
@@ -1116,11 +1859,8 @@ function AddOrderModal({
 
   const vatableSubtotal = useMemo(() => {
     return cart.reduce((sum, e) => {
-      const isVatExempt = e.inventoryItem.item.vatExempt === true;
-      if (isVatExempt) return sum;
-      const lineTotal = e.unitPrice * e.quantity;
-      const lineDiscount = e.discountAmount ?? 0;
-      return sum + lineTotal - lineDiscount;
+      if (entryVatExempt(e)) return sum;
+      return sum + e.unitPrice * e.quantity - (e.discountAmount ?? 0);
     }, 0);
   }, [cart]);
 
@@ -1128,28 +1868,25 @@ function AddOrderModal({
     ? selectedOutlet.vatType.rate / 100
     : selectedOutlet?.isVatRegistered
       ? 0.12
-      : 0;
+      : 0.12;
   const vatAmount = vatableSubtotal * vatRate;
   const total = afterDiscount + vatAmount;
 
-  const filteredItems = inventoryItems;
+  // ── Cart operations ────────────────────────────────────────────────────────
 
-  const updateQty = useCallback((itemId: number, qty: number) => {
+  /** Update quantity for any cart entry by cartKey */
+  const updateQty = useCallback((cartKey: string, qty: number) => {
     if (qty <= 0) {
-      setCart((prev) => prev.filter((e) => e.inventoryItem.itemId !== itemId));
+      setCart((prev) => prev.filter((e) => e.cartKey !== cartKey));
     } else {
       setCart((prev) =>
         prev.map((e) => {
-          if (e.inventoryItem.itemId !== itemId) return e;
-          const updatedQty = qty;
-          const clampedDiscountQty = Math.min(
-            e.discountQuantity ?? 0,
-            updatedQty,
-          );
+          if (e.cartKey !== cartKey) return e;
+          const clampedDiscountQty = Math.min(e.discountQuantity ?? 0, qty);
           const discountRate = e.discountRate ?? 0;
           return {
             ...e,
-            quantity: updatedQty,
+            quantity: qty,
             discountQuantity: clampedDiscountQty,
             discountAmount: Number(
               (clampedDiscountQty * e.unitPrice * discountRate).toFixed(2),
@@ -1160,74 +1897,82 @@ function AddOrderModal({
     }
   }, []);
 
+  /** Add or increment an inventory item */
   const addOrIncrement = useCallback((inv: InventoryItemForSales) => {
     setCart((prev) => {
-      const existing = prev.find((e) => e.inventoryItem.itemId === inv.itemId);
+      const existing = prev.find(
+        (e) => e.kind === 'inventory' && e.inventoryItem.itemId === inv.itemId,
+      );
       if (existing) {
         return prev.map((e) =>
-          e.inventoryItem.itemId === inv.itemId
+          e.kind === 'inventory' && e.inventoryItem.itemId === inv.itemId
             ? { ...e, quantity: e.quantity + 1 }
             : e,
         );
       }
       const defaultUnit = inv.units?.find((u) => u.isDefault) || inv.units?.[0];
-      return [
-        ...prev,
-        {
-          inventoryItem: inv,
-          selectedUnitId: defaultUnit?.id,
-          selectedUnitName: defaultUnit?.unitLabel ?? defaultUnit?.unitName,
-          unitPrice: defaultUnit?.price ?? inv.price,
-          quantity: 1,
-          discountQuantity: 0,
-          discountRate: 0,
-          discountAmount: 0,
-        },
-      ];
+      const entry: InventoryCartEntry = {
+        kind: 'inventory',
+        cartKey: `inv-${inv.itemId}`,
+        inventoryItem: inv,
+        selectedUnitId: defaultUnit?.id,
+        selectedUnitName: defaultUnit?.unitLabel ?? defaultUnit?.unitName,
+        unitPrice: defaultUnit?.price ?? inv.price,
+        quantity: 1,
+        discountQuantity: 0,
+        discountRate: 0,
+        discountAmount: 0,
+      };
+      return [...prev, entry];
     });
   }, []);
 
+  /** Add a custom item entry directly (from CustomItemFormModal) */
+  const addCustomEntry = useCallback((entry: CustomCartEntry) => {
+    setCart((prev) => [...prev, entry]);
+  }, []);
+
+  /** Open the discount sub-modal for any cart entry */
   const openDiscountModal = useCallback(
-    (itemId: number) => {
-      const entry = cart.find((e) => e.inventoryItem.itemId === itemId);
+    (cartKey: string) => {
+      const entry = cart.find((e) => e.cartKey === cartKey);
       if (!entry) return;
-      setDiscountModalItemId(itemId);
+      setDiscountModalCartKey(cartKey);
       setDiscountModalQty(entry.discountQuantity ?? 0);
-      setDiscountModalRate(
-        (entry.discountRate ?? defaultOutletDiscountRate) || 0,
-      );
+      setDiscountModalRate(entry.discountRate ?? 0);
       setDiscountModalOption(
         entry.discountRate != null && entry.discountRate > 0
-          ? `${Math.round((entry.discountRate ?? 0) * 100)}%`
+          ? `${Math.round((entry.discountRate ?? 0) * 100)}`
           : outletDiscountOptions?.[0]
-            ? `${outletDiscountOptions[0].discount}%`
+            ? `${outletDiscountOptions[0].discount}`
             : '',
       );
       setDiscountModalVisible(true);
     },
-    [cart, defaultOutletDiscountRate, outletDiscountOptions],
+    [cart, outletDiscountOptions],
   );
 
   const applyDiscountToCartItem = useCallback(
-    (itemId: number, quantity: number, rate: number) => {
+    (cartKey: string, quantity: number, rate: number) => {
       setCart((prev) =>
         prev.map((e) => {
-          if (e.inventoryItem.itemId !== itemId) return e;
+          if (e.cartKey !== cartKey) return e;
           const qty = Math.min(Math.max(quantity, 0), e.quantity);
-          const discountAmount = Number((qty * e.unitPrice * rate).toFixed(2));
           return {
             ...e,
             discountQuantity: qty,
             discountRate: rate,
-            discountAmount,
+            discountAmount: Number((qty * e.unitPrice * rate).toFixed(2)),
           };
         }),
       );
       setDiscountModalVisible(false);
-      setDiscountModalItemId(null);
+      setDiscountModalCartKey(null);
     },
     [],
   );
+
+  // ── Submit ─────────────────────────────────────────────────────────────────
 
   const handleAdd = async () => {
     if (!customer.trim() || customer.trim().length < 2) {
@@ -1250,16 +1995,31 @@ function AddOrderModal({
     setSubmitting(true);
 
     try {
-      const items: SalesOrderItemInput[] = cart.map((e) => ({
-        itemId: e.inventoryItem.itemId,
-        quantity: e.quantity,
-        unitPrice: e.unitPrice,
-        unitId: e.selectedUnitId,
-        unitName: e.selectedUnitName,
-        discountQuantity: e.discountQuantity ?? 0,
-        discountRate: e.discountRate ?? 0,
-        discountAmount: e.discountAmount ?? 0,
-      }));
+      const items: SalesOrderItemInput[] = cart.map((e) => {
+        if (e.kind === 'custom') {
+          return {
+            isCustomItem: true,
+            customItemName: e.customItemName,
+            quantity: e.quantity,
+            unitPrice: e.unitPrice,
+            vatExempt: e.vatExempt,
+            discountQuantity: e.discountQuantity ?? 0,
+            discountRate: e.discountRate ?? 0,
+            discountAmount: e.discountAmount ?? 0,
+          };
+        }
+        return {
+          itemId: e.inventoryItem.itemId,
+          isCustomItem: false,
+          quantity: e.quantity,
+          unitPrice: e.unitPrice,
+          unitId: e.selectedUnitId,
+          unitName: e.selectedUnitName,
+          discountQuantity: e.discountQuantity ?? 0,
+          discountRate: e.discountRate ?? 0,
+          discountAmount: e.discountAmount ?? 0,
+        };
+      });
 
       const created = await SalesOrderService.createSalesOrder({
         customer: customer.trim(),
@@ -1321,9 +2081,12 @@ function AddOrderModal({
     }
   }, [visible]);
 
-  const selectedDiscountCartItem = discountModalItemId
-    ? cart.find((e) => e.inventoryItem.itemId === discountModalItemId) ?? null
+  const selectedDiscountEntry = discountModalCartKey
+    ? (cart.find((e) => e.cartKey === discountModalCartKey) ?? null)
     : null;
+
+  const customItemCount = cart.filter((e) => e.kind === 'custom').length;
+  const inventoryItemCount = cart.filter((e) => e.kind === 'inventory').length;
 
   return (
     <Modal
@@ -1345,7 +2108,9 @@ function AddOrderModal({
           <View style={s.sheet}>
             {/* Header */}
             <View style={s.header}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <View
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+              >
                 {step === 'products' && (
                   <TouchableOpacity
                     onPress={() => setStep('form')}
@@ -1364,12 +2129,22 @@ function AddOrderModal({
                 </Text>
               </View>
               {step === 'form' && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 14,
+                  }}
+                >
                   <TouchableOpacity
                     onPress={resetForm}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
-                    <RefreshCcw size={20} color={colors.textSecondary} strokeWidth={2} />
+                    <RefreshCcw
+                      size={20}
+                      color={colors.textSecondary}
+                      strokeWidth={2}
+                    />
                   </TouchableOpacity>
                   <TouchableOpacity onPress={handleClose}>
                     <X size={20} color={colors.textSecondary} strokeWidth={2} />
@@ -1378,7 +2153,7 @@ function AddOrderModal({
               )}
             </View>
 
-            {/* ── STEP: FORM ─────────────────────────────────────────────── */}
+            {/* ── STEP: FORM ──────────────────────────────────────────────────── */}
             {step === 'form' && (
               <ScrollView
                 contentContainerStyle={{ padding: 20, paddingBottom: 32 }}
@@ -1402,7 +2177,9 @@ function AddOrderModal({
                     style={{ marginTop: 8 }}
                   />
                 ) : (
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  <View
+                    style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}
+                  >
                     {branches.map((b) => {
                       const active = selectedBranchId === b.id;
                       return (
@@ -1417,8 +2194,12 @@ function AddOrderModal({
                             paddingVertical: 8,
                             borderRadius: 20,
                             borderWidth: 1,
-                            borderColor: active ? colors.primary : colors.border,
-                            backgroundColor: active ? colors.primary : 'transparent',
+                            borderColor: active
+                              ? colors.primary
+                              : colors.border,
+                            backgroundColor: active
+                              ? colors.primary
+                              : 'transparent',
                           }}
                         >
                           <Text
@@ -1466,7 +2247,9 @@ function AddOrderModal({
                               style={{
                                 borderRadius: 10,
                                 borderWidth: 1,
-                                borderColor: active ? colors.primary : colors.border,
+                                borderColor: active
+                                  ? colors.primary
+                                  : colors.border,
                                 backgroundColor: active
                                   ? colors.primary + '10'
                                   : colors.background,
@@ -1481,19 +2264,27 @@ function AddOrderModal({
                                   width: 28,
                                   height: 28,
                                   borderRadius: 14,
-                                  backgroundColor: active ? colors.primary : colors.border,
+                                  backgroundColor: active
+                                    ? colors.primary
+                                    : colors.border,
                                   alignItems: 'center',
                                   justifyContent: 'center',
                                 }}
                               >
-                                <MapPin size={13} color="#fff" strokeWidth={2} />
+                                <MapPin
+                                  size={13}
+                                  color="#fff"
+                                  strokeWidth={2}
+                                />
                               </View>
                               <View style={{ flex: 1 }}>
                                 <Text
                                   style={{
                                     fontSize: 14,
                                     fontWeight: '700',
-                                    color: active ? colors.primary : colors.text,
+                                    color: active
+                                      ? colors.primary
+                                      : colors.text,
                                   }}
                                 >
                                   {o.name}
@@ -1557,14 +2348,23 @@ function AddOrderModal({
                     }}
                   >
                     <Text
-                      style={{ fontSize: 13, fontWeight: '700', color: colors.text }}
+                      style={{
+                        fontSize: 13,
+                        fontWeight: '700',
+                        color: colors.text,
+                      }}
                     >
                       Discount options are applied per selected item.
                     </Text>
                     <Text
-                      style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2 }}
+                      style={{
+                        fontSize: 11,
+                        color: colors.textSecondary,
+                        marginTop: 2,
+                      }}
                     >
-                      Available: {outletDiscountOptions[0].discount}% off — {outletDiscountOptions[0].promoType?.name}
+                      Available: {outletDiscountOptions[0].discount}% off —{' '}
+                      {outletDiscountOptions[0].promoType?.name}
                     </Text>
                   </View>
                 )}
@@ -1592,10 +2392,23 @@ function AddOrderModal({
                     >
                       VAT RULES
                     </Text>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                      <Text style={{ fontSize: 12, color: colors.textSecondary }}>VAT</Text>
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                      }}
+                    >
                       <Text
-                        style={{ fontSize: 12, fontWeight: '700', color: colors.accent }}
+                        style={{ fontSize: 12, color: colors.textSecondary }}
+                      >
+                        VAT
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: '700',
+                          color: colors.accent,
+                        }}
                       >
                         {selectedOutlet.vatType
                           ? `${selectedOutlet.vatType.rate}% (${selectedOutlet.vatType.name})`
@@ -1605,7 +2418,11 @@ function AddOrderModal({
                       </Text>
                     </View>
                     <Text
-                      style={{ fontSize: 10, color: colors.textSecondary, fontStyle: 'italic' }}
+                      style={{
+                        fontSize: 10,
+                        color: colors.textSecondary,
+                        fontStyle: 'italic',
+                      }}
                     >
                       VAT only applied to non-exempt items
                     </Text>
@@ -1621,9 +2438,12 @@ function AddOrderModal({
                   style={{
                     borderRadius: 10,
                     borderWidth: 1,
-                    borderColor: cart.length > 0 ? colors.primary : colors.border,
+                    borderColor:
+                      cart.length > 0 ? colors.primary : colors.border,
                     backgroundColor:
-                      cart.length > 0 ? colors.primary + '08' : colors.background,
+                      cart.length > 0
+                        ? colors.primary + '08'
+                        : colors.background,
                     padding: 14,
                     flexDirection: 'row',
                     alignItems: 'center',
@@ -1633,28 +2453,34 @@ function AddOrderModal({
                 >
                   <Package
                     size={18}
-                    color={cart.length > 0 ? colors.primary : colors.textSecondary}
+                    color={
+                      cart.length > 0 ? colors.primary : colors.textSecondary
+                    }
                     strokeWidth={2}
                   />
                   <Text
                     style={{
                       flex: 1,
                       fontSize: 14,
-                      color: cart.length > 0 ? colors.primary : colors.textSecondary,
+                      color:
+                        cart.length > 0 ? colors.primary : colors.textSecondary,
                       fontWeight: cart.length > 0 ? '600' : '400',
                     }}
                   >
                     {cart.length > 0
-                      ? `${cart.length} item${cart.length > 1 ? 's' : ''} selected`
+                      ? `${inventoryItemCount} inventory · ${customItemCount} manual`
                       : 'Tap to select products…'}
                   </Text>
                   <ChevronRight
                     size={16}
-                    color={cart.length > 0 ? colors.primary : colors.textSecondary}
+                    color={
+                      cart.length > 0 ? colors.primary : colors.textSecondary
+                    }
                     strokeWidth={2}
                   />
                 </TouchableOpacity>
 
+                {/* ── Cart summary on form step ── */}
                 {cart.length > 0 && (
                   <View
                     style={{
@@ -1666,138 +2492,190 @@ function AddOrderModal({
                       overflow: 'hidden',
                     }}
                   >
-                    {cart.map((e, i) => (
-                      <View
-                        key={e.inventoryItem.itemId}
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          paddingHorizontal: 12,
-                          paddingVertical: 10,
-                          borderBottomWidth: i < cart.length - 1 ? 1 : 0,
-                          borderBottomColor: colors.border,
-                        }}
-                      >
-                        <View style={{ flex: 1, gap: 4 }}>
-                          <Text
-                            style={{
-                              fontSize: 13,
-                              color: colors.text,
-                              fontWeight: '600',
-                            }}
-                            numberOfLines={1}
-                          >
-                            {e.inventoryItem.item.name}
-                          </Text>
-                          {e.discountQuantity && e.discountQuantity > 0 ? (
-                            <Text
+                    {cart.map((e, i) => {
+                      const isCustom = e.kind === 'custom';
+                      return (
+                        <View
+                          key={e.cartKey}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            paddingHorizontal: 12,
+                            paddingVertical: 10,
+                            borderBottomWidth: i < cart.length - 1 ? 1 : 0,
+                            borderBottomColor: colors.border,
+                            borderLeftWidth: isCustom ? 3 : 0,
+                            borderLeftColor: CUSTOM_ITEM_COLOR,
+                          }}
+                        >
+                          <View style={{ flex: 1, gap: 4 }}>
+                            <View
                               style={{
-                                fontSize: 11,
-                                color: '#10B981',
-                                marginTop: 2,
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 6,
                               }}
                             >
-                              {e.discountQuantity} of {e.quantity} discounted @
-                              {(e.discountRate ?? 0) * 100}%
-                            </Text>
-                          ) : null}
-                          <TouchableOpacity
-                            onPress={() => openDiscountModal(e.inventoryItem.itemId)}
+                              <Text
+                                style={{
+                                  fontSize: 13,
+                                  color: isCustom
+                                    ? CUSTOM_ITEM_COLOR
+                                    : colors.text,
+                                  fontWeight: '600',
+                                  flex: 1,
+                                }}
+                                numberOfLines={1}
+                              >
+                                {entryDisplayName(e)}
+                              </Text>
+                              {isCustom && (
+                                <View
+                                  style={{
+                                    backgroundColor: CUSTOM_ITEM_COLOR + '20',
+                                    borderRadius: 4,
+                                    paddingHorizontal: 5,
+                                    paddingVertical: 2,
+                                  }}
+                                >
+                                  <Text
+                                    style={{
+                                      fontSize: 9,
+                                      fontWeight: '800',
+                                      color: CUSTOM_ITEM_COLOR,
+                                    }}
+                                  >
+                                    MANUAL
+                                  </Text>
+                                </View>
+                              )}
+                            </View>
+                            {e.discountQuantity && e.discountQuantity > 0 ? (
+                              <Text
+                                style={{
+                                  fontSize: 11,
+                                  color: '#10B981',
+                                  marginTop: 2,
+                                }}
+                              >
+                                {e.discountQuantity} of {e.quantity} discounted
+                                @ {(e.discountRate ?? 0) * 100}%
+                              </Text>
+                            ) : null}
+                            <TouchableOpacity
+                              onPress={() => openDiscountModal(e.cartKey)}
+                              style={{
+                                marginTop: 4,
+                                paddingHorizontal: 10,
+                                paddingVertical: 6,
+                                borderRadius: 8,
+                                borderWidth: 1,
+                                borderColor: colors.primary,
+                                backgroundColor: colors.primary + '10',
+                                alignSelf: 'flex-start',
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontSize: 12,
+                                  fontWeight: '700',
+                                  color: colors.primary,
+                                }}
+                              >
+                                {e.discountQuantity && e.discountQuantity > 0
+                                  ? 'Edit discount'
+                                  : 'Apply discount'}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                          <View
                             style={{
-                              marginTop: 4,
-                              paddingHorizontal: 10,
-                              paddingVertical: 6,
-                              borderRadius: 8,
-                              borderWidth: 1,
-                              borderColor: colors.primary,
-                              backgroundColor: colors.primary + '10',
-                              alignSelf: 'flex-start',
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 8,
                             }}
                           >
+                            <TouchableOpacity
+                              onPress={() =>
+                                updateQty(e.cartKey, e.quantity - 1)
+                              }
+                              style={{
+                                width: 24,
+                                height: 24,
+                                borderRadius: 12,
+                                backgroundColor: colors.border,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontSize: 14,
+                                  color: colors.text,
+                                  fontWeight: '700',
+                                }}
+                              >
+                                −
+                              </Text>
+                            </TouchableOpacity>
+                            <Text
+                              style={{
+                                fontSize: 13,
+                                fontWeight: '700',
+                                color: colors.text,
+                                minWidth: 20,
+                                textAlign: 'center',
+                              }}
+                            >
+                              {e.quantity}
+                            </Text>
+                            <TouchableOpacity
+                              onPress={() =>
+                                updateQty(e.cartKey, e.quantity + 1)
+                              }
+                              style={{
+                                width: 24,
+                                height: 24,
+                                borderRadius: 12,
+                                backgroundColor: colors.primary,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontSize: 14,
+                                  color: '#fff',
+                                  fontWeight: '700',
+                                }}
+                              >
+                                +
+                              </Text>
+                            </TouchableOpacity>
                             <Text
                               style={{
                                 fontSize: 12,
+                                color: colors.accent,
                                 fontWeight: '700',
-                                color: colors.primary,
+                                minWidth: 64,
+                                textAlign: 'right',
                               }}
                             >
-                              {e.discountQuantity && e.discountQuantity > 0
-                                ? 'Edit discount'
-                                : 'Apply discount'}
+                              ₱
+                              {(e.unitPrice * e.quantity).toLocaleString(
+                                'en-PH',
+                                { minimumFractionDigits: 2 },
+                              )}
                             </Text>
-                          </TouchableOpacity>
+                          </View>
                         </View>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                          <TouchableOpacity
-                            onPress={() =>
-                              updateQty(e.inventoryItem.itemId, e.quantity - 1)
-                            }
-                            style={{
-                              width: 24,
-                              height: 24,
-                              borderRadius: 12,
-                              backgroundColor: colors.border,
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                          >
-                            <Text
-                              style={{ fontSize: 14, color: colors.text, fontWeight: '700' }}
-                            >
-                              −
-                            </Text>
-                          </TouchableOpacity>
-                          <Text
-                            style={{
-                              fontSize: 13,
-                              fontWeight: '700',
-                              color: colors.text,
-                              minWidth: 20,
-                              textAlign: 'center',
-                            }}
-                          >
-                            {e.quantity}
-                          </Text>
-                          <TouchableOpacity
-                            onPress={() =>
-                              updateQty(e.inventoryItem.itemId, e.quantity + 1)
-                            }
-                            style={{
-                              width: 24,
-                              height: 24,
-                              borderRadius: 12,
-                              backgroundColor: colors.primary,
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                          >
-                            <Text
-                              style={{ fontSize: 14, color: '#fff', fontWeight: '700' }}
-                            >
-                              +
-                            </Text>
-                          </TouchableOpacity>
-                          <Text
-                            style={{
-                              fontSize: 12,
-                              color: colors.accent,
-                              fontWeight: '700',
-                              minWidth: 64,
-                              textAlign: 'right',
-                            }}
-                          >
-                            ₱
-                            {(e.unitPrice * e.quantity).toLocaleString('en-PH', {
-                              minimumFractionDigits: 2,
-                            })}
-                          </Text>
-                        </View>
-                      </View>
-                    ))}
+                      );
+                    })}
                   </View>
                 )}
 
-                {discountModalVisible && selectedDiscountCartItem ? (
+                {/* ── Discount modal (for form-step cart) ── */}
+                {discountModalVisible && selectedDiscountEntry ? (
                   <Modal
                     visible
                     transparent
@@ -1812,7 +2690,10 @@ function AddOrderModal({
                       />
                       <View
                         style={{
-                          width: Math.min(Dimensions.get('window').width - 48, 560),
+                          width: Math.min(
+                            Dimensions.get('window').width - 48,
+                            560,
+                          ),
                           maxWidth: 560,
                           backgroundColor: colors.card,
                           borderRadius: 16,
@@ -1839,7 +2720,8 @@ function AddOrderModal({
                               color: colors.text,
                             }}
                           >
-                            Discount for {selectedDiscountCartItem.inventoryItem.item.name}
+                            Discount for{' '}
+                            {entryDisplayName(selectedDiscountEntry)}
                           </Text>
                           <TouchableOpacity
                             onPress={() => setDiscountModalVisible(false)}
@@ -1848,10 +2730,15 @@ function AddOrderModal({
                           </TouchableOpacity>
                         </View>
 
-                        <Text style={{ color: colors.textSecondary, marginBottom: 8 }}>
-                          Quantity to discount (max {selectedDiscountCartItem.quantity})
+                        <Text
+                          style={{
+                            color: colors.textSecondary,
+                            marginBottom: 8,
+                          }}
+                        >
+                          Quantity to discount (max{' '}
+                          {selectedDiscountEntry.quantity})
                         </Text>
-
                         <View
                           style={{
                             flexDirection: 'row',
@@ -1863,9 +2750,7 @@ function AddOrderModal({
                         >
                           <TouchableOpacity
                             onPress={() =>
-                              setDiscountModalQty((prev) =>
-                                Math.max(0, prev - 1),
-                              )
+                              setDiscountModalQty((p) => Math.max(0, p - 1))
                             }
                             style={s.qtyButton}
                           >
@@ -1875,11 +2760,13 @@ function AddOrderModal({
                             value={String(discountModalQty)}
                             onChangeText={(text) => {
                               const num = Number(text);
-                              if (!Number.isNaN(num)) {
+                              if (!isNaN(num))
                                 setDiscountModalQty(
-                                  Math.min(Math.max(0, num), selectedDiscountCartItem.quantity),
+                                  Math.min(
+                                    Math.max(0, num),
+                                    selectedDiscountEntry.quantity,
+                                  ),
                                 );
-                              }
                             }}
                             keyboardType="number-pad"
                             style={{
@@ -1897,8 +2784,8 @@ function AddOrderModal({
                           />
                           <TouchableOpacity
                             onPress={() =>
-                              setDiscountModalQty((prev) =>
-                                Math.min(selectedDiscountCartItem.quantity, prev + 1),
+                              setDiscountModalQty((p) =>
+                                Math.min(selectedDiscountEntry.quantity, p + 1),
                               )
                             }
                             style={s.qtyButton}
@@ -1907,28 +2794,32 @@ function AddOrderModal({
                           </TouchableOpacity>
                         </View>
 
-                        <Text style={{ color: colors.textSecondary, marginBottom: 8 }}>
+                        <Text
+                          style={{
+                            color: colors.textSecondary,
+                            marginBottom: 8,
+                          }}
+                        >
                           Discount rate
                         </Text>
-
                         <View style={{ gap: 8, marginBottom: 12 }}>
                           {outletDiscountOptions?.slice(0, 3).map((option) => (
                             <TouchableOpacity
                               key={option.id}
                               onPress={() => {
                                 setDiscountModalRate(option.discount / 100);
-                                setDiscountModalOption(`${option.discount}%`);
+                                setDiscountModalOption(`${option.discount}`);
                               }}
                               style={{
                                 padding: 10,
                                 borderRadius: 10,
                                 borderWidth: 1,
                                 borderColor:
-                                  discountModalOption === `${option.discount}%`
+                                  discountModalOption === `${option.discount}`
                                     ? colors.primary
                                     : colors.border,
                                 backgroundColor:
-                                  discountModalOption === `${option.discount}%`
+                                  discountModalOption === `${option.discount}`
                                     ? colors.primary + '10'
                                     : colors.background,
                               }}
@@ -1936,17 +2827,17 @@ function AddOrderModal({
                               <Text
                                 style={{
                                   color:
-                                    discountModalOption === `${option.discount}%`
+                                    discountModalOption === `${option.discount}`
                                       ? colors.primary
                                       : colors.text,
                                   fontWeight: '700',
                                 }}
                               >
-                                {option.discount}% off — {option.promoType?.name}
+                                {option.discount}% off —{' '}
+                                {option.promoType?.name}
                               </Text>
                             </TouchableOpacity>
                           ))}
-
                           <View
                             style={{
                               flexDirection: 'row',
@@ -1962,10 +2853,11 @@ function AddOrderModal({
                               value={discountModalOption}
                               onChangeText={(text) => {
                                 setDiscountModalOption(text);
-                                const value = Number(text.replace('%', '').trim());
-                                if (!Number.isNaN(value)) {
-                                  setDiscountModalRate(value / 100);
-                                }
+                                const val = Number(
+                                  text.replace('%', '').trim(),
+                                );
+                                if (!isNaN(val))
+                                  setDiscountModalRate(val / 100);
                               }}
                               keyboardType="numeric"
                               placeholder="Custom %"
@@ -1976,7 +2868,9 @@ function AddOrderModal({
                                 minHeight: 40,
                               }}
                             />
-                            <Text style={{ color: colors.textSecondary }}>%</Text>
+                            <Text style={{ color: colors.textSecondary }}>
+                              %
+                            </Text>
                           </View>
                         </View>
 
@@ -1991,14 +2885,19 @@ function AddOrderModal({
                               alignItems: 'center',
                             }}
                           >
-                            <Text style={{ color: colors.textSecondary, fontWeight: '700' }}>
+                            <Text
+                              style={{
+                                color: colors.textSecondary,
+                                fontWeight: '700',
+                              }}
+                            >
                               Cancel
                             </Text>
                           </TouchableOpacity>
                           <TouchableOpacity
                             onPress={() =>
                               applyDiscountToCartItem(
-                                selectedDiscountCartItem.inventoryItem.itemId,
+                                selectedDiscountEntry.cartKey,
                                 discountModalQty,
                                 discountModalRate,
                               )
@@ -2021,6 +2920,7 @@ function AddOrderModal({
                   </Modal>
                 ) : null}
 
+                {/* ── Order totals ── */}
                 {cart.length > 0 && (
                   <View
                     style={{
@@ -2033,23 +2933,49 @@ function AddOrderModal({
                       gap: 6,
                     }}
                   >
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                      <Text style={{ fontSize: 13, color: colors.textSecondary }}>
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                      }}
+                    >
+                      <Text
+                        style={{ fontSize: 13, color: colors.textSecondary }}
+                      >
                         Subtotal
                       </Text>
-                      <Text style={{ fontSize: 13, color: colors.text, fontWeight: '600' }}>
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          color: colors.text,
+                          fontWeight: '600',
+                        }}
+                      >
                         ₱
-                        {subtotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                        {subtotal.toLocaleString('en-PH', {
+                          minimumFractionDigits: 2,
+                        })}
                       </Text>
                     </View>
                     {totalItemDiscount > 0 && (
                       <View
-                        style={{ flexDirection: 'row', justifyContent: 'space-between' }}
+                        style={{
+                          flexDirection: 'row',
+                          justifyContent: 'space-between',
+                        }}
                       >
-                        <Text style={{ fontSize: 13, color: colors.textSecondary }}>
+                        <Text
+                          style={{ fontSize: 13, color: colors.textSecondary }}
+                        >
                           Discount ({(orderDiscountRate * 100).toFixed(0)}%)
                         </Text>
-                        <Text style={{ fontSize: 13, color: '#EF4444', fontWeight: '600' }}>
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            color: '#EF4444',
+                            fontWeight: '600',
+                          }}
+                        >
                           -₱
                           {totalItemDiscount.toLocaleString('en-PH', {
                             minimumFractionDigits: 2,
@@ -2059,14 +2985,27 @@ function AddOrderModal({
                     )}
                     {vatAmount > 0 && (
                       <View
-                        style={{ flexDirection: 'row', justifyContent: 'space-between' }}
+                        style={{
+                          flexDirection: 'row',
+                          justifyContent: 'space-between',
+                        }}
                       >
-                        <Text style={{ fontSize: 13, color: colors.textSecondary }}>
+                        <Text
+                          style={{ fontSize: 13, color: colors.textSecondary }}
+                        >
                           VAT ({(vatRate * 100).toFixed(0)}%)
                         </Text>
-                        <Text style={{ fontSize: 13, color: colors.accent, fontWeight: '600' }}>
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            color: colors.accent,
+                            fontWeight: '600',
+                          }}
+                        >
                           ₱
-                          {vatAmount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                          {vatAmount.toLocaleString('en-PH', {
+                            minimumFractionDigits: 2,
+                          })}
                         </Text>
                       </View>
                     )}
@@ -2080,18 +3019,35 @@ function AddOrderModal({
                         marginTop: 4,
                       }}
                     >
-                      <Text style={{ fontSize: 14, color: colors.text, fontWeight: '700' }}>
+                      <Text
+                        style={{
+                          fontSize: 14,
+                          color: colors.text,
+                          fontWeight: '700',
+                        }}
+                      >
                         Total
                       </Text>
-                      <Text style={{ fontSize: 16, color: colors.accent, fontWeight: '800' }}>
-                        ₱{total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                      <Text
+                        style={{
+                          fontSize: 16,
+                          color: colors.accent,
+                          fontWeight: '800',
+                        }}
+                      >
+                        ₱
+                        {total.toLocaleString('en-PH', {
+                          minimumFractionDigits: 2,
+                        })}
                       </Text>
                     </View>
                   </View>
                 )}
 
                 {error ? (
-                  <Text style={{ fontSize: 12, color: colors.error, marginTop: 8 }}>
+                  <Text
+                    style={{ fontSize: 12, color: colors.error, marginTop: 8 }}
+                  >
                     {error}
                   </Text>
                 ) : null}
@@ -2115,15 +3071,18 @@ function AddOrderModal({
               </ScrollView>
             )}
 
-            {/* ── STEP: PRODUCTS ────────────────────────────────────────── */}
+            {/* ── STEP: PRODUCTS ──────────────────────────────────────────────── */}
             {step === 'products' && (
               <View style={{ flex: 1 }}>
+                {/* Search bar */}
                 <View
                   style={{
                     paddingHorizontal: 20,
-                    paddingVertical: 10,
+                    paddingTop: 10,
+                    paddingBottom: 8,
                     borderBottomWidth: 1,
                     borderBottomColor: colors.border,
+                    gap: 8,
                   }}
                 >
                   <View
@@ -2139,7 +3098,11 @@ function AddOrderModal({
                       paddingVertical: 9,
                     }}
                   >
-                    <Search size={14} color={colors.textSecondary} strokeWidth={2} />
+                    <Search
+                      size={14}
+                      color={colors.textSecondary}
+                      strokeWidth={2}
+                    />
                     <TextInput
                       style={{ flex: 1, fontSize: 14, color: colors.text }}
                       placeholder="Search products…"
@@ -2150,48 +3113,171 @@ function AddOrderModal({
                     />
                     {prodQuery.length > 0 && (
                       <TouchableOpacity onPress={() => setProdQuery('')}>
-                        <X size={13} color={colors.textSecondary} strokeWidth={2} />
+                        <X
+                          size={13}
+                          color={colors.textSecondary}
+                          strokeWidth={2}
+                        />
                       </TouchableOpacity>
                     )}
                   </View>
+
+                  {/* ── Add Custom Item button ── */}
+                  <TouchableOpacity
+                    onPress={() => setCustomItemModalVisible(true)}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 8,
+                      backgroundColor: CUSTOM_ITEM_COLOR + '14',
+                      borderRadius: 10,
+                      borderWidth: 1,
+                      borderColor: CUSTOM_ITEM_COLOR + '50',
+                      paddingHorizontal: 14,
+                      paddingVertical: 10,
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <PenLine
+                      size={15}
+                      color={CUSTOM_ITEM_COLOR}
+                      strokeWidth={2}
+                    />
+                    <Text
+                      style={{
+                        flex: 1,
+                        fontSize: 13,
+                        fontWeight: '700',
+                        color: CUSTOM_ITEM_COLOR,
+                      }}
+                    >
+                      Add Custom / Manual Item
+                    </Text>
+                    <View
+                      style={{
+                        backgroundColor: CUSTOM_ITEM_COLOR,
+                        borderRadius: 6,
+                        paddingHorizontal: 8,
+                        paddingVertical: 3,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          color: '#fff',
+                          fontWeight: '700',
+                        }}
+                      >
+                        Manual
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
                 </View>
 
                 {loadingItems ? (
                   <View
-                    style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}
+                    style={{
+                      flex: 1,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 12,
+                    }}
                   >
                     <ActivityIndicator size="large" color={colors.primary} />
                     <Text style={{ color: colors.textSecondary, fontSize: 13 }}>
                       Loading products…
                     </Text>
                   </View>
-                ) : filteredItems.length === 0 ? (
+                ) : inventoryItems.length === 0 ? (
                   <View
-                    style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                    style={{
+                      flex: 1,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                    }}
                   >
                     <Text style={{ fontSize: 24 }}>📦</Text>
                     <Text style={{ fontSize: 13, color: colors.textSecondary }}>
-                      {prodQuery ? `No results for "${prodQuery}"` : 'No items available'}
+                      {prodQuery
+                        ? `No results for "${prodQuery}"`
+                        : 'No items available'}
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color: CUSTOM_ITEM_COLOR,
+                        fontWeight: '600',
+                      }}
+                    >
+                      Use the manual item button above to add an item directly.
                     </Text>
                   </View>
                 ) : (
                   <FlatList
-                    data={filteredItems}
+                    data={inventoryItems}
                     keyExtractor={(item) => String(item.id)}
                     keyboardShouldPersistTaps="handled"
-                    contentContainerStyle={{ padding: 16, gap: 8, paddingBottom: 32 }}
+                    contentContainerStyle={{
+                      padding: 16,
+                      gap: 8,
+                      paddingBottom: 32,
+                    }}
                     onEndReached={() => {
-                      if (hasMore && !loadingMore && !loadingItems) {
-                        loadInventory(selectedOutlet?.id ?? null, prodQuery, skip);
-                      }
+                      if (hasMore && !loadingMore && !loadingItems)
+                        loadInventory(
+                          selectedOutlet?.id ?? null,
+                          prodQuery,
+                          skip,
+                        );
                     }}
                     onEndReachedThreshold={0.5}
+                    ListHeaderComponent={
+                      customItemCount > 0 ? (
+                        <View
+                          style={{
+                            backgroundColor: CUSTOM_ITEM_COLOR + '14',
+                            borderRadius: 10,
+                            borderWidth: 1,
+                            borderColor: CUSTOM_ITEM_COLOR + '40',
+                            padding: 10,
+                            marginBottom: 8,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 8,
+                          }}
+                        >
+                          <PenLine
+                            size={13}
+                            color={CUSTOM_ITEM_COLOR}
+                            strokeWidth={2}
+                          />
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              color: CUSTOM_ITEM_COLOR,
+                              fontWeight: '600',
+                            }}
+                          >
+                            {customItemCount} custom item
+                            {customItemCount > 1 ? 's' : ''} added to this order
+                          </Text>
+                        </View>
+                      ) : null
+                    }
                     ListFooterComponent={() =>
                       loadingMore ? (
                         <View style={{ padding: 16, alignItems: 'center' }}>
-                          <ActivityIndicator size="small" color={colors.primary} />
+                          <ActivityIndicator
+                            size="small"
+                            color={colors.primary}
+                          />
                           <Text
-                            style={{ color: colors.textSecondary, fontSize: 12, marginTop: 8 }}
+                            style={{
+                              color: colors.textSecondary,
+                              fontSize: 12,
+                              marginTop: 8,
+                            }}
                           >
                             Loading more items…
                           </Text>
@@ -2200,7 +3286,11 @@ function AddOrderModal({
                         <View style={{ padding: 16, alignItems: 'center' }}>
                           <TouchableOpacity
                             onPress={() =>
-                              loadInventory(selectedOutlet?.id ?? null, prodQuery, skip)
+                              loadInventory(
+                                selectedOutlet?.id ?? null,
+                                prodQuery,
+                                skip,
+                              )
                             }
                             style={{
                               backgroundColor: colors.primary,
@@ -2209,7 +3299,13 @@ function AddOrderModal({
                               paddingHorizontal: 20,
                             }}
                           >
-                            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>
+                            <Text
+                              style={{
+                                color: '#fff',
+                                fontSize: 14,
+                                fontWeight: '600',
+                              }}
+                            >
                               Load More
                             </Text>
                           </TouchableOpacity>
@@ -2217,42 +3313,54 @@ function AddOrderModal({
                       ) : null
                     }
                     renderItem={({ item: inv }) => {
-                      const inCart = cart.find(
-                        (e) => e.inventoryItem.itemId === inv.itemId,
-                      );
+                      const inCartEntry = cart.find(
+                        (e) =>
+                          e.kind === 'inventory' &&
+                          e.inventoryItem.itemId === inv.itemId,
+                      ) as InventoryCartEntry | undefined;
                       const outletName = (inv as any).inventory?.outlet?.name;
                       const isVatExempt = inv.item.vatExempt === true;
 
                       return (
                         <View
                           style={{
-                            backgroundColor: inCart
+                            backgroundColor: inCartEntry
                               ? colors.primary + '0F'
                               : colors.card,
                             borderRadius: 10,
                             borderWidth: 1,
-                            borderColor: inCart ? colors.primary : colors.border,
+                            borderColor: inCartEntry
+                              ? colors.primary
+                              : colors.border,
                             padding: 12,
                             gap: 8,
                           }}
                         >
                           <View
-                            style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 12,
+                            }}
                           >
                             <View
                               style={{
                                 width: 40,
                                 height: 40,
                                 borderRadius: 10,
-                                backgroundColor: inCart
+                                backgroundColor: inCartEntry
                                   ? colors.primary
                                   : colors.background,
                                 alignItems: 'center',
                                 justifyContent: 'center',
                               }}
                             >
-                              {inCart ? (
-                                <CheckCircle2 size={20} color="#fff" strokeWidth={2} />
+                              {inCartEntry ? (
+                                <CheckCircle2
+                                  size={20}
+                                  color="#fff"
+                                  strokeWidth={2}
+                                />
                               ) : (
                                 <Package
                                   size={18}
@@ -2266,7 +3374,9 @@ function AddOrderModal({
                                 style={{
                                   fontSize: 14,
                                   fontWeight: '700',
-                                  color: inCart ? colors.primary : colors.text,
+                                  color: inCartEntry
+                                    ? colors.primary
+                                    : colors.text,
                                 }}
                                 numberOfLines={1}
                               >
@@ -2280,12 +3390,22 @@ function AddOrderModal({
                                   marginTop: 2,
                                 }}
                               >
-                                <Text style={{ fontSize: 11, color: colors.textSecondary }}>
+                                <Text
+                                  style={{
+                                    fontSize: 11,
+                                    color: colors.textSecondary,
+                                  }}
+                                >
                                   Stock: {inv.quantity}
                                 </Text>
                                 {outletName && !selectedOutlet && (
                                   <>
-                                    <Text style={{ fontSize: 11, color: colors.textSecondary }}>
+                                    <Text
+                                      style={{
+                                        fontSize: 11,
+                                        color: colors.textSecondary,
+                                      }}
+                                    >
                                       •
                                     </Text>
                                     <Text
@@ -2301,7 +3421,12 @@ function AddOrderModal({
                                 )}
                                 {isVatExempt && (
                                   <>
-                                    <Text style={{ fontSize: 11, color: colors.textSecondary }}>
+                                    <Text
+                                      style={{
+                                        fontSize: 11,
+                                        color: colors.textSecondary,
+                                      }}
+                                    >
                                       •
                                     </Text>
                                     <Text
@@ -2330,8 +3455,7 @@ function AddOrderModal({
                                 })}
                               </Text>
                             </View>
-
-                            {!inCart && (
+                            {!inCartEntry && (
                               <TouchableOpacity
                                 onPress={() => addOrIncrement(inv)}
                                 style={{
@@ -2344,12 +3468,12 @@ function AddOrderModal({
                                 }}
                                 activeOpacity={0.8}
                               >
-                                <Plus color={'#fff'} />
+                                <Plus color="#fff" />
                               </TouchableOpacity>
                             )}
                           </View>
 
-                          {inCart && (
+                          {inCartEntry && (
                             <View
                               style={{
                                 flexDirection: 'row',
@@ -2362,7 +3486,10 @@ function AddOrderModal({
                             >
                               <TouchableOpacity
                                 onPress={() =>
-                                  updateQty(inv.itemId, inCart.quantity - 1)
+                                  updateQty(
+                                    inCartEntry.cartKey,
+                                    inCartEntry.quantity - 1,
+                                  )
                                 }
                                 style={{
                                   width: 32,
@@ -2396,18 +3523,20 @@ function AddOrderModal({
                                   borderColor: colors.border,
                                   paddingVertical: 6,
                                 }}
-                                value={String(inCart.quantity)}
+                                value={String(inCartEntry.quantity)}
                                 onChangeText={(text) => {
                                   const num = parseFloat(text);
-                                  if (!isNaN(num) && num >= 0) {
-                                    updateQty(inv.itemId, num);
-                                  }
+                                  if (!isNaN(num) && num >= 0)
+                                    updateQty(inCartEntry.cartKey, num);
                                 }}
                                 keyboardType="numeric"
                               />
                               <TouchableOpacity
                                 onPress={() =>
-                                  updateQty(inv.itemId, inCart.quantity + 1)
+                                  updateQty(
+                                    inCartEntry.cartKey,
+                                    inCartEntry.quantity + 1,
+                                  )
                                 }
                                 style={{
                                   width: 32,
@@ -2438,10 +3567,11 @@ function AddOrderModal({
                                 }}
                               >
                                 ₱
-                                {(inCart.unitPrice * inCart.quantity).toLocaleString(
-                                  'en-PH',
-                                  { minimumFractionDigits: 2 },
-                                )}
+                                {(
+                                  inCartEntry.unitPrice * inCartEntry.quantity
+                                ).toLocaleString('en-PH', {
+                                  minimumFractionDigits: 2,
+                                })}
                               </Text>
                             </View>
                           )}
@@ -2458,8 +3588,37 @@ function AddOrderModal({
                     borderTopWidth: 1,
                     borderTopColor: colors.border,
                     backgroundColor: colors.card,
+                    gap: 8,
                   }}
                 >
+                  {cart.length > 0 && (
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                        paddingHorizontal: 4,
+                      }}
+                    >
+                      <Text
+                        style={{ fontSize: 12, color: colors.textSecondary }}
+                      >
+                        {inventoryItemCount} inventory · {customItemCount}{' '}
+                        manual
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          color: colors.accent,
+                          fontWeight: '800',
+                        }}
+                      >
+                        ₱
+                        {total.toLocaleString('en-PH', {
+                          minimumFractionDigits: 2,
+                        })}
+                      </Text>
+                    </View>
+                  )}
                   <TouchableOpacity
                     style={[
                       s.submitBtn,
@@ -2474,7 +3633,10 @@ function AddOrderModal({
                     <Text
                       style={[
                         s.submitBtnText,
-                        { color: cart.length > 0 ? '#fff' : colors.textSecondary },
+                        {
+                          color:
+                            cart.length > 0 ? '#fff' : colors.textSecondary,
+                        },
                       ]}
                     >
                       {cart.length > 0
@@ -2488,6 +3650,15 @@ function AddOrderModal({
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Custom Item Form — rendered outside the sheet so it layers above */}
+      <CustomItemFormModal
+        visible={customItemModalVisible}
+        onClose={() => setCustomItemModalVisible(false)}
+        onAdd={addCustomEntry}
+        colors={colors}
+        outletDiscountOptions={outletDiscountOptions}
+      />
     </Modal>
   );
 }
@@ -2502,7 +3673,9 @@ export default function SalesScreen() {
   const [orders, setOrders] = useState<SalesOrder[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<SalesOrderStatus | 'All'>('All');
+  const [statusFilter, setStatusFilter] = useState<SalesOrderStatus | 'All'>(
+    'All',
+  );
   const [dateFilter, setDateFilter] = useState<DateFilter>('All');
   const [filterOpen, setFilterOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<SalesOrder | null>(null);
@@ -2606,19 +3779,15 @@ export default function SalesScreen() {
     try {
       const updated = await SalesOrderService.cancelSalesOrder(id);
       patchOrder(updated);
-      // Give user a moment to see the status change before closing modal
-      setTimeout(() => {
-        setDetailVisible(false);
-      }, 500);
+      setTimeout(() => setDetailVisible(false), 500);
     } catch (err: any) {
       console.error('cancelSalesOrder error:', err);
       setActionLoading(false);
     }
   };
 
-  const handleAddOrder = (order: SalesOrder) => {
+  const handleAddOrder = (order: SalesOrder) =>
     setOrders((prev) => [order, ...prev]);
-  };
 
   const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
@@ -2703,7 +3872,10 @@ export default function SalesScreen() {
       borderWidth: 1,
       borderColor: colors.border,
     },
-    pillActive: { borderColor: colors.primary, backgroundColor: colors.primary },
+    pillActive: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primary,
+    },
     pillText: { fontSize: 12, fontWeight: '600', color: colors.text },
     pillTextAct: { color: '#fff' },
     listContent: { padding: 16, paddingTop: 0, gap: 10, paddingBottom: 40 },
@@ -2762,7 +3934,10 @@ export default function SalesScreen() {
   if (loadingOrders) {
     return (
       <View
-        style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}
+        style={[
+          styles.container,
+          { alignItems: 'center', justifyContent: 'center' },
+        ]}
       >
         <ActivityIndicator size="large" color={colors.primary} />
         <Text style={{ marginTop: 12, color: colors.textSecondary }}>
@@ -2839,7 +4014,10 @@ export default function SalesScreen() {
             strokeWidth={2}
           />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.addBtn} onPress={() => setAddVisible(true)}>
+        <TouchableOpacity
+          style={styles.addBtn}
+          onPress={() => setAddVisible(true)}
+        >
           <Plus size={18} color="#fff" strokeWidth={2.5} />
         </TouchableOpacity>
       </View>
@@ -2849,22 +4027,27 @@ export default function SalesScreen() {
           <View>
             <Text style={styles.filterLabel}>STATUS</Text>
             <View style={styles.pillRow}>
-              {(['All', ...ALL_STATUSES] as (SalesOrderStatus | 'All')[]).map((s) => (
-                <TouchableOpacity
-                  key={s}
-                  style={[styles.pill, statusFilter === s && styles.pillActive]}
-                  onPress={() => setStatusFilter(s)}
-                >
-                  <Text
+              {(['All', ...ALL_STATUSES] as (SalesOrderStatus | 'All')[]).map(
+                (s) => (
+                  <TouchableOpacity
+                    key={s}
                     style={[
-                      styles.pillText,
-                      statusFilter === s && styles.pillTextAct,
+                      styles.pill,
+                      statusFilter === s && styles.pillActive,
                     ]}
+                    onPress={() => setStatusFilter(s)}
                   >
-                    {s === 'All' ? 'All' : STATUS_LABELS[s]}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <Text
+                      style={[
+                        styles.pillText,
+                        statusFilter === s && styles.pillTextAct,
+                      ]}
+                    >
+                      {s === 'All' ? 'All' : STATUS_LABELS[s]}
+                    </Text>
+                  </TouchableOpacity>
+                ),
+              )}
             </View>
           </View>
           <View>
@@ -2877,7 +4060,10 @@ export default function SalesScreen() {
                   onPress={() => setDateFilter(d)}
                 >
                   <Text
-                    style={[styles.pillText, dateFilter === d && styles.pillTextAct]}
+                    style={[
+                      styles.pillText,
+                      dateFilter === d && styles.pillTextAct,
+                    ]}
                   >
                     {d}
                   </Text>
@@ -2891,7 +4077,9 @@ export default function SalesScreen() {
       <Text style={styles.resultCount}>
         {filtered.length} order{filtered.length !== 1 ? 's' : ''}
         {search ? ` matching "${search}"` : ''}
-        {statusFilter !== 'All' ? ` · ${STATUS_LABELS[statusFilter as SalesOrderStatus]}` : ''}
+        {statusFilter !== 'All'
+          ? ` · ${STATUS_LABELS[statusFilter as SalesOrderStatus]}`
+          : ''}
         {dateFilter !== 'All' ? ` · ${dateFilter}` : ''}
       </Text>
 
@@ -2912,89 +4100,147 @@ export default function SalesScreen() {
             <Text style={styles.emptyText}>No orders found</Text>
           </View>
         }
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={[styles.card, isTablet && { flex: 1 }]}
-            onPress={() => {
-              setSelectedOrder(item);
-              setDetailVisible(true);
-            }}
-            activeOpacity={0.82}
-          >
-            <View style={styles.cardRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.orderId}>{item.orderNumber}</Text>
-                <Text style={styles.customerName}>{item.customer}</Text>
-                {item.outlet && (
-                  <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2 }}>
-                    {item.branch?.name} · {item.outlet.name}
-                  </Text>
-                )}
-              </View>
-              <View
-                style={[
-                  styles.badge,
-                  { backgroundColor: STATUS_COLORS[item.status] ?? '#6B7280' },
-                ]}
-              >
-                <Text style={styles.badgeText}>{STATUS_LABELS[item.status]}</Text>
-              </View>
-            </View>
+        renderItem={({ item }) => {
+          // Check if this order has any manual items
+          const hasCustomItems = item.items?.some((i) => i.isCustomItem);
 
-            <View style={{ flexDirection: 'row', gap: 3, marginBottom: 8 }}>
-              {ALL_STATUSES.filter((s) => s !== 'CANCELLED').map((s) => {
-                const idx = ['ORDERED', 'PROCESSING', 'SHIPPED', 'RECEIVED'].indexOf(s);
-                const curIdx = [
-                  'ORDERED',
-                  'PROCESSING',
-                  'SHIPPED',
-                  'RECEIVED',
-                ].indexOf(item.status);
-                const active = item.status !== 'CANCELLED' && idx <= curIdx;
-                return (
+          return (
+            <TouchableOpacity
+              style={[styles.card, isTablet && { flex: 1 }]}
+              onPress={() => {
+                setSelectedOrder(item);
+                setDetailVisible(true);
+              }}
+              activeOpacity={0.82}
+            >
+              <View style={styles.cardRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.orderId}>{item.orderNumber}</Text>
                   <View
-                    key={s}
                     style={{
-                      flex: 1,
-                      height: 3,
-                      borderRadius: 2,
-                      backgroundColor: active ? STATUS_COLORS[s] : colors.border,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 6,
                     }}
-                  />
-                );
-              })}
-            </View>
-
-            <View style={styles.divider} />
-            <View style={styles.chipsRow}>
-              <View style={styles.chip}>
-                <Text style={styles.chipLabel}>Items</Text>
-                <Text style={styles.chipValue}>{item.items?.length ?? 0}</Text>
-              </View>
-              <View style={styles.chip}>
-                <Text style={styles.chipLabel}>Total</Text>
-                <Text style={[styles.chipValue, { color: colors.accent }]}>
-                  ₱
-                  {item.total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                </Text>
-              </View>
-              <View style={styles.chip}>
-                <Text style={styles.chipLabel}>Date</Text>
-                <Text style={styles.chipValue}>
-                  {formatSalesDate(item.date, { month: 'short', day: 'numeric' })}
-                </Text>
-              </View>
-              {item.delivery?.trackingNumber && (
-                <View style={styles.chip}>
-                  <Text style={styles.chipLabel}>Tracking</Text>
-                  <Text style={styles.chipValue} numberOfLines={1}>
-                    {item.delivery.trackingNumber}
+                  >
+                    <Text style={styles.customerName}>{item.customer}</Text>
+                    {hasCustomItems && (
+                      <View
+                        style={{
+                          backgroundColor: CUSTOM_ITEM_COLOR + '20',
+                          borderRadius: 5,
+                          paddingHorizontal: 6,
+                          paddingVertical: 2,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 9,
+                            fontWeight: '800',
+                            color: CUSTOM_ITEM_COLOR,
+                          }}
+                        >
+                          MANUAL
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  {item.outlet && (
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        color: colors.textSecondary,
+                        marginTop: 2,
+                      }}
+                    >
+                      {item.branch?.name} · {item.outlet.name}
+                    </Text>
+                  )}
+                </View>
+                <View
+                  style={[
+                    styles.badge,
+                    {
+                      backgroundColor: STATUS_COLORS[item.status] ?? '#6B7280',
+                    },
+                  ]}
+                >
+                  <Text style={styles.badgeText}>
+                    {STATUS_LABELS[item.status]}
                   </Text>
                 </View>
-              )}
-            </View>
-          </TouchableOpacity>
-        )}
+              </View>
+
+              {/* Progress bar */}
+              <View style={{ flexDirection: 'row', gap: 3, marginBottom: 8 }}>
+                {ALL_STATUSES.filter((s) => s !== 'CANCELLED').map((s) => {
+                  const idx = [
+                    'ORDERED',
+                    'PROCESSING',
+                    'SHIPPED',
+                    'RECEIVED',
+                  ].indexOf(s);
+                  const curIdx = [
+                    'ORDERED',
+                    'PROCESSING',
+                    'SHIPPED',
+                    'RECEIVED',
+                  ].indexOf(item.status);
+                  const active = item.status !== 'CANCELLED' && idx <= curIdx;
+                  return (
+                    <View
+                      key={s}
+                      style={{
+                        flex: 1,
+                        height: 3,
+                        borderRadius: 2,
+                        backgroundColor: active
+                          ? STATUS_COLORS[s]
+                          : colors.border,
+                      }}
+                    />
+                  );
+                })}
+              </View>
+
+              <View style={styles.divider} />
+              <View style={styles.chipsRow}>
+                <View style={styles.chip}>
+                  <Text style={styles.chipLabel}>Items</Text>
+                  <Text style={styles.chipValue}>
+                    {item.items?.length ?? 0}
+                  </Text>
+                </View>
+                <View style={styles.chip}>
+                  <Text style={styles.chipLabel}>Total</Text>
+                  <Text style={[styles.chipValue, { color: colors.accent }]}>
+                    ₱
+                    {item.total.toLocaleString('en-PH', {
+                      minimumFractionDigits: 2,
+                    })}
+                  </Text>
+                </View>
+                <View style={styles.chip}>
+                  <Text style={styles.chipLabel}>Date</Text>
+                  <Text style={styles.chipValue}>
+                    {formatSalesDate(item.date, {
+                      month: 'short',
+                      day: 'numeric',
+                    })}
+                  </Text>
+                </View>
+                {item.delivery?.trackingNumber && (
+                  <View style={styles.chip}>
+                    <Text style={styles.chipLabel}>Tracking</Text>
+                    <Text style={styles.chipValue} numberOfLines={1}>
+                      {item.delivery.trackingNumber}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </TouchableOpacity>
+          );
+        }}
       />
 
       <OrderDetailModal
@@ -3008,7 +4254,6 @@ export default function SalesScreen() {
         colors={colors}
         actionLoading={actionLoading}
       />
-
       <DeliveryFormModal
         visible={deliveryVisible}
         orderId={deliveryOrderId}
@@ -3018,7 +4263,6 @@ export default function SalesScreen() {
         colors={colors}
         submitting={actionLoading}
       />
-
       <AddOrderModal
         visible={addVisible}
         onClose={() => setAddVisible(false)}

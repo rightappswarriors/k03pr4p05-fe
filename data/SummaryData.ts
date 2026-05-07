@@ -13,6 +13,9 @@ export interface GISRow {
   total: number;
   amount?: number;
   createdAt?: string;
+  accountTitleId: any,
+  centerId: any,
+  subCenterId: any,
 }
 
 export interface SummaryRow {
@@ -40,30 +43,6 @@ export interface SummaryRow {
   costContribution: number;
   createdAt: string;
 }
-
-
-export const INITIAL_GIS_ROWS: GISRow[] = [
-  { id: "g01", main: "Income", group: "Sales Revenue", code: "REV-001", description: "Retail Sales - Main Branch", debit: 0, credit: 520000, total: 520000 },
-  { id: "g02", main: "Income", group: "Sales Revenue", code: "REV-002", description: "Retail Sales - Cebu Branch", debit: 0, credit: 310000, total: 310000 },
-  { id: "g03", main: "Income", group: "Other Income", code: "OTH-001", description: "Delivery Service Fees", debit: 0, credit: 18500, total: 18500 },
-  { id: "g04", main: "Income", group: "Other Income", code: "OTH-002", description: "Franchise Royalty Income", debit: 0, credit: 45000, total: 45000 },
-  { id: "g05", main: "Expenses", group: "Cost of Sales", code: "COS-001", description: "Purchases - Groceries", debit: 385000, credit: 0, total: -385000 },
-  { id: "g06", main: "Expenses", group: "Cost of Sales", code: "COS-002", description: "Freight and Delivery Cost", debit: 22000, credit: 0, total: -22000 },
-  { id: "g07", main: "Expenses", group: "Operating Exp", code: "OPX-001", description: "Salaries and Wages", debit: 148000, credit: 0, total: -148000 },
-  { id: "g08", main: "Expenses", group: "Operating Exp", code: "OPX-002", description: "SSS / PhilHealth / Pag-IBIG", debit: 18600, credit: 0, total: -18600 },
-  { id: "g09", main: "Expenses", group: "Operating Exp", code: "OPX-003", description: "Electricity - Main Branch", debit: 24500, credit: 0, total: -24500 },
-  { id: "g10", main: "Expenses", group: "Operating Exp", code: "OPX-004", description: "Electricity - Cebu Branch", debit: 15800, credit: 0, total: -15800 },
-  { id: "g11", main: "Expenses", group: "Operating Exp", code: "OPX-005", description: "Rent Expense - Main Branch", debit: 35000, credit: 0, total: -35000 },
-  { id: "g12", main: "Expenses", group: "Operating Exp", code: "OPX-006", description: "Internet and Communication", debit: 4200, credit: 0, total: -4200 },
-  { id: "g13", main: "Expenses", group: "Operating Exp", code: "OPX-007", description: "Fuel and Transportation", debit: 8500, credit: 0, total: -8500 },
-  { id: "g14", main: "Expenses", group: "Admin Expenses", code: "ADM-001", description: "Office Supplies", debit: 3200, credit: 0, total: -3200 },
-  { id: "g15", main: "Expenses", group: "Admin Expenses", code: "ADM-002", description: "Representation and Entertainment", debit: 5500, credit: 0, total: -5500 },
-  { id: "g16", main: "Expenses", group: "Tax and Gov", code: "TAX-001", description: "VAT Payable - March", debit: 37800, credit: 0, total: -37800 },
-  { id: "g17", main: "Expenses", group: "Tax and Gov", code: "TAX-002", description: "Withholding Tax - Suppliers", debit: 4200, credit: 0, total: -4200 },
-  { id: "g18", main: "Expenses", group: "Depreciation", code: "DEP-001", description: "Depreciation - POS Equipment", debit: 6800, credit: 0, total: -6800 },
-  { id: "g19", main: "Expenses", group: "Depreciation", code: "DEP-002", description: "Depreciation - Delivery Vehicle", debit: 12500, credit: 0, total: -12500 },
-  { id: "g20", main: "Income", group: "Sales Revenue", code: "REV-003", description: "Kompra Online Orders Revenue", debit: 0, credit: 128000, total: 128000 },
-];
 
 
 

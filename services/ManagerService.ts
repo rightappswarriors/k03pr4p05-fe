@@ -209,8 +209,8 @@ export class AdminService {
       const res = (await client.request(GET_BRANCHOUTLETS, { branchId }, {
         Authorization: `Bearer ${accessToken}`
       })) as any
-      console.log("Success getting outlets:\n", res.getOutletsByBranch)
-      return res.getOutletsByBranch.map((o: any) => {
+      console.log("Success getting outlets:\n", res.getOutletsByBranchIDD)
+      return res.getOutletsByBranchIDD.map((o: any) => {
         return {
           id: o.id,
           name: o.name,

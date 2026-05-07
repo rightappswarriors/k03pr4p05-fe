@@ -154,11 +154,19 @@ function getDynamicChartRange(preset: Exclude<DatePreset, 'Custom Range'>): {
   const now = new Date();
 
   if (preset === 'This Month' || preset === 'Last Month') {
-    return { labels: ['W1', 'W2', 'W3', 'W4'], windowMonths: 1, isWeekly: true };
+    return {
+      labels: ['W1', 'W2', 'W3', 'W4'],
+      windowMonths: 1,
+      isWeekly: true,
+    };
   }
 
   if (preset === 'This Year') {
-    return { labels: ['Q1', 'Q2', 'Q3', 'Q4'], windowMonths: 12, isWeekly: false };
+    return {
+      labels: ['Q1', 'Q2', 'Q3', 'Q4'],
+      windowMonths: 12,
+      isWeekly: false,
+    };
   }
 
   // Last 3 Months or Last 6 Months — dynamically computed from today
@@ -196,7 +204,8 @@ interface FormState {
   centerDept: string;
   subCenter: string;
   vatType: string;
-  amount: string;
+  debit: string;
+  credit: string;
   notes: string;
   requestedBy: string;
   accountTitle: string;
@@ -207,7 +216,8 @@ const EMPTY_FORM: FormState = {
   centerDept: '',
   subCenter: '',
   vatType: '',
-  amount: '',
+  debit: '',
+  credit: '',
   notes: '',
   requestedBy: '',
   accountTitle: '',
@@ -1097,6 +1107,9 @@ export default function DashboardScreen() {
           amount: Number(
             row.amount ?? row.debit ?? Math.abs(Number(row.total ?? 0)) ?? 0,
           ),
+          accountTitleId: Number(row.accountTitleId ?? 0),
+          centerId: Number(row.centerId ?? 0),
+          subCenterId: Number(row.subCenterId ?? 0),
           debit: Number(row.debit ?? 0),
           credit: Number(row.credit ?? 0),
           total: Number(row.total ?? row.amount ?? 0),
@@ -1215,8 +1228,7 @@ export default function DashboardScreen() {
           .reduce((sum, row) => {
             if (String(row.main ?? '').toLowerCase() === 'income') return sum;
             return (
-              sum +
-              Math.abs(Number(row.debit ?? row.total ?? row.amount ?? 0))
+              sum + Math.abs(Number(row.debit ?? row.total ?? row.amount ?? 0))
             );
           }, 0),
       );
@@ -1234,9 +1246,7 @@ export default function DashboardScreen() {
 
     return {
       labels,
-      salesData: salesData.map((v) =>
-        parseFloat((v / salesScale).toFixed(2)),
-      ),
+      salesData: salesData.map((v) => parseFloat((v / salesScale).toFixed(2))),
       revData: revData.map((v) => parseFloat((v / finScale).toFixed(2))),
       expData: expData.map((v) => parseFloat((v / finScale).toFixed(2))),
       salesUnit: salesScale === 1000 ? 'K' : '₱',
@@ -1397,26 +1407,20 @@ export default function DashboardScreen() {
   };
 
   const handleSubmit = async () => {
-    const rawAmount = parseFloat(form.amount) || 0;
-    const selectedVatType = vatTypes.find((v) => v.id === String(form.vatType));
-    const { vat } = calcVatAndNet(
-      rawAmount,
-      selectedVatType || String(form.vatType),
-    );
-    const totalAmount = rawAmount + vat;
+    const debitAmount = parseFloat(form.debit) || 0;
+    const creditAmount = parseFloat(form.credit) || 0;
 
     const selectedAccountTitle =
       accountTitles.find((t) => t.id === String(form.accountTitle))?.label ||
       String(form.accountTitle);
-    const isIncome = selectedAccountTitle.startsWith('ACCOUNTS RECEIVABLE');
 
     const payload = {
-      main: isIncome ? 'Income' : 'Expenses',
+      main: debitAmount > 0 ? 'Expenses' : 'Income',
       group: form.centerDept || 'General',
       code: form.orInvoice || `TXN-${Date.now().toString().slice(-5)}`,
-      description: `${selectedAccountTitle} — ${form.notes || 'Entry'}`,
-      debit: isIncome ? 0 : totalAmount,
-      credit: isIncome ? totalAmount : 0,
+      description: `${form.notes ?? selectedAccountTitle ?? 'No description'}`,
+      debit: debitAmount,
+      credit: creditAmount,
       centerId: parseInt(String(form.centerDept), 10) || 0,
       subCenterId: parseInt(String(form.subCenter), 10) || 0,
       accountTitleId: parseInt(String(form.accountTitle), 10) || 0,
@@ -1432,8 +1436,11 @@ export default function DashboardScreen() {
         description: payload.description,
         debit: Number(payload.debit),
         credit: Number(payload.credit),
-        total: Math.abs(Number(payload.debit - payload.credit)),
+        total: Math.abs(Number(payload.credit - payload.debit)),
         createdAt: saved.createdAt ?? new Date().toISOString(),
+        accountTitleId: payload.accountTitleId,
+        centerId: payload.centerId,
+        subCenterId: payload.subCenterId,
       };
 
       setGisRows((prev) => {
@@ -2463,36 +2470,68 @@ export default function DashboardScreen() {
                     colors={colors}
                   />
 
-                  <Text style={[s.fieldLabel, { color: colors.textSecondary }]}>
-                    Amount (₱)
-                  </Text>
-                  <TextInput
-                    style={[
-                      s.input,
-                      {
-                        color: colors.text,
-                        backgroundColor: colors.background,
-                        borderColor: colors.border,
-                      },
-                    ]}
-                    placeholder="0.00"
-                    placeholderTextColor={colors.textSecondary}
-                    value={form.amount}
-                    onChangeText={(v) => setForm((f) => ({ ...f, amount: v }))}
-                    keyboardType="decimal-pad"
-                  />
+                  <View
+                    style={{
+                      flexDirection: isTablet ? 'row' : 'column',
+                      gap: 12,
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={[s.fieldLabel, { color: colors.textSecondary }]}
+                      >
+                        Debit (₱)
+                      </Text>
+                      <TextInput
+                        style={[
+                          s.input,
+                          {
+                            color: colors.text,
+                            backgroundColor: colors.background,
+                            borderColor: colors.border,
+                          },
+                        ]}
+                        placeholder="0.00"
+                        placeholderTextColor={colors.textSecondary}
+                        value={form.debit}
+                        onChangeText={(v) =>
+                          setForm((f) => ({ ...f, debit: v }))
+                        }
+                        keyboardType="decimal-pad"
+                      />
+                    </View>
 
-                  {form.amount && form.vatType
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={[s.fieldLabel, { color: colors.textSecondary }]}
+                      >
+                        Credit (₱)
+                      </Text>
+                      <TextInput
+                        style={[
+                          s.input,
+                          {
+                            color: colors.text,
+                            backgroundColor: colors.background,
+                            borderColor: colors.border,
+                          },
+                        ]}
+                        placeholder="0.00"
+                        placeholderTextColor={colors.textSecondary}
+                        value={form.credit}
+                        onChangeText={(v) =>
+                          setForm((f) => ({ ...f, credit: v }))
+                        }
+                        keyboardType="decimal-pad"
+                      />
+                    </View>
+                  </View>
+
+                  {form.debit || form.credit
                     ? (() => {
-                        const baseAmount = parseFloat(form.amount) || 0;
-                        const selectedVatType = vatTypes.find(
-                          (v) => v.id === form.vatType,
-                        );
-                        const { vat } = calcVatAndNet(
-                          baseAmount,
-                          selectedVatType || form.vatType,
-                        );
-                        const totalAmount = baseAmount + vat;
+                        const debitAmount = parseFloat(form.debit) || 0;
+                        const creditAmount = parseFloat(form.credit) || 0;
+                        const totalAmount = creditAmount - debitAmount;
                         return (
                           <View
                             style={[
@@ -2510,12 +2549,12 @@ export default function DashboardScreen() {
                                   { color: colors.textSecondary },
                                 ]}
                               >
-                                Base Amount
+                                Credit
                               </Text>
                               <Text
-                                style={[s.vatValue, { color: colors.text }]}
+                                style={[s.vatValue, { color: colors.accent }]}
                               >
-                                {formatPeso(baseAmount)}
+                                {formatPeso(creditAmount)}
                               </Text>
                             </View>
                             <View style={s.vatRow}>
@@ -2525,12 +2564,12 @@ export default function DashboardScreen() {
                                   { color: colors.textSecondary },
                                 ]}
                               >
-                                VAT Amount
+                                Debit
                               </Text>
                               <Text
-                                style={[s.vatValue, { color: colors.accent }]}
+                                style={[s.vatValue, { color: colors.text }]}
                               >
-                                {formatPeso(vat)}
+                                {formatPeso(debitAmount)}
                               </Text>
                             </View>
                             <View
@@ -2553,7 +2592,7 @@ export default function DashboardScreen() {
                                   },
                                 ]}
                               >
-                                Total Amount
+                                Total
                               </Text>
                               <Text
                                 style={[
@@ -2628,14 +2667,14 @@ export default function DashboardScreen() {
                       {
                         backgroundColor: colors.primary,
                         opacity:
-                          !form.amount || !form.vatType || !form.accountTitle
+                          !(form.debit || form.credit) || !form.accountTitle
                             ? 0.5
                             : 1,
                       },
                     ]}
                     onPress={handleSubmit}
                     disabled={
-                      !form.amount || !form.vatType || !form.accountTitle
+                      !(form.debit || form.credit) || !form.accountTitle
                     }
                     activeOpacity={0.85}
                   >
