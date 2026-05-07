@@ -3,6 +3,7 @@ import { graphQLRequest } from './apiClient';
 import { AuthService } from './authService';
 import { getGraphQLClient } from '@/utils/constants';
 import { MediaService } from './mediaService';
+import { formatGraphQLError } from '@/utils/errorFormatter';
 
 export class InventoryService {
   static async getItemStockDistribution(itemId: number): Promise<any> {
@@ -244,8 +245,11 @@ export class InventoryService {
     opExPct?: number;
     priceB?: number;
     priceC?: number;
-    minQuantity?: number;
+    stockLabel: string;
+    stockDescription?: string;
+    minQuantity: number;
   }): Promise<any> {
+    console.log('Creating item with data:', data.stockLabel, data.stockDescription);
     const MUTATION = gql`
     mutation CreateItem($data: CreateItemInput!) {
       createItem(data: $data) {
@@ -260,6 +264,8 @@ export class InventoryService {
         itemCode
         sellingPrice
         minQuantity
+        stockLabel
+        stockDescription
         costLines { label amount }
         category { id name }
         orgCategory { id name }
@@ -281,8 +287,9 @@ export class InventoryService {
 
       return response.createItem;
     } catch (error) {
-      console.error('Failed to create item:', error);
-      throw error;
+      const errorMessage = formatGraphQLError(error);
+      console.error('Failed to create item:', errorMessage);
+      throw errorMessage;
     }
   }
 
@@ -298,6 +305,8 @@ export class InventoryService {
           categoryId
           stock
           itemCode
+          stockLabel
+          stockDescription
           sellingPrice
           costLines { label amount}
           category { id name }

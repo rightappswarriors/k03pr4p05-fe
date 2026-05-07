@@ -80,6 +80,8 @@ interface UpdateItemPayload {
   opExPct?: number;
   priceB?: number;
   priceC?: number;
+  stockLabel: string,
+  stockDescription?: string;
   minQuantity?: number;
   costLines?: Array<{ label: string; amount: number }>;
 }
@@ -423,6 +425,7 @@ function EditItemModal({
   const [vatExempt, setVatExempt] = useState(false);
   const [costLines, setCostLines] = useState<CostLine[]>([]);
   const [imageUri, setImageUri] = useState(''); // local URI or existing http URL
+  const [originalImageUri, setOriginalImageUri] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [categoryPickerVisible, setCategoryPickerVisible] = useState(false);
@@ -470,7 +473,9 @@ function EditItemModal({
       })),
     );
     // Show the existing image (remote URL); local picker will override this
-    setImageUri(item.imageUrl ?? '');
+    const initialImage = item.imageUrl ?? '';
+    setImageUri(initialImage);
+    setOriginalImageUri(initialImage);
     setError('');
   }, [item, visible]);
 
@@ -493,13 +498,16 @@ function EditItemModal({
     try {
       let finalImageUrl: string | undefined = item.imageUrl;
       let finalImagePath: string | undefined = item.imagePath;
+      const currentImagePath = item.imagePath;
+      const hasNewLocalImage = imageUri && !imageUri.startsWith('http') && imageUri !== originalImageUri;
+      const hasRemovedImage = !imageUri && !!currentImagePath;
 
-      // If the user picked a new local image, upload / replace it on the media server
-      if (imageUri && !imageUri.startsWith('http')) {
+      // Only upload/replace when the user actually selected a new local image.
+      if (hasNewLocalImage) {
         const user = await AuthService.getCurrentUser();
         if (!user?.orgId) throw new Error('Organization identifier not found.');
 
-        if (item.imagePath) {
+        if (currentImagePath) {
           // Replace existing file
           const media = await MediaService.updateMedia(
             {
@@ -507,7 +515,7 @@ function EditItemModal({
               name: `item_${Date.now()}.jpg`,
               type: 'image/jpeg',
             },
-            item.imagePath,
+            currentImagePath,
             String(user.orgId),
           );
           finalImageUrl = media?.publicUrl;
@@ -525,9 +533,9 @@ function EditItemModal({
           finalImageUrl = media.publicUrl;
           finalImagePath = media.filePath;
         }
-      } else if (!imageUri && item.imagePath) {
+      } else if (hasRemovedImage && currentImagePath) {
         // User removed the image — delete from media server
-        await MediaService.deleteMedia(item.imagePath);
+        await MediaService.deleteMedia(currentImagePath);
         finalImageUrl = undefined;
         finalImagePath = undefined;
       }
@@ -549,6 +557,8 @@ function EditItemModal({
         image: finalImageUrl,
         costLines: costLines.map(({ label, amount }) => ({ label, amount })),
         itemCode: finalCode,
+        stockLabel: stockLabel,
+        stockDescription: stockDescription || undefined,
         // ✅ mutually exclusive
         ...(selectedCategoryId && !selectedCategoryIsGlobal
           ? { orgCategoryId: selectedCategoryId, categoryId: undefined }
@@ -586,6 +596,8 @@ function EditItemModal({
               amount: cl.amount,
             }),
           ),
+          stockLabel: stockLabel,
+          stockDescription: stockDescription || undefined,
         };
         onSaved(updatedItem);
         onClose();
@@ -1181,14 +1193,11 @@ function ItemDetailModal({
   onEdit: (item: InventoryItem) => void;
   colors: any;
 }) {
-  const { isDesktop } = useResponsive()
+  const { isDesktop } = useResponsive();
   const [qty, setQty] = useState(0);
   const [distribution, setDistribution] = useState<any>(null);
   const [distLoading, setDistLoading] = useState(false);
-  if (!item) return null;
-  const maxStock = Math.max(item.stock, item.minStock * 4, 200);
-  const ratio = Math.min(item.stock / maxStock, 1);
-  const barColor = item.lowStock ? colors.error : colors.success;
+
   React.useEffect(() => {
     if (!visible || !item) return;
     setDistLoading(true);
@@ -1197,6 +1206,11 @@ function ItemDetailModal({
       .catch(() => setDistribution(null))
       .finally(() => setDistLoading(false));
   }, [visible, item]);
+
+  if (!item) return null;
+  const maxStock = Math.max(item.stock, item.minStock * 4, 200);
+  const ratio = Math.min(item.stock / maxStock, 1);
+  const barColor = item.lowStock ? colors.error : colors.success;
   const totalCost = item.costLines?.reduce((s, l) => s + l.amount, 0) ?? 0;
   const profit = item.sellingPrice - totalCost;
   const margin = item.sellingPrice > 0 ? (profit / item.sellingPrice) * 100 : 0;
@@ -2013,6 +2027,8 @@ function AddItemModal({
     setVatExempt(false);
     setItemImageUri('');
     setCostLines([{ id: 'cl_purchase', label: 'Purchase Cost', amount: 0 }]);
+    setStockLabel('piece');
+    setStockDescription('');
     setError('');
   };
 
@@ -2061,11 +2077,14 @@ function AddItemModal({
         vatTypeId: selectedVatTypeId ?? undefined, // ✅ from VAT picker
         skuNumber: sku.trim() || undefined,
         image: finalImageUrl,
+        minQuantity: parseInt(minStock) || 10,
         costLines:
           costLines.length > 0
             ? costLines.map(({ label, amount }) => ({ label, amount }))
             : undefined,
         opExPct: parseFloat(opExPct) / 100 || 0.1,
+        stockLabel: stockLabel,
+        stockDescription: stockDescription || undefined,
         // ✅ mutually exclusive category
         ...(selectedCategoryId && !selectedCategoryIsGlobal
           ? { orgCategoryId: selectedCategoryId }
@@ -2097,6 +2116,8 @@ function AddItemModal({
             createdItem?.media?.[0]?.url ||
             '',
           imagePath: finalImagePath || '',
+          stockLabel: stockLabel,
+          stockDescription: stockDescription || undefined,
         };
         onAdd(newItem);
       }

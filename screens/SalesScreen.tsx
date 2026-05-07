@@ -1979,14 +1979,14 @@ function AddOrderModal({
       setError('Enter a valid customer name (at least 2 characters).');
       return;
     }
-    if (!selectedBranchId) {
-      setError('Please select a branch.');
-      return;
-    }
-    if (!selectedOutlet) {
-      setError('Please select an outlet.');
-      return;
-    }
+    //if (!selectedBranchId) {
+    //  setError('Please select a branch.');
+    //  return;
+    //}
+    //if (!selectedOutlet) {
+    //  setError('Please select an outlet.');
+    //  return;
+    //}
     if (cart.length === 0) {
       setError('Add at least one product to the order.');
       return;

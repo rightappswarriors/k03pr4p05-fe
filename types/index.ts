@@ -469,7 +469,7 @@ export interface CostLine {
 export interface CatalogItem {
   id: string;
   name: string;
-  itemCode: string;
+  itemCode?: string;
   barcode: string;
   brand?: string;
   category?: string;

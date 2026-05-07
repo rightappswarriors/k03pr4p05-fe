@@ -30,7 +30,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { BarChart, LineChart } from 'react-native-chart-kit';
+import { BarChart, LineChart, PieChart } from 'react-native-chart-kit';
 import {
   BarChart2,
   Calendar,
@@ -54,10 +54,9 @@ import { Lock } from 'lucide-react-native';
 import StatCard from '@/components/erp/StatCard';
 import ChartCard from '@/components/erp/ChartCard';
 import {
-  InventoryService,
   SalesService,
-  HrService,
   FinanceService,
+  DashboardService,
 } from '@/services';
 import type { GISRow, SummaryRow } from '@/data/SummaryData';
 import {
@@ -68,13 +67,7 @@ import {
   ViewMode,
   ViewToggle,
 } from '@/components/dashboardSummary/ViewToggle';
-import {
-  calcVatAndNet,
-  calVatAmount,
-  formatPeso,
-  formatPesoCompact,
-  getResponsiveColumns,
-} from '@/utils/moneyHelpers';
+import { formatPeso, getResponsiveColumns } from '@/utils/moneyHelpers';
 import {
   FinancialCard,
   FinancialCardData,
@@ -84,7 +77,7 @@ import {
   SkeletonTableRow,
   SummaryTable,
 } from '@/components/dashboardSummary/SummaryTable';
-import { DropdownField } from '@/app/(erp)';
+import { DropdownField, SkeletonPulse } from '@/app/(erp)';
 import { useAuth } from '@/contexts/AuthContext';
 import DateRangePickerModal from '@/components/DateRangePickerModal';
 import { CatalogSearchModal } from '@/components/CatalogSearchModal';
@@ -730,11 +723,13 @@ export default function DashboardScreen() {
       setShowCustomPicker(true);
       return;
     }
+    setIsLoadingDashboardData(true);
     setDatePreset(p);
     AsyncStorage.setItem(DATE_PERIOD_KEY, p).catch(() => {});
   };
 
   const handleCustomApply = (start: Date, end: Date) => {
+    setIsLoadingDashboardData(true);
     setCustomStartDate(start);
     setCustomEndDate(end);
     setDatePreset('Custom Range');
@@ -756,15 +751,30 @@ export default function DashboardScreen() {
   const [currentPage, setCurrentPage] = useState(1);
 
   const [dashboardStats, setDashboardStats] = useState({
+    receivableSales: 0,
+    receivableOrderCount: 0,
     totalSales: 0,
-    salesGrowth: 0,
-    inventoryItems: 0,
-    inventoryChange: 0,
-    employees: 0,
-    employeeChange: 0,
-    monthlyProfit: 0,
-    profitGrowth: 0,
+    totalOrderCount: 0,
+    processingOrders: 0,
+    pendingOrders: 0,
+    receivedOrders: 0,
+    cancelledReturnedOrders: 0,
+    receivableTrend: 0,
+    totalSalesTrend: 0,
+    activeOrdersTrend: 0,
+    completedOrdersTrend: 0,
+    breakdowns: {
+      receivableSales: [] as { label: string; value: number; kind: 'money' | 'count' }[],
+      totalSales: [] as { label: string; value: number; kind: 'money' | 'count' }[],
+      activeOrders: [] as { label: string; value: number; kind: 'money' | 'count' }[],
+      completedOrders: [] as { label: string; value: number; kind: 'money' | 'count' }[],
+    },
   });
+  const [hoveredMetric, setHoveredMetric] = useState<string | null>(null);
+  const [metricModal, setMetricModal] = useState<{
+    title: string;
+    rows: { label: string; value: number; kind: 'money' | 'count' }[];
+  } | null>(null);
 
   const [inventoryDistribution, setInventoryDistribution] = useState({
     labels: [] as any[],
@@ -786,7 +796,9 @@ export default function DashboardScreen() {
     },
   });
 
-  const [salesTrendData, setSalesTrendData] = useState<number[]>([]);
+  const [salesTrendPoints, setSalesTrendPoints] = useState<
+    { period: string; total: number }[]
+  >([]);
   const [isLoadingDashboardData, setIsLoadingDashboardData] = useState(true);
 
   // ── Expense Entry modal ───────────────────────────────────────────────────
@@ -922,6 +934,41 @@ export default function DashboardScreen() {
   };
 
   // ── buildExpenseTrend: accepts windowMonths, anchors from today ───────────
+  const buildDashboardSalesTrend = (
+    points: { period: string; total: number }[],
+    windowMonths = 6,
+  ): number[] => {
+    const now = new Date();
+    const totalsByPeriod = new Map(
+      points.map((point) => [point.period, Number(point.total ?? 0)]),
+    );
+
+    return Array.from({ length: windowMonths }, (_, i) => {
+      const d = new Date(
+        now.getFullYear(),
+        now.getMonth() - (windowMonths - 1 - i),
+        1,
+      );
+      const period = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      return totalsByPeriod.get(period) ?? 0;
+    });
+  };
+
+  const buildDashboardQuarterTrend = (
+    points: { period: string; total: number }[],
+  ): number[] => {
+    const year = new Date().getFullYear();
+    const quarters = [0, 0, 0, 0];
+
+    for (const point of points) {
+      const [periodYear, periodMonth] = point.period.split('-').map(Number);
+      if (periodYear !== year || !periodMonth) continue;
+      quarters[Math.floor((periodMonth - 1) / 3)] += Number(point.total ?? 0);
+    }
+
+    return quarters;
+  };
+
   const buildExpenseTrend = (
     gisRows: any[],
     summaryRows: SummaryRow[] = [],
@@ -971,6 +1018,35 @@ export default function DashboardScreen() {
     });
   };
 
+  const getPreviousDateRange = (startDate: string, endDate: string) => {
+    const currentStart = new Date(startDate);
+    const currentEnd = new Date(endDate);
+    const durationMs = currentEnd.getTime() - currentStart.getTime();
+    const previousEnd = new Date(currentStart.getTime() - 1);
+    const previousStart = new Date(previousEnd.getTime() - durationMs);
+
+    return {
+      startDate: previousStart.toISOString(),
+      endDate: previousEnd.toISOString(),
+    };
+  };
+
+  const isCompletedTransaction = (tx: any) =>
+    ['COMPLETED', 'PAID', 'SYNCED'].includes(String(tx.status ?? '').toUpperCase());
+
+  const sumTransactions = (transactions: any[]) =>
+    transactions
+      .filter(isCompletedTransaction)
+      .reduce((sum, tx) => sum + Number(tx.total ?? 0), 0);
+
+  const countTransactions = (transactions: any[]) =>
+    transactions.filter(isCompletedTransaction).length;
+
+  const percentChange = (current: number, previous: number) => {
+    if (previous === 0) return current > 0 ? 100 : 0;
+    return Math.round(((current - previous) / previous) * 100);
+  };
+
   const { user } = useAuth();
   if (!user?.orgId) {
     return null;
@@ -985,6 +1061,27 @@ export default function DashboardScreen() {
       customStartDate,
       customEndDate,
     );
+    const previousRange = getPreviousDateRange(startDate, endDate);
+    const emptyOrderStats = {
+      receivableSalesTotal: 0,
+      receivableOrderCount: 0,
+      totalSalesAmount: 0,
+      totalSalesOrderCount: 0,
+      processingOrders: 0,
+      pendingOrders: 0,
+      receivedOrders: 0,
+      cancelledReturnedOrders: 0,
+      salesOrderReceivableTotal: 0,
+      salesOrderReceivableCount: 0,
+      kompraReceivableTotal: 0,
+      kompraReceivableCount: 0,
+      salesOrderCompletedTotal: 0,
+      salesOrderCompletedCount: 0,
+      kompraCompletedTotal: 0,
+      kompraCompletedCount: 0,
+      orderStatusBreakdown: [],
+      salesTrend: [],
+    };
 
     try {
       const { accessToken } = await AuthService.getTokens();
@@ -1002,27 +1099,34 @@ export default function DashboardScreen() {
 
       const [
         transactions,
+        previousTransactions,
         accountTitles,
         centers,
         subCenters,
         gisData,
         summaryData,
-        inventoryStats,
-        staffData,
+        orderStats,
+        previousOrderStats,
         vatTypesData,
       ] = await Promise.all([
         SalesService.getTransactionsByOrgId(startDate, endDate).catch(() => []),
+        SalesService.getTransactionsByOrgId(
+          previousRange.startDate,
+          previousRange.endDate,
+        ).catch(() => []),
         MasterFileFinanceService.getAccountTitles(),
         CenterService.getCenters(),
         SubCenterService.getAll(),
         FinanceService.getGISRows(startDate, endDate).catch(() => []),
         FinanceService.getSummaryRows(startDate, endDate).catch(() => []),
-        InventoryService.getDashboardInventoryStats().catch(() => ({
-          skuCount: 0,
-          totalUnits: 0,
-          categoryBreakdown: [],
-        })),
-        HrService.getAllStaffs(user.orgId).catch(() => []),
+        DashboardService.getOrderDashboardStats({
+          startDate,
+          endDate,
+        }).catch(() => emptyOrderStats),
+        DashboardService.getOrderDashboardStats({
+          startDate: previousRange.startDate,
+          endDate: previousRange.endDate,
+        }).catch(() => emptyOrderStats),
         VatTypeService.getAll().catch(() => [
           { id: 'default', label: 'Default', rate: 0 },
         ]),
@@ -1038,10 +1142,17 @@ export default function DashboardScreen() {
           rate: v.rate,
         })),
       );
-      const totalSales = transactions.reduce(
-        (sum, tx) => sum + Number(tx.total ?? 0),
-        0,
-      );
+      const posSalesTotal = sumTransactions(transactions);
+      const previousPosSalesTotal = sumTransactions(previousTransactions);
+      const posCompletedCount = countTransactions(transactions);
+      const previousPosCompletedCount = countTransactions(previousTransactions);
+      const completedSalesTotal = orderStats.totalSalesAmount + posSalesTotal;
+      const previousCompletedSalesTotal =
+        previousOrderStats.totalSalesAmount + previousPosSalesTotal;
+      const completedOrderCount =
+        orderStats.totalSalesOrderCount + posCompletedCount;
+      const previousCompletedOrderCount =
+        previousOrderStats.totalSalesOrderCount + previousPosCompletedCount;
       const expenses = gisData.reduce((sum: number, row: any) => {
         const isIncome = String(row.main ?? '').toLowerCase() === 'income';
         if (isIncome) return sum;
@@ -1071,32 +1182,131 @@ export default function DashboardScreen() {
         centers.map((c: any) => ({ id: String(c.id), label: c.label })),
       );
       setDashboardStats({
-        totalSales,
-        salesGrowth: 0,
-        inventoryItems: inventoryStats.skuCount,
-        inventoryChange: 0,
-        employees: staffData?.length ?? 0,
-        employeeChange: 0,
-        monthlyProfit: totalSales - totalExpenses,
-        profitGrowth: 0,
+        receivableSales: orderStats.receivableSalesTotal,
+        receivableOrderCount: orderStats.receivableOrderCount,
+        totalSales: completedSalesTotal,
+        totalOrderCount: completedOrderCount,
+        processingOrders: orderStats.processingOrders,
+        pendingOrders: orderStats.pendingOrders,
+        receivedOrders: orderStats.receivedOrders,
+        cancelledReturnedOrders: orderStats.cancelledReturnedOrders,
+        receivableTrend: percentChange(
+          orderStats.receivableSalesTotal,
+          previousOrderStats.receivableSalesTotal,
+        ),
+        totalSalesTrend: percentChange(
+          completedSalesTotal,
+          previousCompletedSalesTotal,
+        ),
+        activeOrdersTrend: percentChange(
+          orderStats.receivableOrderCount,
+          previousOrderStats.receivableOrderCount,
+        ),
+        completedOrdersTrend: percentChange(
+          completedOrderCount,
+          previousCompletedOrderCount,
+        ),
+        breakdowns: {
+          receivableSales: [
+            {
+              label: 'Sales Order Receivables',
+              value: orderStats.salesOrderReceivableTotal,
+              kind: 'money',
+            },
+            {
+              label: 'Kompra Receivables',
+              value: orderStats.kompraReceivableTotal,
+              kind: 'money',
+            },
+            {
+              label: 'Total Receivable Orders',
+              value: orderStats.receivableOrderCount,
+              kind: 'count',
+            },
+          ],
+          totalSales: [
+            {
+              label: 'Sales Order Completed',
+              value: orderStats.salesOrderCompletedTotal,
+              kind: 'money',
+            },
+            {
+              label: 'Kompra Completed',
+              value: orderStats.kompraCompletedTotal,
+              kind: 'money',
+            },
+            {
+              label: 'POS Terminal',
+              value: posSalesTotal,
+              kind: 'money',
+            },
+          ],
+          activeOrders: [
+            {
+              label: 'Sales Order Active',
+              value: orderStats.salesOrderReceivableCount,
+              kind: 'count',
+            },
+            {
+              label: 'Kompra Active',
+              value: orderStats.kompraReceivableCount,
+              kind: 'count',
+            },
+          ],
+          completedOrders: [
+            {
+              label: 'Sales Order Completed',
+              value: orderStats.salesOrderCompletedCount,
+              kind: 'count',
+            },
+            {
+              label: 'Kompra Completed',
+              value: orderStats.kompraCompletedCount,
+              kind: 'count',
+            },
+            {
+              label: 'POS Terminal Orders',
+              value: posCompletedCount,
+              kind: 'count',
+            },
+          ],
+        },
       });
       setInventoryDistribution({
-        labels: inventoryStats.categoryBreakdown.map((c: any) => c.name),
-        data: inventoryStats.categoryBreakdown.map((c: any) => c.totalStock),
+        labels: [
+          ...orderStats.orderStatusBreakdown.map((item: any) => item.category),
+          ...(posCompletedCount > 0 ? ['POS_COMPLETED'] : []),
+        ],
+        data: [
+          ...orderStats.orderStatusBreakdown.map((item: any) => item.count),
+          ...(posCompletedCount > 0 ? [posCompletedCount] : []),
+        ],
       });
 
       setFinanceData({
-        revenue: totalSales,
+        revenue: posSalesTotal,
         expenses: totalExpenses,
-        profit: totalSales - totalExpenses,
+        profit: posSalesTotal - totalExpenses,
         revenueVsExpenses: {
           revenue: buildSalesTrend(transactions),
           expenses: buildExpenseTrend(gisData, summaryData),
         },
       });
 
-      setSalesTrendData(buildSalesTrend(transactions));
-
+      const trendMap = new Map<string, number>();
+      for (const point of orderStats.salesTrend) {
+        trendMap.set(point.period, Number(point.total ?? 0));
+      }
+      for (const tx of transactions.filter(isCompletedTransaction)) {
+        const d = new Date(tx.createdAt ?? tx.date ?? 0);
+        const period = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        trendMap.set(period, (trendMap.get(period) ?? 0) + Number(tx.total ?? 0));
+      }
+      setSalesTrendPoints(
+        Array.from(trendMap.entries())
+          .map(([period, total]) => ({ period, total }))
+          .sort((a, b) => a.period.localeCompare(b.period)),
+      );
       setGisRows(
         (gisData ?? []).map((row: any, index: number) => ({
           id: String(row.id ?? `g-${index}`),
@@ -1192,8 +1402,14 @@ export default function DashboardScreen() {
     let expData: number[];
 
     if (isWeekly) {
-      // Weekly breakdown — placeholder zeros (sub-month data needs POS-level timestamps)
+      // Dashboard stats currently return monthly buckets, so show the month total in the active week.
       salesData = [0, 0, 0, 0];
+      const monthTotal = salesTrendPoints.reduce(
+        (sum, point) => sum + Number(point.total ?? 0),
+        0,
+      );
+      const weekIndex = Math.min(3, Math.floor((new Date().getDate() - 1) / 7));
+      salesData[weekIndex] = monthTotal;
       revData = [0, 0, 0, 0];
       expData = [0, 0, 0, 0];
     } else if (presetKey === 'This Year') {
@@ -1206,16 +1422,7 @@ export default function DashboardScreen() {
         [7, 8, 9],
         [10, 11, 12],
       ];
-      salesData = quarters.map((months) =>
-        rawTransactionsRef.current
-          .filter((tx) => {
-            const d = new Date(tx.createdAt ?? tx.date ?? 0);
-            return (
-              d.getFullYear() === year && months.includes(d.getMonth() + 1)
-            );
-          })
-          .reduce((sum, tx) => sum + Number(tx.total ?? tx.amount ?? 0), 0),
-      );
+      salesData = buildDashboardQuarterTrend(salesTrendPoints);
       revData = salesData;
       expData = quarters.map((months) =>
         gisRows
@@ -1234,7 +1441,7 @@ export default function DashboardScreen() {
       );
     } else {
       // Monthly window: Last 3 Months or Last 6 Months — anchored to today
-      salesData = buildSalesTrend(rawTransactionsRef.current, windowMonths);
+      salesData = buildDashboardSalesTrend(salesTrendPoints, windowMonths);
       revData = salesData;
       expData = buildExpenseTrend(gisRows, summaryRows, windowMonths);
     }
@@ -1252,7 +1459,7 @@ export default function DashboardScreen() {
       salesUnit: salesScale === 1000 ? 'K' : '₱',
       finUnit: finScale === 1000 ? 'K' : '₱',
     };
-  }, [datePreset, gisRows, summaryRows]);
+  }, [datePreset, gisRows, salesTrendPoints, summaryRows]);
 
   const activeDataset: FinancialCardData[] = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -1683,6 +1890,170 @@ export default function DashboardScreen() {
     datePreset === 'Custom Range' ? customLabel : datePreset;
 
   // ─── Styles ────────────────────────────────────────────────────────────────
+  const formatBreakdownValue = (row: {
+    value: number;
+    kind: 'money' | 'count';
+  }) =>
+    row.kind === 'money'
+      ? fmtFull(row.value)
+      : row.value.toLocaleString('en-PH');
+
+  const renderBreakdownRows = (
+    rows: { label: string; value: number; kind: 'money' | 'count' }[],
+  ) => (
+    <View style={{ gap: 8 }}>
+      {rows.map((row) => (
+        <View
+          key={row.label}
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 18,
+          }}
+        >
+          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+            {row.label}
+          </Text>
+          <Text style={{ color: colors.text, fontSize: 12, fontWeight: '700' }}>
+            {formatBreakdownValue(row)}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+
+  const MetricCard = ({
+    id,
+    label,
+    value,
+    icon,
+    trend,
+    accent,
+    rows,
+  }: {
+    id: string;
+    label: string;
+    value: string | number;
+    icon: 'sales' | 'inventory' | 'hr' | 'profit';
+    trend: number;
+    accent?: boolean;
+    rows: { label: string; value: number; kind: 'money' | 'count' }[];
+  }) => (
+    <View
+      style={{
+        position: 'relative',
+        zIndex: hoveredMetric === id ? 10000 : 10,
+        elevation: hoveredMetric === id ? 10000 : 10,
+      }}
+    >
+      <StatCard
+        label={label}
+        value={value}
+        icon={icon}
+        trend={`${Math.abs(trend)}%`}
+        trendUp={trend >= 0}
+        accent={accent}
+        onHoverIn={() => {
+          if (Platform.OS === 'web') setHoveredMetric(id);
+        }}
+        onHoverOut={() => {
+          if (Platform.OS === 'web') setHoveredMetric(null);
+        }}
+        onPress={() => {
+          if (Platform.OS !== 'web') setMetricModal({ title: label, rows });
+        }}
+      />
+      {Platform.OS === 'web' && hoveredMetric === id ? (
+        <View
+          style={{
+            position: 'absolute',
+            top: '100%',
+            left: 8,
+            right: 8,
+            marginTop: 8,
+            padding: 12,
+            borderRadius: 8,
+            backgroundColor: colors.surface,
+            borderWidth: 1,
+            borderColor: colors.border,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.16,
+            shadowRadius: 12,
+            zIndex: 10001,
+            elevation: 10001,
+          }}
+        >
+          {renderBreakdownRows(rows)}
+        </View>
+      ) : null}
+    </View>
+  );
+
+  const MetricSkeletonCard = ({ accent = false }: { accent?: boolean }) => (
+    <View
+      style={{
+        minHeight: 150,
+        borderRadius: 12,
+        padding: 18,
+        borderWidth: 1,
+        borderColor: accent ? 'transparent' : colors.border,
+        backgroundColor: accent ? colors.primary : colors.card,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.06,
+        shadowRadius: 8,
+        elevation: 3,
+      }}
+    >
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 24,
+        }}
+      >
+        <SkeletonPulse
+          colors={colors}
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: 10,
+            backgroundColor: accent ? 'rgba(255,255,255,0.28)' : colors.border,
+          }}
+        />
+        <SkeletonPulse
+          colors={colors}
+          style={{
+            width: 76,
+            height: 24,
+            borderRadius: 14,
+            backgroundColor: accent ? 'rgba(255,255,255,0.24)' : colors.border,
+          }}
+        />
+      </View>
+      <SkeletonPulse
+        colors={colors}
+        style={{
+          width: '48%',
+          height: 24,
+          marginBottom: 12,
+          backgroundColor: accent ? 'rgba(255,255,255,0.3)' : colors.border,
+        }}
+      />
+      <SkeletonPulse
+        colors={colors}
+        style={{
+          width: '38%',
+          height: 14,
+          backgroundColor: accent ? 'rgba(255,255,255,0.24)' : colors.border,
+        }}
+      />
+    </View>
+  );
+
   const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     scroll: { padding: 16, paddingBottom: 32 },
@@ -1701,7 +2072,7 @@ export default function DashboardScreen() {
       alignItems: 'center',
       marginBottom: 10,
       marginTop: 4,
-      zIndex: 1,
+      zIndex: 0,
       position: 'relative',
     },
     sectionTitle: {
@@ -1716,17 +2087,25 @@ export default function DashboardScreen() {
       flexWrap: 'wrap',
       gap: 10,
       marginBottom: 20,
-      zIndex: 1,
+      position: 'relative',
+      zIndex: 100,
+      elevation: 100,
+      overflow: 'visible',
     },
     statWrap: {
       width: isTablet ? undefined : '47.5%',
       flex: isTablet ? 1 : undefined,
       minWidth: isTablet ? 130 : undefined,
+      position: 'relative',
+      zIndex: 10,
+      overflow: 'visible',
     },
     chartsRow: {
       flexDirection: isTablet ? 'row' : 'column',
       gap: 12,
       marginBottom: 4,
+      position: 'relative',
+      zIndex: 0,
     },
     chartFlex: { flex: isTablet ? 1 : undefined },
     summaryRow: {
@@ -1887,46 +2266,50 @@ export default function DashboardScreen() {
         {isLoadingDashboardData ? (
           [0, 1, 2, 3].map((i) => (
             <View key={i} style={styles.statWrap}>
-              <SkeletonTableRow colors={colors} />
+              <MetricSkeletonCard accent={i === 0} />
             </View>
           ))
         ) : (
           <>
             <View style={styles.statWrap}>
-              <StatCard
+              <MetricCard
+                id="receivableSales"
+                label="Receivable Sales"
+                value={fmt(dashboardStats.receivableSales)}
+                icon="sales"
+                trend={dashboardStats.receivableTrend}
+                accent
+                rows={dashboardStats.breakdowns.receivableSales}
+              />
+            </View>
+            <View style={styles.statWrap}>
+              <MetricCard
+                id="totalSales"
                 label="Total Sales"
                 value={fmt(dashboardStats.totalSales)}
                 icon="sales"
-                trend={dashboardStats.salesGrowth}
-                trendUp
-                accent
+                trend={dashboardStats.totalSalesTrend}
+                rows={dashboardStats.breakdowns.totalSales}
               />
             </View>
             <View style={styles.statWrap}>
-              <StatCard
-                label="Inventory Items"
-                value={dashboardStats.inventoryItems}
+              <MetricCard
+                id="activeOrders"
+                label="Active Orders"
+                value={dashboardStats.receivableOrderCount}
                 icon="inventory"
-                trend={Number(dashboardStats.inventoryChange)}
-                trendUp={false}
+                trend={dashboardStats.activeOrdersTrend}
+                rows={dashboardStats.breakdowns.activeOrders}
               />
             </View>
             <View style={styles.statWrap}>
-              <StatCard
-                label="Employees"
-                value={dashboardStats.employees}
-                icon="hr"
-                trend={dashboardStats.employeeChange}
-                trendUp
-              />
-            </View>
-            <View style={styles.statWrap}>
-              <StatCard
-                label="Monthly Profit"
-                value={fmt(dashboardStats.monthlyProfit)}
+              <MetricCard
+                id="completedOrders"
+                label="Completed Orders"
+                value={dashboardStats.totalOrderCount}
                 icon="profit"
-                trend={dashboardStats.profitGrowth}
-                trendUp
+                trend={dashboardStats.completedOrdersTrend}
+                rows={dashboardStats.breakdowns.completedOrders}
               />
             </View>
           </>
@@ -1963,24 +2346,28 @@ export default function DashboardScreen() {
         </View>
         <View style={styles.chartFlex}>
           <ChartCard
-            title="Inventory Distribution"
-            subtitle="Units by product category"
+            title="Order Status Breakdown"
+            subtitle="Current order distribution by status"
           >
-            <BarChart
-              data={{
-                labels: inventoryDistribution.labels,
-                datasets: [{ data: inventoryDistribution.data }],
-              }}
+            <PieChart
+              data={inventoryDistribution.labels.map(
+                (label: string, index: number) => ({
+                  name: label,
+                  population: inventoryDistribution.data[index],
+                  color: `hsl(${index * 60}, 70%, 50%)`,
+                  legendFontColor: '#7F7F7F',
+                  legendFontSize: 12,
+                }),
+              )}
               width={chartWidth}
               height={180}
               chartConfig={{
-                ...chartConfig,
                 color: (o = 1) => `rgba(232, 119, 34, ${o})`,
               }}
-              style={{ borderRadius: 8, marginLeft: -16 }}
-              showValuesOnTopOfBars
-              yAxisLabel=""
-              yAxisSuffix=""
+              accessor="population"
+              backgroundColor="transparent"
+              paddingLeft="15"
+              absolute
             />
           </ChartCard>
         </View>
@@ -3395,6 +3782,48 @@ export default function DashboardScreen() {
         onSelect={handleCatalogItemSelect}
         colors={colors}
       />
+
+      <Modal
+        visible={!!metricModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMetricModal(null)}
+      >
+        <TouchableOpacity
+          style={dcm.backdrop}
+          activeOpacity={1}
+          onPress={() => setMetricModal(null)}
+        >
+          <View
+            style={[
+              dcm.card,
+              {
+                backgroundColor: colors.surface,
+                alignItems: 'stretch',
+                minWidth: 280,
+              },
+            ]}
+          >
+            <Text style={[dcm.title, { color: colors.text }]}>
+              {metricModal?.title}
+            </Text>
+            {metricModal ? renderBreakdownRows(metricModal.rows) : null}
+            <TouchableOpacity
+              style={[
+                dcm.btn,
+                {
+                  marginTop: 18,
+                  backgroundColor: colors.primary,
+                  borderColor: colors.primary,
+                },
+              ]}
+              onPress={() => setMetricModal(null)}
+            >
+              <Text style={[dcm.btnText, { color: '#fff' }]}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* NOTIFICATIONS MODAL */}
       <Modal visible={showNotifications} transparent animationType="fade">

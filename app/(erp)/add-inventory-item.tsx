@@ -28,6 +28,8 @@ import { InventoryService } from '@/services/inventoryService';
 import { GlobalCategoryPickerModal } from '@/components/GlobalCategoryPickerModal';
 import { CatalogItem, UnitLine } from '@/types';
 import { CatalogSearchModal } from '@/components/CatalogSearchModal';
+
+type FieldErrors = Record<string, string>;
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
 
@@ -126,6 +128,79 @@ export default function AddInventoryItemScreen() {
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+
+  const clearFieldError = (key: string) => {
+    setFieldErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const fieldError = (key: string) =>
+    fieldErrors[key] ? (
+      <Text style={[ais.fieldErrTxt, { color: colors.error }]}>
+        {fieldErrors[key]}
+      </Text>
+    ) : null;
+
+  const fieldBorder = (key: string, fallback: string) =>
+    fieldErrors[key] ? colors.error : fallback;
+
+  const hasUnitError = (id: string) =>
+    Object.keys(fieldErrors).some((key) => key.startsWith(`unit.${id}.`));
+
+  const validateForm = () => {
+    const nextErrors: FieldErrors = {};
+    const price = Number(basePrice);
+    const qty = Number(baseQty || 0);
+    const maxStock = Number(selectedItem?.stock || 0);
+
+    if (!selectedItem) {
+      nextErrors.item = 'Please select an item from the catalog.';
+    }
+    if (!basePrice.trim()) {
+      nextErrors.basePrice = 'Base price is required.';
+    } else if (!Number.isFinite(price) || price <= 0) {
+      nextErrors.basePrice = 'Enter a valid base price.';
+    }
+    if (baseQty.trim() && (!Number.isFinite(qty) || qty < 0)) {
+      nextErrors.baseQty = 'Opening quantity cannot be negative.';
+    } else if (selectedItem && qty > maxStock) {
+      nextErrors.baseQty = `Opening quantity cannot exceed ${maxStock}.`;
+    }
+
+    units.forEach((unit, idx) => {
+      const label = `Unit ${idx + 1}`;
+      const unitPrice = unit.price.trim() ? Number(unit.price) : price;
+      const unitQty = Number(unit.quantity || 0);
+      const conversionFactor = Number(unit.conversionFactor || 0);
+      const reorderPoint = Number(unit.reorderPoint || 0);
+
+      if (!unit.unitName.trim()) {
+        nextErrors[`unit.${unit.id}.unitName`] = `${label} name is required.`;
+      }
+      if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+        nextErrors[`unit.${unit.id}.price`] = `${label} price must be valid.`;
+      }
+      if (!Number.isFinite(unitQty) || unitQty < 0) {
+        nextErrors[`unit.${unit.id}.quantity`] = `${label} quantity cannot be negative.`;
+      }
+      if (!Number.isFinite(conversionFactor) || conversionFactor <= 0) {
+        nextErrors[`unit.${unit.id}.conversionFactor`] =
+          `${label} conversion factor must be greater than zero.`;
+      }
+      if (!Number.isFinite(reorderPoint) || reorderPoint < 0) {
+        nextErrors[`unit.${unit.id}.reorderPoint`] =
+          `${label} reorder point cannot be negative.`;
+      }
+    });
+
+    setFieldErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
 
   const addUnit = () =>
     setUnits((prev) => [
@@ -149,6 +224,7 @@ export default function AddInventoryItemScreen() {
     field: keyof UnitLine,
     value: string | boolean,
   ) => {
+    clearFieldError(`unit.${id}.${field}`);
     setUnits((prev) =>
       prev.map((u) => (u.id === id ? { ...u, [field]: value } : u)),
     );
@@ -181,25 +257,21 @@ export default function AddInventoryItemScreen() {
       },
     ]);
     setError('');
+    setFieldErrors({});
     setSuccess(false);
   };
   const handleSave = async () => {
-    if (!selectedItem) {
-      setError('Please select an item from the catalog.');
+    setError('');
+    if (!validateForm()) {
+      setError('Please fix the highlighted fields.');
       return;
     }
-    if (!basePrice.trim()) {
-      setError('Base price is required.');
-      return;
-    }
-    if (units.some((u) => !u.unitName.trim())) {
-      setError('All unit names are required.');
-      return;
-    }
+    const itemToSave = selectedItem;
+    if (!itemToSave) return;
     setSaving(true);
     try {
       const payload = {
-        itemId: Number(selectedItem.id),
+        itemId: Number(itemToSave.id),
         price: parseFloat(basePrice),
         quantity: parseInt(baseQty) || 0,
         categoryId: selectedCategoryId ?? undefined,
@@ -308,7 +380,10 @@ export default function AddInventoryItemScreen() {
               ais.itemPicker,
               {
                 backgroundColor: colors.card,
-                borderColor: selectedItem ? colors.primary : colors.border,
+                borderColor: fieldBorder(
+                  'item',
+                  selectedItem ? colors.primary : colors.border,
+                ),
               },
             ]}
             onPress={() => setCatalogOpen(true)}
@@ -346,13 +421,19 @@ export default function AddInventoryItemScreen() {
               </View>
             )}
             {selectedItem ? (
-              <TouchableOpacity onPress={() => setSelectedItem(null)}>
+              <TouchableOpacity
+                onPress={() => {
+                  setSelectedItem(null);
+                  clearFieldError('item');
+                }}
+              >
                 <X size={16} color={colors.error} strokeWidth={2} />
               </TouchableOpacity>
             ) : (
               <Text style={{ color: colors.textSecondary }}>›</Text>
             )}
           </TouchableOpacity>
+          {fieldError('item')}
           {/* Item Info Card */}
           {selectedItem && (
             <View
@@ -503,15 +584,19 @@ export default function AddInventoryItemScreen() {
                   {
                     color: colors.text,
                     backgroundColor: colors.background,
-                    borderColor: colors.border,
+                    borderColor: fieldBorder('basePrice', colors.border),
                   },
                 ]}
                 placeholder="0.00"
                 placeholderTextColor={colors.textSecondary}
                 value={basePrice}
-                onChangeText={setBasePrice}
+                onChangeText={(text) => {
+                  setBasePrice(text);
+                  clearFieldError('basePrice');
+                }}
                 keyboardType="decimal-pad"
               />
+              {fieldError('basePrice')}
             </View>
             <View style={{ flex: 1 }}>
               {fieldLabel('OPENING QTY')}
@@ -521,7 +606,7 @@ export default function AddInventoryItemScreen() {
                   {
                     color: colors.text,
                     backgroundColor: colors.background,
-                    borderColor: colors.border,
+                    borderColor: fieldBorder('baseQty', colors.border),
                   },
                 ]}
                 placeholder="0"
@@ -535,9 +620,11 @@ export default function AddInventoryItemScreen() {
                   } else {
                     setBaseQty(maxStock.toString());
                   }
+                  clearFieldError('baseQty');
                 }}
                 keyboardType="number-pad"
               />
+              {fieldError('baseQty')}
             </View>
           </View>
           {fieldLabel('OPEX CONTRIBUTION %')}
@@ -597,7 +684,11 @@ export default function AddInventoryItemScreen() {
                 ais.unitCard,
                 {
                   backgroundColor: colors.card,
-                  borderColor: unit.isDefault ? colors.primary : colors.border,
+                  borderColor: hasUnitError(unit.id)
+                    ? colors.error
+                    : unit.isDefault
+                      ? colors.primary
+                      : colors.border,
                 },
               ]}
             >
@@ -801,7 +892,10 @@ export default function AddInventoryItemScreen() {
                       ais.unitInput,
                       {
                         color: colors.text,
-                        borderColor: colors.border,
+                        borderColor: fieldBorder(
+                          `unit.${unit.id}.unitName`,
+                          colors.border,
+                        ),
                         backgroundColor: colors.background,
                       },
                     ]}
@@ -810,6 +904,7 @@ export default function AddInventoryItemScreen() {
                     value={unit.unitName}
                     onChangeText={(v) => updateUnit(unit.id, 'unitName', v)}
                   />
+                  {fieldError(`unit.${unit.id}.unitName`)}
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text
@@ -822,7 +917,10 @@ export default function AddInventoryItemScreen() {
                       ais.unitInput,
                       {
                         color: colors.text,
-                        borderColor: colors.border,
+                        borderColor: fieldBorder(
+                          `unit.${unit.id}.price`,
+                          colors.border,
+                        ),
                         backgroundColor: colors.background,
                       },
                     ]}
@@ -856,6 +954,7 @@ export default function AddInventoryItemScreen() {
                     onChangeText={(v) => updateUnit(unit.id, 'price', v)}
                     keyboardType="decimal-pad"
                   />
+                  {fieldError(`unit.${unit.id}.price`)}
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text
@@ -868,7 +967,10 @@ export default function AddInventoryItemScreen() {
                       ais.unitInput,
                       {
                         color: colors.text,
-                        borderColor: colors.border,
+                        borderColor: fieldBorder(
+                          `unit.${unit.id}.conversionFactor`,
+                          colors.border,
+                        ),
                         backgroundColor: colors.background,
                       },
                     ]}
@@ -880,6 +982,7 @@ export default function AddInventoryItemScreen() {
                     }
                     keyboardType="decimal-pad"
                   />
+                  {fieldError(`unit.${unit.id}.conversionFactor`)}
                 </View>
               </View>
 
@@ -895,7 +998,10 @@ export default function AddInventoryItemScreen() {
                       ais.unitInput,
                       {
                         color: colors.text,
-                        borderColor: colors.border,
+                        borderColor: fieldBorder(
+                          `unit.${unit.id}.quantity`,
+                          colors.border,
+                        ),
                         backgroundColor: colors.background,
                       },
                     ]}
@@ -905,6 +1011,7 @@ export default function AddInventoryItemScreen() {
                     onChangeText={(v) => updateUnit(unit.id, 'quantity', v)}
                     keyboardType="decimal-pad"
                   />
+                  {fieldError(`unit.${unit.id}.quantity`)}
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text
@@ -917,7 +1024,10 @@ export default function AddInventoryItemScreen() {
                       ais.unitInput,
                       {
                         color: colors.text,
-                        borderColor: colors.border,
+                        borderColor: fieldBorder(
+                          `unit.${unit.id}.reorderPoint`,
+                          colors.border,
+                        ),
                         backgroundColor: colors.background,
                       },
                     ]}
@@ -927,6 +1037,7 @@ export default function AddInventoryItemScreen() {
                     onChangeText={(v) => updateUnit(unit.id, 'reorderPoint', v)}
                     keyboardType="decimal-pad"
                   />
+                  {fieldError(`unit.${unit.id}.reorderPoint`)}
                 </View>
               </View>
 
@@ -1037,6 +1148,7 @@ export default function AddInventoryItemScreen() {
         onClose={() => setCatalogOpen(false)}
         onSelect={(item) => {
           setSelectedItem(item);
+          clearFieldError('item');
           if (!basePrice) setBasePrice('');
         }}
         colors={colors}
@@ -1045,9 +1157,12 @@ export default function AddInventoryItemScreen() {
       <GlobalCategoryPickerModal
         visible={categoryPickerVisible}
         onClose={() => setCategoryPickerVisible(false)}
-        onSelect={(category) => setSelectedCategoryId(category)}
+        onSelect={(id, name) => {
+          setSelectedCategoryId(id);
+          setSelectedCategoryName(name);
+        }}
         colors={colors}
-        selectedId={null}
+        selectedId={selectedCategoryId}
       />
     </SafeAreaView>
   );
@@ -1149,6 +1264,7 @@ const ais = StyleSheet.create({
   preview: { borderWidth: 1, borderRadius: 12, padding: 14, marginBottom: 14 },
   previewTitle: { fontSize: 10, fontWeight: '700', letterSpacing: 1 },
   errTxt: { fontSize: 12, marginBottom: 8 },
+  fieldErrTxt: { fontSize: 11, fontWeight: '600', marginTop: -8, marginBottom: 10 },
   successBanner: {
     borderRadius: 12,
     padding: 16,

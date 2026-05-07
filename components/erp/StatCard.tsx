@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   PhilippinePeso,
   Package,
@@ -26,6 +26,9 @@ interface StatCardProps {
   trend?: string | number;
   trendUp?: boolean;
   accent?: boolean;
+  onPress?: () => void;
+  onHoverIn?: () => void;
+  onHoverOut?: () => void;
 }
 
 export default function StatCard({
@@ -35,6 +38,9 @@ export default function StatCard({
   trend,
   trendUp,
   accent,
+  onPress,
+  onHoverIn,
+  onHoverOut,
 }: StatCardProps) {
   const { colors } = useTheme();
   const IconComponent = ICON_MAP[icon] ?? PhilippinePeso;
@@ -99,7 +105,12 @@ export default function StatCard({
   });
 
   return (
-    <View style={styles.card}>
+    <Pressable
+      style={styles.card}
+      onPress={onPress}
+      onHoverIn={onHoverIn}
+      onHoverOut={onHoverOut}
+    >
       <View style={styles.topRow}>
         <View style={styles.iconBox}>
           <IconComponent size={18} color={iconColor} strokeWidth={2} />
@@ -114,6 +125,6 @@ export default function StatCard({
       </View>
       <Text style={styles.value}>{value}</Text>
       <Text style={styles.label}>{label}</Text>
-    </View>
+    </Pressable>
   );
 }

@@ -1202,7 +1202,7 @@ export function SummaryTable({
   ];
   const HEADERS = [
     'Items',
-    'Contribution(%) Cost',
+    'Contribution(%) Cost', //Contribution(%) Cost
     'Selling Price',
     'Profit',
     'Status',
@@ -1313,7 +1313,7 @@ export function SummaryTable({
                   numberOfLines={1}
                 >
                   {formatPeso(row.costContribution + row.opExAmount)}{' '}
-                  <Text
+                  {/**<Text
                     style={{
                       fontSize: 11,
                       fontWeight: '500',
@@ -1321,7 +1321,7 @@ export function SummaryTable({
                     }}
                   >
                     ({itemPct.toFixed(1)}%)
-                  </Text>
+                  </Text> **/}
                 </Text>
               </View>
 
@@ -1467,13 +1467,13 @@ export function SummaryTable({
               numberOfLines={1}
             >
               {formatPeso(totalContrib)}{' '}
-              <Text style={{ fontSize: 11, color: colors.accent }}>
+              {/**<Text style={{ fontSize: 11, color: colors.accent }}>
                 (
                 {totalSales > 0
                   ? ((totalContrib / totalSales) * 100).toFixed(1)
                   : '0.0'}
                 %)
-              </Text>
+              </Text>**/}
             </Text>
           </View>
           <View

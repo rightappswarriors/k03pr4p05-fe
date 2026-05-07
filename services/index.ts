@@ -5,5 +5,7 @@ export { HrService } from './hrService';
 export { FinanceService } from './financeService';
 export { BudgetService } from './budgetService';
 export { MasterFileService } from './masterFileService';
+export { DashboardService } from './dashboardService';
+export { KompraCOrderService } from './kompraCOrderService';
 export { SubscriptionService } from './subscriptionService';
 export { graphQLRequest } from './apiClient';
