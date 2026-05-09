@@ -484,6 +484,7 @@ export class AdminService {
           longitude
           bannerImage
           wifiSSID
+          isActive
           tin
           ptu
           bir
@@ -516,6 +517,8 @@ export class AdminService {
         latitude: o.latitude,
         longitude: o.longitude,
         bannerImage: o.bannerImage,
+        wifiSSID: o.wifiSSID,
+        isActive: o.isActive,
         createdAt: o.createdAt,
         assignedCashierIds: o.staff?.map((s: any) => s.id) ?? [],
         currentCashiers: o.staff?.filter((s: any) => s.isPresent).map((s: any) => ({ id: s.id, isPresent: s.isPresent })) ?? [],
@@ -595,6 +598,7 @@ export class AdminService {
     latitude?: number;
     longitude?: number;
     bannerImage?: string;
+    wifiSSID?: string;
     tin?: string;
     ptu?: string;
     bir?: string;
@@ -618,6 +622,7 @@ export class AdminService {
       $latitude: Float
       $longitude: Float
       $bannerImage: String
+      $wifiSSID: String
       $tin: String
       $ptu: String
       $bir: String
@@ -640,6 +645,7 @@ export class AdminService {
         latitude: $latitude
         longitude: $longitude
         bannerImage: $bannerImage
+        wifiSSID: $wifiSSID
         tin: $tin
         ptu: $ptu
         bir: $bir
@@ -650,7 +656,7 @@ export class AdminService {
         outletPromos: $outletPromos
       ) {
         id name address phone outletType status code
-        governmentTax serviceCharge latitude longitude bannerImage
+        governmentTax serviceCharge latitude longitude bannerImage wifiSSID isActive
         tin ptu bir isVatRegistered vatZeroSale vatTypeId
         branchId createdAt
         staff { id isPresent }
@@ -681,6 +687,8 @@ export class AdminService {
         latitude: outlet.latitude,
         longitude: outlet.longitude,
         bannerImage: outlet.bannerImage,
+        wifiSSID: outlet.wifiSSID,
+        isActive: outlet.isActive,
         branchId: outlet.branchId,
         createdAt: outlet.createdAt,
         assignedCashierIds: outlet.staff.map((s: any) => s.id) ?? [],
@@ -755,6 +763,7 @@ export class AdminService {
     longitude?: number;
     isActive?: boolean;
     bannerImage?: string;
+    wifiSSID?: string;
     tin?: string;
     ptu?: string;
     bir?: string;
@@ -778,6 +787,7 @@ export class AdminService {
         $longitude: Float
         $isActive: Boolean
         $bannerImage: String
+        $wifiSSID: String
         $tin: String
         $ptu: String
         $bir: String
@@ -800,6 +810,7 @@ export class AdminService {
           longitude: $longitude
           isActive: $isActive
           bannerImage: $bannerImage
+          wifiSSID: $wifiSSID
           tin: $tin
           ptu: $ptu
           bir: $bir
@@ -820,6 +831,8 @@ export class AdminService {
           latitude
           longitude
           bannerImage
+          wifiSSID
+          isActive
           tin
           ptu
           bir
@@ -858,6 +871,8 @@ export class AdminService {
         latitude: outlet.latitude,
         longitude: outlet.longitude,
         bannerImage: outlet.bannerImage,
+        wifiSSID: outlet.wifiSSID,
+        isActive: outlet.isActive,
         branchId: outlet.branchId,
         createdAt: outlet.createdAt,
         assignedCashierIds: outlet.staff.map((s: any) => s.id) ?? [],

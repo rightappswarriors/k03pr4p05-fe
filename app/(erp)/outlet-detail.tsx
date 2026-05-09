@@ -180,6 +180,7 @@ function EditOutletModal({
   const [bannerImagePath, setBannerImagePath] = useState(
     outletBannerImagePath || '',
   );
+  const [bannerImageFile, setBannerImageFile] = useState<any>(null);
   const [address, setAddress] = useState(outletData?.address || '');
   const [phone, setPhone] = useState(outletData?.phone || '');
   const [latitude, setLatitude] = useState(
@@ -190,6 +191,7 @@ function EditOutletModal({
   );
   const [type, setType] = useState(outletData?.outletType || 'retail');
   const [status, setStatus] = useState(outletData?.status || 'open');
+  const [isActive, setIsActive] = useState(outletData?.isActive ?? true);
   const [govTax, setGovTax] = useState(
     outletData?.governmentTax?.toString() || '',
   );
@@ -214,12 +216,14 @@ function EditOutletModal({
       setName(outletData.name || outletName);
       setBannerImage(outletBannerImage || '');
       setBannerImagePath(outletBannerImagePath || '');
+      setBannerImageFile(null);
       setAddress(outletData.address || '');
       setPhone(outletData.phone || '');
       setLatitude(outletData.latitude?.toString() || '');
       setLongitude(outletData.longitude?.toString() || '');
       setType(outletData.outletType || 'retail');
       setStatus(outletData.status || 'open');
+      setIsActive(outletData.isActive ?? true);
       setGovTax(outletData.governmentTax?.toString() || '');
       setSvcChg(outletData.serviceCharge?.toString() || '');
       setCode(outletData.code || '');
@@ -255,7 +259,9 @@ function EditOutletModal({
       quality: 0.8,
     });
     if (!result.canceled) {
-      setBannerImage(result.assets[0].uri);
+      const asset = result.assets[0];
+      setBannerImage(asset.uri);
+      setBannerImageFile((asset as any).file ?? null);
       setBannerImagePath('');
     }
   };
@@ -272,7 +278,9 @@ function EditOutletModal({
       quality: 0.8,
     });
     if (!result.canceled) {
-      setBannerImage(result.assets[0].uri);
+      const asset = result.assets[0];
+      setBannerImage(asset.uri);
+      setBannerImageFile((asset as any).file ?? null);
       setBannerImagePath('');
     }
   };
@@ -297,6 +305,7 @@ function EditOutletModal({
               uri: finalBannerImage,
               name: `outlet_${Date.now()}.jpg`,
               type: 'image/jpeg',
+              file: bannerImageFile,
             },
             bannerImagePath,
             String(user.orgId),
@@ -309,6 +318,7 @@ function EditOutletModal({
               uri: finalBannerImage,
               name: `outlet_${Date.now()}.jpg`,
               type: 'image/jpeg',
+              file: bannerImageFile,
             },
             String(user.orgId),
           );
@@ -328,6 +338,8 @@ function EditOutletModal({
         latitude: latitude ? parseFloat(latitude) : undefined,
         longitude: longitude ? parseFloat(longitude) : undefined,
         bannerImage: finalBannerImage || undefined,
+        wifiSSID: wifiSSID.trim() || undefined,
+        isActive,
         tin: tin.trim() || undefined,
         ptu: ptu.trim() || undefined,
         bir: bir.trim() || undefined,
@@ -495,6 +507,24 @@ function EditOutletModal({
                 onSelect={setStatus}
                 colors={colors}
               />
+              <View style={[aom.toggleRow, { borderColor: colors.border }]}>
+                <View>
+                  <Text style={[aom.toggleLabel, { color: colors.text }]}>
+                    Active
+                  </Text>
+                  <Text
+                    style={[aom.toggleSub, { color: colors.textSecondary }]}
+                  >
+                    Outlet is visible and operational
+                  </Text>
+                </View>
+                <Switch
+                  value={isActive}
+                  onValueChange={setIsActive}
+                  trackColor={{ false: colors.border, true: colors.primary }}
+                  thumbColor="#fff"
+                />
+              </View>
               <Text style={[eom.label, { color: colors.textSecondary }]}>
                 LOCATION (optional)
               </Text>
@@ -574,6 +604,7 @@ function EditOutletModal({
                     onPress={() => {
                       setBannerImage('');
                       setBannerImagePath('');
+                      setBannerImageFile(null);
                     }}
                   >
                     <Text style={{ color: colors.error, fontSize: 12 }}>

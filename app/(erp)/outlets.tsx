@@ -463,6 +463,7 @@ interface OutletFormData {
   latitude: number | undefined;
   longitude: number | undefined;
   bannerImage: string;
+  bannerImageFile?: any;
 
   bannerImagePath?: string;
   tin?: string;
@@ -501,6 +502,7 @@ function AddOutletModal({
     latitude: undefined,
     longitude: undefined,
     bannerImage: '',
+    bannerImageFile: null,
     bannerImagePath: '',
     tin: '',
     ptu: '',
@@ -575,8 +577,14 @@ function AddOutletModal({
       aspect: [16, 9],
       quality: 0.8,
     });
-    if (!result.canceled)
-      setForm((prev) => ({ ...prev, bannerImage: result.assets[0].uri }));
+    if (!result.canceled) {
+      const asset = result.assets[0];
+      setForm((prev) => ({
+        ...prev,
+        bannerImage: asset.uri,
+        bannerImageFile: (asset as any).file ?? null,
+      }));
+    }
   };
 
   const takePhoto = async () => {
@@ -590,8 +598,14 @@ function AddOutletModal({
       aspect: [16, 9],
       quality: 0.8,
     });
-    if (!result.canceled)
-      setForm((prev) => ({ ...prev, bannerImage: result.assets[0].uri }));
+    if (!result.canceled) {
+      const asset = result.assets[0];
+      setForm((prev) => ({
+        ...prev,
+        bannerImage: asset.uri,
+        bannerImageFile: (asset as any).file ?? null,
+      }));
+    }
   };
 
 
@@ -640,6 +654,7 @@ function AddOutletModal({
             uri: bannerImageUrl,
             name: `outlet_${Date.now()}.jpg`,
             type: 'image/jpeg',
+            file: form.bannerImageFile,
           },
           String(user.orgId),
         );
@@ -666,6 +681,7 @@ function AddOutletModal({
         latitude: undefined,
         longitude: undefined,
         bannerImage: '',
+        bannerImageFile: null,
         bannerImagePath: '',
         tin: '',
         ptu: '',
@@ -793,7 +809,11 @@ function AddOutletModal({
                     <TouchableOpacity
                       style={aom.removeImageBtn}
                       onPress={() =>
-                        setForm((prev) => ({ ...prev, bannerImage: '' }))
+                        setForm((prev) => ({
+                          ...prev,
+                          bannerImage: '',
+                          bannerImageFile: null,
+                        }))
                       }
                     >
                       <X size={16} color={colors.error} strokeWidth={2} />
@@ -1817,6 +1837,7 @@ export default function OutletListScreen() {
         latitude: data.latitude,
         longitude: data.longitude,
         bannerImage: data.bannerImage,
+        wifiSSID: data.wifiSSID,
         isActive: data.isActive,
         tin: data.tin,
         ptu: data.ptu,

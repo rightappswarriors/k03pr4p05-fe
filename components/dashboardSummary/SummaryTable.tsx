@@ -364,7 +364,7 @@ function EditGISModal({
               ]}
             >
               <Text style={[em.totalLabel, { color: colors.textSecondary }]}>
-                Total (Debit - Credit)
+                Total (Credit - Debit)
               </Text>
               <Text
                 style={[
@@ -789,8 +789,8 @@ export function GISTable({
     'Main',
     'Group',
     'Description',
-    'Debit',
     'Credit',
+    'Debit',
     'Total',
     '',
   ];

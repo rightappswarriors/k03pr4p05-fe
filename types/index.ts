@@ -113,6 +113,7 @@ export interface Outlet {
   phone?: string;
   code: string;
   bannerImage?: string;
+  wifiSSID?: string;
   governmentTax?: number;
   serviceCharge?: number;
   outletType?: 'retail' | 'wholesale' | 'service';
@@ -350,6 +351,14 @@ export interface AdminOutlet {
   longitude?: number | string,
   bannerImage?: string;
   bannerImagePath?: string;
+  wifiSSID?: string;
+  isActive?: boolean;
+  tin?: string;
+  ptu?: string;
+  bir?: string;
+  isVatRegistered?: boolean;
+  vatZeroSale?: number | string;
+  vatTypeId?: number;
 
   name: string;
   status: 'open' | 'closed' | 'maintenance';

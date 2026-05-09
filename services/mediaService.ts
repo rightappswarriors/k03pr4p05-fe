@@ -12,6 +12,16 @@ export class MediaService {
     }
 
     static async normalizeMediaFile(file: any) {
+        const webFile = file?.file;
+        if (
+            Platform.OS === 'web' &&
+            webFile &&
+            ((typeof File !== 'undefined' && webFile instanceof File) ||
+                (typeof Blob !== 'undefined' && webFile instanceof Blob))
+        ) {
+            return webFile;
+        }
+
         const uri = file?.uri;
         if (!uri) {
             throw new Error('Media file URI is required');
@@ -29,7 +39,12 @@ export class MediaService {
                 return file;
             }
 
-            const response = await fetch(uri);
+            let response: Response;
+            try {
+                response = await fetch(uri);
+            } catch {
+                throw new Error('Unable to read selected image. Please choose the image again.');
+            }
             if (!response.ok) {
                 throw new Error('Unable to fetch selected file for upload');
             }
