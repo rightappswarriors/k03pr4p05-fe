@@ -55,7 +55,11 @@ export interface InventoryItem {
   opExPct?: number;
   priceB?: number;
   priceC?: number;
+  
+  isVatExempt?: boolean;
   vatExempt?: boolean;
+  isBNPC?: boolean;
+  vatRate?: number;
   stockLabel?: string; // ← new
   stockDescription?: string; // ← new
 }
@@ -75,6 +79,9 @@ interface UpdateItemPayload {
   stock?: number;
   skuNumber?: string;
   vatExempt?: boolean;
+  isVatExempt?: boolean;
+  isBNPC?: boolean;
+  vatRate?: number;
   assembly?: boolean;
   ServiceCharge?: boolean;
   opExPct?: number;
@@ -423,6 +430,8 @@ function EditItemModal({
   const [priceB, setPriceB] = useState('');
   const [priceC, setPriceC] = useState('');
   const [vatExempt, setVatExempt] = useState(false);
+  const [isBNPC, setIsBNPC] = useState(false);
+  const [vatRate, setVatRate] = useState('12');
   const [costLines, setCostLines] = useState<CostLine[]>([]);
   const [imageUri, setImageUri] = useState(''); // local URI or existing http URL
   const [originalImageUri, setOriginalImageUri] = useState('');
@@ -465,6 +474,8 @@ function EditItemModal({
     setStockLabel(item.stockLabel ?? 'piece');
     setStockDescription(item.stockDescription ?? '');
     setVatExempt(item.vatExempt ?? false);
+    setIsBNPC(item.isBNPC ?? false);
+    setVatRate(String(((item.vatRate ?? 0.12) * 100)));
     setCostLines(
       (item.costLines ?? []).map((cl) => ({
         ...cl,
@@ -553,6 +564,9 @@ function EditItemModal({
         priceB: priceB ? parseFloat(priceB) : undefined,
         priceC: priceC ? parseFloat(priceC) : undefined,
         vatExempt: !selectedVatTypeId ? vatExempt : undefined,
+        isVatExempt: vatExempt,
+        isBNPC,
+        vatRate: vatExempt ? 0 : (parseFloat(vatRate) || 12) / 100,
         vatTypeId: selectedVatTypeId ?? undefined, // ✅
         image: finalImageUrl,
         costLines: costLines.map(({ label, amount }) => ({ label, amount })),
@@ -587,6 +601,9 @@ function EditItemModal({
           priceB: updated.priceB != null ? Number(updated.priceB) : undefined,
           priceC: updated.priceC != null ? Number(updated.priceC) : undefined,
           vatExempt: updated.vatExempt ?? vatExempt,
+          isVatExempt: updated.isVatExempt ?? vatExempt,
+          isBNPC: updated.isBNPC ?? isBNPC,
+          vatRate: updated.vatRate ?? ((parseFloat(vatRate) || 12) / 100),
           imageUrl: finalImageUrl,
           imagePath: finalImagePath,
           costLines: (updated.costLines ?? costLines).map(
@@ -1069,6 +1086,30 @@ function EditItemModal({
                 </TouchableOpacity>
               </View>
             )}
+            <Text style={s.label}>Tax & Discount Settings</Text>
+            <View style={{ gap: 8 }}>
+              <View style={s.vatRow}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>Is Basic Necessity / Prime Commodity (BNPC)</Text>
+                <TouchableOpacity
+                  style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8, backgroundColor: isBNPC ? colors.accent + '20' : colors.background, borderWidth: 1, borderColor: isBNPC ? colors.accent : colors.border }}
+                  onPress={() => setIsBNPC((v) => !v)}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: isBNPC ? colors.accent : colors.textSecondary }}>{isBNPC ? 'BNPC' : 'Off'}</Text>
+                </TouchableOpacity>
+              </View>
+              {isBNPC && <Text style={{ fontSize: 11, color: colors.textSecondary }}>BNPC items qualify for 5% SC/PWD special discount without VAT exemption (JAO 24-02, 2024)</Text>}
+              <TextInput
+                style={[s.input, { opacity: vatExempt ? 0.55 : 1 }]}
+                placeholder="VAT Rate (%)"
+                placeholderTextColor={colors.textSecondary}
+                value={vatRate}
+                onChangeText={setVatRate}
+                keyboardType="decimal-pad"
+                editable={!vatExempt}
+              />
+              {vatExempt && <Text style={{ fontSize: 11, color: colors.textSecondary }}>VAT-exempt items: SC/PWD 20% discount is applied on the pre-VAT price</Text>}
+            </View>
+
 
             {/* ── Cost Breakdown ── */}
             <Text style={s.label}>Cost Breakdown</Text>
@@ -1986,6 +2027,8 @@ function AddItemModal({
   const [minStock, setMinStock] = useState('10');
   const [price, setPrice] = useState('');
   const [vatExempt, setVatExempt] = useState(false);
+  const [isBNPC, setIsBNPC] = useState(false);
+  const [vatRate, setVatRate] = useState('12');
   const [opExPct, setOpExPct] = useState('10');
   const [stockLabel, setStockLabel] = useState('piece');
   const [stockDescription, setStockDescription] = useState('');
@@ -2025,6 +2068,8 @@ function AddItemModal({
     setPrice('');
     setOpExPct('10');
     setVatExempt(false);
+    setIsBNPC(false);
+    setVatRate('12');
     setItemImageUri('');
     setCostLines([{ id: 'cl_purchase', label: 'Purchase Cost', amount: 0 }]);
     setStockLabel('piece');
@@ -2074,6 +2119,9 @@ function AddItemModal({
         barcode: sku.trim() || `SKU-${Date.now().toString().slice(-6)}`,
         sellingPrice: parseFloat(price) || 0,
         vatExempt: !selectedVatTypeId ? vatExempt : undefined,
+        isVatExempt: vatExempt,
+        isBNPC,
+        vatRate: vatExempt ? 0 : (parseFloat(vatRate) || 12) / 100,
         vatTypeId: selectedVatTypeId ?? undefined, // ✅ from VAT picker
         skuNumber: sku.trim() || undefined,
         image: finalImageUrl,
@@ -2110,6 +2158,9 @@ function AddItemModal({
           costLines,
           opExPct: parseFloat(opExPct) / 100 || 0.1,
           vatExempt,
+          isVatExempt: vatExempt,
+          isBNPC,
+          vatRate: vatExempt ? 0 : (parseFloat(vatRate) || 12) / 100,
           imageUrl:
             finalImageUrl ||
             createdItem.image ||
@@ -2684,6 +2735,9 @@ export default function InventoryScreen() {
               priceB: it.priceB != null ? Number(it.priceB) : undefined,
               priceC: it.priceC != null ? Number(it.priceC) : undefined,
               vatExempt: Boolean(it.vatExempt),
+              isVatExempt: Boolean(it.isVatExempt ?? it.vatExempt),
+              isBNPC: Boolean(it.isBNPC),
+              vatRate: Number(it.vatRate ?? 0.12),
             }),
           ),
         );
@@ -3269,3 +3323,7 @@ export default function InventoryScreen() {
     </View>
   );
 }
+
+
+
+

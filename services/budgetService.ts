@@ -1,6 +1,5 @@
 import { gql } from 'graphql-request';
 import { graphQLRequest } from './apiClient';
-import { GraphQLError } from 'graphql';
 
 export class BudgetService {
     static async getBudgetEntries(year?: number): Promise<any[]> {
@@ -62,7 +61,7 @@ export class BudgetService {
             });
             return response.createBudgetEntry;
         } catch (error) {
-            const errorMessage = GraphQLError.isError(error) ? error.message : 'An unknown error occurred';
+            const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
             throw new Error(`Failed to create budget entry: ${errorMessage}`);
         }
 

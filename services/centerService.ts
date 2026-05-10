@@ -2,6 +2,10 @@ import { gql } from "graphql-request"
 import { graphQLRequest } from "./apiClient";
 
 export class CenterService {
+    static async getAll() {
+        return this.getCenters();
+    }
+
     static async getCenters() {
         const QUERY = gql`
             query {

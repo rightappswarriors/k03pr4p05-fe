@@ -12,6 +12,7 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
 import { CustomCheckbox } from '@/components/pos/checkbox/CustomCheckbox';
 import { PaymentBottomSheetRef } from '@/types';
@@ -35,6 +36,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ReceiptService } from '@/services/paymentService';
 import useNetworkStatus from '@/hooks/useNetworkStatus';
 import { useResponsive } from '@/hooks/useResponsive';
+import ScPwdCustomerForm from '@/components/ScPwdCustomerForm';
+import type { ScPwdCustomerInput } from '@/services/salesOrder.service';
 
 const WEIGHT_UNITS = ['kg', 'gram', 'g', 'grams', 'kilo', 'kilos'];
 
@@ -454,6 +457,16 @@ export function ReceiptModal({
   const isWide = isDesktop || isTablet;
 
   const [vatExemptRefNo, setVatExemptRefNo] = useState('');
+  const [customerType, setCustomerType] = useState<'REGULAR' | 'SENIOR_CITIZEN' | 'PWD'>('REGULAR');
+  const [scPwdFullName, setScPwdFullName] = useState('');
+  const [scPwdIdType, setScPwdIdType] = useState('OSCA');
+  const [scPwdDateOfBirth, setScPwdDateOfBirth] = useState('');
+  const [scPwdContactNumber, setScPwdContactNumber] = useState('');
+  const [isRepresentative, setIsRepresentative] = useState(false);
+  const [representativeName, setRepresentativeName] = useState('');
+  const [representativeIdNumber, setRepresentativeIdNumber] = useState('');
+  const [totalPax, setTotalPax] = useState('1');
+  const [scPwdPax, setScPwdPax] = useState('1');
   const [cashReceived, setCashReceived] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [discountOption, setDiscountOption] = useState<DiscountType>('NONE');
@@ -480,6 +493,18 @@ export function ReceiptModal({
       setSelectedPromoId(undefined);
     }
   }, [discountOption]);
+
+  useEffect(() => {
+    if (customerType === 'REGULAR') {
+      setApplyVatExempt(false);
+      setDiscountOption('NONE');
+      return;
+    }
+    setApplyVatExempt(true);
+    setIsDiscounted(true);
+    setDiscountOption(customerType === 'PWD' ? 'PWD' : 'SENIOR_CITIZEN');
+    setScPwdIdType(customerType === 'PWD' ? 'PWD-PDAO' : 'OSCA');
+  }, [customerType]);
 
   // ── All hooks must come before any early return ──────────────────────────
   const handleClose = useCallback(() => {
@@ -530,9 +555,16 @@ export function ReceiptModal({
     outlet,
     {
       type: discountOption,
-      applyVatExempt: false, // Don't apply VAT exempt discount in calculateTotal
+      applyVatExempt: isVatExemptActive,
     },
-    isVatExemptActive, // But pass the flag to remove VAT
+    isVatExemptActive,
+    {
+      customerType,
+      discountType: discountOption,
+      totalPax: parseInt(totalPax) || 1,
+      scPwdPax: parseInt(scPwdPax) || 1,
+      isVatRegistered: outlet?.isVatRegistered,
+    },
   );
 
   // Then calculate itemVatAmount for display purposes AFTER getting the calculation
@@ -584,6 +616,16 @@ export function ReceiptModal({
   };
 
   const handlePrintReceipt = async () => {
+    if (customerType !== 'REGULAR') {
+      if (!scPwdFullName.trim() || !vatExemptRefNo.trim()) {
+        Alert.alert('SC/PWD details required', 'Please enter the customer full name and SC/PWD ID number before checkout.');
+        return;
+      }
+      if ((parseInt(scPwdPax) || 0) > (parseInt(totalPax) || 0)) {
+        Alert.alert('Invalid pax count', 'SC/PWD pax must be less than or equal to total pax.');
+        return;
+      }
+    }
     setIsProcessing(true);
 
     // ✅ Open synchronously inside the click handler, BEFORE any await
@@ -604,6 +646,22 @@ export function ReceiptModal({
         vatExemptType: isVatExemptActive ? vatExemptType : undefined,
         vatExemptRefNo: isVatExemptActive ? vatExemptRefNo : undefined,
         vatExemptAmount: isVatExemptActive ? vatExemptAmount : undefined,
+        customerType,
+        scPwdCustomerInput: customerType !== 'REGULAR'
+          ? {
+            fullName: scPwdFullName.trim(),
+            idNumber: vatExemptRefNo.trim(),
+            idType: scPwdIdType,
+            customerType,
+            dateOfBirth: scPwdDateOfBirth.trim() || undefined,
+            contactNumber: scPwdContactNumber.trim() || undefined,
+            isRepresentative,
+            representativeName: isRepresentative ? representativeName.trim() : undefined,
+            representativeIdNumber: isRepresentative ? representativeIdNumber.trim() : undefined,
+          }
+          : undefined,
+        totalPax: parseInt(totalPax) || undefined,
+        scPwdPax: parseInt(scPwdPax) || undefined,
         outletPromoId: selectedPromoId ?? undefined,
         promoDiscountAmt: discount,
         printWindow, // ✅ pass it in
@@ -665,6 +723,53 @@ export function ReceiptModal({
     total,
     paymentSheetRef,
   };
+
+  const scPwdData: ScPwdCustomerInput = {
+    fullName: scPwdFullName,
+    idNumber: vatExemptRefNo,
+    idType: scPwdIdType,
+    customerType,
+    dateOfBirth: scPwdDateOfBirth,
+    contactNumber: scPwdContactNumber,
+    isRepresentative,
+    representativeName,
+    representativeIdNumber,
+  };
+
+  const updateScPwdData = (data: ScPwdCustomerInput) => {
+    setScPwdFullName(data.fullName ?? '');
+    setVatExemptRefNo(data.idNumber ?? '');
+    setScPwdIdType(data.idType ?? (customerType === 'PWD' ? 'PWD-PDAO' : 'OSCA'));
+    setScPwdDateOfBirth(data.dateOfBirth ?? '');
+    setScPwdContactNumber(data.contactNumber ?? '');
+    setIsRepresentative(Boolean(data.isRepresentative));
+    setRepresentativeName(data.representativeName ?? '');
+    setRepresentativeIdNumber(data.representativeIdNumber ?? '');
+  };
+
+  const customerCaptureBlock = (
+    <View style={rs.customerBlock}>
+      <Text style={[rs.sectionTitle, { color: colors.text }]}>Customer Type</Text>
+      <ScPwdCustomerForm
+        customerType={customerType}
+        onCustomerTypeChange={setCustomerType}
+        scPwdData={scPwdData}
+        onScPwdDataChange={updateScPwdData}
+        discountType={discountOption as any}
+        onDiscountTypeChange={(type) => {
+          setDiscountOption(type as DiscountType);
+          setIsDiscounted(type !== 'NONE');
+          setApplyVatExempt(type === 'SENIOR_CITIZEN' || type === 'PWD');
+        }}
+        totalPax={parseInt(totalPax) || 1}
+        scPwdPax={parseInt(scPwdPax) || 1}
+        onPaxChange={(nextTotalPax, nextScPwdPax) => {
+          setTotalPax(String(nextTotalPax));
+          setScPwdPax(String(Math.min(nextScPwdPax, nextTotalPax)));
+        }}
+      />
+    </View>
+  );
 
   return (
     <>
@@ -759,6 +864,7 @@ export function ReceiptModal({
                     <Text style={[rs.sectionTitle, { color: colors.text }]}>
                       Payment
                     </Text>
+                    {customerCaptureBlock}
                     <PaymentBlock {...paymentProps} />
                   </View>
                 </View>
@@ -797,6 +903,7 @@ export function ReceiptModal({
                   >
                     Payment
                   </Text>
+                  {customerCaptureBlock}
                   <PaymentBlock {...paymentProps} />
                 </ScrollView>
               )}
@@ -932,6 +1039,22 @@ const rs = StyleSheet.create({
   grandLabel: { fontSize: 16, fontWeight: '800' },
   grandValue: { fontSize: 20, fontWeight: '800' },
   paymentBlock: { gap: 12 },
+  customerBlock: { gap: 10, marginBottom: 14 },
+  segmentRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  segmentBtn: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  segmentText: { fontSize: 12, fontWeight: '700' },
+  formInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    fontSize: 13,
+  },
   paymentTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

@@ -170,6 +170,9 @@ export class InventoryService {
             name
           }
           vatExempt
+          isVatExempt
+          isBNPC
+          vatRate
           assembly
           skuNumber
           brandId
@@ -238,6 +241,9 @@ export class InventoryService {
     image?: string;
     itemCode?: string;
     vatExempt?: boolean;
+    isVatExempt?: boolean;
+    isBNPC?: boolean;
+    vatRate?: number;
     vatTypeId?: number;         // ✅ add
     assembly?: boolean;
     skuNumber?: string;
@@ -270,6 +276,9 @@ export class InventoryService {
         category { id name }
         orgCategory { id name }
         vatExempt
+        isVatExempt
+        isBNPC
+        vatRate
         vatTypeId
         assembly
         skuNumber
@@ -312,6 +321,9 @@ export class InventoryService {
           category { id name }
           sellingPrice
           vatExempt
+          isVatExempt
+          isBNPC
+          vatRate
           assembly
           skuNumber
           image
@@ -561,7 +573,10 @@ export class InventoryService {
             barcode
             stock
             vatExempt
-            assembly
+          isVatExempt
+          isBNPC
+          vatRate
+          assembly
             skuNumber
             brandDetails { id name }
             category { id name }
@@ -602,4 +617,46 @@ export class InventoryService {
     }
   }
 
+  static async createScPwdCustomer(data: any): Promise<any> {
+    const MUTATION = gql`
+      mutation CreateScPwdCustomer($data: ScPwdCustomerInput!) {
+        createScPwdCustomer(data: $data) { id fullName idNumber idType customerType isRepresentative representativeName representativeIdNumber }
+      }
+    `;
+    const response = await graphQLRequest<{ createScPwdCustomer: any }>(MUTATION, { data });
+    return response.createScPwdCustomer;
+  }
+
+  static async updateScPwdCustomer(id: string, data: any): Promise<any> {
+    const MUTATION = gql`
+      mutation UpdateScPwdCustomer($id: String!, $data: ScPwdCustomerInput!) {
+        updateScPwdCustomer(id: $id, data: $data) { id fullName idNumber idType customerType isRepresentative representativeName representativeIdNumber }
+      }
+    `;
+    const response = await graphQLRequest<{ updateScPwdCustomer: any }>(MUTATION, { id, data });
+    return response.updateScPwdCustomer;
+  }
+
+  static async getScPwdCustomers(search?: string): Promise<any[]> {
+    const QUERY = gql`
+      query ScPwdCustomers($search: String) {
+        scPwdCustomers(search: $search) { id fullName idNumber idType customerType dateOfBirth contactNumber address isRepresentative representativeName representativeIdNumber createdAt updatedAt }
+      }
+    `;
+    const response = await graphQLRequest<{ scPwdCustomers: any[] }>(QUERY, { search });
+    return response.scPwdCustomers ?? [];
+  }
+
+  static async getScPwdCustomer(id: string): Promise<any> {
+    const QUERY = gql`
+      query ScPwdCustomer($id: String!) {
+        scPwdCustomer(id: $id) { id fullName idNumber idType customerType dateOfBirth contactNumber address isRepresentative representativeName representativeIdNumber createdAt updatedAt }
+      }
+    `;
+    const response = await graphQLRequest<{ scPwdCustomer: any }>(QUERY, { id });
+    return response.scPwdCustomer;
+  }
 }
+
+
+

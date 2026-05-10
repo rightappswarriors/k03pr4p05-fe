@@ -18,8 +18,9 @@ export const DisplayProvider: React.FC<{ children: React.ReactNode }> = ({ child
   useEffect(() => {
     const checkDisplays = async () => {
       try {
-        if (ExternalDisplay && ExternalDisplay.getDisplays) {
-          const displays = await ExternalDisplay.getDisplays();
+        const displayModule = ExternalDisplay as any;
+        if (displayModule && displayModule.getDisplays) {
+          const displays = await displayModule.getDisplays();
           setHasSecondScreen(displays.length > 0);
         } else {
           // On platforms where external display is not supported (like web)

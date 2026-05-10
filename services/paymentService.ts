@@ -20,8 +20,13 @@ export class ReceiptService {
   vatExemptType,
   vatExemptRefNo,
   vatExemptAmount,
+  customerType = 'REGULAR',
+  scPwdCustomerInput,
+  totalPax,
+  scPwdPax,
   outletPromoId,
   promoDiscountAmt,
+  printWindow,
 }: {
   items: any[];
   paymentMethod?: 'CASH' | 'CARD' | 'DIGITAL';
@@ -35,21 +40,26 @@ export class ReceiptService {
   vatExemptType?: 'SENIOR_CITIZEN' | 'PWD' | 'DIPLOMAT' | 'GOVERNMENT';
   vatExemptRefNo?: string;
   vatExemptAmount?: number;
+  customerType?: string;
+  scPwdCustomerInput?: any;
+  totalPax?: number;
+  scPwdPax?: number;
   outletPromoId?: number;
   promoDiscountAmt?: number;
+  printWindow?: Window | null;
 }) {
   try {
-    let printWindow: Window | null = null;
+    let activePrintWindow: Window | null = printWindow ?? null;
     if (Platform.OS === 'web') {
-      printWindow = window.open('', '_blank', 'width=500,height=800');
-      if (!printWindow) {
+      activePrintWindow = activePrintWindow ?? window.open('', '_blank', 'width=500,height=800');
+      if (!activePrintWindow) {
         window.alert('Unable to open print window. Please allow popups for this site.');
         onFail?.();
         return;
       }
     }
 
-    const { total, subtotal, vatAmount, discount, discountRate } =
+    const { total, subtotal, vatAmount, discount, discountRate, vatExemptSale, itemBreakdown } =
       calculateTotal(items, outlet, {
         type: discountOption as any,
         applyVatExempt: Boolean(isVatExempt),
@@ -67,7 +77,8 @@ export class ReceiptService {
     const change = cashReceived - total;
 
     // Calculate per-item VAT
-    const itemsWithVat = items.map((data) => {
+    const itemsWithVat = items.map((data, index) => {
+      const computedLine = itemBreakdown?.[index] ?? {};
       let itemVat = 0;
       if (outlet.isVatRegistered && data.vatExempt !== true && !isVatExempt) {
         const itemPrice = data.priceAtSale ?? data.price;
@@ -96,6 +107,11 @@ export class ReceiptService {
         vatExempt: data.vatExempt,
         barcode: data.barcode,
         itemVatAmount: itemVat, // ← per-item VAT
+        discountType: computedLine.discountType,
+        discountRate: computedLine.discountRate ?? data.discountRate,
+        originalPrice: computedLine.originalPrice ?? (data.priceAtSale ?? data.price),
+        vatExclusivePrice: computedLine.vatExclusivePrice,
+        finalPrice: computedLine.finalPrice ?? (data.priceAtSale ?? data.price),
       };
     });
 
@@ -111,6 +127,7 @@ export class ReceiptService {
       totals: {
         subtotal: parseFloat(subtotal.toFixed(2)),
         vatAmount: parseFloat(vatAmount.toFixed(2)),
+        vatExemptSale: parseFloat((vatExemptSale ?? 0).toFixed(2)),
         total: parseFloat(total.toFixed(2)),
         discountType:
           discountOption !== 'NONE' && (discount !== 0 || isVatExempt)
@@ -137,6 +154,7 @@ export class ReceiptService {
         method: paymentMethod,
         status: 'Completed',
       },
+      scPwdCustomer: scPwdCustomerInput,
     };
 
     const outletId = Number(outlet?.id);
@@ -160,6 +178,7 @@ export class ReceiptService {
       total: parseFloat(total.toFixed(2)),
       subtotal: parseFloat(subtotal.toFixed(2)),
       vatAmount: parseFloat(vatAmount.toFixed(2)),
+        vatExemptSale: parseFloat((vatExemptSale ?? 0).toFixed(2)),
       paymentMethod,
       status: 'COMPLETED',
       createdAt: new Date().toISOString(),
@@ -174,6 +193,11 @@ export class ReceiptService {
         discountOption !== 'NONE' && (discount !== 0 || isVatExempt)
           ? discount
           : undefined,
+      customerType,
+      scPwdCustomerInput,
+      discountRate,
+      totalPax,
+      scPwdPax,
       outletPromoId,
       promoDiscountAmt,
       isVatExempt: Boolean(isVatExempt),
@@ -183,7 +207,7 @@ export class ReceiptService {
     });
 
     // ← await print, no setTimeout
-    const printed = await PrinterService.printOrderReceipt(receiptData, printWindow);
+    const printed = await PrinterService.printOrderReceipt(receiptData, activePrintWindow);
     if (!printed) {
       throw new Error('Unable to print receipt.');
     }
@@ -210,3 +234,6 @@ export class ReceiptService {
   }
 }
 }
+
+
+

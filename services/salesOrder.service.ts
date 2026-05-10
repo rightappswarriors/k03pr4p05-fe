@@ -1,21 +1,64 @@
 // services/salesOrder.service.ts
-// Frontend service for SalesOrder ERP fulfillment flow
-
 import { gql } from "graphql-request";
 import { graphQLRequest } from "./apiClient";
 import { formatGraphQLError } from "@/utils/errorFormatter";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
+export type OrderMode = "WALK_IN" | "PICK_UP" | "DELIVERY";
 export type SalesOrderStatus =
-  | "ORDERED"
+  | "PENDING"
   | "PROCESSING"
-  | "SHIPPED"
+  | "READY_FOR_PICKUP"
+  | "OUT_FOR_DELIVERY"
+  | "COMPLETED"
+  | "CANCELLED"
   | "RECEIVED"
-  | "CANCELLED";
+  | "ORDERED"
+  | "SHIPPED";
+
+export type CustomerType = "REGULAR" | "SENIOR_CITIZEN" | "PWD";
+export type DiscountType =
+  | "NONE"
+  | "SENIOR_CITIZEN"
+  | "PWD"
+  | "BNPC_SENIOR_CITIZEN"
+  | "BNPC_PWD"
+  | "CUSTOM";
+
+export interface ScPwdCustomerInput {
+  id?: string;
+  fullName: string;
+  idNumber: string;
+  idType?: string;
+  customerType?: CustomerType;
+  dateOfBirth?: string;
+  contactNumber?: string;
+  address?: string;
+  isRepresentative?: boolean;
+  representativeName?: string;
+  representativeIdNumber?: string;
+}
+
+export interface ScPwdCustomer {
+  id: string;
+  fullName: string;
+  idNumber: string;
+  idType: string;
+  customerType: CustomerType;
+  isRepresentative: boolean;
+  representativeName?: string;
+  representativeIdNumber?: string;
+}
+
+export interface ExtraCharge {
+  id: string;
+  label: string;
+  amount: number;
+  salesOrderId: string;
+  createdAt: string;
+}
 
 export interface SalesOrderItemInput {
-  itemId?: number;              // optional — omit for custom items
+  itemId?: number;
   quantity: number;
   unitPrice: number;
   unitId?: number;
@@ -23,10 +66,9 @@ export interface SalesOrderItemInput {
   discountQuantity?: number;
   discountRate?: number;
   discountAmount?: number;
-  // ── Custom item fields ────────────────────────────────────────────────
-  isCustomItem?: boolean;       // true = manually entered by staff
-  customItemName?: string;      // name shown on order for custom items
-  vatExempt?: boolean;          // VAT override for custom items
+  isCustomItem?: boolean;
+  customItemName?: string;
+  vatExempt?: boolean;
 }
 
 export interface DeliveryInput {
@@ -56,7 +98,7 @@ export interface SalesOrderDelivery {
 export interface SalesOrderItem {
   id: number;
   salesOrderId: string;
-  itemId?: number;              // nullable — absent for custom items
+  itemId?: number;
   quantity: number;
   unitPrice: number;
   totalPrice: number;
@@ -65,7 +107,6 @@ export interface SalesOrderItem {
   discountQuantity?: number;
   discountRate?: number;
   discountAmount?: number;
-  // ── Custom item fields ────────────────────────────────────────────────
   isCustomItem: boolean;
   customItemName?: string;
   vatExempt: boolean;
@@ -74,6 +115,9 @@ export interface SalesOrderItem {
     name: string;
     image?: string;
     vatExempt?: boolean;
+    isVatExempt?: boolean;
+    isBNPC?: boolean;
+    vatRate?: number;
   };
 }
 
@@ -81,6 +125,7 @@ export interface SalesOrder {
   id: string;
   orderNumber: string;
   customer: string;
+  orderMode: OrderMode;
   status: SalesOrderStatus;
   date: string;
   updatedAt: string;
@@ -88,12 +133,25 @@ export interface SalesOrder {
   userId?: number;
   outletId?: number;
   branchId?: number;
+  customerName?: string;
+  customerContact?: string;
+  customerType: CustomerType;
+  discountType: DiscountType;
   subtotal: number;
   discountAmount: number;
   vatAmount: number;
+  vatExemptSale: number;
   total: number;
   vatRate: number;
   discountRate: number;
+  totalPax?: number;
+  scPwdPax?: number;
+  scPwdCustomer?: ScPwdCustomer;
+  extraCharges: ExtraCharge[];
+  deliveryAddress?: string;
+  deliveryNotes?: string;
+  extraChargesTotal: number;
+  grandTotal: number;
   outletPromoId?: number;
   items: SalesOrderItem[];
   delivery?: SalesOrderDelivery;
@@ -101,6 +159,11 @@ export interface SalesOrder {
     id: number;
     name: string;
     code: string;
+    address?: string;
+    tin?: string;
+    ptu?: string;
+    bir?: string;
+    isVatRegistered?: boolean;
   };
   branch?: {
     id: number;
@@ -160,6 +223,9 @@ export interface InventoryItemForSales {
     barcode: string;
     description?: string;
     vatExempt?: boolean;
+    isVatExempt?: boolean;
+    isBNPC?: boolean;
+    vatRate?: number;
   };
   units: {
     id: number;
@@ -185,13 +251,23 @@ export interface VatType {
   rate: number;
 }
 
-// ─── Fragment ─────────────────────────────────────────────────────────────────
+export interface SalesOrderFilterInput {
+  status?: SalesOrderStatus;
+  orderMode?: OrderMode;
+  discountType?: DiscountType;
+  outletId?: number;
+  branchId?: number;
+  startDate?: string;
+  endDate?: string;
+  customerName?: string;
+}
 
 const SALES_ORDER_FRAGMENT = gql`
   fragment SalesOrderFields on SalesOrder {
     id
     orderNumber
     customer
+    orderMode
     status
     date
     updatedAt
@@ -199,15 +275,44 @@ const SALES_ORDER_FRAGMENT = gql`
     userId
     outletId
     branchId
+    customerName
+    customerContact
+    customerType
+    discountType
     subtotal
     discountAmount
     vatAmount
+    vatExemptSale
     total
     vatRate
     discountRate
+    totalPax
+    scPwdPax
+    deliveryAddress
+    deliveryNotes
+    extraChargesTotal
+    grandTotal
     outletPromoId
+    scPwdCustomer {
+      id
+      fullName
+      idNumber
+      idType
+      customerType
+      isRepresentative
+      representativeName
+      representativeIdNumber
+    }
+    extraCharges {
+      id
+      label
+      amount
+      salesOrderId
+      createdAt
+    }
     items {
       id
+      salesOrderId
       itemId
       quantity
       unitPrice
@@ -225,10 +330,14 @@ const SALES_ORDER_FRAGMENT = gql`
         name
         image
         vatExempt
+        isVatExempt
+        isBNPC
+        vatRate
       }
     }
     delivery {
       id
+      salesOrderId
       courierName
       trackingNumber
       address
@@ -243,6 +352,11 @@ const SALES_ORDER_FRAGMENT = gql`
       id
       name
       code
+      address
+      tin
+      ptu
+      bir
+      isVatRegistered
     }
     branch {
       id
@@ -251,33 +365,29 @@ const SALES_ORDER_FRAGMENT = gql`
   }
 `;
 
-// ─── Service Class ────────────────────────────────────────────────────────────
-
 export class SalesOrderService {
-  // ── Queries ─────────────────────────────────────────────────────────────────
-
-  static async getSalesOrders(filters?: {
-    status?: SalesOrderStatus;
-    outletId?: number;
-    branchId?: number;
-    startDate?: string;
-    endDate?: string;
-  }): Promise<SalesOrder[]> {
+  static async getSalesOrders(filters?: SalesOrderFilterInput): Promise<SalesOrder[]> {
     const QUERY = gql`
       ${SALES_ORDER_FRAGMENT}
       query GetSalesOrders(
         $status: SalesOrderStatusEnum
+        $orderMode: OrderModeEnum
+        $discountType: DiscountType
         $outletId: Int
         $branchId: Int
         $startDate: String
         $endDate: String
+        $customerName: String
       ) {
         getSalesOrders(
           status: $status
+          orderMode: $orderMode
+          discountType: $discountType
           outletId: $outletId
           branchId: $branchId
           startDate: $startDate
           endDate: $endDate
+          customerName: $customerName
         ) {
           ...SalesOrderFields
         }
@@ -305,15 +415,38 @@ export class SalesOrderService {
       }
     `;
     try {
-      const response = await graphQLRequest<{ getSalesOrder: SalesOrder | null }>(
-        QUERY,
-        { id }
-      );
+      const response = await graphQLRequest<{ getSalesOrder: SalesOrder | null }>(QUERY, { id });
       return response.getSalesOrder;
     } catch (error) {
       console.error("getSalesOrder error:", formatGraphQLError(error));
       return null;
     }
+  }
+
+  static async getSalesOrdersByStatus(status: SalesOrderStatus): Promise<SalesOrder[]> {
+    const QUERY = gql`
+      ${SALES_ORDER_FRAGMENT}
+      query SalesOrdersByStatus($status: SalesOrderStatusEnum!) {
+        salesOrdersByStatus(status: $status) {
+          ...SalesOrderFields
+        }
+      }
+    `;
+    const response = await graphQLRequest<{ salesOrdersByStatus: SalesOrder[] }>(QUERY, { status });
+    return response.salesOrdersByStatus ?? [];
+  }
+
+  static async getSalesOrdersByMode(orderMode: OrderMode): Promise<SalesOrder[]> {
+    const QUERY = gql`
+      ${SALES_ORDER_FRAGMENT}
+      query SalesOrdersByMode($orderMode: OrderModeEnum!) {
+        salesOrdersByMode(orderMode: $orderMode) {
+          ...SalesOrderFields
+        }
+      }
+    `;
+    const response = await graphQLRequest<{ salesOrdersByMode: SalesOrder[] }>(QUERY, { orderMode });
+    return response.salesOrdersByMode ?? [];
   }
 
   static async getBranches(): Promise<Branch[]> {
@@ -371,9 +504,7 @@ export class SalesOrderService {
       }
     `;
     try {
-      const response = await graphQLRequest<{
-        getOutletsByBranch: OutletForSales[];
-      }>(QUERY, { branchId });
+      const response = await graphQLRequest<{ getOutletsByBranch: OutletForSales[] }>(QUERY, { branchId });
       return response.getOutletsByBranch ?? [];
     } catch (error) {
       console.error("getOutletsByBranch error:", formatGraphQLError(error));
@@ -400,12 +531,10 @@ export class SalesOrderService {
     }
   }
 
-  static async getOutletInventoryItems(
-    outletId: number | null
-  ): Promise<InventoryItemForSales[]> {
+  static async getOutletInventoryItems(outletId: number | null, branchId?: number | null): Promise<InventoryItemForSales[]> {
     const QUERY = gql`
-      query GetOutletInventoryItems($outletId: Int) {
-        getOutletInventoryItems(outletId: $outletId) {
+      query GetOutletInventoryItems($outletId: Int, $branchId: Int) {
+        getOutletInventoryItems(outletId: $outletId, branchId: $branchId) {
           id
           itemId
           price
@@ -418,6 +547,9 @@ export class SalesOrderService {
             barcode
             description
             vatExempt
+            isVatExempt
+            isBNPC
+            vatRate
           }
           units {
             id
@@ -439,9 +571,10 @@ export class SalesOrderService {
       }
     `;
     try {
-      const response = await graphQLRequest<{
-        getOutletInventoryItems: InventoryItemForSales[];
-      }>(QUERY, { outletId: outletId ?? null });
+      const response = await graphQLRequest<{ getOutletInventoryItems: InventoryItemForSales[] }>(
+        QUERY,
+        { outletId: outletId ?? null, branchId: branchId ?? null }
+      );
       return response.getOutletInventoryItems ?? [];
     } catch (error) {
       console.error("getOutletInventoryItems error:", formatGraphQLError(error));
@@ -451,23 +584,14 @@ export class SalesOrderService {
 
   static async searchInventoryItems(params: {
     outletId?: number | null;
+    branchId?: number | null;
     search?: string;
     skip?: number;
     take?: number;
   }): Promise<{ items: InventoryItemForSales[]; hasMore: boolean }> {
     const QUERY = gql`
-      query SearchInventoryItems(
-        $outletId: Int
-        $search: String
-        $skip: Int!
-        $take: Int!
-      ) {
-        searchInventoryItems(
-          outletId: $outletId
-          search: $search
-          skip: $skip
-          take: $take
-        ) {
+      query SearchInventoryItems($outletId: Int, $branchId: Int, $search: String, $skip: Int!, $take: Int!) {
+        searchInventoryItems(outletId: $outletId, branchId: $branchId, search: $search, skip: $skip, take: $take) {
           items {
             id
             itemId
@@ -481,6 +605,9 @@ export class SalesOrderService {
               barcode
               description
               vatExempt
+              isVatExempt
+              isBNPC
+              vatRate
             }
             units {
               id
@@ -508,6 +635,7 @@ export class SalesOrderService {
         searchInventoryItems: { items: InventoryItemForSales[]; hasMore: boolean };
       }>(QUERY, {
         outletId: params.outletId ?? null,
+        branchId: params.branchId ?? null,
         search: params.search || null,
         skip: params.skip || 0,
         take: params.take || 50,
@@ -519,41 +647,72 @@ export class SalesOrderService {
     }
   }
 
-  // ── Mutations ────────────────────────────────────────────────────────────────
-
   static async createSalesOrder(data: {
-    customer: string;
-    outletId: number;
-    branchId: number;
+    customer?: string;
+    orderMode: OrderMode;
+    customerName?: string;
+    customerContact?: string;
+    outletId?: number;
+    branchId?: number;
     items: SalesOrderItemInput[];
-    subtotal: number;
-    discountAmount: number;
-    discountRate: number;
-    vatAmount: number;
-    vatRate: number;
-    total: number;
+    customerType?: CustomerType;
+    scPwdCustomerInput?: ScPwdCustomerInput;
+    discountType?: DiscountType;
+    totalPax?: number;
+    scPwdPax?: number;
+    extraCharges?: { label: string; amount: number }[];
+    deliveryAddress?: string;
+    deliveryNotes?: string;
+    subtotal?: number;
+    discountAmount?: number;
+    discountRate?: number;
+    vatAmount?: number;
+    vatRate?: number;
+    total?: number;
     outletPromoId?: number;
   }): Promise<SalesOrder> {
     const MUTATION = gql`
       ${SALES_ORDER_FRAGMENT}
       mutation CreateSalesOrder(
-        $customer: String!
-        $outletId: Int!
-        $branchId: Int!
+        $customer: String
+        $orderMode: OrderModeEnum!
+        $customerName: String
+        $customerContact: String
+        $outletId: Int
+        $branchId: Int
         $items: [SalesOrderItemInput!]!
-        $subtotal: Float!
-        $discountAmount: Float!
-        $discountRate: Float!
-        $vatAmount: Float!
-        $vatRate: Float!
-        $total: Float!
+        $customerType: CustomerType
+        $scPwdCustomerInput: ScPwdCustomerInput
+        $discountType: DiscountType
+        $totalPax: Int
+        $scPwdPax: Int
+        $extraCharges: [ExtraChargeInput!]
+        $deliveryAddress: String
+        $deliveryNotes: String
+        $subtotal: Float
+        $discountAmount: Float
+        $discountRate: Float
+        $vatAmount: Float
+        $vatRate: Float
+        $total: Float
         $outletPromoId: Int
       ) {
         createSalesOrder(
           customer: $customer
+          orderMode: $orderMode
+          customerName: $customerName
+          customerContact: $customerContact
           outletId: $outletId
           branchId: $branchId
           items: $items
+          customerType: $customerType
+          scPwdCustomerInput: $scPwdCustomerInput
+          discountType: $discountType
+          totalPax: $totalPax
+          scPwdPax: $scPwdPax
+          extraCharges: $extraCharges
+          deliveryAddress: $deliveryAddress
+          deliveryNotes: $deliveryNotes
           subtotal: $subtotal
           discountAmount: $discountAmount
           discountRate: $discountRate
@@ -566,33 +725,60 @@ export class SalesOrderService {
         }
       }
     `;
-    const response = await graphQLRequest<{ createSalesOrder: SalesOrder }>(
-      MUTATION,
-      data
-    );
+    const response = await graphQLRequest<{ createSalesOrder: SalesOrder }>(MUTATION, data);
     return response.createSalesOrder;
   }
 
-  static async processSalesOrder(id: string): Promise<SalesOrder> {
+  static async updateSalesOrderStatus(salesOrderId: string, status: SalesOrderStatus): Promise<SalesOrder> {
     const MUTATION = gql`
       ${SALES_ORDER_FRAGMENT}
-      mutation ProcessSalesOrder($id: String!) {
-        processSalesOrder(id: $id) {
+      mutation UpdateSalesOrderStatus($salesOrderId: String!, $status: SalesOrderStatusEnum!) {
+        updateSalesOrderStatus(salesOrderId: $salesOrderId, status: $status) {
           ...SalesOrderFields
         }
       }
     `;
-    const response = await graphQLRequest<{ processSalesOrder: SalesOrder }>(
+    const response = await graphQLRequest<{ updateSalesOrderStatus: SalesOrder }>(
       MUTATION,
-      { id }
+      { salesOrderId, status }
     );
-    return response.processSalesOrder;
+    return response.updateSalesOrderStatus;
   }
 
-  static async shipSalesOrder(
-    id: string,
-    delivery: DeliveryInput
-  ): Promise<SalesOrder> {
+  static async addExtraCharge(salesOrderId: string, label: string, amount: number): Promise<SalesOrder> {
+    const MUTATION = gql`
+      ${SALES_ORDER_FRAGMENT}
+      mutation AddExtraCharge($salesOrderId: String!, $label: String!, $amount: Float!) {
+        addExtraCharge(salesOrderId: $salesOrderId, label: $label, amount: $amount) {
+          ...SalesOrderFields
+        }
+      }
+    `;
+    const response = await graphQLRequest<{ addExtraCharge: SalesOrder }>(
+      MUTATION,
+      { salesOrderId, label, amount }
+    );
+    return response.addExtraCharge;
+  }
+
+  static async removeExtraCharge(extraChargeId: string): Promise<SalesOrder> {
+    const MUTATION = gql`
+      ${SALES_ORDER_FRAGMENT}
+      mutation RemoveExtraCharge($extraChargeId: String!) {
+        removeExtraCharge(extraChargeId: $extraChargeId) {
+          ...SalesOrderFields
+        }
+      }
+    `;
+    const response = await graphQLRequest<{ removeExtraCharge: SalesOrder }>(MUTATION, { extraChargeId });
+    return response.removeExtraCharge;
+  }
+
+  static async processSalesOrder(id: string): Promise<SalesOrder> {
+    return this.updateSalesOrderStatus(id, "PROCESSING");
+  }
+
+  static async shipSalesOrder(id: string, delivery: DeliveryInput): Promise<SalesOrder> {
     const MUTATION = gql`
       ${SALES_ORDER_FRAGMENT}
       mutation ShipSalesOrder($id: String!, $delivery: DeliveryInput!) {
@@ -609,37 +795,10 @@ export class SalesOrderService {
   }
 
   static async receiveSalesOrder(id: string): Promise<SalesOrder> {
-    const MUTATION = gql`
-      ${SALES_ORDER_FRAGMENT}
-      mutation ReceiveSalesOrder($id: String!) {
-        receiveSalesOrder(id: $id) {
-          ...SalesOrderFields
-        }
-      }
-    `;
-    const response = await graphQLRequest<{ receiveSalesOrder: SalesOrder }>(
-      MUTATION,
-      { id }
-    );
-    return response.receiveSalesOrder;
+    return this.updateSalesOrderStatus(id, "COMPLETED");
   }
 
-  static async cancelSalesOrder(
-    id: string,
-    reason?: string
-  ): Promise<SalesOrder> {
-    const MUTATION = gql`
-      ${SALES_ORDER_FRAGMENT}
-      mutation CancelSalesOrder($id: String!, $reason: String) {
-        cancelSalesOrder(id: $id, reason: $reason) {
-          ...SalesOrderFields
-        }
-      }
-    `;
-    const response = await graphQLRequest<{ cancelSalesOrder: SalesOrder }>(
-      MUTATION,
-      { id, reason }
-    );
-    return response.cancelSalesOrder;
+  static async cancelSalesOrder(id: string): Promise<SalesOrder> {
+    return this.updateSalesOrderStatus(id, "CANCELLED");
   }
 }

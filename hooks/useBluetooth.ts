@@ -161,7 +161,7 @@ export function useBluetooth() {
         BluetoothEscposPrinter.ALIGN.LEFT
       );
       await BluetoothEscposPrinter.printText(
-        `PTU#: PTU-${receipt.outlet.ptu}\n`
+        `PTU#: PTU-${receipt.outlet?.ptu ?? ''}\n`
       );
       // BIR Accreditation No: SASP-#####
       await BluetoothEscposPrinter.printerAlign(

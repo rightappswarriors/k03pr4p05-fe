@@ -26,7 +26,7 @@ export function BarcodeScanner({ onClose}: BarcodeScannerProps) {
   const [flashEnabled, setFlashEnabled] = useState(false);
   const [scanned, setScanned] = useState(false);
   const [sound, setSound] = useState<Audio.Sound | null>(null);
-  const scanTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { 
     scannerVisible: visible,
     items,

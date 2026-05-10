@@ -12,7 +12,10 @@ export interface Item {
   categoryId?: string;
   color?: string;
   vatExempt?: boolean;
-  units?: ItemUnit[];      // ← new
+  isVatExempt?: boolean;
+  isBNPC?: boolean;
+  vatRate?: number;
+  units?: ItemUnit[];
 }
 export interface CartItem {
   id: string;
@@ -28,7 +31,10 @@ export interface CartItem {
 
   discountQuantity?: number; // ← new — per-item discount amount
   discountRate?: number; // ← new — per-item discount amount
-  vatExempt?: boolean;       // ← renamed from vatable
+  vatExempt?: boolean;
+  isVatExempt?: boolean;
+  isBNPC?: boolean;
+  vatRate?: number;
   barcode?: string;
   itemVatAmount?: number;  // ← new — per-item VAT (12% by default, 0 if vatExempt=true)
 }
@@ -83,6 +89,7 @@ export interface User {
   orgId?: number;
   org?: OrganizationInfo | null;
   assignedOutletId?: string; // For cashiers
+  assignedStoreId?: string;
   createdAt: string;
   profilePhoto?: string;
 }
@@ -149,7 +156,8 @@ export interface Outlet {
 export const NO_DISCOUNT: DiscountType = 'NONE';
 
 // Update DiscountType to include SC/PWD:
-export type DiscountType = 'NONE' | 'SENIOR' | 'PWD' | 'PROMO' | string;
+export type DiscountType = 'NONE' | 'SENIOR' | 'SENIOR_CITIZEN' | 'PWD' | 'BNPC_SENIOR_CITIZEN' | 'BNPC_PWD' | 'CUSTOM' | 'PROMO' | string;
+export type CustomerType = 'REGULAR' | 'SENIOR_CITIZEN' | 'PWD';
 export interface DiscountOptions {
   type: DiscountType;
   promoPercent?: number;
@@ -165,17 +173,21 @@ export type CalculationResult = {
   subtotal: number;
   discount: number;
   vatAmount: number;
+  vatExemptSale?: number;
   discountRate: number;
   total: number;
+  netTotal?: number;
   isVatExempt?: boolean;
   scPwdDiscountAmt?: number;
   vatExemptAmount?: number;
+  itemBreakdown?: any[];
   usePromoInstead?: boolean;
 };
 
 export interface Receipt {
   user?: User;
   outlet?: Outlet;
+  store?: any;
   transaction: {
     id: string;
     date: string;
@@ -196,12 +208,14 @@ export interface Receipt {
     isVatExempt?: boolean;
     vatExemptType?: 'SENIOR_CITIZEN' | 'PWD' | 'DIPLOMAT' | 'GOVERNMENT';
     vatExemptRefNo?: string;
+    vatExemptSale?: number;
     vatExemptAmount?: number;
   };
   payment: {
     status: string;
     method: string;
   };
+  scPwdCustomer?: any;
 }
 export interface ReceiptItem {
   id: string;
@@ -214,7 +228,15 @@ export interface ReceiptItem {
   unitLabel?: string;      // "Per Kilo", "Per Dozen"
   subtotal: number;        // priceAtSale * quantity
   discountAmount?: number; // ← new — per-item discount
+  discountType?: DiscountType;
+  discountRate?: number;
+  originalPrice?: number;
+  vatExclusivePrice?: number;
+  finalPrice?: number;
   vatExempt?: boolean;
+  isVatExempt?: boolean;
+  isBNPC?: boolean;
+  vatRate?: number;
   barcode?: string;
   itemVatAmount?: number;  // ← new — per-item VAT
 }
@@ -487,3 +509,5 @@ export interface CatalogItem {
   costLines: CostLine[] | [];
   stock?: number;
 }
+
+

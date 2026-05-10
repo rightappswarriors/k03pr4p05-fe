@@ -15,6 +15,14 @@ export class SalesService {
           total
           subtotal
           vatAmount
+          vatExemptSale
+          customerType
+          discountType
+          discountRate
+          discountAmount
+          totalPax
+          scPwdPax
+          scPwdCustomer { id fullName idNumber idType customerType isRepresentative representativeName representativeIdNumber }
           paymentMethod
           status
           createdAt
@@ -22,6 +30,12 @@ export class SalesService {
             itemId
             quantity
             priceAtSale
+            discountType
+            discountRate
+            discountAmount
+            originalPrice
+            vatExclusivePrice
+            finalPrice
           }
         }
       }
@@ -93,7 +107,13 @@ export class SalesService {
           itemId
           quantity
           priceAtSale
-        }
+            discountType
+            discountRate
+            discountAmount
+            originalPrice
+            vatExclusivePrice
+            finalPrice
+          }
       }
     }
   `;
@@ -118,15 +138,21 @@ export class SalesService {
     total: number;
     subtotal: number;
     vatAmount: number;
+    vatExemptSale?: number;
     paymentMethod: string;
     status: string;
     createdAt: string;
-    itemsSold: Array<{ itemId: number; quantity: number; price: number; priceAtSale: number; unitId?: number; unitName?: string }>;
+    itemsSold: Array<{ itemId: number; quantity: number; price: number; priceAtSale: number; unitId?: number; unitName?: string; discountType?: string; discountRate?: number; discountAmount?: number; originalPrice?: number; vatExclusivePrice?: number; finalPrice?: number }>;
     cashReceived?: number;
     change?: number;
     paymentType?: string;
+    customerType?: string;
+    scPwdCustomerInput?: any;
     discountType?: string;
+    discountRate?: number;
     discountAmount?: number;
+    totalPax?: number;
+    scPwdPax?: number;
     isVatExempt?: boolean;
     vatExemptType?: string;
     vatExemptRefNo?: string;
@@ -141,6 +167,7 @@ export class SalesService {
         $total: Float!
         $subtotal: Float!
         $vatAmount: Float!
+        $vatExemptSale: Float
         $paymentMethod: PaymentMethod!
         $status: Status!
         $createdAt: String!
@@ -148,8 +175,13 @@ export class SalesService {
         $cashReceived: Float
         $change: Float
         $paymentType: String
-        $discountType: String
+        $discountType: DiscountType
         $discountAmount: Float
+        $customerType: CustomerType
+        $scPwdCustomerInput: ScPwdCustomerInput
+        $discountRate: Float
+        $totalPax: Int
+        $scPwdPax: Int
         $isVatExempt: Boolean
         $vatExemptType: VatExemptType
         $vatExemptRefNo: String
@@ -163,6 +195,7 @@ export class SalesService {
           total: $total
           subtotal: $subtotal
           vatAmount: $vatAmount
+          vatExemptSale: $vatExemptSale
           paymentMethod: $paymentMethod
           status: $status
           createdAt: $createdAt
@@ -172,6 +205,11 @@ export class SalesService {
           paymentType: $paymentType
           discountType: $discountType
           discountAmount: $discountAmount
+          customerType: $customerType
+          scPwdCustomerInput: $scPwdCustomerInput
+          discountRate: $discountRate
+          totalPax: $totalPax
+          scPwdPax: $scPwdPax
           isVatExempt: $isVatExempt
           vatExemptType: $vatExemptType
           vatExemptRefNo: $vatExemptRefNo
@@ -197,11 +235,17 @@ export class SalesService {
         total: data.total,
         subtotal: data.subtotal,
         vatAmount: data.vatAmount,
+        vatExemptSale: data.vatExemptSale,
         paymentMethod: data.paymentMethod,
         status: data.status,
         createdAt: data.createdAt,
         itemsSold: data.itemsSold,
         discountType: data.discountType,
+        customerType: data.customerType,
+        scPwdCustomerInput: data.scPwdCustomerInput,
+        discountRate: data.discountRate,
+        totalPax: data.totalPax,
+        scPwdPax: data.scPwdPax,
         discountAmount: data.discountAmount,
         isVatExempt: data.isVatExempt,
         vatExemptType: data.vatExemptType,
@@ -310,4 +354,40 @@ export class SalesService {
     });
     return response.finalizeTransaction;
   }
+  static async getBirDiscountLogbook(startDate?: string, endDate?: string): Promise<any[]> {
+    const QUERY = gql`
+      query BirDiscountLogbook($startDate: String, $endDate: String) {
+        birDiscountLogbook(startDate: $startDate, endDate: $endDate) {
+          date
+          orNumber
+          fullName
+          idNumber
+          itemsPurchased
+          totalBeforeDiscount
+          discountAmount
+          netAmountPaid
+          discountType
+        }
+      }
+    `;
+    const response = await graphQLRequest<{ birDiscountLogbook: any[] }>(QUERY, { startDate, endDate });
+    return response.birDiscountLogbook ?? [];
+  }
+
+  static async getTransactionsByDiscountType(discountType: string): Promise<any[]> {
+    const QUERY = gql`
+      query TransactionsByDiscountType($discountType: DiscountType!) {
+        transactionsByDiscountType(discountType: $discountType) {
+          id total subtotal vatAmount vatExemptSale customerType discountType discountRate discountAmount createdAt
+          scPwdCustomer { id fullName idNumber idType customerType }
+          items { itemId quantity priceAtSale discountType discountRate discountAmount originalPrice vatExclusivePrice finalPrice }
+        }
+      }
+    `;
+    const response = await graphQLRequest<{ transactionsByDiscountType: any[] }>(QUERY, { discountType });
+    return response.transactionsByDiscountType ?? [];
+  }
 }
+
+
+

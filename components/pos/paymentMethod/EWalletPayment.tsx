@@ -6,13 +6,16 @@ import { useRouter } from "expo-router";
 import { ReceiptService } from '@/services/paymentService';
 import { useDisplay } from '@/contexts/DisplayContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function EWalletPayment() {
   const router = useRouter();
   const {
     cartItems: items,
-    clearCart
+    clearCart,
+    outlet
   } = usePOS()
+  const { user } = useAuth();
   
   const { hasSecondScreen } = useDisplay();
   const [selectedWallet, setSelectedWallet] = useState('PH_GCASH'); // Default
@@ -81,16 +84,18 @@ export default function EWalletPayment() {
     }
     // Logic to process payment via phone number (e.g., initiate a push payment to the e-wallet)
     Alert.alert('Payment Processed', `Initiating ${selectedWallet} payment for ${phoneNumber}`);
+    if (!user || !outlet) return;
 
     const handlePrintReceipt = () => {
       setIsProcessing(true);
       ReceiptService.processAndPrintReceipt({
         items,
-        paymentMethod: "digital",
-        discountOption: discountOption ? discountOption : "NONE",
+        user,
+        outlet,
+        paymentMethod: "DIGITAL",
+        discountOption: "NONE",
         onSuccess: () => {
           setIsProcessing(false);
-          onOrderPlaced?.();
           clearCart();
         },
         onFail: () => setIsProcessing(false),
