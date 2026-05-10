@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(npm list:*)",
-      "Bash(node scripts/fix-react-native-maps.js)",
-      "Bash(npm run:*)"
-    ]
-  }
-}
