@@ -35,6 +35,7 @@ export interface CartItem {
   isVatExempt?: boolean;
   isBNPC?: boolean;
   vatRate?: number;
+  rate?: number
   barcode?: string;
   itemVatAmount?: number;  // ← new — per-item VAT (12% by default, 0 if vatExempt=true)
 }

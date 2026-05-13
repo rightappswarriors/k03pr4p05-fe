@@ -226,6 +226,11 @@ export interface InventoryItemForSales {
     isVatExempt?: boolean;
     isBNPC?: boolean;
     vatRate?: number;
+    vatType? : {
+      id: number
+      name: string;
+      rate: number;
+    }
   };
   units: {
     id: number;
@@ -546,6 +551,11 @@ export class SalesOrderService {
             sellingPrice
             barcode
             description
+            vatType {
+              id
+              name
+              rate
+            }
             vatExempt
             isVatExempt
             isBNPC

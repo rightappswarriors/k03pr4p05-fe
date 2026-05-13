@@ -169,6 +169,11 @@ export class InventoryService {
             id
             name
           }
+          vatType {
+            id
+            name
+            rate
+          }
           vatExempt
           isVatExempt
           isBNPC

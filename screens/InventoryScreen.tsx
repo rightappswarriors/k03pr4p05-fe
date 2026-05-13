@@ -55,7 +55,7 @@ export interface InventoryItem {
   opExPct?: number;
   priceB?: number;
   priceC?: number;
-  
+  vatType?: { id: number; name: string; rate: number };
   isVatExempt?: boolean;
   vatExempt?: boolean;
   isBNPC?: boolean;
@@ -1783,7 +1783,7 @@ function ItemDetailModal({
                 VAT
               </Text>
               <Text style={[idm.detailValue, { color: colors.text }]}>
-                {item.vatExempt ? 'VAT Exempt' : 'VAT 12%'}
+                {item.vatExempt ? 'VAT Exempt' : `VAT ${item?.vatType?.rate === 0? 'Exempt' : item?.vatType ? `Incl. (${item.vatType.rate}%)` : 'Incl. (12%)'}`}
               </Text>
             </View>
           </View>
@@ -2731,6 +2731,7 @@ export default function InventoryScreen() {
                 label: cl.label,
                 amount: cl.amount,
               })),
+              vatType: it.vatType ? { id: it.vatType.id, name: it.vatType.name, rate: it.vatType.rate } : undefined,
               opExPct: Number(it.opExPct || 0),
               priceB: it.priceB != null ? Number(it.priceB) : undefined,
               priceC: it.priceC != null ? Number(it.priceC) : undefined,

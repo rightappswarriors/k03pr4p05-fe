@@ -164,7 +164,7 @@ function cartToCartItem(entry: CartEntry): CartItem {
     vatExempt: entry.item.item.vatExempt,
     isVatExempt: entry.item.item.isVatExempt,
     isBNPC: entry.item.item.isBNPC,
-    vatRate: entry.item.item.vatRate ?? 0.12,
+    vatRate: entry.item.item?.vatType?.rate ?? entry.item.item?.vatRate ?? 0,
   };
 }
 
@@ -1459,7 +1459,7 @@ function CreateOrderModal({
                       <Package size={18} color={colors.primary} />
                       <View style={{ flex: 1 }}>
                         <Text style={{ color: colors.text, fontWeight: '800' }}>
-                          {item.item.name}
+                          {item.item.name} <Text>Vat{item.vatRate}</Text>
                         </Text>
                         <Text
                           style={{ color: colors.textSecondary, fontSize: 12 }}
@@ -1468,7 +1468,9 @@ function CreateOrderModal({
                           {item.inventory?.outlet?.name
                             ? ` · ${item.inventory.outlet.name}`
                             : ''}
+
                         </Text>
+                        
                       </View>
                       <Text style={{ color: colors.accent, fontWeight: '900' }}>
                         {money(item.price)}

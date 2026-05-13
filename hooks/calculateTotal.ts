@@ -55,8 +55,9 @@ export function calculateItemVat(
   item: CartItem,
   isVatRegistered: boolean,
   vatExemptActive: boolean,
+  rate: number = item.rate ?? DEFAULT_VAT_RATE,
 ): number {
-  if (!isVatRegistered || vatExemptActive || item.vatExempt === true || item.isVatExempt === true) {
+  if (!isVatRegistered || vatExemptActive || item.vatExempt === true || item.isVatExempt === true || item.rate === 0) {
     return 0;
   }
 
