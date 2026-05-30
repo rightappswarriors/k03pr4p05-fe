@@ -63,8 +63,6 @@
     "graphql-request": "^7.2.0",
     "lucide-react-native": "^0.475.0",
     "mitt": "^3.0.1",
-    "nativewind": "^4.1.23",
-    "prettier-plugin-tailwindcss": "^0.5.14",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "react-native": "0.79.6",
@@ -89,7 +87,6 @@
     "react-native-vector-icons": "^10.3.0",
     "react-native-web": "^0.20.0",
     "react-native-webview": "13.13.5",
-    "tailwindcss": "^3.4.17",
     "web": "^0.0.2",
     "xlsx": "^0.18.5"
   },
@@ -116,7 +113,6 @@
           "axios-auth-refresh",
           "react-native-chart-kit",
           "fuse.js",
-          "prettier-plugin-tailwindcss",
           "react-native-immersive"
         ],
         "listUnknownPackages": false
