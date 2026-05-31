@@ -59,6 +59,7 @@ export interface InventoryItem {
   isVatExempt?: boolean;
   vatExempt?: boolean;
   isBNPC?: boolean;
+  hasSeniorDiscountVATExempt?: boolean;
   vatRate?: number;
   stockLabel?: string; // ← new
   stockDescription?: string; // ← new
@@ -81,6 +82,7 @@ interface UpdateItemPayload {
   vatExempt?: boolean;
   isVatExempt?: boolean;
   isBNPC?: boolean;
+  hasSeniorDiscountVATExempt?: boolean;
   vatRate?: number;
   assembly?: boolean;
   ServiceCharge?: boolean;
@@ -268,9 +270,9 @@ function CostBreakdownBuilder({
       lines.map((l) =>
         l.id === id
           ? {
-              ...l,
-              [field]: field === 'amount' ? parseFloat(value) || 0 : value,
-            }
+            ...l,
+            [field]: field === 'amount' ? parseFloat(value) || 0 : value,
+          }
           : l,
       ),
     );
@@ -431,6 +433,7 @@ function EditItemModal({
   const [priceC, setPriceC] = useState('');
   const [vatExempt, setVatExempt] = useState(false);
   const [isBNPC, setIsBNPC] = useState(false);
+  const [hasSeniorDiscountVATExempt, setHasSeniorDiscountVATExempt] = useState(false);
   const [vatRate, setVatRate] = useState('12');
   const [costLines, setCostLines] = useState<CostLine[]>([]);
   const [imageUri, setImageUri] = useState(''); // local URI or existing http URL
@@ -454,7 +457,7 @@ function EditItemModal({
   React.useEffect(() => {
     VatTypeService.getAll()
       .then(setVatTypes)
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // Populate fields whenever the modal opens with a new item
@@ -475,6 +478,7 @@ function EditItemModal({
     setStockDescription(item.stockDescription ?? '');
     setVatExempt(item.vatExempt ?? false);
     setIsBNPC(item.isBNPC ?? false);
+    setHasSeniorDiscountVATExempt(item.hasSeniorDiscountVATExempt ?? false);
     setVatRate(String(((item.vatRate ?? 0.12) * 100)));
     setCostLines(
       (item.costLines ?? []).map((cl) => ({
@@ -566,6 +570,7 @@ function EditItemModal({
         vatExempt: !selectedVatTypeId ? vatExempt : undefined,
         isVatExempt: vatExempt,
         isBNPC,
+        hasSeniorDiscountVATExempt,
         vatRate: vatExempt ? 0 : (parseFloat(vatRate) || 12) / 100,
         vatTypeId: selectedVatTypeId ?? undefined, // ✅
         image: finalImageUrl,
@@ -603,6 +608,7 @@ function EditItemModal({
           vatExempt: updated.vatExempt ?? vatExempt,
           isVatExempt: updated.isVatExempt ?? vatExempt,
           isBNPC: updated.isBNPC ?? isBNPC,
+          hasSeniorDiscountVATExempt: updated.hasSeniorDiscountVATExempt ?? hasSeniorDiscountVATExempt,
           vatRate: updated.vatRate ?? ((parseFloat(vatRate) || 12) / 100),
           imageUrl: finalImageUrl,
           imagePath: finalImagePath,
@@ -631,7 +637,9 @@ function EditItemModal({
     overlay: {
       flex: 1,
       backgroundColor: 'rgba(0,0,0,0.5)',
-      justifyContent: 'flex-end',
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingVertical: 40
     },
 
     catRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
@@ -646,9 +654,11 @@ function EditItemModal({
     sheet: {
       backgroundColor: colors.surface,
       borderTopLeftRadius: 20,
-      borderTopRightRadius: 20,
       paddingBottom: 32,
-      maxHeight: '94%',
+      borderRadius: 16,
+      maxHeight: 780,
+      width: '100%',
+      maxWidth: 640,
     },
     handle: {
       width: 40,
@@ -714,236 +724,201 @@ function EditItemModal({
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
+      animationType="fade"
       onRequestClose={onClose}
     >
-      <View style={s.overlay}>
-        <TouchableOpacity
-          style={{ flex: 1 }}
-          activeOpacity={1}
-          onPress={onClose}
-        />
-        <View style={s.sheet}>
-          <View style={s.handle} />
-          <View style={s.header}>
-            <View>
-              <Text style={s.title}>Edit Item</Text>
-              <Text
-                style={{
-                  fontSize: 11,
-                  color: colors.textSecondary,
-                  marginTop: 2,
-                }}
-              >
-                {item.sku}
-              </Text>
-            </View>
-            <TouchableOpacity onPress={onClose}>
-              <X size={20} color={colors.textSecondary} strokeWidth={2} />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView
-            contentContainerStyle={{ padding: 20 }}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            {/* ── Image ── */}
-            <ImagePickerSection
-              imageUri={imageUri}
-              onImageUri={setImageUri}
-              colors={colors}
-              label="ITEM IMAGE"
-              hint="Replace the existing image or remove it."
-            />
-
-            {/* ── Name & SKU ── */}
-            <Text style={s.label}>Item Name *</Text>
-            <TextInput
-              style={s.input}
-              value={name}
-              onChangeText={setName}
-              placeholderTextColor={colors.textSecondary}
-            />
-            <Text style={s.label}>Category</Text>
-            <TouchableOpacity
-              style={[
-                s.input,
-                {
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                },
-              ]}
-              onPress={() => setCategoryPickerVisible(true)}
-              activeOpacity={0.8}
-            >
-              <Text
-                style={{
-                  fontSize: 14,
-                  color: selectedCategoryName
-                    ? colors.text
-                    : colors.textSecondary,
-                }}
-              >
-                {selectedCategoryName || 'Select a category…'}
-              </Text>
-              {selectedCategoryName ? (
-                <View
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
-                >
-                  {selectedCategoryIsGlobal && (
-                    <View
-                      style={{
-                        backgroundColor: colors.primary + '18',
-                        paddingHorizontal: 6,
-                        paddingVertical: 2,
-                        borderRadius: 5,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 10,
-                          fontWeight: '700',
-                          color: colors.primary,
-                        }}
-                      >
-                        Global
-                      </Text>
-                    </View>
-                  )}
-                  <TouchableOpacity
-                    onPress={() => {
-                      setSelectedCategoryId(null);
-                      setSelectedCategoryName('');
-                    }}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                  >
-                    <X size={14} color={colors.textSecondary} strokeWidth={2} />
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <Search
-                  size={14}
-                  color={colors.textSecondary}
-                  strokeWidth={2}
-                />
-              )}
-            </TouchableOpacity>
-
-            {/* Add modal at bottom of sheet */}
-            <CategoryPickerModal
-              visible={categoryPickerVisible}
-              onClose={() => setCategoryPickerVisible(false)}
-              onSelect={(id, isGlobal, name) => {
-                setSelectedCategoryId(id);
-                setSelectedCategoryIsGlobal(isGlobal);
-                setSelectedCategoryName(name);
-              }}
-              selectedId={selectedCategoryId}
-              selectedIsGlobal={selectedCategoryIsGlobal}
-              colors={colors}
-            />
-            <Text style={s.label}>SKU / Barcode</Text>
-            <TextInput
-              style={s.input}
-              value={sku}
-              onChangeText={setSku}
-              autoCapitalize="characters"
-              placeholderTextColor={colors.textSecondary}
-            />
-
-            {/* ── Stock ── */}
-            <View style={s.row2}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.label}>Stock</Text>
-                <TextInput
-                  style={s.input}
-                  value={stock}
-                  onChangeText={setStock}
-                  keyboardType="number-pad"
-                  placeholderTextColor={colors.textSecondary}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.label}>Min / Reorder At</Text>
-                <TextInput
-                  style={s.input}
-                  value={minStock}
-                  onChangeText={setMinStock}
-                  keyboardType="number-pad"
-                  placeholderTextColor={colors.textSecondary}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.label}>Item Code</Text>
-                <TextInput
-                  style={s.input}
-                  placeholder="Item code example: RICE-GAN-25"
-                  placeholderTextColor={colors.textSecondary}
-                  value={itemCode}
-                  onChangeText={setItemCode}
-                  autoCapitalize="characters"
-                />
-              </View>
-            </View>
-            {/* Stock Label */}
-
-            <View style={s.row2}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.label}>STOCK UNIT *</Text>
+      <TouchableOpacity
+        style={s.overlay}
+        activeOpacity={1}
+        onPress={onClose}  // tap outside closes
+      >
+        <TouchableOpacity activeOpacity={1} onPress={() => { }}>
+          <View style={s.sheet}>
+            <View style={s.header}>
+              <View>
+                <Text style={s.title}>Edit Item</Text>
                 <Text
                   style={{
                     fontSize: 11,
                     color: colors.textSecondary,
-                    marginBottom: 8,
+                    marginTop: 2,
                   }}
                 >
-                  What unit is this item's stock measured in?
+                  {item.sku}
                 </Text>
-                <View
-                  style={{
+              </View>
+              <TouchableOpacity onPress={onClose}>
+                <X size={20} color={colors.textSecondary} strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              contentContainerStyle={{ padding: 20 }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              {/* ── Image ── */}
+              <ImagePickerSection
+                imageUri={imageUri}
+                onImageUri={setImageUri}
+                colors={colors}
+                label="ITEM IMAGE"
+                hint="Replace the existing image or remove it."
+              />
+
+              {/* ── Name & SKU ── */}
+              <Text style={s.label}>Item Name *</Text>
+              <TextInput
+                style={s.input}
+                value={name}
+                onChangeText={setName}
+                placeholderTextColor={colors.textSecondary}
+              />
+              <Text style={s.label}>Category</Text>
+              <TouchableOpacity
+                style={[
+                  s.input,
+                  {
                     flexDirection: 'row',
-                    flexWrap: 'wrap',
-                    gap: 6,
-                    marginBottom: 8,
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  },
+                ]}
+                onPress={() => setCategoryPickerVisible(true)}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={{
+                    fontSize: 14,
+                    color: selectedCategoryName
+                      ? colors.text
+                      : colors.textSecondary,
                   }}
                 >
-                  {[
-                    'piece',
-                    'kg',
-                    'gram',
-                    'liter',
-                    'ml',
-                    'sack',
-                    'box',
-                    'dozen',
-                    'tray',
-                  ].map((unit) => (
-                    <TouchableOpacity
-                      key={unit}
-                      style={[s.catPill, stockLabel === unit && s.catAct]}
-                      onPress={() => setStockLabel(unit)}
-                    >
-                      <Text
+                  {selectedCategoryName || 'Select a category…'}
+                </Text>
+                {selectedCategoryName ? (
+                  <View
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                  >
+                    {selectedCategoryIsGlobal && (
+                      <View
                         style={{
-                          fontSize: 12,
-                          fontWeight: '600',
-                          color: stockLabel === unit ? '#fff' : colors.text,
+                          backgroundColor: colors.primary + '18',
+                          paddingHorizontal: 6,
+                          paddingVertical: 2,
+                          borderRadius: 5,
                         }}
                       >
-                        {unit}
-                      </Text>
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            fontWeight: '700',
+                            color: colors.primary,
+                          }}
+                        >
+                          Global
+                        </Text>
+                      </View>
+                    )}
+                    <TouchableOpacity
+                      onPress={() => {
+                        setSelectedCategoryId(null);
+                        setSelectedCategoryName('');
+                      }}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    >
+                      <X size={14} color={colors.textSecondary} strokeWidth={2} />
                     </TouchableOpacity>
-                  ))}
+                  </View>
+                ) : (
+                  <Search
+                    size={14}
+                    color={colors.textSecondary}
+                    strokeWidth={2}
+                  />
+                )}
+              </TouchableOpacity>
+
+              {/* Add modal at bottom of sheet */}
+              <CategoryPickerModal
+                visible={categoryPickerVisible}
+                onClose={() => setCategoryPickerVisible(false)}
+                onSelect={(id, isGlobal, name) => {
+                  setSelectedCategoryId(id);
+                  setSelectedCategoryIsGlobal(isGlobal);
+                  setSelectedCategoryName(name);
+                }}
+                selectedId={selectedCategoryId}
+                selectedIsGlobal={selectedCategoryIsGlobal}
+                colors={colors}
+              />
+              <Text style={s.label}>SKU / Barcode</Text>
+              <TextInput
+                style={s.input}
+                value={sku}
+                onChangeText={setSku}
+                autoCapitalize="characters"
+                placeholderTextColor={colors.textSecondary}
+              />
+
+              {/* ── Stock ── */}
+              <View style={s.row2}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.label}>Stock</Text>
+                  <TextInput
+                    style={s.input}
+                    value={stock}
+                    onChangeText={setStock}
+                    keyboardType="number-pad"
+                    placeholderTextColor={colors.textSecondary}
+                  />
                 </View>
-                {/* Custom unit input if not in list */}
-                <TextInput
-                  style={s.input}
-                  placeholder="Or type custom unit (e.g. bundle, roll)"
-                  placeholderTextColor={colors.textSecondary}
-                  value={
-                    [
+                <View style={{ flex: 1 }}>
+                  <Text style={s.label}>Min / Reorder At</Text>
+                  <TextInput
+                    style={s.input}
+                    value={minStock}
+                    onChangeText={setMinStock}
+                    keyboardType="number-pad"
+                    placeholderTextColor={colors.textSecondary}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.label}>Item Code</Text>
+                  <TextInput
+                    style={s.input}
+                    placeholder="Item code example: RICE-GAN-25"
+                    placeholderTextColor={colors.textSecondary}
+                    value={itemCode}
+                    onChangeText={setItemCode}
+                    autoCapitalize="characters"
+                  />
+                </View>
+              </View>
+              {/* Stock Label */}
+
+              <View style={s.row2}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.label}>STOCK UNIT *</Text>
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      color: colors.textSecondary,
+                      marginBottom: 8,
+                    }}
+                  >
+                    What unit is this item's stock measured in?
+                  </Text>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      flexWrap: 'wrap',
+                      gap: 6,
+                      marginBottom: 8,
+                    }}
+                  >
+                    {[
                       'piece',
                       'kg',
                       'gram',
@@ -953,264 +928,325 @@ function EditItemModal({
                       'box',
                       'dozen',
                       'tray',
-                    ].includes(stockLabel)
-                      ? ''
-                      : stockLabel
-                  }
-                  onChangeText={(v) =>
-                    v.trim() && setStockLabel(v.trim().toLowerCase())
-                  }
-                />
+                    ].map((unit) => (
+                      <TouchableOpacity
+                        key={unit}
+                        style={[s.catPill, stockLabel === unit && s.catAct]}
+                        onPress={() => setStockLabel(unit)}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontWeight: '600',
+                            color: stockLabel === unit ? '#fff' : colors.text,
+                          }}
+                        >
+                          {unit}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  {/* Custom unit input if not in list */}
+                  <TextInput
+                    style={s.input}
+                    placeholder="Or type custom unit (e.g. bundle, roll)"
+                    placeholderTextColor={colors.textSecondary}
+                    value={
+                      [
+                        'piece',
+                        'kg',
+                        'gram',
+                        'liter',
+                        'ml',
+                        'sack',
+                        'box',
+                        'dozen',
+                        'tray',
+                      ].includes(stockLabel)
+                        ? ''
+                        : stockLabel
+                    }
+                    onChangeText={(v) =>
+                      v.trim() && setStockLabel(v.trim().toLowerCase())
+                    }
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  {/* Stock Description */}
+                  <Text style={s.label}>STOCK DESCRIPTION (optional)</Text>
+                  <TextInput
+                    style={s.input}
+                    placeholder="e.g. 25kg sack of NFA rice"
+                    placeholderTextColor={colors.textSecondary}
+                    value={stockDescription}
+                    onChangeText={setStockDescription}
+                  />
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                {/* Stock Description */}
-                <Text style={s.label}>STOCK DESCRIPTION (optional)</Text>
-                <TextInput
-                  style={s.input}
-                  placeholder="e.g. 25kg sack of NFA rice"
-                  placeholderTextColor={colors.textSecondary}
-                  value={stockDescription}
-                  onChangeText={setStockDescription}
-                />
+              {/* ── Pricing ── */}
+              <View style={s.row2}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.label}>Selling Price ₱ *</Text>
+                  <TextInput
+                    style={s.input}
+                    value={price}
+                    onChangeText={setPrice}
+                    keyboardType="decimal-pad"
+                    placeholderTextColor={colors.textSecondary}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.label}>OpEx %</Text>
+                  <TextInput
+                    style={s.input}
+                    value={opExPct}
+                    onChangeText={setOpExPct}
+                    keyboardType="decimal-pad"
+                    placeholderTextColor={colors.textSecondary}
+                  />
+                </View>
               </View>
-            </View>
-            {/* ── Pricing ── */}
-            <View style={s.row2}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.label}>Selling Price ₱ *</Text>
-                <TextInput
-                  style={s.input}
-                  value={price}
-                  onChangeText={setPrice}
-                  keyboardType="decimal-pad"
-                  placeholderTextColor={colors.textSecondary}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.label}>OpEx %</Text>
-                <TextInput
-                  style={s.input}
-                  value={opExPct}
-                  onChangeText={setOpExPct}
-                  keyboardType="decimal-pad"
-                  placeholderTextColor={colors.textSecondary}
-                />
-              </View>
-            </View>
 
-            <View style={s.row2}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.label}>Price B (Wholesale) ₱</Text>
-                <TextInput
-                  style={s.input}
-                  value={priceB}
-                  onChangeText={setPriceB}
-                  keyboardType="decimal-pad"
-                  placeholder="—"
-                  placeholderTextColor={colors.textSecondary}
-                />
+              <View style={s.row2}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.label}>Price B (Wholesale) ₱</Text>
+                  <TextInput
+                    style={s.input}
+                    value={priceB}
+                    onChangeText={setPriceB}
+                    keyboardType="decimal-pad"
+                    placeholder="—"
+                    placeholderTextColor={colors.textSecondary}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.label}>Price C (Special) ₱</Text>
+                  <TextInput
+                    style={s.input}
+                    value={priceC}
+                    onChangeText={setPriceC}
+                    keyboardType="decimal-pad"
+                    placeholder="—"
+                    placeholderTextColor={colors.textSecondary}
+                  />
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.label}>Price C (Special) ₱</Text>
-                <TextInput
-                  style={s.input}
-                  value={priceC}
-                  onChangeText={setPriceC}
-                  keyboardType="decimal-pad"
-                  placeholder="—"
-                  placeholderTextColor={colors.textSecondary}
-                />
-              </View>
-            </View>
 
-            {/* ── VAT ── */}
-            <Text style={s.label}>VAT TYPE</Text>
-            {vatTypes.length > 0 ? (
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                {vatTypes.map((vat) => (
+              {/* ── VAT ── */}
+              <Text style={s.label}>VAT TYPE</Text>
+              {vatTypes.length > 0 ? (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {vatTypes.map((vat) => (
+                    <TouchableOpacity
+                      key={vat.id}
+                      style={[
+                        s.catPill,
+                        selectedVatTypeId === vat.id && s.catAct,
+                      ]}
+                      onPress={() => setSelectedVatTypeId(vat.id)}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: '600',
+                          color:
+                            selectedVatTypeId === vat.id ? '#fff' : colors.text,
+                        }}
+                      >
+                        {vat.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : (
+                // ✅ fallback if org hasn't set up VAT types yet
+                <View style={s.vatRow}>
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      fontWeight: '600',
+                      color: colors.text,
+                    }}
+                  >
+                    {vatExempt ? 'VAT Exempt' : 'VAT Inclusive (12%)'}
+                  </Text>
                   <TouchableOpacity
-                    key={vat.id}
-                    style={[
-                      s.catPill,
-                      selectedVatTypeId === vat.id && s.catAct,
-                    ]}
-                    onPress={() => setSelectedVatTypeId(vat.id)}
+                    style={{
+                      paddingHorizontal: 14,
+                      paddingVertical: 7,
+                      borderRadius: 8,
+                      backgroundColor: vatExempt
+                        ? colors.accent + '20'
+                        : colors.primary + '20',
+                      borderWidth: 1,
+                      borderColor: vatExempt ? colors.accent : colors.primary,
+                    }}
+                    onPress={() => setVatExempt((v) => !v)}
                   >
                     <Text
                       style={{
                         fontSize: 12,
-                        fontWeight: '600',
-                        color:
-                          selectedVatTypeId === vat.id ? '#fff' : colors.text,
+                        fontWeight: '700',
+                        color: vatExempt ? colors.accent : colors.primary,
                       }}
                     >
-                      {vat.name}
+                      {vatExempt ? 'Exempt' : 'VAT Incl.'}
                     </Text>
                   </TouchableOpacity>
-                ))}
-              </View>
-            ) : (
-              // ✅ fallback if org hasn't set up VAT types yet
-              <View style={s.vatRow}>
-                <Text
-                  style={{
-                    fontSize: 13,
-                    fontWeight: '600',
-                    color: colors.text,
-                  }}
-                >
-                  {vatExempt ? 'VAT Exempt' : 'VAT Inclusive (12%)'}
-                </Text>
-                <TouchableOpacity
-                  style={{
-                    paddingHorizontal: 14,
-                    paddingVertical: 7,
-                    borderRadius: 8,
-                    backgroundColor: vatExempt
-                      ? colors.accent + '20'
-                      : colors.primary + '20',
-                    borderWidth: 1,
-                    borderColor: vatExempt ? colors.accent : colors.primary,
-                  }}
-                  onPress={() => setVatExempt((v) => !v)}
-                >
-                  <Text
-                    style={{
-                      fontSize: 12,
-                      fontWeight: '700',
-                      color: vatExempt ? colors.accent : colors.primary,
+                </View>
+              )}
+              <Text style={s.label}>Tax & Discount Settings</Text>
+              <View style={{ gap: 8 }}>
+                <View style={s.vatRow}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>
+                    Is Basic Necessity / Prime Commodity (BNPC)
+                  </Text>
+                  <TouchableOpacity
+                    style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8, backgroundColor: isBNPC ? colors.accent + '20' : colors.background, borderWidth: 1, borderColor: isBNPC ? colors.accent : colors.border }}
+                    onPress={() => {
+                      setIsBNPC((v) => !v);
+                      if (!isBNPC) setHasSeniorDiscountVATExempt(false); // turning on BNPC clears the other
                     }}
                   >
-                    {vatExempt ? 'Exempt' : 'VAT Incl.'}
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: isBNPC ? colors.accent : colors.textSecondary }}>
+                      {isBNPC ? 'BNPC' : 'Off'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={s.vatRow}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>
+                    Senior/PWD VAT-exempt discount eligible
                   </Text>
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8, backgroundColor: hasSeniorDiscountVATExempt ? colors.accent + '20' : colors.background, borderWidth: 1, borderColor: hasSeniorDiscountVATExempt ? colors.accent : colors.border }}
+                    onPress={() => {
+                      setHasSeniorDiscountVATExempt((v) => !v);
+                      if (!hasSeniorDiscountVATExempt) setIsBNPC(false); // turning on senior discount clears BNPC
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: hasSeniorDiscountVATExempt ? colors.accent : colors.textSecondary }}>
+                      {hasSeniorDiscountVATExempt ? 'Enabled' : 'Off'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {isBNPC && (
+                  <>
+                    <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 4 }}>
+                      BNPC items qualify for SC/PWD special discount without VAT exemption (JAO 24-02, 2024)
+                    </Text>
+                  </>
+                )}
+                {hasSeniorDiscountVATExempt && (
+                  <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 4 }}>
+                    This item is VAT-exempt for senior/PWD discount calculations and will first remove VAT before applying the 20% discount.
+                  </Text>
+                )}
               </View>
-            )}
-            <Text style={s.label}>Tax & Discount Settings</Text>
-            <View style={{ gap: 8 }}>
-              <View style={s.vatRow}>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>Is Basic Necessity / Prime Commodity (BNPC)</Text>
-                <TouchableOpacity
-                  style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8, backgroundColor: isBNPC ? colors.accent + '20' : colors.background, borderWidth: 1, borderColor: isBNPC ? colors.accent : colors.border }}
-                  onPress={() => setIsBNPC((v) => !v)}
-                >
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: isBNPC ? colors.accent : colors.textSecondary }}>{isBNPC ? 'BNPC' : 'Off'}</Text>
-                </TouchableOpacity>
-              </View>
-              {isBNPC && <Text style={{ fontSize: 11, color: colors.textSecondary }}>BNPC items qualify for 5% SC/PWD special discount without VAT exemption (JAO 24-02, 2024)</Text>}
-              <TextInput
-                style={[s.input, { opacity: vatExempt ? 0.55 : 1 }]}
-                placeholder="VAT Rate (%)"
-                placeholderTextColor={colors.textSecondary}
-                value={vatRate}
-                onChangeText={setVatRate}
-                keyboardType="decimal-pad"
-                editable={!vatExempt}
-              />
-              {vatExempt && <Text style={{ fontSize: 11, color: colors.textSecondary }}>VAT-exempt items: SC/PWD 20% discount is applied on the pre-VAT price</Text>}
-            </View>
 
 
-            {/* ── Cost Breakdown ── */}
-            <Text style={s.label}>Cost Breakdown</Text>
-            <Text
-              style={{
-                fontSize: 11,
-                color: colors.textSecondary,
-                marginBottom: 8,
-              }}
-            >
-              Editing these will replace all existing cost lines for this item.
-            </Text>
-            <CostBreakdownBuilder
-              lines={costLines}
-              onChange={setCostLines}
-              colors={colors}
-            />
-
-            {/* ── Profit preview ── */}
-            {price && totalCost > 0 && (
-              <View
+              {/* ── Cost Breakdown ── */}
+              <Text style={s.label}>Cost Breakdown</Text>
+              <Text
                 style={{
-                  backgroundColor: colors.background,
-                  borderRadius: 10,
-                  padding: 12,
-                  marginTop: 12,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  flexDirection: 'row',
-                  justifyContent: 'space-between',
+                  fontSize: 11,
+                  color: colors.textSecondary,
+                  marginBottom: 8,
                 }}
               >
-                {[
-                  ['Sell Price', parseFloat(price), colors.accent],
-                  ['Contrib. Cost', totalCost, colors.error],
-                  [
-                    'Gross Profit',
-                    parseFloat(price) - totalCost,
-                    parseFloat(price) - totalCost >= 0
-                      ? colors.success
-                      : colors.error,
-                  ],
-                ].map(([label, val, color], i, arr) => (
-                  <React.Fragment key={label as string}>
-                    <View style={{ alignItems: 'center' }}>
-                      <Text
-                        style={{
-                          fontSize: 11,
-                          color: colors.textSecondary,
-                          marginBottom: 2,
-                        }}
-                      >
-                        {label as string}
-                      </Text>
-                      <Text
-                        style={{
-                          fontSize: 15,
-                          fontWeight: '800',
-                          color: color as string,
-                        }}
-                      >
-                        ₱{(val as number).toLocaleString()}
-                      </Text>
-                    </View>
-                    {i < arr.length - 1 && (
-                      <Text
-                        style={{
-                          fontSize: 18,
-                          color: colors.textSecondary,
-                          alignSelf: 'center',
-                        }}
-                      >
-                        {i === 0 ? '−' : '='}
-                      </Text>
-                    )}
-                  </React.Fragment>
-                ))}
-              </View>
-            )}
+                Editing these will replace all existing cost lines for this item.
+              </Text>
+              <CostBreakdownBuilder
+                lines={costLines}
+                onChange={setCostLines}
+                colors={colors}
+              />
 
-            {error ? <Text style={s.errTxt}>{error}</Text> : null}
-
-            <TouchableOpacity
-              style={s.saveBtn}
-              onPress={handleSave}
-              activeOpacity={0.85}
-            >
-              {isLoading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text
-                  style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}
+              {/* ── Profit preview ── */}
+              {price && totalCost > 0 && (
+                <View
+                  style={{
+                    backgroundColor: colors.background,
+                    borderRadius: 10,
+                    padding: 12,
+                    marginTop: 12,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                  }}
                 >
-                  Save Changes
-                </Text>
+                  {[
+                    ['Sell Price', parseFloat(price), colors.accent],
+                    ['Contrib. Cost', totalCost, colors.error],
+                    [
+                      'Gross Profit',
+                      parseFloat(price) - totalCost,
+                      parseFloat(price) - totalCost >= 0
+                        ? colors.success
+                        : colors.error,
+                    ],
+                  ].map(([label, val, color], i, arr) => (
+                    <React.Fragment key={label as string}>
+                      <View style={{ alignItems: 'center' }}>
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            color: colors.textSecondary,
+                            marginBottom: 2,
+                          }}
+                        >
+                          {label as string}
+                        </Text>
+                        <Text
+                          style={{
+                            fontSize: 15,
+                            fontWeight: '800',
+                            color: color as string,
+                          }}
+                        >
+                          ₱{(val as number).toLocaleString()}
+                        </Text>
+                      </View>
+                      {i < arr.length - 1 && (
+                        <Text
+                          style={{
+                            fontSize: 18,
+                            color: colors.textSecondary,
+                            alignSelf: 'center',
+                          }}
+                        >
+                          {i === 0 ? '−' : '='}
+                        </Text>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </View>
               )}
-            </TouchableOpacity>
-            <View style={{ height: 8 }} />
-          </ScrollView>
-        </View>
-      </View>
+
+              {error ? <Text style={s.errTxt}>{error}</Text> : null}
+
+              <TouchableOpacity
+                style={s.saveBtn}
+                onPress={handleSave}
+                activeOpacity={0.85}
+              >
+                {isLoading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text
+                    style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}
+                  >
+                    Save Changes
+                  </Text>
+                )}
+              </TouchableOpacity>
+              <View style={{ height: 8 }} />
+            </ScrollView>
+          </View>
+
+        </TouchableOpacity>
+      </TouchableOpacity>
     </Modal>
   );
 }
@@ -1259,7 +1295,7 @@ function ItemDetailModal({
   return (
     <Modal
       visible={visible}
-      animationType="slide"
+      animationType="fade"
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
@@ -1783,7 +1819,7 @@ function ItemDetailModal({
                 VAT
               </Text>
               <Text style={[idm.detailValue, { color: colors.text }]}>
-                {item.vatExempt ? 'VAT Exempt' : `VAT ${item?.vatType?.rate === 0? 'Exempt' : item?.vatType ? `Incl. (${item.vatType.rate}%)` : 'Incl. (12%)'}`}
+                {item.vatExempt ? 'VAT Exempt' : `VAT ${item?.vatType?.rate === 0 ? 'Exempt' : item?.vatType ? `Incl. (${item.vatType.rate}%)` : 'Incl. (12%)'}`}
               </Text>
             </View>
           </View>
@@ -2028,6 +2064,7 @@ function AddItemModal({
   const [price, setPrice] = useState('');
   const [vatExempt, setVatExempt] = useState(false);
   const [isBNPC, setIsBNPC] = useState(false);
+  const [hasSeniorDiscountVATExempt, setHasSeniorDiscountVATExempt] = useState(false);
   const [vatRate, setVatRate] = useState('12');
   const [opExPct, setOpExPct] = useState('10');
   const [stockLabel, setStockLabel] = useState('piece');
@@ -2053,7 +2090,7 @@ function AddItemModal({
   React.useEffect(() => {
     VatTypeService.getAll()
       .then(setVatTypes)
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const [error, setError] = useState('');
@@ -2069,6 +2106,7 @@ function AddItemModal({
     setOpExPct('10');
     setVatExempt(false);
     setIsBNPC(false);
+    setHasSeniorDiscountVATExempt(false);
     setVatRate('12');
     setItemImageUri('');
     setCostLines([{ id: 'cl_purchase', label: 'Purchase Cost', amount: 0 }]);
@@ -2121,6 +2159,7 @@ function AddItemModal({
         vatExempt: !selectedVatTypeId ? vatExempt : undefined,
         isVatExempt: vatExempt,
         isBNPC,
+        hasSeniorDiscountVATExempt,
         vatRate: vatExempt ? 0 : (parseFloat(vatRate) || 12) / 100,
         vatTypeId: selectedVatTypeId ?? undefined, // ✅ from VAT picker
         skuNumber: sku.trim() || undefined,
@@ -2160,6 +2199,7 @@ function AddItemModal({
           vatExempt,
           isVatExempt: vatExempt,
           isBNPC,
+          hasSeniorDiscountVATExempt,
           vatRate: vatExempt ? 0 : (parseFloat(vatRate) || 12) / 100,
           imageUrl:
             finalImageUrl ||
@@ -2187,14 +2227,17 @@ function AddItemModal({
     overlay: {
       flex: 1,
       backgroundColor: 'rgba(0,0,0,0.5)',
-      justifyContent: 'flex-end',
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingVertical: 40
     },
     sheet: {
       backgroundColor: colors.surface,
-      borderTopLeftRadius: 20,
-      borderTopRightRadius: 20,
+      borderRadius: 16,              // ← all-corner radius
       paddingBottom: 32,
-      maxHeight: '94%',
+      maxHeight: 780,
+      width: '100%',
+      maxWidth: 640,                 // ← capped width for web/tablet
     },
     handle: {
       width: 40,
@@ -2267,226 +2310,191 @@ function AddItemModal({
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
+      animationType="fade"
       onRequestClose={onClose}
     >
-      <View style={s.overlay}>
-        <TouchableOpacity
-          style={{ flex: 1 }}
-          activeOpacity={1}
-          onPress={onClose}
-        />
-        <View style={s.sheet}>
-          <View style={s.handle} />
-          <View style={s.header}>
-            <Text style={s.title}>Add New Item</Text>
-            <TouchableOpacity onPress={onClose}>
-              <X size={20} color={colors.textSecondary} strokeWidth={2} />
-            </TouchableOpacity>
-          </View>
-          <ScrollView
-            contentContainerStyle={{ padding: 20 }}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            <ImagePickerSection
-              imageUri={itemImageUri}
-              onImageUri={setItemImageUri}
-              colors={colors}
-            />
-
-            <Text style={s.label}>Item Name *</Text>
-            <TextInput
-              style={s.input}
-              placeholder="e.g. Ganador Rice 25kg"
-              placeholderTextColor={colors.textSecondary}
-              value={name}
-              onChangeText={setName}
-            />
-
-            <Text style={s.label}>SKU / Item Code</Text>
-            <TextInput
-              style={s.input}
-              placeholder="e.g. RICE-GAN-25"
-              placeholderTextColor={colors.textSecondary}
-              value={sku}
-              onChangeText={setSku}
-              autoCapitalize="characters"
-            />
-
-            <Text style={s.label}>Category</Text>
-            <TouchableOpacity
-              style={[
-                s.input,
-                {
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                },
-              ]}
-              onPress={() => setCategoryPickerVisible(true)}
-              activeOpacity={0.8}
-            >
-              <Text
-                style={{
-                  fontSize: 14,
-                  color: selectedCategoryName
-                    ? colors.text
-                    : colors.textSecondary,
-                }}
-              >
-                {selectedCategoryName || 'Select a category…'}
-              </Text>
-              {selectedCategoryName ? (
-                <View
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
-                >
-                  {selectedCategoryIsGlobal && (
-                    <View
-                      style={{
-                        backgroundColor: colors.primary + '18',
-                        paddingHorizontal: 6,
-                        paddingVertical: 2,
-                        borderRadius: 5,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 10,
-                          fontWeight: '700',
-                          color: colors.primary,
-                        }}
-                      >
-                        Global
-                      </Text>
-                    </View>
-                  )}
-                  <TouchableOpacity
-                    onPress={() => {
-                      setSelectedCategoryId(null);
-                      setSelectedCategoryName('');
-                    }}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                  >
-                    <X size={14} color={colors.textSecondary} strokeWidth={2} />
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <Search
-                  size={14}
-                  color={colors.textSecondary}
-                  strokeWidth={2}
-                />
-              )}
-            </TouchableOpacity>
-
-            {/* Add modal at bottom of sheet */}
-            <CategoryPickerModal
-              visible={categoryPickerVisible}
-              onClose={() => setCategoryPickerVisible(false)}
-              onSelect={(id, isGlobal, name) => {
-                setSelectedCategoryId(id);
-                setSelectedCategoryIsGlobal(isGlobal);
-                setSelectedCategoryName(name);
-              }}
-              selectedId={selectedCategoryId}
-              selectedIsGlobal={selectedCategoryIsGlobal}
-              colors={colors}
-            />
-
-            <View style={s.row2}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.label}>Opening Stock</Text>
-                <TextInput
-                  style={s.input}
-                  placeholder="0"
-                  placeholderTextColor={colors.textSecondary}
-                  value={stock}
-                  onChangeText={setStock}
-                  keyboardType="number-pad"
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.label}>Min / Reorder At</Text>
-                <TextInput
-                  style={s.input}
-                  placeholder="10"
-                  placeholderTextColor={colors.textSecondary}
-                  value={minStock}
-                  onChangeText={setMinStock}
-                  keyboardType="number-pad"
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.label}>Item Code</Text>
-                <TextInput
-                  style={s.input}
-                  placeholder="Item code example: RICE-GAN-25"
-                  placeholderTextColor={colors.textSecondary}
-                  value={itemCode}
-                  onChangeText={setItemCode}
-                  autoCapitalize="characters"
-                />
-              </View>
+      <TouchableOpacity
+        style={s.overlay}
+        activeOpacity={1}
+        onPress={onClose}
+      >
+        <TouchableOpacity activeOpacity={1} onPress={() => { }}>
+          <View style={s.sheet}>
+            <View style={s.header}>
+              <Text style={s.title}>Add New Item</Text>
+              <TouchableOpacity onPress={onClose}>
+                <X size={20} color={colors.textSecondary} strokeWidth={2} />
+              </TouchableOpacity>
             </View>
+            <ScrollView
+              contentContainerStyle={{ padding: 20 }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <ImagePickerSection
+                imageUri={itemImageUri}
+                onImageUri={setItemImageUri}
+                colors={colors}
+              />
 
-            {/* Stock Label */}
+              <Text style={s.label}>Item Name *</Text>
+              <TextInput
+                style={s.input}
+                placeholder="e.g. Ganador Rice 25kg"
+                placeholderTextColor={colors.textSecondary}
+                value={name}
+                onChangeText={setName}
+              />
 
-            <View style={s.row2}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.label}>STOCK UNIT *</Text>
+              <Text style={s.label}>SKU / Item Code</Text>
+              <TextInput
+                style={s.input}
+                placeholder="e.g. RICE-GAN-25"
+                placeholderTextColor={colors.textSecondary}
+                value={sku}
+                onChangeText={setSku}
+                autoCapitalize="characters"
+              />
+
+              <Text style={s.label}>Category</Text>
+              <TouchableOpacity
+                style={[
+                  s.input,
+                  {
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  },
+                ]}
+                onPress={() => setCategoryPickerVisible(true)}
+                activeOpacity={0.8}
+              >
                 <Text
                   style={{
-                    fontSize: 11,
-                    color: colors.textSecondary,
-                    marginBottom: 8,
+                    fontSize: 14,
+                    color: selectedCategoryName
+                      ? colors.text
+                      : colors.textSecondary,
                   }}
                 >
-                  What unit is this item's stock measured in?
+                  {selectedCategoryName || 'Select a category…'}
                 </Text>
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    flexWrap: 'wrap',
-                    gap: 6,
-                    marginBottom: 8,
-                  }}
-                >
-                  {[
-                    'piece',
-                    'kg',
-                    'gram',
-                    'liter',
-                    'ml',
-                    'sack',
-                    'box',
-                    'dozen',
-                    'tray',
-                  ].map((unit) => (
-                    <TouchableOpacity
-                      key={unit}
-                      style={[s.catPill, stockLabel === unit && s.catAct]}
-                      onPress={() => setStockLabel(unit)}
-                    >
-                      <Text
+                {selectedCategoryName ? (
+                  <View
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                  >
+                    {selectedCategoryIsGlobal && (
+                      <View
                         style={{
-                          fontSize: 12,
-                          fontWeight: '600',
-                          color: stockLabel === unit ? '#fff' : colors.text,
+                          backgroundColor: colors.primary + '18',
+                          paddingHorizontal: 6,
+                          paddingVertical: 2,
+                          borderRadius: 5,
                         }}
                       >
-                        {unit}
-                      </Text>
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            fontWeight: '700',
+                            color: colors.primary,
+                          }}
+                        >
+                          Global
+                        </Text>
+                      </View>
+                    )}
+                    <TouchableOpacity
+                      onPress={() => {
+                        setSelectedCategoryId(null);
+                        setSelectedCategoryName('');
+                      }}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    >
+                      <X size={14} color={colors.textSecondary} strokeWidth={2} />
                     </TouchableOpacity>
-                  ))}
+                  </View>
+                ) : (
+                  <Search
+                    size={14}
+                    color={colors.textSecondary}
+                    strokeWidth={2}
+                  />
+                )}
+              </TouchableOpacity>
+
+              {/* Add modal at bottom of sheet */}
+              <CategoryPickerModal
+                visible={categoryPickerVisible}
+                onClose={() => setCategoryPickerVisible(false)}
+                onSelect={(id, isGlobal, name) => {
+                  setSelectedCategoryId(id);
+                  setSelectedCategoryIsGlobal(isGlobal);
+                  setSelectedCategoryName(name);
+                }}
+                selectedId={selectedCategoryId}
+                selectedIsGlobal={selectedCategoryIsGlobal}
+                colors={colors}
+              />
+
+              <View style={s.row2}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.label}>Opening Stock</Text>
+                  <TextInput
+                    style={s.input}
+                    placeholder="0"
+                    placeholderTextColor={colors.textSecondary}
+                    value={stock}
+                    onChangeText={setStock}
+                    keyboardType="number-pad"
+                  />
                 </View>
-                {/* Custom unit input if not in list */}
-                <TextInput
-                  style={s.input}
-                  placeholder="Or type custom unit (e.g. bundle, roll)"
-                  placeholderTextColor={colors.textSecondary}
-                  value={
-                    [
+                <View style={{ flex: 1 }}>
+                  <Text style={s.label}>Min / Reorder At</Text>
+                  <TextInput
+                    style={s.input}
+                    placeholder="10"
+                    placeholderTextColor={colors.textSecondary}
+                    value={minStock}
+                    onChangeText={setMinStock}
+                    keyboardType="number-pad"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.label}>Item Code</Text>
+                  <TextInput
+                    style={s.input}
+                    placeholder="Item code example: RICE-GAN-25"
+                    placeholderTextColor={colors.textSecondary}
+                    value={itemCode}
+                    onChangeText={setItemCode}
+                    autoCapitalize="characters"
+                  />
+                </View>
+              </View>
+
+              {/* Stock Label */}
+
+              <View style={s.row2}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.label}>STOCK UNIT *</Text>
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      color: colors.textSecondary,
+                      marginBottom: 8,
+                    }}
+                  >
+                    What unit is this item's stock measured in?
+                  </Text>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      flexWrap: 'wrap',
+                      gap: 6,
+                      marginBottom: 8,
+                    }}
+                  >
+                    {[
                       'piece',
                       'kg',
                       'gram',
@@ -2496,198 +2504,283 @@ function AddItemModal({
                       'box',
                       'dozen',
                       'tray',
-                    ].includes(stockLabel)
-                      ? ''
-                      : stockLabel
-                  }
-                  onChangeText={(v) =>
-                    v.trim() && setStockLabel(v.trim().toLowerCase())
-                  }
-                />
+                    ].map((unit) => (
+                      <TouchableOpacity
+                        key={unit}
+                        style={[s.catPill, stockLabel === unit && s.catAct]}
+                        onPress={() => setStockLabel(unit)}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontWeight: '600',
+                            color: stockLabel === unit ? '#fff' : colors.text,
+                          }}
+                        >
+                          {unit}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  {/* Custom unit input if not in list */}
+                  <TextInput
+                    style={s.input}
+                    placeholder="Or type custom unit (e.g. bundle, roll)"
+                    placeholderTextColor={colors.textSecondary}
+                    value={
+                      [
+                        'piece',
+                        'kg',
+                        'gram',
+                        'liter',
+                        'ml',
+                        'sack',
+                        'box',
+                        'dozen',
+                        'tray',
+                      ].includes(stockLabel)
+                        ? ''
+                        : stockLabel
+                    }
+                    onChangeText={(v) =>
+                      v.trim() && setStockLabel(v.trim().toLowerCase())
+                    }
+                  />
+                </View>
               </View>
-            </View>
-            <View style={s.row2}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.label}>Selling Price ₱ *</Text>
-                <TextInput
-                  style={s.input}
-                  placeholder="0.00"
-                  placeholderTextColor={colors.textSecondary}
-                  value={price}
-                  onChangeText={setPrice}
-                  keyboardType="decimal-pad"
-                />
+              <View style={s.row2}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.label}>Selling Price ₱ *</Text>
+                  <TextInput
+                    style={s.input}
+                    placeholder="0.00"
+                    placeholderTextColor={colors.textSecondary}
+                    value={price}
+                    onChangeText={setPrice}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.label}>OpEx Contribution %</Text>
+                  <TextInput
+                    style={s.input}
+                    placeholder="10"
+                    placeholderTextColor={colors.textSecondary}
+                    value={opExPct}
+                    onChangeText={setOpExPct}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.label}>OpEx Contribution %</Text>
-                <TextInput
-                  style={s.input}
-                  placeholder="10"
-                  placeholderTextColor={colors.textSecondary}
-                  value={opExPct}
-                  onChangeText={setOpExPct}
-                  keyboardType="decimal-pad"
-                />
-              </View>
-            </View>
 
-            <Text style={s.label}>VAT TYPE</Text>
-            {vatTypes.length > 0 ? (
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                {vatTypes.map((vat) => (
+              <Text style={s.label}>VAT TYPE</Text>
+              {vatTypes.length > 0 ? (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {vatTypes.map((vat) => (
+                    <TouchableOpacity
+                      key={vat.id}
+                      style={[
+                        s.catPill,
+                        selectedVatTypeId === vat.id && s.catAct,
+                      ]}
+                      onPress={() => setSelectedVatTypeId(vat.id)}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: '600',
+                          color:
+                            selectedVatTypeId === vat.id ? '#fff' : colors.text,
+                        }}
+                      >
+                        {vat.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : (
+                // ✅ fallback if org hasn't set up VAT types yet
+                <View style={s.vatRow}>
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      fontWeight: '600',
+                      color: colors.text,
+                    }}
+                  >
+                    {vatExempt ? 'VAT Exempt' : 'VAT Inclusive (12%)'}
+                  </Text>
                   <TouchableOpacity
-                    key={vat.id}
-                    style={[
-                      s.catPill,
-                      selectedVatTypeId === vat.id && s.catAct,
-                    ]}
-                    onPress={() => setSelectedVatTypeId(vat.id)}
+                    style={{
+                      paddingHorizontal: 14,
+                      paddingVertical: 7,
+                      borderRadius: 8,
+                      backgroundColor: vatExempt
+                        ? colors.accent + '20'
+                        : colors.primary + '20',
+                      borderWidth: 1,
+                      borderColor: vatExempt ? colors.accent : colors.primary,
+                    }}
+                    onPress={() => setVatExempt((v) => !v)}
                   >
                     <Text
                       style={{
                         fontSize: 12,
-                        fontWeight: '600',
-                        color:
-                          selectedVatTypeId === vat.id ? '#fff' : colors.text,
+                        fontWeight: '700',
+                        color: vatExempt ? colors.accent : colors.primary,
                       }}
                     >
-                      {vat.name}
+                      {vatExempt ? 'Exempt' : 'VAT Incl.'}
                     </Text>
                   </TouchableOpacity>
-                ))}
-              </View>
-            ) : (
-              // ✅ fallback if org hasn't set up VAT types yet
-              <View style={s.vatRow}>
-                <Text
-                  style={{
-                    fontSize: 13,
-                    fontWeight: '600',
-                    color: colors.text,
-                  }}
-                >
-                  {vatExempt ? 'VAT Exempt' : 'VAT Inclusive (12%)'}
-                </Text>
-                <TouchableOpacity
-                  style={{
-                    paddingHorizontal: 14,
-                    paddingVertical: 7,
-                    borderRadius: 8,
-                    backgroundColor: vatExempt
-                      ? colors.accent + '20'
-                      : colors.primary + '20',
-                    borderWidth: 1,
-                    borderColor: vatExempt ? colors.accent : colors.primary,
-                  }}
-                  onPress={() => setVatExempt((v) => !v)}
-                >
-                  <Text
-                    style={{
-                      fontSize: 12,
-                      fontWeight: '700',
-                      color: vatExempt ? colors.accent : colors.primary,
+                </View>
+              )}
+
+              <Text style={s.label}>Tax & Discount Settings</Text>
+              <View style={{ gap: 8 }}>
+                <View style={s.vatRow}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>
+                    Is Basic Necessity / Prime Commodity (BNPC)
+                  </Text>
+                  <TouchableOpacity
+                    style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8, backgroundColor: isBNPC ? colors.accent + '20' : colors.background, borderWidth: 1, borderColor: isBNPC ? colors.accent : colors.border }}
+                    onPress={() => {
+                      if (!isBNPC) setHasSeniorDiscountVATExempt(false);
+                      setIsBNPC((v) => !v);
                     }}
                   >
-                    {vatExempt ? 'Exempt' : 'VAT Incl.'}
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: isBNPC ? colors.accent : colors.textSecondary }}>
+                      {isBNPC ? 'BNPC' : 'Off'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={s.vatRow}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>
+                    Senior/PWD VAT-exempt discount eligible
                   </Text>
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8, backgroundColor: hasSeniorDiscountVATExempt ? colors.accent + '20' : colors.background, borderWidth: 1, borderColor: hasSeniorDiscountVATExempt ? colors.accent : colors.border }}
+                    onPress={() => {
+                      if (!hasSeniorDiscountVATExempt) setIsBNPC(false);
+                      setHasSeniorDiscountVATExempt((v) => !v);
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: hasSeniorDiscountVATExempt ? colors.accent : colors.textSecondary }}>
+                      {hasSeniorDiscountVATExempt ? 'Enabled' : 'Off'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {isBNPC && (
+                  <>
+                    <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 4 }}>
+                      BNPC items qualify for SC/PWD special discount without VAT exemption (JAO 24-02, 2024)
+                    </Text>
+                  </>
+                )}
+                {hasSeniorDiscountVATExempt && (
+                  <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 4 }}>
+                    This item is VAT-exempt for senior/PWD discount calculations and will first remove VAT before applying the 20% discount.
+                  </Text>
+                )}
               </View>
-            )}
 
-            <Text style={s.label}>Cost Breakdown</Text>
-            <Text
-              style={{
-                fontSize: 11,
-                color: colors.textSecondary,
-                marginBottom: 8,
-              }}
-            >
-              Break down the contribution cost — purchase price, freight,
-              handling, etc.
-            </Text>
-            <CostBreakdownBuilder
-              lines={costLines}
-              onChange={setCostLines}
-              colors={colors}
-            />
 
-            {price && totalCost > 0 && (
-              <View
+              <Text style={s.label}>Cost Breakdown</Text>
+              <Text
                 style={{
-                  backgroundColor: colors.background,
-                  borderRadius: 10,
-                  padding: 12,
-                  marginTop: 12,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  flexDirection: 'row',
-                  justifyContent: 'space-between',
+                  fontSize: 11,
+                  color: colors.textSecondary,
+                  marginBottom: 8,
                 }}
               >
-                {(
-                  [
-                    ['Sell Price', parseFloat(price), colors.accent],
-                    ['Contrib. Cost', totalCost, colors.error],
-                    [
-                      'Gross Profit',
-                      parseFloat(price) - totalCost,
-                      parseFloat(price) - totalCost >= 0
-                        ? colors.success
-                        : colors.error,
-                    ],
-                  ] as [string, number, string][]
-                ).map(([label, val, color], i, arr) => (
-                  <React.Fragment key={label}>
-                    <View style={{ alignItems: 'center' }}>
-                      <Text
-                        style={{
-                          fontSize: 11,
-                          color: colors.textSecondary,
-                          marginBottom: 2,
-                        }}
-                      >
-                        {label}
-                      </Text>
-                      <Text style={{ fontSize: 15, fontWeight: '800', color }}>
-                        ₱{val.toLocaleString()}
-                      </Text>
-                    </View>
-                    {i < arr.length - 1 && (
-                      <Text
-                        style={{
-                          fontSize: 18,
-                          color: colors.textSecondary,
-                          alignSelf: 'center',
-                        }}
-                      >
-                        {i === 0 ? '−' : '='}
-                      </Text>
-                    )}
-                  </React.Fragment>
-                ))}
-              </View>
-            )}
+                Break down the contribution cost — purchase price, freight,
+                handling, etc.
+              </Text>
+              <CostBreakdownBuilder
+                lines={costLines}
+                onChange={setCostLines}
+                colors={colors}
+              />
 
-            {error ? <Text style={s.errTxt}>{error}</Text> : null}
-            <TouchableOpacity
-              style={s.addBtn}
-              onPress={handleAdd}
-              activeOpacity={0.85}
-            >
-              {isLoading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text
-                  style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}
+              {price && totalCost > 0 && (
+                <View
+                  style={{
+                    backgroundColor: colors.background,
+                    borderRadius: 10,
+                    padding: 12,
+                    marginTop: 12,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                  }}
                 >
-                  Add to Inventory
-                </Text>
+                  {(
+                    [
+                      ['Sell Price', parseFloat(price), colors.accent],
+                      ['Contrib. Cost', totalCost, colors.error],
+                      [
+                        'Gross Profit',
+                        parseFloat(price) - totalCost,
+                        parseFloat(price) - totalCost >= 0
+                          ? colors.success
+                          : colors.error,
+                      ],
+                    ] as [string, number, string][]
+                  ).map(([label, val, color], i, arr) => (
+                    <React.Fragment key={label}>
+                      <View style={{ alignItems: 'center' }}>
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            color: colors.textSecondary,
+                            marginBottom: 2,
+                          }}
+                        >
+                          {label}
+                        </Text>
+                        <Text style={{ fontSize: 15, fontWeight: '800', color }}>
+                          ₱{val.toLocaleString()}
+                        </Text>
+                      </View>
+                      {i < arr.length - 1 && (
+                        <Text
+                          style={{
+                            fontSize: 18,
+                            color: colors.textSecondary,
+                            alignSelf: 'center',
+                          }}
+                        >
+                          {i === 0 ? '−' : '='}
+                        </Text>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </View>
               )}
-            </TouchableOpacity>
-            <View style={{ height: 8 }} />
-          </ScrollView>
-        </View>
-      </View>
+
+              {error ? <Text style={s.errTxt}>{error}</Text> : null}
+              <TouchableOpacity
+                style={s.addBtn}
+                onPress={handleAdd}
+                activeOpacity={0.85}
+              >
+                {isLoading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text
+                    style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}
+                  >
+                    Add to Inventory
+                  </Text>
+                )}
+              </TouchableOpacity>
+              <View style={{ height: 8 }} />
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </TouchableOpacity>
     </Modal>
   );
 }

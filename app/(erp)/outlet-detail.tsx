@@ -50,7 +50,7 @@ import { MasterFileService } from '@/services/masterFileService';
 import { AdminTransaction, Cashier, OutletRevenue } from '@/types';
 import { DateRangeFilter, getDateRange } from '@/utils/dateHelpers';
 import { useTheme } from '@/contexts/ThemeContext';
-import { DropdownField } from '.';
+import { DropdownField } from './branch';
 import { formatPeso } from '@/utils/moneyHelpers';
 import DateRangePickerModal from '@/components/DateRangePickerModal';
 import { aom, FILTERS } from './outlets';

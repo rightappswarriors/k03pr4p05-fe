@@ -35,6 +35,7 @@ export interface SalesOrderTotalsParams {
   items: CartItem[];
   extraCharges?: ExtraCharge[];
   scPwdParams?: ScPwdDiscountParams;
+  automaticDiscounts?: boolean;
 }
 
 export type ItemBreakdown = CartItem & {
@@ -45,6 +46,7 @@ export type ItemBreakdown = CartItem & {
   vatExclusivePrice?: number;
   finalPrice?: number;
   lineTotal?: number;
+  eligibleAmount?: number;
 };
 
 export function removeVat(price: number, vatRate = DEFAULT_VAT_RATE): number {
@@ -95,6 +97,11 @@ export function computeScPwdDiscount(
   const isScPwd = discountType === 'SENIOR_CITIZEN' || discountType === 'PWD';
   const isBnpc = discountType === 'BNPC_SENIOR_CITIZEN' || discountType === 'BNPC_PWD';
 
+  const BNPC_WEEKLY_PURCHASE_LIMIT = 2500;
+  const BNPC_WEEKLY_DISCOUNT_CAP = 125;
+  let remainingBnpcPurchase = BNPC_WEEKLY_PURCHASE_LIMIT;
+  let remainingBnpcDiscount = BNPC_WEEKLY_DISCOUNT_CAP;
+
   let discountAmount = 0;
   let vatExemptSale = 0;
   let vatAmount = 0;
@@ -105,15 +112,17 @@ export function computeScPwdDiscount(
     const quantity = item.quantity;
     const vatRate = item.vatRate ?? DEFAULT_VAT_RATE;
     const isVatExemptItem = item.vatExempt === true || item.isVatExempt === true;
-    const eligible = isScPwd || (isBnpc && item.isBNPC === true);
+    const eligibleBnpc = isBnpc && item.isBNPC === true;
+    const eligibleSenior = isScPwd && item.hasSeniorDiscountVATExempt === true;
+    const eligible = eligibleBnpc || eligibleSenior;
     const eligibleQty = eligible ? quantity * proportion : 0;
     const regularQty = quantity - eligibleQty;
+    const regularVat = params.isVatRegistered && !isVatExemptItem
+      ? originalPrice - removeVat(originalPrice, vatRate)
+      : 0;
 
     if (!eligible || rate <= 0) {
-      const lineVat = params.isVatRegistered && !isVatExemptItem
-        ? originalPrice - removeVat(originalPrice, vatRate)
-        : 0;
-      vatAmount += lineVat * quantity;
+      vatAmount += regularVat * quantity;
       netTotal += originalPrice * quantity;
       return {
         ...item,
@@ -127,40 +136,41 @@ export function computeScPwdDiscount(
       };
     }
 
-    if (isBnpc) {
-      const perUnitDiscount = originalPrice * rate;
-      const lineDiscount = perUnitDiscount * eligibleQty;
-      const lineVat = params.isVatRegistered && !isVatExemptItem
-        ? originalPrice - removeVat(originalPrice, vatRate)
-        : 0;
-      const lineTotal = originalPrice * regularQty + (originalPrice - perUnitDiscount) * eligibleQty;
+    if (eligibleBnpc) {
+      const lineGross = originalPrice * quantity;
+      const eligibleAmount = originalPrice * eligibleQty;
+      const eligibleAmountToDiscount = Math.max(0, Math.min(eligibleAmount, remainingBnpcPurchase));
+      const lineDiscount = roundMoney(Math.min(eligibleAmountToDiscount * rate, remainingBnpcDiscount));
+      const lineTotal = roundMoney(lineGross - lineDiscount);
+
       discountAmount += lineDiscount;
-      vatAmount += lineVat * quantity;
+      vatAmount += regularVat * quantity;
       netTotal += lineTotal;
+      remainingBnpcPurchase = Math.max(0, remainingBnpcPurchase - eligibleAmountToDiscount);
+      remainingBnpcDiscount = Math.max(0, remainingBnpcDiscount - lineDiscount);
+
       return {
         ...item,
         discountType,
         discountRate: rate,
-        discountAmount: roundMoney(lineDiscount),
+        discountAmount: lineDiscount,
         originalPrice,
         vatExclusivePrice: isVatExemptItem ? originalPrice : removeVat(originalPrice, vatRate),
-        finalPrice: roundMoney(originalPrice - perUnitDiscount),
-        lineTotal: roundMoney(lineTotal),
+        finalPrice: roundMoney(originalPrice - originalPrice * rate),
+        lineTotal,
       };
     }
 
-    const vatExclusivePrice =
-      params.isVatRegistered && !isVatExemptItem ? removeVat(originalPrice, vatRate) : originalPrice;
+    const vatExclusivePrice = params.isVatRegistered && !isVatExemptItem
+      ? removeVat(originalPrice, vatRate)
+      : originalPrice;
     const perUnitDiscount = vatExclusivePrice * rate;
     const discountedUnit = vatExclusivePrice - perUnitDiscount;
-    const regularVat = params.isVatRegistered && !isVatExemptItem
-      ? originalPrice - vatExclusivePrice
-      : 0;
-    const lineDiscount = perUnitDiscount * eligibleQty;
-    const lineTotal = originalPrice * regularQty + discountedUnit * eligibleQty;
+    const lineDiscount = roundMoney(perUnitDiscount * eligibleQty);
+    const lineTotal = roundMoney(originalPrice * regularQty + discountedUnit * eligibleQty);
 
     discountAmount += lineDiscount;
-    vatExemptSale += vatExclusivePrice * eligibleQty;
+    vatExemptSale += roundMoney(vatExclusivePrice * eligibleQty);
     vatAmount += regularVat * regularQty;
     netTotal += lineTotal;
 
@@ -168,11 +178,123 @@ export function computeScPwdDiscount(
       ...item,
       discountType,
       discountRate: rate,
-      discountAmount: roundMoney(lineDiscount),
+      discountAmount: lineDiscount,
       originalPrice,
       vatExclusivePrice: roundMoney(vatExclusivePrice),
       finalPrice: roundMoney(discountedUnit),
-      lineTotal: roundMoney(lineTotal),
+      lineTotal,
+    };
+  });
+
+  return {
+    discountAmount: roundMoney(discountAmount),
+    vatExemptSale: roundMoney(vatExemptSale),
+    vatAmount: roundMoney(vatAmount),
+    netTotal: roundMoney(netTotal),
+    itemBreakdown,
+  };
+}
+
+export function computeAutomaticItemDiscounts(
+  params: Omit<ScPwdDiscountParams, 'discountType'>,
+  items: CartItem[],
+) {
+  const customerType = params.customerType;
+  const isEligibleCustomer = customerType === 'SENIOR_CITIZEN' || customerType === 'PWD';
+  const totalPax = Number(params.totalPax || 0);
+  const scPwdPax = Number(params.scPwdPax || 0);
+  const proportion = totalPax > 0 && scPwdPax > 0 ? Math.min(scPwdPax / totalPax, 1) : 1;
+  const bnpcType: DiscountType = customerType === 'PWD' ? 'BNPC_PWD' : 'BNPC_SENIOR_CITIZEN';
+  const seniorType: DiscountType = customerType === 'PWD' ? 'PWD' : 'SENIOR_CITIZEN';
+
+  const BNPC_WEEKLY_PURCHASE_LIMIT = 2500;
+  const BNPC_WEEKLY_DISCOUNT_CAP = 125;
+  let remainingBnpcPurchase = BNPC_WEEKLY_PURCHASE_LIMIT;
+  let remainingBnpcDiscount = BNPC_WEEKLY_DISCOUNT_CAP;
+
+  let discountAmount = 0;
+  let vatExemptSale = 0;
+  let vatAmount = 0;
+  let netTotal = 0;
+
+  const itemBreakdown = items.map((item) => {
+    const originalPrice = item.priceAtSale ?? item.price;
+    const quantity = item.quantity;
+    const vatRate = item.vatRate ?? DEFAULT_VAT_RATE;
+    const isVatExemptItem = item.vatExempt === true || item.isVatExempt === true;
+    const seniorEligible = isEligibleCustomer && item.hasSeniorDiscountVATExempt === true;
+    const bnpcEligible = isEligibleCustomer && !seniorEligible && item.isBNPC === true;
+    const eligibleQty = (seniorEligible || bnpcEligible) ? quantity * proportion : 0;
+    const regularQty = quantity - eligibleQty;
+    const regularVat = params.isVatRegistered && !isVatExemptItem
+      ? originalPrice - removeVat(originalPrice, vatRate)
+      : 0;
+
+    if (!seniorEligible && !bnpcEligible) {
+      const lineTotal = roundMoney(originalPrice * quantity);
+      vatAmount += regularVat * quantity;
+      netTotal += lineTotal;
+      return {
+        ...item,
+        discountType: 'NONE',
+        discountRate: 0,
+        discountAmount: 0,
+        originalPrice,
+        vatExclusivePrice: isVatExemptItem ? originalPrice : roundMoney(removeVat(originalPrice, vatRate)),
+        finalPrice: originalPrice,
+        lineTotal,
+        eligibleAmount: 0,
+      };
+    }
+
+    if (bnpcEligible) {
+      const lineGross = originalPrice * quantity;
+      const eligibleAmount = originalPrice * eligibleQty;
+      const eligibleAmountToDiscount = Math.max(0, Math.min(eligibleAmount, remainingBnpcPurchase));
+      const lineDiscount = roundMoney(Math.min(eligibleAmountToDiscount * 0.05, remainingBnpcDiscount));
+      const lineTotal = roundMoney(lineGross - lineDiscount);
+
+      discountAmount += lineDiscount;
+      vatAmount += regularVat * quantity;
+      netTotal += lineTotal;
+      remainingBnpcPurchase = Math.max(0, remainingBnpcPurchase - eligibleAmountToDiscount);
+      remainingBnpcDiscount = Math.max(0, remainingBnpcDiscount - lineDiscount);
+
+      return {
+        ...item,
+        discountType: bnpcType,
+        discountRate: 0.05,
+        discountAmount: lineDiscount,
+        originalPrice,
+        vatExclusivePrice: isVatExemptItem ? originalPrice : roundMoney(removeVat(originalPrice, vatRate)),
+        finalPrice: roundMoney(originalPrice * 0.95),
+        lineTotal,
+        eligibleAmount: roundMoney(eligibleAmountToDiscount),
+      };
+    }
+
+    const vatExclusivePrice = params.isVatRegistered && !isVatExemptItem
+      ? removeVat(originalPrice, vatRate)
+      : originalPrice;
+    const lineDiscount = roundMoney(vatExclusivePrice * 0.2 * eligibleQty);
+    const discountedUnit = vatExclusivePrice * 0.8;
+    const lineTotal = roundMoney(originalPrice * regularQty + discountedUnit * eligibleQty);
+
+    discountAmount += lineDiscount;
+    vatExemptSale += roundMoney(vatExclusivePrice * eligibleQty);
+    vatAmount += regularVat * regularQty;
+    netTotal += lineTotal;
+
+    return {
+      ...item,
+      discountType: seniorType,
+      discountRate: 0.2,
+      discountAmount: lineDiscount,
+      originalPrice,
+      vatExclusivePrice: roundMoney(vatExclusivePrice),
+      finalPrice: roundMoney(discountedUnit),
+      lineTotal,
+      eligibleAmount: roundMoney(vatExclusivePrice * eligibleQty),
     };
   });
 
@@ -213,6 +335,8 @@ export function calculateTotal(
 
     return {
       subtotal,
+      grossSubtotal: subtotal,
+      vatableSale: roundMoney(Math.max(0, result.netTotal - result.vatExemptSale - result.vatAmount)),
       discount: result.discountAmount,
       vatAmount: result.vatAmount,
       vatExemptSale: result.vatExemptSale,
@@ -232,6 +356,8 @@ export function calculateTotal(
 
   return {
     subtotal,
+    grossSubtotal: subtotal,
+    vatableSale: roundMoney(Math.max(0, subtotal - vatAmount)),
     discount: 0,
     vatAmount: roundMoney(vatAmount),
     vatExemptSale: 0,
@@ -258,9 +384,11 @@ export function computeSalesOrderTotals(params: SalesOrderTotalsParams) {
     ),
   );
   const discountType = normalizeDiscountType(params.scPwdParams?.discountType ?? 'NONE');
-  const shouldApplyDiscount = Boolean(params.scPwdParams && discountType !== 'NONE');
+  const shouldApplyDiscount = Boolean(params.scPwdParams && (discountType !== 'NONE' || params.automaticDiscounts));
   const discountResult = shouldApplyDiscount
-    ? computeScPwdDiscount(params.scPwdParams!, params.items)
+    ? params.automaticDiscounts
+      ? computeAutomaticItemDiscounts(params.scPwdParams!, params.items)
+      : computeScPwdDiscount(params.scPwdParams!, params.items)
     : {
         discountAmount: 0,
         vatExemptSale: 0,
@@ -302,6 +430,8 @@ export function computeSalesOrderTotals(params: SalesOrderTotalsParams) {
 
   return {
     subtotal,
+    grossSubtotal: subtotal,
+    vatableSale: roundMoney(Math.max(0, subtotal - discountResult.vatExemptSale - discountResult.vatAmount)),
     discountAmount: discountResult.discountAmount,
     vatExemptSale: discountResult.vatExemptSale,
     vatAmount: discountResult.vatAmount,

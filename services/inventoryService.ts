@@ -58,6 +58,8 @@ export class InventoryService {
           sellingPrice
           description
           image
+          isBNPC
+          hasSeniorDiscountVATExempt
           costLines { id label amount }
         }
         units {
@@ -105,8 +107,6 @@ export class InventoryService {
         : 'image/jpeg');
     return { uri, name, type };
   }
-
-
 
 
   static async getDashboardInventoryStats(): Promise<{
@@ -177,6 +177,7 @@ export class InventoryService {
           vatExempt
           isVatExempt
           isBNPC
+          hasSeniorDiscountVATExempt
           vatRate
           assembly
           skuNumber
@@ -248,6 +249,7 @@ export class InventoryService {
     vatExempt?: boolean;
     isVatExempt?: boolean;
     isBNPC?: boolean;
+    hasSeniorDiscountVATExempt?: boolean;
     vatRate?: number;
     vatTypeId?: number;         // ✅ add
     assembly?: boolean;
@@ -283,6 +285,7 @@ export class InventoryService {
         vatExempt
         isVatExempt
         isBNPC
+        hasSeniorDiscountVATExempt
         vatRate
         vatTypeId
         assembly
@@ -328,6 +331,7 @@ export class InventoryService {
           vatExempt
           isVatExempt
           isBNPC
+          hasSeniorDiscountVATExempt
           vatRate
           assembly
           skuNumber

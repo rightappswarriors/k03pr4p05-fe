@@ -164,6 +164,7 @@ function cartToCartItem(entry: CartEntry): CartItem {
     vatExempt: entry.item.item.vatExempt,
     isVatExempt: entry.item.item.isVatExempt,
     isBNPC: entry.item.item.isBNPC,
+    hasSeniorDiscountVATExempt: entry.item.item.hasSeniorDiscountVATExempt,
     vatRate: entry.item.item?.vatType?.rate ?? entry.item.item?.vatRate ?? 0,
   };
 }
@@ -440,7 +441,7 @@ function DetailModal({
               <Text style={[styles.sectionTitle, { color: colors.text }]}>
                 Totals
               </Text>
-              <TotalLine label="Subtotal" value={order.subtotal} />
+              <TotalLine label="Gross Sales (VAT Included)" value={order.subtotal} />
               {order.extraChargesTotal > 0 && (
                 <TotalLine
                   label="Extra Charges"
@@ -455,8 +456,12 @@ function DetailModal({
                 />
               ) : null}
               <TotalLine
+                label="VATable Sale"
+                value={Math.max(0, order.subtotal - order.vatExemptSale - order.vatAmount)}
+              />
+              <TotalLine
                 label="VAT (12%)"
-                value={isScPwd ? 0 : order.vatAmount}
+                value={order.vatAmount}
               />
               {order.discountAmount > 0 && (
                 <TotalLine
@@ -596,12 +601,13 @@ function CreateOrderModal({
   const totals = computeSalesOrderTotals({
     items: cartItems,
     extraCharges: charges,
+    automaticDiscounts: true,
     scPwdParams:
       customerType === 'REGULAR'
         ? undefined
         : {
             customerType,
-            discountType,
+            discountType: 'NONE',
             totalPax,
             scPwdPax,
             isVatRegistered: true,
@@ -655,6 +661,7 @@ function CreateOrderModal({
         vatExempt: customItemVatExempt,
         isVatExempt: customItemVatExempt,
         isBNPC: false,
+        hasSeniorDiscountVATExempt: customItemVatExempt,
         vatRate: 0.12,
       },
       units: [],
@@ -751,14 +758,24 @@ function CreateOrderModal({
     try {
       const orderItems: SalesOrderItemInput[] = cart.map((entry) => {
         const isCustom = entry.item.itemId < 0;
+        const computedLine = totals.itemBreakdown.find((line) => line.id === String(entry.item.itemId));
         return {
           itemId: isCustom ? undefined : entry.item.itemId,
           quantity: entry.quantity,
           unitPrice: entry.item.price,
           isCustomItem: isCustom,
           customItemName: isCustom ? entry.item.item.name : undefined,
+          discountQuantity: computedLine?.discountAmount ? entry.quantity : 0,
+          discountRate: computedLine?.discountRate ?? 0,
+          discountAmount: computedLine?.discountAmount ?? 0,
+          discountType: (computedLine?.discountType ?? 'NONE') as DiscountType,
           vatExempt: Boolean(
             entry.item.item.vatExempt || entry.item.item.isVatExempt,
+          ),
+          hasSeniorDiscountVATExempt: Boolean(
+            entry.item.item.hasSeniorDiscountVATExempt ||
+              entry.item.item.vatExempt ||
+              entry.item.item.isVatExempt,
           ),
         };
       });
@@ -771,7 +788,7 @@ function CreateOrderModal({
         outletId: selectedOutlet?.id,
         items: orderItems,
         customerType,
-        discountType,
+        discountType: 'NONE',
         scPwdCustomerInput:
           customerType === 'REGULAR'
             ? undefined
@@ -1301,6 +1318,7 @@ function CreateOrderModal({
                 onScPwdDataChange={setScPwdData}
                 discountType={discountType}
                 onDiscountTypeChange={setDiscountType}
+                showDiscountSelector={false}
                 totalPax={totalPax}
                 scPwdPax={scPwdPax}
                 onPaxChange={(nextTotal, nextScPwd) => {
@@ -1316,7 +1334,7 @@ function CreateOrderModal({
 
             {/* ── Order Summary ── */}
             <FormSection title="Order Summary">
-              <TotalLine label="Subtotal" value={totals.subtotal} />
+              <TotalLine label="Gross Sales (VAT Included)" value={totals.subtotal} />
               {totals.extraChargesTotal > 0 && (
                 <TotalLine
                   label="Extra Charges"
@@ -1331,12 +1349,16 @@ function CreateOrderModal({
                 />
               ) : null}
               <TotalLine
+                label="VATable Sale"
+                value={totals.vatableSale ?? Math.max(0, totals.subtotal - totals.vatExemptSale - totals.vatAmount)}
+              />
+              <TotalLine
                 label="VAT (12%)"
-                value={customerType !== 'REGULAR' ? 0 : totals.vatAmount}
+                value={totals.vatAmount}
               />
               {totals.discountAmount > 0 && (
                 <TotalLine
-                  label={`Discount (${discountType})`}
+                  label="Automatic item discounts"
                   value={totals.discountAmount}
                   prefix="-"
                 />
@@ -1459,7 +1481,7 @@ function CreateOrderModal({
                       <Package size={18} color={colors.primary} />
                       <View style={{ flex: 1 }}>
                         <Text style={{ color: colors.text, fontWeight: '800' }}>
-                          {item.item.name} <Text>Vat{item.vatRate}</Text>
+                          {item.item.name} <Text>Vat{item.item.vatRate}</Text>
                         </Text>
                         <Text
                           style={{ color: colors.textSecondary, fontSize: 12 }}

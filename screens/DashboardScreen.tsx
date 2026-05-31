@@ -77,7 +77,7 @@ import {
   SkeletonTableRow,
   SummaryTable,
 } from '@/components/dashboardSummary/SummaryTable';
-import { DropdownField, SkeletonPulse } from '@/app/(erp)';
+import { DropdownField, SkeletonPulse } from '@/app/(erp)/branch';
 import { useAuth } from '@/contexts/AuthContext';
 import DateRangePickerModal from '@/components/DateRangePickerModal';
 import { CatalogSearchModal } from '@/components/CatalogSearchModal';

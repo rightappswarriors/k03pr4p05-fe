@@ -90,7 +90,7 @@ export class ReceiptService {
         const regularTotal = itemPrice * (data.quantity - discountQty);
         const lineTotal = discountedTotal + regularTotal;
         
-        itemVat = lineTotal * VAT_RATE;
+        itemVat = lineTotal - lineTotal / (1 + VAT_RATE);
       }
       
       return {
@@ -103,7 +103,7 @@ export class ReceiptService {
         unitName: data.unitName,
         unitLabel: data.unitLabel,
         subtotal: (data.priceAtSale ?? data.price) * data.quantity,
-        discountAmount: data.discountAmount ?? 0, // ← per-item discount
+        discountAmount: computedLine.discountAmount ?? data.discountAmount ?? 0,
         vatExempt: data.vatExempt,
         barcode: data.barcode,
         itemVatAmount: itemVat, // ← per-item VAT
@@ -169,7 +169,12 @@ export class ReceiptService {
       priceAtSale: data.priceAtSale ?? data.price,
       unitId: data.unitId ? Number(data.unitId) : undefined,
       unitName: data.unitName,
-      discountAmount: data.discountAmount ?? 0, // ← new — per-item discount
+      discountAmount: itemBreakdown?.find((line: any) => line.id === data.id)?.discountAmount ?? data.discountAmount ?? 0,
+      discountType: itemBreakdown?.find((line: any) => line.id === data.id)?.discountType ?? data.discountType,
+      discountRate: itemBreakdown?.find((line: any) => line.id === data.id)?.discountRate ?? data.discountRate,
+      originalPrice: itemBreakdown?.find((line: any) => line.id === data.id)?.originalPrice,
+      vatExclusivePrice: itemBreakdown?.find((line: any) => line.id === data.id)?.vatExclusivePrice,
+      finalPrice: itemBreakdown?.find((line: any) => line.id === data.id)?.finalPrice,
     }));
 
     await SalesService.createTransaction({

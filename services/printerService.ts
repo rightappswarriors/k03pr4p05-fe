@@ -213,7 +213,7 @@ Thank you for testing!
         const discountedTotal = discountedPrice * discountQty;
         const regularTotal = unitPrice * (item.quantity - discountQty);
         const lineTotal = discountedTotal + regularTotal;
-        const lineTotalWithVat = lineTotal + itemVat;
+        const lineTotalWithVat = lineTotal;
 
         const priceLabel = finalPrice < originalPrice
           ? `<s>Php ${originalPrice.toFixed(2)}</s> Php ${finalPrice.toFixed(2)}`
@@ -230,8 +230,10 @@ Thank you for testing!
         </tr>`;
 
         // Add discount details if there's a discount
-        if (discountQty > 0 && discountRate > 0) {
-          const discountDisplay = `${discountQty} @ ${(discountRate * 100).toFixed(0)}% off`;
+        if (discountAmount > 0) {
+          const discountDisplay = item.discountType
+            ? this.discountLabel(item.discountType, discountRate)
+            : `${discountQty || item.quantity} @ ${(discountRate * 100).toFixed(0)}% off`;
           itemRow += `
         <tr>
           <td style="padding-left: 10px; color: #666; font-size: 9px;">  ${discountDisplay}</td>
@@ -398,15 +400,39 @@ Thank you for testing!
     return item.isCustomItem ? item.customItemName ?? 'Custom Item' : item.item?.name ?? `Item #${item.itemId}`;
   }
 
+  private static discountLabel(type?: string | null, rate?: number | null): string {
+    const labelByType: Record<string, string> = {
+      BNPC_SENIOR_CITIZEN: 'BNPC 5%',
+      BNPC_PWD: 'BNPC 5%',
+      SENIOR_CITIZEN: 'Senior/PWD VAT-Exempt 20%',
+      PWD: 'Senior/PWD VAT-Exempt 20%',
+      CUSTOM: 'Automatic Item Discounts',
+    };
+    if (!type || type === 'NONE') return 'Discount';
+    if (labelByType[type]) return labelByType[type];
+    const percent = Number(rate ?? 0) > 0 ? ` ${(Number(rate) * 100).toFixed(0)}%` : '';
+    return `${type}${percent}`;
+  }
+
+  private static salesOrderDiscountSummary(items: SalesOrder['items']): string {
+    const labels = Array.from(
+      new Set(
+        items
+          .filter((item) => Number(item.discountAmount ?? 0) > 0)
+          .map((item) => this.discountLabel(item.discountType, item.discountRate)),
+      ),
+    );
+    return labels.length > 0 ? labels.join(' + ') : 'Discount';
+  }
+
   private static generateSalesOrderHtml(salesOrder: SalesOrder, kind: 'receipt' | 'invoice'): string {
     const isInvoice = kind === 'invoice';
     const date = new Date(salesOrder.date);
     const scPwdCustomer = salesOrder.scPwdCustomer;
     const isScPwd = salesOrder.customerType === 'SENIOR_CITIZEN' || salesOrder.customerType === 'PWD';
     const extraCharges = salesOrder.extraCharges ?? [];
-    const vatableSale = isScPwd
-      ? Math.max(0, salesOrder.subtotal - salesOrder.vatExemptSale)
-      : Math.max(0, salesOrder.subtotal - salesOrder.vatAmount);
+    const vatableSale = Math.max(0, salesOrder.subtotal - salesOrder.vatExemptSale - salesOrder.vatAmount);
+    const discountSummary = this.salesOrderDiscountSummary(salesOrder.items);
     const soldTo =
       salesOrder.customerName ||
       scPwdCustomer?.fullName ||
@@ -417,12 +443,22 @@ Thank you for testing!
       .map((item) => {
         const name = this.salesOrderItemName(item);
         const lineTotal = item.totalPrice ?? item.unitPrice * item.quantity;
+        const discountAmount = Number(item.discountAmount ?? 0);
+        const discountRow = discountAmount > 0
+          ? `
+            <tr>
+              <td class="muted">${this.discountLabel(item.discountType, item.discountRate)}</td>
+              <td class="right muted">-${this.money(discountAmount)}</td>
+            </tr>
+          `
+          : '';
         return `
           <tr><td colspan="2">${item.quantity}x ${name}</td></tr>
           <tr>
             <td class="muted">@ ${this.money(item.unitPrice)}</td>
             <td class="right">${this.money(lineTotal)}</td>
           </tr>
+          ${discountRow}
         `;
       })
       .join('');
@@ -487,12 +523,12 @@ Thank you for testing!
     const totalsHtml = isInvoice
       ? `
         <table>
-          <tr><td>Subtotal:</td><td class="right">${this.money(salesOrder.subtotal)}</td></tr>
+          <tr><td>Gross Sales (VAT Included):</td><td class="right">${this.money(salesOrder.subtotal)}</td></tr>
           <tr><td>VATable Sale:</td><td class="right">${this.money(vatableSale)}</td></tr>
           <tr><td>VAT-Exempt Sale:</td><td class="right">${this.money(salesOrder.vatExemptSale)}</td></tr>
           <tr><td>Zero-Rated Sale:</td><td class="right">${this.money(0)}</td></tr>
           <tr><td>VAT Amount (12%):</td><td class="right">${this.money(salesOrder.vatAmount)}</td></tr>
-          ${salesOrder.discountAmount > 0 ? `<tr><td>Discount (${salesOrder.discountType} ${(salesOrder.discountRate * 100).toFixed(0)}%):</td><td class="right">-${this.money(salesOrder.discountAmount)}</td></tr>` : ''}
+          ${salesOrder.discountAmount > 0 ? `<tr><td>Discount (${discountSummary}):</td><td class="right">-${this.money(salesOrder.discountAmount)}</td></tr>` : ''}
           ${salesOrder.extraChargesTotal > 0 ? `<tr><td>Extra Charges:</td><td class="right">+${this.money(salesOrder.extraChargesTotal)}</td></tr>` : ''}
         </table>
         <div class="line"></div>
@@ -500,10 +536,11 @@ Thank you for testing!
       `
       : `
         <table>
-          <tr><td>Subtotal:</td><td class="right">${this.money(salesOrder.subtotal)}</td></tr>
+          <tr><td>Gross Sales (VAT Included):</td><td class="right">${this.money(salesOrder.subtotal)}</td></tr>
           ${isScPwd ? `<tr><td>VAT Exempt Sale:</td><td class="right">${this.money(salesOrder.vatExemptSale)}</td></tr>` : ''}
-          <tr><td>VAT (12%):</td><td class="right">${this.money(isScPwd ? 0 : salesOrder.vatAmount)}</td></tr>
-          ${salesOrder.discountAmount > 0 ? `<tr><td>Discount (${salesOrder.discountType} ${(salesOrder.discountRate * 100).toFixed(0)}%):</td><td class="right">-${this.money(salesOrder.discountAmount)}</td></tr>` : ''}
+          <tr><td>VATable Sale:</td><td class="right">${this.money(vatableSale)}</td></tr>
+          <tr><td>VAT (12%):</td><td class="right">${this.money(salesOrder.vatAmount)}</td></tr>
+          ${salesOrder.discountAmount > 0 ? `<tr><td>Discount (${discountSummary}):</td><td class="right">-${this.money(salesOrder.discountAmount)}</td></tr>` : ''}
           ${salesOrder.extraChargesTotal > 0 ? `<tr><td>Extra Charges:</td><td class="right">+${this.money(salesOrder.extraChargesTotal)}</td></tr>` : ''}
         </table>
         <div class="heavy"></div>

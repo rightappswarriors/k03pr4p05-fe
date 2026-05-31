@@ -56,21 +56,22 @@ export default function AdminTabLayout() {
             tabBarInactiveTintColor: '#9CA3AF',
           }}
         >
+
           <Tabs.Screen
-            name="index"
+            name="index" // can I do this? erp { isGold ? "erp" : "basic"}
             options={{
-              title: 'Dashboard',
+              title: 'Dashboard', // can I do this? erp { isGold ? "ERP" : "Something somthing name"}
               tabBarIcon: ({ size, color }) => (
-                <BarChart3 size={size} color={color} />
+                <Building2 size={size} color={color} />
               ),
             }}
           />
           <Tabs.Screen
-            name="erp" // can I do this? erp { isGold ? "erp" : "basic"}
+            name="branch"
             options={{
-              title: 'ERP', // can I do this? erp { isGold ? "ERP" : "Something somthing name"}
+              title: 'Branch & Outlet',
               tabBarIcon: ({ size, color }) => (
-                <Building2 size={size} color={color} />
+                <BarChart3 size={size} color={color} />
               ),
             }}
           />

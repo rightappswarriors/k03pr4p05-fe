@@ -22,7 +22,7 @@ import {
   Edit2,
   Save,
 } from 'lucide-react-native';
-import { SkeletonPulse } from '@/app/(erp)';
+import { SkeletonPulse } from '@/app/(erp)/branch';
 import {
   formatPeso,
   formatPesoCompact,
@@ -30,7 +30,7 @@ import {
 } from '@/utils/moneyHelpers';
 import { GISRow, SummaryRow } from '@/data/SummaryData';
 import { useTheme } from '@/contexts/ThemeContext';
-import { DropdownField } from '@/app/(erp)';
+import { DropdownField } from '@/app/(erp)/branch';
 import { FinanceService } from '@/services';
 
 export function SkeletonStatCard({ colors }: { colors: any }) {

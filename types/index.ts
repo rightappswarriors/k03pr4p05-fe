@@ -14,6 +14,7 @@ export interface Item {
   vatExempt?: boolean;
   isVatExempt?: boolean;
   isBNPC?: boolean;
+  hasSeniorDiscountVATExempt?: boolean;
   vatRate?: number;
   units?: ItemUnit[];
 }
@@ -34,6 +35,7 @@ export interface CartItem {
   vatExempt?: boolean;
   isVatExempt?: boolean;
   isBNPC?: boolean;
+  hasSeniorDiscountVATExempt?: boolean;
   vatRate?: number;
   rate?: number
   barcode?: string;
@@ -172,6 +174,8 @@ export type PaymentBottomSheetRef = {
 
 export type CalculationResult = {
   subtotal: number;
+  grossSubtotal?: number;
+  vatableSale?: number;
   discount: number;
   vatAmount: number;
   vatExemptSale?: number;

@@ -25,10 +25,9 @@ import {
   Store,
 } from 'lucide-react-native';
 import type { DiscountType } from '@/types';
-import { DEFAULT_VAT_RATE as VAT_RATE } from '@/types';
 import { useTheme } from '@/contexts/ThemeContext';
 import { usePOS } from '@/contexts/POSContext';
-import { calculateTotal } from '@/hooks/calculateTotal';
+import { calculateTotal, calculateItemVat } from '@/hooks/calculateTotal';
 import PaymentBottomSheet from '@/components/pos/paymentMethod/PaymentBottomSheet';
 import { ItemDiscountModal } from './ItemDiscountModal';
 import RootView from '@/components/ui/RootView';
@@ -81,7 +80,7 @@ const ItemRow = React.memo(
 
     // Use pre-calculated VAT amount
     const itemVat = data.itemVatAmount ?? 0;
-    const lineTotalWithVat = lineTotal + itemVat;
+    const lineTotalWithVat = lineTotal;
 
     return (
       <View style={[rs.itemRow, { borderBottomColor: colors.border }]}>
@@ -569,23 +568,9 @@ export function ReceiptModal({
 
   // Then calculate itemVatAmount for display purposes AFTER getting the calculation
   const itemsWithVat = itemsWithDiscounts.map((item) => {
-    let itemVat = 0;
-    if (
-      outlet?.isVatRegistered &&
-      item.vatExempt !== true &&
-      !isVatExemptActive // This will now properly be false when VAT Exempt is checked
-    ) {
-      const unitPrice = item.priceAtSale ?? item.price;
-      const discountQty = item.discountQuantity ?? 0;
-      const discountRate = item.discountRate ?? 0;
-
-      const discountedPrice = unitPrice * (1 - discountRate);
-      const discountedTotal = discountedPrice * discountQty;
-      const regularTotal = unitPrice * (item.quantity - discountQty);
-      const lineTotal = discountedTotal + regularTotal;
-
-      itemVat = lineTotal * VAT_RATE;
-    }
+    const itemVat = outlet?.isVatRegistered && item.vatExempt !== true && !isVatExemptActive
+      ? calculateItemVat(item, outlet.isVatRegistered, isVatExemptActive)
+      : 0;
 
     return {
       ...item,

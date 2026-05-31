@@ -33,6 +33,7 @@ import {
   ShieldCheck,
   Users,
   Star,
+  BadgePercent,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
@@ -46,6 +47,7 @@ import SalesAnalyticsScreen from '@/screens/SalesAnalyticsScreen';
 import MasterFileScreen from '@/screens/MasterFileScreen';
 import RestockSchedulingScreen from '@/screens/RestockSchedulingScreen';
 import AuditLogScreen from '@/screens/AuditLogScreen';
+import DiscountTrackingScreen from '@/screens/DiscountTrackingScreen';
 import { useAuth } from '@/contexts/AuthContext';
 
 // ─── DEV: Plan Toggle FAB ─────────────────────────────────────────────────────
@@ -129,6 +131,7 @@ type ERPRoute =
   | 'Finance'
   | 'SalesAnalytics'
   | 'MasterFile'
+  | 'DiscountTracking'
   | 'RestockScheduling'
   | 'AuditLog';
 // ✅ Restore proper width
@@ -149,6 +152,7 @@ const NAV_ICON_MAP: Record<
   Finance: PhilippinePeso,
   SalesAnalytics: BarChart2,
   MasterFile: Database,
+  DiscountTracking: BadgePercent,
   AuditLog: ShieldCheck,
 };
 
@@ -164,6 +168,7 @@ const FREE_NAV: NavItem[] = [
   { key: 'Dashboard', label: 'Dashboard' },
   { key: 'Sales', label: 'Sales' },
   { key: 'Inventory', label: 'Inventory' },
+  { key: 'DiscountTracking', label: 'Discounts' },
   { key: 'AuditLog', label: 'Audit Log' },
 ];
 
@@ -638,6 +643,7 @@ export default function ERPLayout() {
       ) : (
         <LockedScreen featureName="Master File" />
       ),
+      DiscountTracking: <DiscountTrackingScreen />,
       AuditLog: <AuditLogScreen />,
     }),
     [limits],

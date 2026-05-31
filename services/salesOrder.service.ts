@@ -66,9 +66,11 @@ export interface SalesOrderItemInput {
   discountQuantity?: number;
   discountRate?: number;
   discountAmount?: number;
+  discountType?: DiscountType;
   isCustomItem?: boolean;
   customItemName?: string;
   vatExempt?: boolean;
+  hasSeniorDiscountVATExempt?: boolean;
 }
 
 export interface DeliveryInput {
@@ -107,6 +109,7 @@ export interface SalesOrderItem {
   discountQuantity?: number;
   discountRate?: number;
   discountAmount?: number;
+  discountType?: DiscountType;
   isCustomItem: boolean;
   customItemName?: string;
   vatExempt: boolean;
@@ -117,6 +120,7 @@ export interface SalesOrderItem {
     vatExempt?: boolean;
     isVatExempt?: boolean;
     isBNPC?: boolean;
+    hasSeniorDiscountVATExempt?: boolean;
     vatRate?: number;
   };
 }
@@ -225,6 +229,7 @@ export interface InventoryItemForSales {
     vatExempt?: boolean;
     isVatExempt?: boolean;
     isBNPC?: boolean;
+    hasSeniorDiscountVATExempt?: boolean;
     vatRate?: number;
     vatType? : {
       id: number
@@ -327,6 +332,7 @@ const SALES_ORDER_FRAGMENT = gql`
       discountQuantity
       discountRate
       discountAmount
+      discountType
       isCustomItem
       customItemName
       vatExempt
@@ -337,6 +343,7 @@ const SALES_ORDER_FRAGMENT = gql`
         vatExempt
         isVatExempt
         isBNPC
+        hasSeniorDiscountVATExempt
         vatRate
       }
     }
@@ -559,6 +566,7 @@ export class SalesOrderService {
             vatExempt
             isVatExempt
             isBNPC
+            hasSeniorDiscountVATExempt
             vatRate
           }
           units {
@@ -617,6 +625,7 @@ export class SalesOrderService {
               vatExempt
               isVatExempt
               isBNPC
+              hasSeniorDiscountVATExempt
               vatRate
             }
             units {
