@@ -30,6 +30,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '@/contexts/ThemeContext';
 import { AuthService } from '@/services/authService';
 import { InventoryService } from '@/services';
+import { DEFAULT_VAT_RATE } from '@/types';
 import { MediaService } from '@/services/mediaService';
 import { VatTypeService } from '@/services/vatTypeService';
 import { CategoryPickerModal } from '@/components/CategoryPickerModal';
@@ -249,6 +250,228 @@ function ImagePickerSection({
   );
 }
 
+function removeVatLocal(price: number, vatRate = DEFAULT_VAT_RATE) {
+  return price / (1 + vatRate);
+}
+
+function PricingPreviewSection({
+  price,
+  vatExempt,
+  isBNPC,
+  hasSeniorDiscountVATExempt,
+  vatRate,
+  selectedVatTypeId,
+  vatTypes,
+  colors,
+}: {
+  price: string;
+  vatExempt: boolean;
+  isBNPC: boolean;
+  hasSeniorDiscountVATExempt: boolean;
+  vatRate: string;
+  selectedVatTypeId: number | null;
+  vatTypes: { id: number; name: string; rate: number }[];
+  colors: any;
+}) {
+  const numPrice = parseFloat(price) || 0;
+  if (numPrice <= 0) return null;
+
+  // Resolve effective VAT rate
+  const selectedVatType = vatTypes.find((v) => v.id === selectedVatTypeId);
+  const effectiveVatRate = vatExempt
+    ? 0
+    : selectedVatType != null
+      ? DEFAULT_VAT_RATE
+      : (parseFloat(vatRate) || 12) / 100;
+
+  const isVatInclusive = effectiveVatRate > 0;
+  const vatExclusiveBase = isVatInclusive
+    ? removeVatLocal(numPrice, effectiveVatRate)
+    : numPrice;
+  const vatAmount = isVatInclusive ? numPrice - vatExclusiveBase : 0;
+
+  // SC/PWD 20%: VAT removed first, then 20% off the VAT-exclusive base
+  const seniorDiscountAmount = hasSeniorDiscountVATExempt
+    ? vatExclusiveBase * 0.2
+    : 0;
+  const seniorFinalPrice = hasSeniorDiscountVATExempt
+    ? vatExclusiveBase * 0.8
+    : null;
+
+  // BNPC 5%: applied on the full selling price (no VAT removal)
+  const bnpcDiscountAmount = isBNPC ? numPrice * 0.05 : 0;
+  const bnpcFinalPrice = isBNPC ? numPrice * 0.95 : null;
+
+  const fmt = (v: number) =>
+    v.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const s = StyleSheet.create({
+    container: {
+      backgroundColor: colors.background,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: 'hidden',
+      marginTop: 14,
+    },
+    header: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      backgroundColor: colors.card,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    headerTxt: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: colors.textSecondary,
+      letterSpacing: 0.8,
+    },
+    vatRow: {
+      flexDirection: 'row',
+      gap: 8,
+      padding: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    metaBox: {
+      flex: 1,
+      backgroundColor: colors.card,
+      borderRadius: 8,
+      padding: 8,
+      alignItems: 'center',
+    },
+    metaLabel: { fontSize: 10, color: colors.textSecondary, marginBottom: 3 },
+    metaValue: { fontSize: 14, fontWeight: '700', color: colors.text },
+    discountBlock: {
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    discountTitle: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: colors.textSecondary,
+      letterSpacing: 0.7,
+      marginBottom: 6,
+    },
+    discountRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 4,
+    },
+    discountLabel: { fontSize: 12, color: colors.textSecondary },
+    discountValue: { fontSize: 12, fontWeight: '600', color: colors.text },
+  });
+
+  return (
+    <View style={s.container}>
+      <View style={s.header}>
+        <Text style={s.headerTxt}>PRICE BREAKDOWN</Text>
+      </View>
+
+      {/* VAT breakdown row */}
+      <View style={s.vatRow}>
+        <View style={s.metaBox}>
+          <Text style={s.metaLabel}>Selling price</Text>
+          <Text style={[s.metaValue, { color: colors.accent }]}>₱{fmt(numPrice)}</Text>
+        </View>
+        <View style={s.metaBox}>
+          <Text style={s.metaLabel}>
+            {isVatInclusive ? 'VAT-excl. base' : 'VAT exempt'}
+          </Text>
+          <Text style={[s.metaValue, { color: colors.primary }]}>
+            ₱{fmt(vatExclusiveBase)}
+          </Text>
+        </View>
+        <View style={s.metaBox}>
+          <Text style={s.metaLabel}>
+            VAT ({isVatInclusive ? `${(effectiveVatRate * 100).toFixed(0)}%` : 'exempt'})
+          </Text>
+          <Text
+            style={[
+              s.metaValue,
+              { color: isVatInclusive ? colors.error : colors.textSecondary },
+            ]}
+          >
+            {isVatInclusive ? `₱${fmt(vatAmount)}` : '—'}
+          </Text>
+        </View>
+      </View>
+
+      {/* Senior/PWD 20% block */}
+      {hasSeniorDiscountVATExempt && seniorFinalPrice != null && (
+        <View style={[s.discountBlock]}>
+          <Text style={s.discountTitle}>SC / PWD — 20% DISCOUNT (VAT-EXEMPT ELIGIBLE)</Text>
+          <View style={s.discountRow}>
+            <Text style={s.discountLabel}>
+              VAT removed first — base: ₱{fmt(vatExclusiveBase)}
+            </Text>
+          </View>
+          <View style={s.discountRow}>
+            <Text style={s.discountLabel}>
+              Discount (20% of ₱{fmt(vatExclusiveBase)})
+            </Text>
+            <Text style={[s.discountValue, { color: colors.error }]}>
+              − ₱{fmt(seniorDiscountAmount)}
+            </Text>
+          </View>
+          <View style={[s.discountRow, { marginBottom: 0 }]}>
+            <Text style={[s.discountLabel, { fontWeight: '600', color: colors.text }]}>
+              Final price for SC/PWD
+            </Text>
+            <Text
+              style={[s.discountValue, { fontSize: 15, color: colors.success }]}
+            >
+              ₱{fmt(seniorFinalPrice)}
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* BNPC 5% block */}
+      {isBNPC && bnpcFinalPrice != null && (
+        <View style={[s.discountBlock, { borderBottomWidth: 0 }]}>
+          <Text style={s.discountTitle}>
+            BNPC — 5% DISCOUNT (JAO 24-02, NO VAT REMOVAL)
+          </Text>
+          <View style={s.discountRow}>
+            <Text style={s.discountLabel}>
+              Discount (5% of ₱{fmt(numPrice)})
+            </Text>
+            <Text style={[s.discountValue, { color: colors.error }]}>
+              − ₱{fmt(bnpcDiscountAmount)}
+            </Text>
+          </View>
+          <View style={[s.discountRow, { marginBottom: 0 }]}>
+            <Text style={[s.discountLabel, { fontWeight: '600', color: colors.text }]}>
+              Final price for BNPC SC/PWD
+            </Text>
+            <Text
+              style={[s.discountValue, { fontSize: 15, color: colors.success }]}
+            >
+              ₱{fmt(bnpcFinalPrice)}
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* VAT-exempt label when nothing else shows */}
+      {!hasSeniorDiscountVATExempt && !isBNPC && vatExempt && (
+        <View style={[s.discountBlock, { borderBottomWidth: 0 }]}>
+          <Text style={[s.discountTitle, { color: colors.accent }]}>
+            VAT EXEMPT — NO DISCOUNTS CONFIGURED
+          </Text>
+          <Text style={{ fontSize: 12, color: colors.textSecondary }}>
+            Enable BNPC or Senior/PWD flags above to see discount previews.
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+}
 // ─── CostBreakdownBuilder ─────────────────────────────────────────────────────
 
 function CostBreakdownBuilder({
@@ -1223,6 +1446,16 @@ function EditItemModal({
                   ))}
                 </View>
               )}
+              <PricingPreviewSection
+                price={price}
+                vatExempt={vatExempt}
+                isBNPC={isBNPC}
+                hasSeniorDiscountVATExempt={hasSeniorDiscountVATExempt}
+                vatRate={vatRate}
+                selectedVatTypeId={selectedVatTypeId}
+                vatTypes={vatTypes}
+                colors={colors}
+              />
 
               {error ? <Text style={s.errTxt}>{error}</Text> : null}
 
@@ -1962,7 +2195,165 @@ function ItemDetailModal({
               </View>
             </View>
           )}
+          {/* ── Discount Eligibility ── */}
+          {(item.vatExempt || item.isBNPC || item.hasSeniorDiscountVATExempt) && (() => {
+            const effectiveVatRate = item.vatExempt
+              ? 0
+              : item.vatType?.rate != null
+                ? item.vatType.rate / 100
+                : item.vatRate ?? DEFAULT_VAT_RATE;
+            const vatExclusiveBase =
+              effectiveVatRate > 0
+                ? item.sellingPrice / (1 + effectiveVatRate)
+                : item.sellingPrice;
+            const seniorFinal = item.hasSeniorDiscountVATExempt
+              ? vatExclusiveBase * 0.8
+              : null;
+            const bnpcFinal = item.isBNPC ? item.sellingPrice * 0.95 : null;
+            const fmt = (v: number) =>
+              v.toLocaleString('en-PH', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              });
 
+            return (
+              <View
+                style={[
+                  idm.section,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.border,
+                    marginTop: 12,
+                  },
+                ]}
+              >
+                <Text style={[idm.sectionTitle, { color: colors.textSecondary }]}>
+                  DISCOUNT ELIGIBILITY
+                </Text>
+
+                {/* Badges */}
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    flexWrap: 'wrap',
+                    gap: 6,
+                    paddingHorizontal: 12,
+                    paddingTop: 8,
+                    paddingBottom: 4,
+                  }}
+                >
+                  {item.vatExempt && (
+                    <View
+                      style={{
+                        backgroundColor: colors.accent + '18',
+                        borderRadius: 6,
+                        paddingHorizontal: 8,
+                        paddingVertical: 3,
+                        borderWidth: 1,
+                        borderColor: colors.accent + '60',
+                      }}
+                    >
+                      <Text
+                        style={{ fontSize: 11, fontWeight: '700', color: colors.accent }}
+                      >
+                        VAT EXEMPT
+                      </Text>
+                    </View>
+                  )}
+                  {item.isBNPC && (
+                    <View
+                      style={{
+                        backgroundColor: '#FAEEDA',
+                        borderRadius: 6,
+                        paddingHorizontal: 8,
+                        paddingVertical: 3,
+                        borderWidth: 1,
+                        borderColor: '#EF9F27',
+                      }}
+                    >
+                      <Text
+                        style={{ fontSize: 11, fontWeight: '700', color: '#854F0B' }}
+                      >
+                        BNPC · 5% SC/PWD
+                      </Text>
+                    </View>
+                  )}
+                  {item.hasSeniorDiscountVATExempt && (
+                    <View
+                      style={{
+                        backgroundColor: '#E6F1FB',
+                        borderRadius: 6,
+                        paddingHorizontal: 8,
+                        paddingVertical: 3,
+                        borderWidth: 1,
+                        borderColor: '#85B7EB',
+                      }}
+                    >
+                      <Text
+                        style={{ fontSize: 11, fontWeight: '700', color: '#185FA5' }}
+                      >
+                        SENIOR/PWD · 20% VAT-EXEMPT
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* SC/PWD computed price */}
+                {seniorFinal != null && (
+                  <View
+                    style={[idm.detailRow, { borderBottomColor: colors.border }]}
+                  >
+                    <Text style={[idm.detailLabel, { color: colors.textSecondary }]}>
+                      SC/PWD price (VAT-excl. × 0.8)
+                    </Text>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text
+                        style={{ fontSize: 14, fontWeight: '700', color: colors.success }}
+                      >
+                        ₱{fmt(seniorFinal)}
+                      </Text>
+                      <Text
+                        style={{ fontSize: 10, color: colors.textSecondary, marginTop: 1 }}
+                      >
+                        base ₱{fmt(vatExclusiveBase)} − 20%
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* BNPC computed price */}
+                {bnpcFinal != null && (
+                  <View
+                    style={[
+                      idm.detailRow,
+                      { borderBottomColor: 'transparent' },
+                    ]}
+                  >
+                    <Text style={[idm.detailLabel, { color: colors.textSecondary }]}>
+                      BNPC SC/PWD price (× 0.95)
+                    </Text>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text
+                        style={{
+                          fontSize: 14,
+                          fontWeight: '700',
+                          color: '#854F0B',
+                        }}
+                      >
+                        ₱{fmt(bnpcFinal)}
+                      </Text>
+                      <Text
+                        style={{ fontSize: 10, color: colors.textSecondary, marginTop: 1 }}
+                      >
+                        ₱{fmt(item.sellingPrice)} − 5%
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+            );
+          })()}
+          
           {/* Delete */}
           <View
             style={{
@@ -2759,6 +3150,17 @@ function AddItemModal({
                   ))}
                 </View>
               )}
+              <PricingPreviewSection
+                price={price}
+                vatExempt={vatExempt}
+                isBNPC={isBNPC}
+                hasSeniorDiscountVATExempt={hasSeniorDiscountVATExempt}
+                vatRate={vatRate}
+                selectedVatTypeId={selectedVatTypeId}
+                vatTypes={vatTypes}
+                colors={colors}
+              />
+
 
               {error ? <Text style={s.errTxt}>{error}</Text> : null}
               <TouchableOpacity

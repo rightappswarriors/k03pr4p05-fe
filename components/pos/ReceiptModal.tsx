@@ -39,6 +39,7 @@ import ScPwdCustomerForm from '@/components/ScPwdCustomerForm';
 import type { ScPwdCustomerInput } from '@/services/salesOrder.service';
 
 const WEIGHT_UNITS = ['kg', 'gram', 'g', 'grams', 'kilo', 'kilos'];
+const GOVERNMENT_ID_PATTERN = /^[a-z0-9]{4,32}$/i;
 
 interface ReceiptModalProps {
   visible: boolean;
@@ -532,7 +533,7 @@ export function ReceiptModal({
   // ── Derived values (not hooks, safe after early return) ──────────────────
   const isVatExemptOption = /SENIOR|PWD/.test(discountOption);
   const isVatExemptActive = applyVatExempt; // Just use applyVatExempt directly
-  const vatExemptType = 'SENIOR_CITIZEN'; // Default to senior citizen for VAT exempt
+  const vatExemptType = customerType === 'PWD' ? 'PWD' : 'SENIOR_CITIZEN';
 
   const itemsWithDiscounts = items.map((item) => ({
     ...item,
@@ -549,6 +550,7 @@ export function ReceiptModal({
     discount,
     discountRate,
     vatExemptAmount,
+    bnpcCapReached,
   } = calculateTotal(
     itemsWithDiscounts,
     outlet,
@@ -588,6 +590,8 @@ export function ReceiptModal({
     isVatExemptActive,
   });
 
+  const bnpcCapIndicatorActive = Boolean(bnpcCapReached && /BNPC/.test(discountOption));
+  const effectiveVatExemptActive = isVatExemptActive || bnpcCapIndicatorActive;
   const cashAmount = parseFloat(cashReceived) || 0;
   const change = cashAmount - total;
 
@@ -604,6 +608,10 @@ export function ReceiptModal({
     if (customerType !== 'REGULAR') {
       if (!scPwdFullName.trim() || !vatExemptRefNo.trim()) {
         Alert.alert('SC/PWD details required', 'Please enter the customer full name and SC/PWD ID number before checkout.');
+        return;
+      }
+      if (!GOVERNMENT_ID_PATTERN.test(vatExemptRefNo.trim())) {
+        Alert.alert('Invalid SC/PWD ID', 'OSCA/government ID must be 4-32 alphanumeric characters.');
         return;
       }
       if ((parseInt(scPwdPax) || 0) > (parseInt(totalPax) || 0)) {
@@ -627,10 +635,10 @@ export function ReceiptModal({
         discountOption,
         outlet,
         user,
-        isVatExempt: isVatExemptActive,
-        vatExemptType: isVatExemptActive ? vatExemptType : undefined,
-        vatExemptRefNo: isVatExemptActive ? vatExemptRefNo : undefined,
-        vatExemptAmount: isVatExemptActive ? vatExemptAmount : undefined,
+        isVatExempt: effectiveVatExemptActive,
+        vatExemptType: effectiveVatExemptActive ? vatExemptType : undefined,
+        vatExemptRefNo: effectiveVatExemptActive ? vatExemptRefNo : undefined,
+        vatExemptAmount: effectiveVatExemptActive ? vatExemptAmount : undefined,
         customerType,
         scPwdCustomerInput: customerType !== 'REGULAR'
           ? {
@@ -681,7 +689,7 @@ export function ReceiptModal({
     isDiscounted,
     isVatExemptOption,
     applyVatExempt,
-    isVatExemptActive,
+    isVatExemptActive: effectiveVatExemptActive,
   };
 
   const paymentProps: PaymentBlockProps = {
@@ -844,6 +852,11 @@ export function ReceiptModal({
                       ))}
                     </ScrollView>
                     <TotalsBlock {...totalsProps} />
+                    {bnpcCapIndicatorActive && (
+                      <Text style={[rs.capNotice, { color: '#047857', borderColor: '#10B981' }]}>
+                        BNPC cap reached - applying 20% VAT-exempt discount.
+                      </Text>
+                    )}
                   </View>
                   <View style={rs.wideRight}>
                     <Text style={[rs.sectionTitle, { color: colors.text }]}>
@@ -880,6 +893,11 @@ export function ReceiptModal({
                     />
                   ))}
                   <TotalsBlock {...totalsProps} />
+                  {bnpcCapIndicatorActive && (
+                    <Text style={[rs.capNotice, { color: '#047857', borderColor: '#10B981' }]}>
+                      BNPC cap reached - applying 20% VAT-exempt discount.
+                    </Text>
+                  )}
                   <Text
                     style={[
                       rs.sectionTitle,
@@ -1013,6 +1031,15 @@ const rs = StyleSheet.create({
     textAlign: 'right',
   },
   totalsBlock: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, gap: 6 },
+  capNotice: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 12,
+    fontWeight: '800',
+  },
   totalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

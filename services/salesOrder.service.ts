@@ -28,11 +28,15 @@ export interface ScPwdCustomerInput {
   id?: string;
   fullName: string;
   idNumber: string;
+  oscaId?: string;
+  govId?: string;
   idType?: string;
   customerType?: CustomerType;
   dateOfBirth?: string;
   contactNumber?: string;
   address?: string;
+  bnpcCapManuallyReached?: boolean;
+  bnpcCapManualReason?: string;
   isRepresentative?: boolean;
   representativeName?: string;
   representativeIdNumber?: string;
@@ -42,8 +46,12 @@ export interface ScPwdCustomer {
   id: string;
   fullName: string;
   idNumber: string;
+  oscaId?: string;
+  govId?: string;
   idType: string;
   customerType: CustomerType;
+  bnpcCapManuallyReached?: boolean;
+  bnpcCapManualReason?: string;
   isRepresentative: boolean;
   representativeName?: string;
   representativeIdNumber?: string;
@@ -307,8 +315,12 @@ const SALES_ORDER_FRAGMENT = gql`
       id
       fullName
       idNumber
+      oscaId
+      govId
       idType
       customerType
+      bnpcCapManuallyReached
+      bnpcCapManualReason
       isRepresentative
       representativeName
       representativeIdNumber

@@ -24,6 +24,9 @@ export interface ScPwdDiscountParams {
   scPwdPax?: number;
   customDiscountRate?: number;
   isVatRegistered?: boolean;
+  bnpcDiscountUsed?: number;
+  bnpcEligibleAmountUsed?: number;
+  bnpcCapManuallyReached?: boolean;
 }
 
 export interface ExtraCharge {
@@ -99,8 +102,9 @@ export function computeScPwdDiscount(
 
   const BNPC_WEEKLY_PURCHASE_LIMIT = 2500;
   const BNPC_WEEKLY_DISCOUNT_CAP = 125;
-  let remainingBnpcPurchase = BNPC_WEEKLY_PURCHASE_LIMIT;
-  let remainingBnpcDiscount = BNPC_WEEKLY_DISCOUNT_CAP;
+  let remainingBnpcPurchase = Math.max(0, BNPC_WEEKLY_PURCHASE_LIMIT - Number(params.bnpcEligibleAmountUsed ?? 0));
+  let remainingBnpcDiscount = Math.max(0, BNPC_WEEKLY_DISCOUNT_CAP - Number(params.bnpcDiscountUsed ?? 0));
+  let bnpcCapReached = Boolean(params.bnpcCapManuallyReached) || remainingBnpcPurchase <= 0 || remainingBnpcDiscount <= 0;
 
   let discountAmount = 0;
   let vatExemptSale = 0;
@@ -112,8 +116,8 @@ export function computeScPwdDiscount(
     const quantity = item.quantity;
     const vatRate = item.vatRate ?? DEFAULT_VAT_RATE;
     const isVatExemptItem = item.vatExempt === true || item.isVatExempt === true;
-    const eligibleBnpc = isBnpc && item.isBNPC === true;
-    const eligibleSenior = isScPwd && item.hasSeniorDiscountVATExempt === true;
+    const eligibleBnpc = isBnpc && !bnpcCapReached && item.isBNPC === true;
+    const eligibleSenior = (isScPwd || (isBnpc && bnpcCapReached)) && item.hasSeniorDiscountVATExempt === true;
     const eligible = eligibleBnpc || eligibleSenior;
     const eligibleQty = eligible ? quantity * proportion : 0;
     const regularQty = quantity - eligibleQty;
@@ -164,7 +168,11 @@ export function computeScPwdDiscount(
     const vatExclusivePrice = params.isVatRegistered && !isVatExemptItem
       ? removeVat(originalPrice, vatRate)
       : originalPrice;
-    const perUnitDiscount = vatExclusivePrice * rate;
+    const effectiveRate = isBnpc && bnpcCapReached ? 0.2 : rate;
+    const effectiveDiscountType = isBnpc && bnpcCapReached
+      ? (discountType === 'BNPC_PWD' ? 'PWD' : 'SENIOR_CITIZEN')
+      : discountType;
+    const perUnitDiscount = vatExclusivePrice * effectiveRate;
     const discountedUnit = vatExclusivePrice - perUnitDiscount;
     const lineDiscount = roundMoney(perUnitDiscount * eligibleQty);
     const lineTotal = roundMoney(originalPrice * regularQty + discountedUnit * eligibleQty);
@@ -176,8 +184,8 @@ export function computeScPwdDiscount(
 
     return {
       ...item,
-      discountType,
-      discountRate: rate,
+      discountType: effectiveDiscountType,
+      discountRate: effectiveRate,
       discountAmount: lineDiscount,
       originalPrice,
       vatExclusivePrice: roundMoney(vatExclusivePrice),
@@ -192,6 +200,7 @@ export function computeScPwdDiscount(
     vatAmount: roundMoney(vatAmount),
     netTotal: roundMoney(netTotal),
     itemBreakdown,
+    bnpcCapReached,
   };
 }
 
@@ -209,8 +218,9 @@ export function computeAutomaticItemDiscounts(
 
   const BNPC_WEEKLY_PURCHASE_LIMIT = 2500;
   const BNPC_WEEKLY_DISCOUNT_CAP = 125;
-  let remainingBnpcPurchase = BNPC_WEEKLY_PURCHASE_LIMIT;
-  let remainingBnpcDiscount = BNPC_WEEKLY_DISCOUNT_CAP;
+  let remainingBnpcPurchase = Math.max(0, BNPC_WEEKLY_PURCHASE_LIMIT - Number(params.bnpcEligibleAmountUsed ?? 0));
+  let remainingBnpcDiscount = Math.max(0, BNPC_WEEKLY_DISCOUNT_CAP - Number(params.bnpcDiscountUsed ?? 0));
+  let bnpcCapReached = Boolean(params.bnpcCapManuallyReached) || remainingBnpcPurchase <= 0 || remainingBnpcDiscount <= 0;
 
   let discountAmount = 0;
   let vatExemptSale = 0;
@@ -223,14 +233,15 @@ export function computeAutomaticItemDiscounts(
     const vatRate = item.vatRate ?? DEFAULT_VAT_RATE;
     const isVatExemptItem = item.vatExempt === true || item.isVatExempt === true;
     const seniorEligible = isEligibleCustomer && item.hasSeniorDiscountVATExempt === true;
-    const bnpcEligible = isEligibleCustomer && !seniorEligible && item.isBNPC === true;
-    const eligibleQty = (seniorEligible || bnpcEligible) ? quantity * proportion : 0;
+    const bnpcEligible = isEligibleCustomer && !bnpcCapReached && !seniorEligible && item.isBNPC === true;
+    const seniorFallbackEligible = isEligibleCustomer && bnpcCapReached && item.hasSeniorDiscountVATExempt === true;
+    const eligibleQty = (seniorEligible || bnpcEligible || seniorFallbackEligible) ? quantity * proportion : 0;
     const regularQty = quantity - eligibleQty;
     const regularVat = params.isVatRegistered && !isVatExemptItem
       ? originalPrice - removeVat(originalPrice, vatRate)
       : 0;
 
-    if (!seniorEligible && !bnpcEligible) {
+    if (!seniorEligible && !bnpcEligible && !seniorFallbackEligible) {
       const lineTotal = roundMoney(originalPrice * quantity);
       vatAmount += regularVat * quantity;
       netTotal += lineTotal;
@@ -259,6 +270,7 @@ export function computeAutomaticItemDiscounts(
       netTotal += lineTotal;
       remainingBnpcPurchase = Math.max(0, remainingBnpcPurchase - eligibleAmountToDiscount);
       remainingBnpcDiscount = Math.max(0, remainingBnpcDiscount - lineDiscount);
+      bnpcCapReached = remainingBnpcPurchase <= 0 || remainingBnpcDiscount <= 0;
 
       return {
         ...item,
@@ -304,6 +316,7 @@ export function computeAutomaticItemDiscounts(
     vatAmount: roundMoney(vatAmount),
     netTotal: roundMoney(netTotal),
     itemBreakdown,
+    bnpcCapReached,
   };
 }
 
@@ -343,9 +356,10 @@ export function calculateTotal(
       discountRate: discountRateFor(discountType, scPwdParams?.customDiscountRate ?? 0),
       total: result.netTotal,
       netTotal: result.netTotal,
-      isVatExempt: vatExemptActive || discountType === 'SENIOR_CITIZEN' || discountType === 'PWD',
+      isVatExempt: vatExemptActive || discountType === 'SENIOR_CITIZEN' || discountType === 'PWD' || Boolean((result as any).bnpcCapReached),
       vatExemptAmount: result.vatExemptSale,
       itemBreakdown: result.itemBreakdown,
+      bnpcCapReached: Boolean((result as any).bnpcCapReached),
     };
   }
 
@@ -439,5 +453,6 @@ export function computeSalesOrderTotals(params: SalesOrderTotalsParams) {
     total: roundMoney(netTotal),
     grandTotal: roundMoney(netTotal + extraChargesTotal),
     itemBreakdown: discountResult.itemBreakdown as ItemBreakdown[],
+    bnpcCapReached: Boolean((discountResult as any).bnpcCapReached),
   };
 }

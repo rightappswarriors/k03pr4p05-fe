@@ -117,6 +117,7 @@ const MODE_DESCRIPTIONS: Record<OrderMode, string> = {
   DELIVERY:
     "Order will be delivered to customer's address. Requires delivery address and contact number.",
 };
+const GOVERNMENT_ID_PATTERN = /^[a-z0-9]{4,32}$/i;
 
 function money(value?: number | null) {
   return `₱${Number(value ?? 0).toFixed(2)}`;
@@ -712,6 +713,8 @@ function CreateOrderModal({
         next.scPwdName = 'SC/PWD full name is required.';
       if (!scPwdData.idNumber.trim())
         next.scPwdId = 'SC/PWD ID number is required.';
+      else if (!GOVERNMENT_ID_PATTERN.test(scPwdData.idNumber.trim()))
+        next.scPwdId = 'OSCA/government ID must be 4-32 alphanumeric characters.';
     }
     charges.forEach((charge, index) => {
       if (!charge.label.trim())
@@ -1363,6 +1366,11 @@ function CreateOrderModal({
                   prefix="-"
                 />
               )}
+              {totals.bnpcCapReached && (
+                <Text style={[styles.capNotice, { color: '#047857', borderColor: '#10B981' }]}>
+                  BNPC cap reached - applying 20% VAT-exempt discount.
+                </Text>
+              )}
               <TotalLine label="GRAND TOTAL" value={totals.grandTotal} strong />
             </FormSection>
 
@@ -1481,7 +1489,7 @@ function CreateOrderModal({
                       <Package size={18} color={colors.primary} />
                       <View style={{ flex: 1 }}>
                         <Text style={{ color: colors.text, fontWeight: '800' }}>
-                          {item.item.name} <Text>Vat{item.item.vatRate}</Text>
+                          {item.item.name} 
                         </Text>
                         <Text
                           style={{ color: colors.textSecondary, fontSize: 12 }}
@@ -1490,9 +1498,9 @@ function CreateOrderModal({
                           {item.inventory?.outlet?.name
                             ? ` · ${item.inventory.outlet.name}`
                             : ''}
-
+                           
+                        {item.item.vatRate && (<Text style={{ color: colors.success, fontWeight: 'bold', backgroundColor: colors.surface, borderRadius: 4, padding: 4 }}>Vat Inclusive</Text>)} 
                         </Text>
-                        
                       </View>
                       <Text style={{ color: colors.accent, fontWeight: '900' }}>
                         {money(item.price)}
@@ -2213,6 +2221,14 @@ const styles = StyleSheet.create({
   chargeRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   footerActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   errorText: { color: '#EF4444', fontSize: 12, fontWeight: '700' },
+  capNotice: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 12,
+    fontWeight: '800',
+  },
   flexText: { flex: 1 },
   strong: { fontWeight: '900' },
   grand: { fontSize: 18, fontWeight: '900' },

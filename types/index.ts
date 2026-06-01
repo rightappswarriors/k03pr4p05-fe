@@ -187,6 +187,7 @@ export type CalculationResult = {
   vatExemptAmount?: number;
   itemBreakdown?: any[];
   usePromoInstead?: boolean;
+  bnpcCapReached?: boolean;
 };
 
 export interface Receipt {
