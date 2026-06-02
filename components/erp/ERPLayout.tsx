@@ -23,14 +23,18 @@ import {
   BarChart2,
   Building2,
   ChevronDown,
-  PhilippinePeso,
   Database,
   LayoutDashboard,
   Menu,
+  Moon,
   Package,
   PackagePlus,
+  PhilippinePeso,
+  Settings,
+  ShoppingBag,
   ShoppingCart,
   ShieldCheck,
+  Sun,
   Users,
   Star,
   BadgePercent,
@@ -49,6 +53,9 @@ import RestockSchedulingScreen from '@/screens/RestockSchedulingScreen';
 import AuditLogScreen from '@/screens/AuditLogScreen';
 import DiscountTrackingScreen from '@/screens/DiscountTrackingScreen';
 import { useAuth } from '@/contexts/AuthContext';
+import BranchOverviewScreen from '@/app/(erp)/branch';
+import OrderManagementScreen from '@/app/(erp)/orderManagement';
+import SettingsScreen from '@/components/Settings';
 
 // ─── DEV: Plan Toggle FAB ─────────────────────────────────────────────────────
 // Floating badge for presentations and testing — tap to switch Basic ↔ Gold.
@@ -62,32 +69,27 @@ function PlanToggleFAB() {
   return (
     <TouchableOpacity
       style={{
-        position: 'absolute',
-        bottom: 28,
-        right: 16,
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 6,
-        paddingHorizontal: 14,
-        paddingVertical: 9,
-        borderRadius: 20,
-        backgroundColor: isGold ? '#E87722' : colors.surface,
-        borderWidth: isGold ? 0 : 1.5,
-        borderColor: colors.border,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.18,
-        shadowRadius: 8,
-        elevation: 6,
-        // Slightly transparent so it doesn't hide content
-        opacity: 0.92,
+        gap: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 999,
+        backgroundColor: isGold ? colors.accent : 'rgba(255,255,255,0.06)',
+        borderWidth: 1,
+        borderColor: isGold ? colors.accent : 'rgba(255,255,255,0.14)',
+        shadowColor: '#020617',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.08,
+        shadowRadius: 18,
+        elevation: 2,
       }}
       onPress={() => setPlan(isGold ? 'basic' : 'gold')}
       activeOpacity={0.8}
     >
       <Star
         size={13}
-        color={isGold ? '#fff' : colors.textSecondary}
+        color={isGold ? '#fff' : colors.text}
         strokeWidth={isGold ? 2.5 : 2}
         fill={isGold ? '#fff' : 'none'}
       />
@@ -95,8 +97,7 @@ function PlanToggleFAB() {
         style={{
           fontSize: 12,
           fontWeight: '700',
-          color: isGold ? '#fff' : colors.textSecondary,
-          letterSpacing: 0.3,
+          color: isGold ? '#fff' : colors.text,
         }}
       >
         {isGold ? 'Gold' : 'Basic'}
@@ -105,7 +106,9 @@ function PlanToggleFAB() {
         style={{
           width: 1,
           height: 12,
-          backgroundColor: isGold ? 'rgba(255,255,255,0.4)' : colors.border,
+          backgroundColor: isGold
+            ? 'rgba(255,255,255,0.4)'
+            : 'rgba(255,255,255,0.18)',
         }}
       />
       <Text
@@ -115,8 +118,33 @@ function PlanToggleFAB() {
           fontWeight: '500',
         }}
       >
-        {isGold ? 'tap → Basic' : 'tap → Gold'}
+        {isGold ? 'tap -> Basic' : 'tap -> Gold'}
       </Text>
+    </TouchableOpacity>
+  );
+}
+
+function ThemeToggleButton() {
+  const { colors, theme, toggleTheme } = useTheme();
+  const isDark = theme === 'dark';
+  const Icon = isDark ? Sun : Moon;
+
+  return (
+    <TouchableOpacity
+      style={{
+        width: 38,
+        height: 38,
+        borderRadius: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: colors.sidebarMuted,
+        borderWidth: 1,
+        borderColor: colors.border,
+      }}
+      onPress={toggleTheme}
+      activeOpacity={0.78}
+    >
+      <Icon size={17} color={colors.text} strokeWidth={2.2} />
     </TouchableOpacity>
   );
 }
@@ -125,6 +153,8 @@ function PlanToggleFAB() {
 
 type ERPRoute =
   | 'Dashboard'
+  | 'BranchOutlet'
+  | 'Orders'
   | 'Sales'
   | 'Inventory'
   | 'HR'
@@ -133,10 +163,13 @@ type ERPRoute =
   | 'MasterFile'
   | 'DiscountTracking'
   | 'RestockScheduling'
-  | 'AuditLog';
+  | 'AuditLog'
+  | 'Settings';
 // ✅ Restore proper width
-const DRAWER_WIDTH = 240; // for mobile drawer
-const SIDEBAR_WIDTH = 250; // for tablet/web persistent sidebar
+const DRAWER_WIDTH = 264; // for mobile drawer
+const SIDEBAR_WIDTH = 272; // for tablet/web persistent sidebar
+const themeAwareShadow = (colors: any) =>
+  colors.background === '#F4F7FB' ? 0.08 : 0.18;
 
 // ─── Icon map (outside component — stable references) ─────────────────────────
 
@@ -145,6 +178,8 @@ const NAV_ICON_MAP: Record<
   React.FC<{ size: number; color: string; strokeWidth?: number }>
 > = {
   Dashboard: LayoutDashboard,
+  BranchOutlet: Building2,
+  Orders: ShoppingBag,
   Sales: ShoppingCart,
   Inventory: Package,
   RestockScheduling: PackagePlus,
@@ -154,6 +189,7 @@ const NAV_ICON_MAP: Record<
   MasterFile: Database,
   DiscountTracking: BadgePercent,
   AuditLog: ShieldCheck,
+  Settings,
 };
 
 // ─── Nav structure ────────────────────────────────────────────────────────────
@@ -164,8 +200,13 @@ interface NavItem {
 }
 
 // Always visible for both Basic and Gold
-const FREE_NAV: NavItem[] = [
+const PRIMARY_NAV: NavItem[] = [
   { key: 'Dashboard', label: 'Dashboard' },
+  { key: 'BranchOutlet', label: 'Branch & Outlet' },
+  { key: 'Orders', label: 'Orders' },
+];
+
+const FREE_NAV: NavItem[] = [
   { key: 'Sales', label: 'Sales' },
   { key: 'Inventory', label: 'Inventory' },
   { key: 'DiscountTracking', label: 'Discounts' },
@@ -191,9 +232,11 @@ const GATED_NAV: (NavItem & { featureName: string })[] = [
 
 // Combined for label lookups
 const ALL_NAV: NavItem[] = [
+  ...PRIMARY_NAV,
   ...FREE_NAV,
   ...GATED_NAV,
   { key: 'MasterFile', label: 'Master File' },
+  { key: 'Settings', label: 'Settings' },
 ];
 
 // ─── Screen map is built inside component (depends on plan) ───────────────────
@@ -209,25 +252,25 @@ const makeStyles = (colors: any, isTablet: boolean) =>
     header: {
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: colors.surface,
-      paddingHorizontal: 16,
-      paddingVertical: 12,
+      backgroundColor: colors.header,
+      paddingHorizontal: isTablet ? 22 : 16,
+      paddingVertical: isTablet ? 14 : 12,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
-      elevation: 3,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.06,
-      shadowRadius: 4,
+      gap: 12,
+      elevation: 2,
+      shadowColor: '#020617',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: themeAwareShadow(colors),
+      shadowRadius: 18,
     },
     hamburger: {
       width: 38,
       height: 38,
       alignItems: 'center',
       justifyContent: 'center',
-      borderRadius: 8,
-      backgroundColor: colors.background,
-      marginRight: 12,
+      borderRadius: 10,
+      backgroundColor: colors.sidebarMuted,
     },
     headerLeft: {
       flexDirection: 'row',
@@ -236,25 +279,23 @@ const makeStyles = (colors: any, isTablet: boolean) =>
       gap: 10,
     },
     headerTitle: {
-      fontSize: 16,
-      fontWeight: '700',
+      fontSize: isTablet ? 18 : 16,
+      fontWeight: '800',
       color: colors.text,
-      letterSpacing: -0.3,
     },
     headerBadge: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 5,
       backgroundColor: colors.accent,
-      paddingHorizontal: 10,
-      paddingVertical: 5,
-      borderRadius: 20,
+      paddingHorizontal: 11,
+      paddingVertical: 7,
+      borderRadius: 999,
     },
     headerBadgeTx: {
       color: '#fff',
       fontSize: 11,
       fontWeight: '700',
-      letterSpacing: 0.5,
     },
     body: {
       flex: 1,
@@ -263,13 +304,14 @@ const makeStyles = (colors: any, isTablet: boolean) =>
     },
     sidebar: {
       width: SIDEBAR_WIDTH,
-      backgroundColor: colors.surface,
+      backgroundColor: colors.sidebar,
       borderRightWidth: 1,
       borderRightColor: colors.border,
-      paddingTop: 8,
+      paddingTop: 14,
+      paddingHorizontal: 10,
       flexGrow: 0
     },
-    content: { flex: 1, overflow: 'hidden' },
+    content: { flex: 1, overflow: 'hidden', backgroundColor: colors.background },
     drawerOverlay: {
       position: 'absolute',
       top: 0,
@@ -285,21 +327,22 @@ const makeStyles = (colors: any, isTablet: boolean) =>
       left: 0,
       bottom: 0,
       width: DRAWER_WIDTH,
-      backgroundColor: colors.surface,
+      backgroundColor: colors.sidebar,
       zIndex: 20,
       paddingTop: Platform.OS === 'ios' ? 48 : 24,
+      paddingHorizontal: 10,
       borderRightWidth: 1,
       borderRightColor: colors.border,
-      shadowColor: '#000',
+      shadowColor: '#020617',
       shadowOffset: { width: 4, height: 0 },
       shadowOpacity: 0.2,
       shadowRadius: 12,
       elevation: 12,
     },
     drawerHeader: {
-      paddingHorizontal: 20,
-      paddingBottom: 16,
-      marginBottom: 4,
+      paddingHorizontal: 16,
+      paddingBottom: 18,
+      marginBottom: 14,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
       flexDirection: 'row',
@@ -309,49 +352,68 @@ const makeStyles = (colors: any, isTablet: boolean) =>
     drawerLogoIcon: {
       width: 36,
       height: 36,
-      borderRadius: 10,
+      borderRadius: 12,
       backgroundColor: colors.primary,
       alignItems: 'center',
       justifyContent: 'center',
     },
     drawerLogo: {
-      fontSize: 16,
+      fontSize: 17,
       fontWeight: '800',
-      color: colors.primary,
-      letterSpacing: -0.5,
+      color: colors.text,
     },
     drawerSubtitle: {
       fontSize: 10,
       color: colors.textSecondary,
       marginTop: 1,
-      letterSpacing: 0.5,
       textTransform: 'uppercase',
     },
     navItem: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingVertical: 10,
-      paddingHorizontal: 14,
-      marginHorizontal: 8,
-      marginBottom: 2,
-      borderRadius: 8,
-      gap: 10,
+      paddingVertical: 12,
+      paddingHorizontal: 13,
+      marginBottom: 5,
+      borderRadius: 14,
+      gap: 11,
     },
-    navItemActive: { backgroundColor: colors.primary },
-    navLabel: { fontSize: 14, fontWeight: '600', letterSpacing: 0.1, flex: 1 },
+    navItemActive: {
+      backgroundColor: colors.primary,
+      shadowColor: colors.primary,
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.28,
+      shadowRadius: 18,
+      elevation: 2,
+    },
+    navLabel: { fontSize: 14, fontWeight: '700', flex: 1 },
+    navSectionLabel: {
+      color: colors.textSecondary,
+      fontSize: 10,
+      fontWeight: '900',
+      letterSpacing: 1.2,
+      marginTop: 10,
+      marginBottom: 8,
+      paddingHorizontal: 13,
+      textTransform: 'uppercase',
+    },
+    navDivider: {
+      height: 1,
+      backgroundColor: colors.border,
+      marginVertical: 10,
+      marginHorizontal: 10,
+    },
     // Master File accordion
     mfItem: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingVertical: 10,
-      paddingHorizontal: 14,
-      marginHorizontal: 8,
-      marginBottom: 2,
-      borderRadius: 8,
-      gap: 10,
+      paddingVertical: 11,
+      paddingHorizontal: 12,
+      marginBottom: 4,
+      borderRadius: 12,
+      gap: 11,
     },
     mfItemActive: { backgroundColor: colors.primary },
-    mfLabel: { fontSize: 14, fontWeight: '600', letterSpacing: 0.1, flex: 1 },
+    mfLabel: { fontSize: 14, fontWeight: '700', flex: 1 },
     subItem: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -401,6 +463,34 @@ const SidebarContent = memo(function SidebarContent({
   const { user } = useAuth()
   if (!user) return null; // or a placeholder if user data is required for rendering
   const organizationName = user.org?.name || 'Right ERP';
+  const renderNavItem = (item: NavItem) => {
+    const isActive = activeRoute === item.key;
+    const Icon = NAV_ICON_MAP[item.key];
+
+    return (
+      <TouchableOpacity
+        key={item.key}
+        style={[styles.navItem, isActive && styles.navItemActive]}
+        onPress={() => navigate(item.key)}
+        activeOpacity={0.75}
+      >
+        <Icon
+          size={17}
+          color={isActive ? '#fff' : colors.textSecondary}
+          strokeWidth={isActive ? 2.6 : 2}
+        />
+        <Text
+          style={[
+            styles.navLabel,
+            { color: isActive ? '#fff' : colors.text },
+          ]}
+        >
+          {item.label}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
+
   return (
     <>
       <View style={styles.drawerHeader}>
@@ -414,6 +504,12 @@ const SidebarContent = memo(function SidebarContent({
       </View>
 
       {/* Free nav items — always visible */}
+      <Text style={styles.navSectionLabel}>Workspace</Text>
+      {PRIMARY_NAV.map(renderNavItem)}
+
+      <View style={styles.navDivider} />
+
+      <Text style={styles.navSectionLabel}>Operations</Text>
       {FREE_NAV.map((item) => {
         const isActive = activeRoute === item.key;
         const Icon = NAV_ICON_MAP[item.key];
@@ -587,6 +683,9 @@ const SidebarContent = memo(function SidebarContent({
           )}
         </>
       )}
+
+      <View style={styles.navDivider} />
+      {renderNavItem({ key: 'Settings', label: 'Settings' })}
     </>
   );
 });
@@ -596,7 +695,7 @@ const SidebarContent = memo(function SidebarContent({
 export default function ERPLayout() {
   const { colors, theme } = useTheme();
   const { width } = Dimensions.get('window');
-  const isTablet = width >= 768;
+  const isTablet = width >= 1024;
   const { limits } = useSubscription();
 
   const [activeRoute, setActiveRoute] = useState<ERPRoute>('Dashboard');
@@ -616,6 +715,8 @@ export default function ERPLayout() {
   const SCREEN_MAP = React.useMemo(
     (): Record<ERPRoute, React.ReactElement> => ({
       Dashboard: <DashboardScreen />,
+      BranchOutlet: <BranchOverviewScreen />,
+      Orders: <OrderManagementScreen />,
       Sales: <SalesScreen />,
       Inventory: <InventoryScreen />,
       RestockScheduling: limits.canAccessRestockScheduling ? (
@@ -645,6 +746,7 @@ export default function ERPLayout() {
       ),
       DiscountTracking: <DiscountTrackingScreen />,
       AuditLog: <AuditLogScreen />,
+      Settings: <SettingsScreen />,
     }),
     [limits],
   );
@@ -716,7 +818,7 @@ export default function ERPLayout() {
     <SafeAreaView style={styles.root}>
       <StatusBar
         barStyle={theme === 'dark' ? 'light-content' : 'dark-content'}
-        backgroundColor={colors.surface}
+        backgroundColor={colors.header}
       />
 
       {/* Header */}
@@ -739,6 +841,7 @@ export default function ERPLayout() {
           <Text style={styles.headerBadgeTx}>ERP</Text>
         </View>
 
+        <ThemeToggleButton />
         <PlanToggleFAB />
       </View>
 

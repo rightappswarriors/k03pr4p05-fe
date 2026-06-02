@@ -496,11 +496,17 @@ function SummaryCard({
       style={{
         flex: 1,
         backgroundColor: colors.card,
-        borderRadius: 10,
-        padding: 12,
+        borderRadius: 8,
+        padding: 16,
         alignItems: 'center',
         borderWidth: 1,
         borderColor: showTip ? colors.primary : colors.border,
+        minWidth: isTablet ? undefined : '100%',
+        shadowColor: colors.background === '#F4F7FB' ? '#0F172A' : '#000000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: colors.background === '#F4F7FB' ? 0.04 : 0.08,
+        shadowRadius: 2,
+        elevation: 1,
       }}
       onPress={() => setTooltipVisible(showTip ? null : tooltipId)}
       onLongPress={() => setTooltipVisible(tooltipId)}
@@ -538,8 +544,8 @@ function SummaryCard({
       )}
       <Text
         style={{
-          fontSize: 15,
-          fontWeight: '800',
+          fontSize: 18,
+          fontWeight: '700',
           color: valueColor ?? colors.text,
         }}
       >
@@ -547,10 +553,11 @@ function SummaryCard({
       </Text>
       <Text
         style={{
-          fontSize: 10,
+          fontSize: 11,
           color: colors.textSecondary,
-          marginTop: 3,
+          marginTop: 5,
           textAlign: 'center',
+          fontWeight: '600',
         }}
       >
         {label}
@@ -699,7 +706,23 @@ export default function DashboardScreen() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
 
-  const isTablet = width >= 768;
+  const isTablet = width >= 1024;
+  const dashboardContentWidth = isTablet ? width - 272 - 48 : width - 32;
+  const useWideCharts = dashboardContentWidth >= 720;
+  const chartRowGap = 12;
+  const chartCardPadding = 32;
+  const chartWidth = useWideCharts
+    ? Math.max(
+        220,
+        Math.min((dashboardContentWidth - chartRowGap) / 2, 560) -
+          chartCardPadding,
+      )
+    : Math.max(220, Math.min(dashboardContentWidth, 680) - chartCardPadding);
+  const fullWidthChart = Math.max(
+    240,
+    dashboardContentWidth - chartCardPadding,
+  );
+  const chartPalette = ['#60A5FA', '#38BDF8', '#22C55E', '#F59E0B', '#EF4444', '#A78BFA'];
 
   const { limits } = useSubscription();
 
@@ -890,10 +913,6 @@ export default function DashboardScreen() {
 
   const numColumns = getResponsiveColumns(width);
   const cardWidth = (width - 32) / numColumns;
-  const chartWidth = isTablet
-    ? Math.min((width - 280) * 0.95, 560)
-    : width - 48;
-
   useEffect(() => {
     AsyncStorage.getItem(VIEW_MODE_KEY)
       .then((saved) => {
@@ -1848,12 +1867,12 @@ export default function DashboardScreen() {
       decimalPlaces: 0,
       color: (opacity = 1) =>
         theme === 'dark'
-          ? `rgba(232, 119, 34, ${opacity})`
-          : `rgba(27, 58, 107, ${opacity})`,
+          ? `rgba(96, 165, 250, ${opacity})`
+          : `rgba(29, 78, 216, ${opacity})`,
       labelColor: () => colors.textSecondary,
-      propsForDots: { r: '4', strokeWidth: '2', stroke: colors.accent },
+      propsForDots: { r: '3', strokeWidth: '2', stroke: colors.background },
       propsForBackgroundLines: {
-        strokeDasharray: '4,4',
+        strokeDasharray: '3,3',
         stroke: colors.border,
       },
     }),
@@ -1869,7 +1888,7 @@ export default function DashboardScreen() {
           theme === 'dark'
             ? `rgba(34, 197, 94, ${o})`
             : `rgba(22, 163, 74, ${o})`,
-        strokeWidth: 2,
+        strokeWidth: 3,
       },
       {
         data: chartData.expData,
@@ -1877,7 +1896,7 @@ export default function DashboardScreen() {
           theme === 'dark'
             ? `rgba(239, 68, 68, ${o})`
             : `rgba(220, 38, 38, ${o})`,
-        strokeWidth: 2,
+        strokeWidth: 3,
       },
     ],
     legend: [
@@ -1888,6 +1907,15 @@ export default function DashboardScreen() {
 
   const periodDisplayLabel =
     datePreset === 'Custom Range' ? customLabel : datePreset;
+  const pieChartData = inventoryDistribution.labels.map(
+    (label: string, index: number) => ({
+      name: label,
+      population: inventoryDistribution.data[index],
+      color: chartPalette[index % chartPalette.length],
+      legendFontColor: colors.textSecondary,
+      legendFontSize: 12,
+    }),
+  );
 
   // ─── Styles ────────────────────────────────────────────────────────────────
   const formatBreakdownValue = (row: {
@@ -1977,10 +2005,10 @@ export default function DashboardScreen() {
             backgroundColor: colors.surface,
             borderWidth: 1,
             borderColor: colors.border,
-            shadowColor: '#000',
+            shadowColor: colors.background === '#F4F7FB' ? '#0F172A' : '#000000',
             shadowOffset: { width: 0, height: 4 },
             shadowOpacity: 0.16,
-            shadowRadius: 12,
+            shadowRadius: 10,
             zIndex: 10001,
             elevation: 10001,
           }}
@@ -1995,16 +2023,16 @@ export default function DashboardScreen() {
     <View
       style={{
         minHeight: 150,
-        borderRadius: 12,
+        borderRadius: 8,
         padding: 18,
         borderWidth: 1,
-        borderColor: accent ? 'transparent' : colors.border,
-        backgroundColor: accent ? colors.primary : colors.card,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
+        borderColor: accent ? colors.primary : colors.border,
+        backgroundColor: colors.card,
+        shadowColor: colors.background === '#F4F7FB' ? '#0F172A' : '#000000',
+        shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.06,
-        shadowRadius: 8,
-        elevation: 3,
+        shadowRadius: 2,
+        elevation: 1,
       }}
     >
       <View
@@ -2021,7 +2049,7 @@ export default function DashboardScreen() {
             width: 44,
             height: 44,
             borderRadius: 10,
-            backgroundColor: accent ? 'rgba(255,255,255,0.28)' : colors.border,
+            backgroundColor: accent ? colors.primary + '33' : colors.border,
           }}
         />
         <SkeletonPulse
@@ -2030,7 +2058,7 @@ export default function DashboardScreen() {
             width: 76,
             height: 24,
             borderRadius: 14,
-            backgroundColor: accent ? 'rgba(255,255,255,0.24)' : colors.border,
+            backgroundColor: accent ? colors.primary + '2A' : colors.border,
           }}
         />
       </View>
@@ -2040,7 +2068,7 @@ export default function DashboardScreen() {
           width: '48%',
           height: 24,
           marginBottom: 12,
-          backgroundColor: accent ? 'rgba(255,255,255,0.3)' : colors.border,
+          backgroundColor: accent ? colors.primary + '33' : colors.border,
         }}
       />
       <SkeletonPulse
@@ -2048,7 +2076,7 @@ export default function DashboardScreen() {
         style={{
           width: '38%',
           height: 14,
-          backgroundColor: accent ? 'rgba(255,255,255,0.24)' : colors.border,
+          backgroundColor: accent ? colors.primary + '2A' : colors.border,
         }}
       />
     </View>
@@ -2056,13 +2084,17 @@ export default function DashboardScreen() {
 
   const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    scroll: { padding: 16, paddingBottom: 32 },
+    scroll: {
+      paddingHorizontal: isTablet ? 28 : 16,
+      paddingTop: isTablet ? 26 : 18,
+      paddingBottom: 48,
+    },
     rowBetween: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: 10,
-      marginTop: 4,
+      marginBottom: 12,
+      marginTop: 0,
       zIndex: 999,
       position: 'relative',
     },
@@ -2071,22 +2103,22 @@ export default function DashboardScreen() {
       justifyContent: 'space-between',
       alignItems: 'center',
       marginBottom: 10,
-      marginTop: 4,
+      marginTop: 2,
       zIndex: 0,
       position: 'relative',
     },
     sectionTitle: {
-      fontSize: 11,
+      fontSize: 12,
       fontWeight: '700',
       color: colors.textSecondary,
-      letterSpacing: 1.4,
+      letterSpacing: 0,
       textTransform: 'uppercase',
     },
     statsGrid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      gap: 10,
-      marginBottom: 20,
+      gap: 12,
+      marginBottom: 18,
       position: 'relative',
       zIndex: 100,
       elevation: 100,
@@ -2095,37 +2127,65 @@ export default function DashboardScreen() {
     statWrap: {
       width: isTablet ? undefined : '47.5%',
       flex: isTablet ? 1 : undefined,
-      minWidth: isTablet ? 130 : undefined,
+      minWidth: isTablet ? 160 : undefined,
       position: 'relative',
       zIndex: 10,
       overflow: 'visible',
     },
     chartsRow: {
-      flexDirection: isTablet ? 'row' : 'column',
-      gap: 12,
-      marginBottom: 4,
+      flexDirection: useWideCharts ? 'row' : 'column',
+      gap: chartRowGap,
+      marginBottom: 12,
       position: 'relative',
       zIndex: 0,
     },
-    chartFlex: { flex: isTablet ? 1 : undefined },
+    chartFlex: { flex: useWideCharts ? 1 : undefined, minWidth: 0 },
     summaryRow: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 14,
+      marginTop: 8,
+      marginBottom: 18,
+    },
+    chartLegend: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
       gap: 10,
-      marginTop: 4,
-      marginBottom: 8,
+      marginTop: 14,
+    },
+    chartLegendItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      borderRadius: 8,
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    chartLegendDot: {
+      width: 10,
+      height: 10,
+      borderRadius: 4,
+    },
+    chartLegendText: {
+      fontSize: 12,
+      color: colors.text,
+      fontWeight: '600',
     },
     summaryCard: {
       flex: 1,
       backgroundColor: colors.card,
-      borderRadius: 10,
-      padding: 12,
+      borderRadius: 8,
+      padding: 16,
       alignItems: 'center',
       borderWidth: 1,
       borderColor: colors.border,
     },
-    summaryValue: { fontSize: 15, fontWeight: '800', color: colors.text },
+    summaryValue: { fontSize: 17, fontWeight: '800', color: colors.text },
     summaryLabel: {
-      fontSize: 10,
+      fontSize: 11,
       color: colors.textSecondary,
       marginTop: 3,
       textAlign: 'center',
@@ -2146,8 +2206,8 @@ export default function DashboardScreen() {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
-      backgroundColor: colors.background,
-      borderRadius: 8,
+      backgroundColor: 'rgba(255,255,255,0.06)',
+      borderRadius: 12,
       borderWidth: 1,
       borderColor: colors.border,
       paddingHorizontal: 10,
@@ -2156,8 +2216,8 @@ export default function DashboardScreen() {
     },
     searchInput: { flex: 1, fontSize: 13, color: colors.text, minWidth: 0 },
     iconBtn: {
-      padding: 6,
-      borderRadius: 8,
+      padding: 8,
+      borderRadius: 12,
       borderWidth: 1,
       borderColor: colors.border,
       alignItems: 'center',
@@ -2340,7 +2400,7 @@ export default function DashboardScreen() {
               bezier
               withInnerLines
               withOuterLines={false}
-              style={{ borderRadius: 8, marginLeft: -16 }}
+              style={{ borderRadius: 8, alignSelf: 'center' }}
             />
           </ChartCard>
         </View>
@@ -2350,25 +2410,33 @@ export default function DashboardScreen() {
             subtitle="Current order distribution by status"
           >
             <PieChart
-              data={inventoryDistribution.labels.map(
-                (label: string, index: number) => ({
-                  name: label,
-                  population: inventoryDistribution.data[index],
-                  color: `hsl(${index * 60}, 70%, 50%)`,
-                  legendFontColor: '#7F7F7F',
-                  legendFontSize: 12,
-                }),
-              )}
-              width={chartWidth}
+              data={pieChartData}
+              width={Math.min(chartWidth, 280)}
               height={180}
               chartConfig={{
                 color: (o = 1) => `rgba(232, 119, 34, ${o})`,
               }}
               accessor="population"
               backgroundColor="transparent"
-              paddingLeft="15"
+              paddingLeft="24"
               absolute
+              hasLegend={false}
             />
+            <View style={styles.chartLegend}>
+              {pieChartData.map((item) => (
+                <View key={item.name} style={styles.chartLegendItem}>
+                  <View
+                    style={[
+                      styles.chartLegendDot,
+                      { backgroundColor: item.color },
+                    ]}
+                  />
+                  <Text style={styles.chartLegendText}>
+                    {item.name} ({item.population})
+                  </Text>
+                </View>
+              ))}
+            </View>
           </ChartCard>
         </View>
       </View>
@@ -2433,13 +2501,13 @@ export default function DashboardScreen() {
       >
         <LineChart
           data={revData}
-          width={isTablet ? chartWidth * 2 + 12 : chartWidth}
+          width={fullWidthChart}
           height={200}
           chartConfig={chartConfig}
           bezier
           withInnerLines
           withOuterLines={false}
-          style={{ borderRadius: 8, marginLeft: -16 }}
+          style={{ borderRadius: 8, alignSelf: 'center' }}
         />
       </ChartCard>
 

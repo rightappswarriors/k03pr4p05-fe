@@ -13,45 +13,36 @@ function stripTrailingGraphQL(path: string) {
   return path.replace(/\/graphql\/?$/, '');
 }
 
+function normalizeApiUrl(path?: string) {
+  if (!path) return undefined;
+  return stripTrailingSlash(stripTrailingGraphQL(path));
+}
+
 async function initAPIBaseUrl() {
-  // ✅ Production build — use real deployed API, skip all network detection
+  // Use the general API URL outside emulator-specific development flows.
   if (!__DEV__) {
-    API_BASE_URL = process.env.EXPO_PUBLIC_API_URL_ANDROID_EMULATOR;
-    if (API_BASE_URL) {
-      API_BASE_URL = stripTrailingSlash(stripTrailingGraphQL(API_BASE_URL));
-    }
+    API_BASE_URL = normalizeApiUrl(process.env.EXPO_PUBLIC_API_URL);
     return API_BASE_URL;
   }
 
-  // ✅ Dev — web browser
+  // Web always talks to the general URL so localhost works in the browser.
   if (Platform.OS === 'web') {
-    API_BASE_URL = process.env.EXPO_PUBLIC_API_URL_ANDROID_EMULATOR || process.env.EXPO_PUBLIC_API_URL_ANDROID_EMULATOR;
-    if (API_BASE_URL) {
-      API_BASE_URL = stripTrailingSlash(stripTrailingGraphQL(API_BASE_URL));
-    }
+    API_BASE_URL = normalizeApiUrl(process.env.EXPO_PUBLIC_API_URL);
     return API_BASE_URL;
   }
 
-  // ✅ Dev — Android/iOS physical device or emulator
+  // Native dev prefers emulator-specific routing, then falls back to the general URL.
   if (Platform.OS === 'android' || Platform.OS === 'ios') {
     try {
-      const state = await NetInfo.fetch();
-      // Optionally could use `state` to choose emulator vs device routing in the future
-      // const isWifi = state.isConnected && state.type === 'wifi' && state.details?.ipAddress;
-
-      API_BASE_URL =
-        process.env.EXPO_PUBLIC_API_URL_ANDROID_EMULATOR ||
-        process.env.EXPO_PUBLIC_API_URL;
-    } catch (error) {
-      // Safe fallback during dev
-      API_BASE_URL =
-        process.env.EXPO_PUBLIC_API_URL_ANDROID_EMULATOR ||
-        process.env.EXPO_PUBLIC_API_URL;
+      await NetInfo.fetch();
+    } catch {
+      // Ignore connectivity lookup failures and use env fallback below.
     }
 
-    if (API_BASE_URL) {
-      API_BASE_URL = stripTrailingSlash(stripTrailingGraphQL(API_BASE_URL));
-    }
+    API_BASE_URL = normalizeApiUrl(
+      process.env.EXPO_PUBLIC_API_URL_ANDROID_EMULATOR ||
+      process.env.EXPO_PUBLIC_API_URL,
+    );
   }
 
   console.log('✅ API_BASE_URL:', API_BASE_URL);

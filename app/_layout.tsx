@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import './global.css';
 
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import { AuthProvider } from '@/contexts/AuthContext';

@@ -10,39 +10,45 @@ interface ChartCardProps {
 
 export default function ChartCard({ title, subtitle, children }: ChartCardProps) {
   const { colors } = useTheme();
+  const isLight = colors.background === '#F4F7FB';
 
   const styles = StyleSheet.create({
     card: {
       backgroundColor: colors.card,
-      borderRadius: 12,
-      padding: 20,
+      borderRadius: 8,
+      padding: 16,
       borderWidth: 1,
       borderColor: colors.border,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.06,
-      shadowRadius: 8,
-      elevation: 3,
+      overflow: 'hidden',
+      minWidth: 0,
+      shadowColor: isLight ? '#0F172A' : '#000000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: isLight ? 0.04 : 0.08,
+      shadowRadius: 2,
+      elevation: 1,
       marginBottom: 16,
     },
     header: {
-      marginBottom: 16,
+      marginBottom: 12,
     },
     title: {
       fontSize: 15,
       fontWeight: '700',
       color: colors.text,
-      letterSpacing: -0.2,
     },
     subtitle: {
       fontSize: 12,
       color: colors.textSecondary,
-      marginTop: 2,
+      marginTop: 4,
     },
     divider: {
       height: 1,
       backgroundColor: colors.border,
-      marginBottom: 16,
+      marginBottom: 12,
+    },
+    content: {
+      minWidth: 0,
+      overflow: 'hidden',
     },
   });
 
@@ -53,7 +59,7 @@ export default function ChartCard({ title, subtitle, children }: ChartCardProps)
         {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
       </View>
       <View style={styles.divider} />
-      {children}
+      <View style={styles.content}>{children}</View>
     </View>
   );
 }

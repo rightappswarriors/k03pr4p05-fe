@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { View, ActivityIndicator, StyleSheet, Platform } from 'react-native'
+import { View, ActivityIndicator, StyleSheet, useWindowDimensions } from 'react-native'
 import LoginScreenDefault from '@/components/login/LoginEmailPass'
 import LoginSaved from '@/components/login/LoginSaved'
 import AsyncStorage from '@react-native-async-storage/async-storage'
@@ -12,11 +12,11 @@ export default function Login() {
   const [savedUserExist, setSavedUserExist] = useState(false)
   const [isInitializing, setIsInitializing] = useState(true)
   const [user, setUser] = useState<User | null>(null)
-  const [ isDesktop, setIsDesktop] = useState(false)
   const { colors } = useTheme()
+  const { width } = useWindowDimensions()
+  const isDesktop = width >= 1100
           
   useEffect(() => {
-    if (Platform.OS === 'web') setIsDesktop(true)
     checkSavedUser()
   }, [])
 

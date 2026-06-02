@@ -1,16 +1,20 @@
-import React, { useContext, useState, useEffect } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import {
-  View,
+  ActivityIndicator,
+  Image,
+  ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  ActivityIndicator,
-  ScrollView,
+  useWindowDimensions,
+  View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { CheckCircle2, MailCheck, ShieldCheck, Sparkles, Store } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { AuthService } from '@/services/authService';
-import { useRouter, useLocalSearchParams } from 'expo-router';
 import { OnboardingContext } from './_layout';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -18,29 +22,24 @@ interface OnboardingScreenProps {
   initialStep?: 'register' | 'verify' | 'organization' | 'subscription';
 }
 
-export default function OnboardingScreen({
-  initialStep,
-}: OnboardingScreenProps) {
+const STEP_MAP = {
+  register: 1,
+  verify: 2,
+  organization: 3,
+  subscription: 4,
+} as const;
+
+const STEP_LABELS = ['Account', 'Verify', 'Workspace', 'Plan'];
+
+export default function OnboardingScreen({ initialStep }: OnboardingScreenProps) {
   const { colors } = useTheme();
+  const { width } = useWindowDimensions();
+  const isWide = width >= 1100;
   const router = useRouter();
   const params = useLocalSearchParams();
   const onboarding = useContext(OnboardingContext);
   const { user, refreshUser } = useAuth();
 
-  // Map string steps to numbers for backward compatibility
-  const stepMap = {
-    register: 1,
-    verify: 2,
-    organization: 3,
-    subscription: 4,
-  };
-
-  useEffect(() => {
-    // Pre-fill email if passed via params (e.g. from failed login)
-    if (params.email && typeof params.email === 'string') {
-      setEmail(params.email);
-    }
-  }, [params.email]);
   const [step, setStep] = useState<number>(1);
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -55,90 +54,53 @@ export default function OnboardingScreen({
   const [resendLoading, setResendLoading] = useState(false);
   const [resendMessage, setResendMessage] = useState('');
 
-  // Set organizationId whenever user data is available
+  useEffect(() => {
+    if (params.email && typeof params.email === 'string') {
+      setEmail(params.email);
+    }
+  }, [params.email]);
+
   useEffect(() => {
     if (user) {
       const orgId = user.orgId || user.org?.id;
-      if (orgId && !organizationId) {
-        setOrganizationId(Number(orgId));
-        console.log('[Onboarding] Set organizationId from user data:', orgId);
-      }
-      // Also set email from user data if not already set
-      if (user.email && !email) {
-        setEmail(user.email);
-        console.log('[Onboarding] Set email from user data:', user.email);
-      }
+      if (orgId && !organizationId) setOrganizationId(Number(orgId));
+      if (user.email && !email) setEmail(user.email);
     }
   }, [user, organizationId, email]);
-  // Determine initial step based on user state or prop or URL param
+
   useEffect(() => {
     const stepFromParams = params.step as string;
     if (initialStep) {
-      setStep(stepMap[initialStep]);
-    } else if (
-      stepFromParams &&
-      stepMap[stepFromParams as keyof typeof stepMap]
-    ) {
-      setStep(stepMap[stepFromParams as keyof typeof stepMap]);
+      setStep(STEP_MAP[initialStep]);
+    } else if (stepFromParams && STEP_MAP[stepFromParams as keyof typeof STEP_MAP]) {
+      setStep(STEP_MAP[stepFromParams as keyof typeof STEP_MAP]);
     } else if (user) {
-      // Determine step based on user state
-      console.log('[Onboarding] User state:', {
-        isVerified: user.isVerified,
-        orgId: user.orgId,
-        orgIdFromRelation: user.org?.id,
-        hasSubscription: !!user.org?.subscription?.id,
-      });
-
-      if (!user.isVerified) {
-        setStep(2); // Verify email
-      } else if (!user.orgId && !user.org?.id) {
-        setStep(3); // Create organization
-      } else if (!user.org?.subscription?.id) {
-        setStep(4); // Choose subscription
-        console.log('[Onboarding] User has org, going to subscription step');
-      } else {
-        // Fully onboarded, redirect to dashboard
-        console.log(
-          '[Onboarding] User fully onboarded, redirecting to dashboard',
-        );
-        router.replace('/(erp)/erp');
-      }
+      const currentOrgId = organizationId || user.orgId || user.org?.id;
+      if (!user.isVerified) setStep(2);
+      else if (!currentOrgId) setStep(3);
+      else if (!user.org?.subscription?.id) setStep(4);
+      else router.replace('/(erp)/erp');
     }
-  }, [user, initialStep, params.step, router, stepMap]);
+  }, [user, organizationId, initialStep, params.step, router]);
+
   const goToComplete = async () => {
     try {
-      console.log('[Onboarding] goToComplete: Starting completion process');
-      if (onboarding) {
-        console.log('[Onboarding] goToComplete: Setting onboarding states...');
-        await onboarding.setHasOnboarded(true);
-        await onboarding.setIsLoggedIn(true);
-
-        console.log('[Onboarding] goToComplete: Onboarding states set successfully');
-      }
-      console.log('[Onboarding] goToComplete: Navigating to admin dashboard...');
-      router.replace('/(erp)/erp');
-    } catch (error) {
-      console.error('[Onboarding] goToComplete: Error during completion:', error);
-      console.log('[Onboarding] goToComplete: Attempting navigation despite error...');
+      await onboarding?.setHasOnboarded(true);
+      await onboarding?.setIsLoggedIn(true);
+    } finally {
       router.replace('/(erp)/erp');
     }
   };
 
   const handleRegister = async () => {
     if (!fullName || !email || !password) {
-      setError('Full name, email and password are required');
+      setError('Full name, email, and password are required.');
       return;
     }
     setLoading(true);
     setError('');
     try {
-      const user = await AuthService.registerUser({
-        fullname: fullName,
-        email,
-        password,
-        contactNumber,
-      });
-      // Store password temporarily for auto-login after subscription
+      await AuthService.registerUser({ fullname: fullName, email, password, contactNumber });
       await AsyncStorage.setItem('temp_password', password);
       setStep(2);
     } catch (err) {
@@ -150,17 +112,14 @@ export default function OnboardingScreen({
 
   const handleVerify = async () => {
     if (!otpCode) {
-      setError('OTP code is required');
+      setError('OTP code is required.');
       return;
     }
     setLoading(true);
     setError('');
     try {
       await AuthService.verifyEmail(email, otpCode);
-      // Refresh user context after successful verification
-      if (refreshUser) {
-        await refreshUser();
-      }
+      await refreshUser?.();
       setStep(3);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Verification failed');
@@ -175,7 +134,7 @@ export default function OnboardingScreen({
     setResendMessage('');
     try {
       await AuthService.resendOTP(email);
-      setResendMessage('OTP resent successfully');
+      setResendMessage('A fresh OTP was sent to your email.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to resend OTP');
     } finally {
@@ -185,30 +144,17 @@ export default function OnboardingScreen({
 
   const handleCreateOrg = async () => {
     if (!orgName) {
-      setError('Organization name is required');
+      setError('Organization name is required.');
       return;
     }
     setLoading(true);
     setError('');
     try {
-
-      console.log('[Onboarding] handleCreateOrg: Creating organization:', orgName);
       const org = await AuthService.createOrganization(orgName);
-      console.log('[Onboarding] handleCreateOrg: Organization created:', org);
-      console.log('[Onboarding] handleCreateOrg: Setting organizationId to', org.id);
       setOrganizationId(org.id);
-
-      // During onboarding, we don't need to refresh user context
-      // We'll let the subscription step handle the final refresh
-      console.log('[Onboarding] handleCreateOrg: Advancing to subscription step (step 4)');
       setStep(4);
-      console.log('[Onboarding] handleCreateOrg: Successfully advanced to step 4');
     } catch (err) {
-      console.error('[Onboarding] handleCreateOrg: Caught error:', err);
-
-      setError(
-        err instanceof Error ? err.message : 'Organization creation failed',
-      );
+      setError(err instanceof Error ? err.message : 'Organization creation failed');
     } finally {
       setLoading(false);
     }
@@ -216,356 +162,461 @@ export default function OnboardingScreen({
 
   const handleSubscription = async () => {
     if (!organizationId) {
-      setError('Organization setup required first');
+      setError('Organization setup required first.');
       return;
     }
     setLoading(true);
     setError('');
     try {
-      console.log('[Onboarding] handleSubscription: Creating subscription with plan:', plan);
       await AuthService.createSubscription(organizationId, plan);
-      console.log('[Onboarding] handleSubscription: Subscription created successfully');
-
-      // Check if we need to auto-login (fresh registration flow) or if already authenticated (login flow)
       const tempPassword = await AsyncStorage.getItem('temp_password');
       if (tempPassword && email) {
-        // Fresh registration flow: user came from register → verify → organization → subscription
-        console.log('[Onboarding] handleSubscription: Fresh registration detected, auto-logging in');
         try {
           await AuthService.login(email, tempPassword);
           await AsyncStorage.removeItem('temp_password');
-          console.log('[Onboarding] handleSubscription: Auto-login successful');
-        } catch (loginErr) {
-          console.warn('[Onboarding] handleSubscription: Auto-login failed, but continuing:', loginErr);
-          // Continue even if login fails - user might be able to navigate
-        }
+        } catch {}
       } else {
-        // Login flow: user logged in and is completing onboarding
-        // Already authenticated, just refresh user context
-        console.log('[Onboarding] handleSubscription: Existing user completing onboarding, refreshing context');
-        if (refreshUser) {
-          try {
-            await refreshUser();
-            console.log('[Onboarding] handleSubscription: User context refreshed');
-          } catch (refreshErr) {
-            console.warn('[Onboarding] handleSubscription: User refresh failed, continuing anyway:', refreshErr);
-          }
-        }
+        await refreshUser?.();
       }
-
-      console.log('[Onboarding] handleSubscription: Going to completion');
       await goToComplete();
     } catch (err) {
-      console.error('[Onboarding] handleSubscription: Error:', err);
-      setError(
-        err instanceof Error ? err.message : 'Subscription creation failed',
-      );
+      setError(err instanceof Error ? err.message : 'Subscription creation failed');
     } finally {
       setLoading(false);
     }
   };
 
-  const stepTitle = [
-    'Register',
-    'Email Verification',
-    'Organization Setup',
-    'Subscription',
+  const title = ['Create your account', 'Verify your email', 'Name your workspace', 'Choose your plan'][step - 1];
+  const subtitle = [
+    'Set up the owner login for your KompraPOS workspace.',
+    `Enter the 6-digit code sent to ${email || 'your email'}.`,
+    'This becomes the store or company name shown in your dashboard.',
+    'Start simple, then upgrade when your team needs more modules.',
   ][step - 1];
 
+  const renderInput = (
+    placeholder: string,
+    value: string,
+    onChangeText: (value: string) => void,
+    options: Partial<React.ComponentProps<typeof TextInput>> = {},
+  ) => (
+    <TextInput
+      placeholder={placeholder}
+      value={value}
+      onChangeText={onChangeText}
+      placeholderTextColor="#64748B"
+      style={styles.input}
+      {...options}
+    />
+  );
+
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.background }}>
-      <View style={{ flex: 1, padding: 24, gap: 16 }}>
-        <Text style={{ fontSize: 24, fontWeight: '700', color: colors.text }}>
-          {stepTitle}
-        </Text>
-
-        {error ? (
-          <Text
-            style={{
-              color: '#ef4444',
-              fontSize: 13,
-              padding: 10,
-              backgroundColor: '#fee2e2',
-              borderRadius: 6,
-            }}
-          >
-            {error}
-          </Text>
-        ) : null}
-
-        {step === 1 && (
-          <>
-            <TextInput
-              placeholder="Full Name"
-              value={fullName}
-              onChangeText={setFullName}
-              style={{
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: 6,
-                padding: 12,
-                backgroundColor: colors.surface,
-                color: colors.text,
-              }}
-              placeholderTextColor={colors.textSecondary}
-            />
-            <TextInput
-              placeholder="Email"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              style={{
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: 6,
-                padding: 12,
-                backgroundColor: colors.surface,
-                color: colors.text,
-              }}
-              placeholderTextColor={colors.textSecondary}
-            />
-            <TextInput
-              placeholder="Password"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              style={{
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: 6,
-                padding: 12,
-                backgroundColor: colors.surface,
-                color: colors.text,
-              }}
-              placeholderTextColor={colors.textSecondary}
-            />
-            <TextInput
-              placeholder="Contact Number"
-              value={contactNumber}
-              onChangeText={setContactNumber}
-              keyboardType="phone-pad"
-              style={{
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: 6,
-                padding: 12,
-                backgroundColor: colors.surface,
-                color: colors.text,
-              }}
-              placeholderTextColor={colors.textSecondary}
-            />
-            <TouchableOpacity
-              onPress={handleRegister}
-              disabled={loading}
-              style={{
-                backgroundColor: colors.primary,
-                padding: 14,
-                borderRadius: 6,
-                alignItems: 'center',
-                opacity: loading ? 0.5 : 1,
-              }}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={{ color: '#fff', fontWeight: '700' }}>
-                  Register
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.scroll}
+      dataSet={{ authScreen: 'true' }}
+    >
+      <View style={styles.orbOne} />
+      <View style={styles.orbTwo} />
+      <View style={[styles.shell, !isWide && styles.shellMobile]}>
+        <View style={[styles.connectedPanel, !isWide && styles.connectedPanelMobile]}>
+          {isWide ? (
+            <View style={styles.brandRail}>
+              <View style={styles.brandPattern} />
+              <View style={styles.brandTop}>
+                <View style={styles.brandMark}>
+                  <Sparkles size={22} color="#FFFFFF" />
+                </View>
+                <Text style={styles.brandName}>KompraPOS</Text>
+              </View>
+              <View style={styles.brandCopy}>
+                <Text style={styles.brandEyebrow}>Launch your POS workspace</Text>
+                <Text style={styles.brandTitle}>From first account to live operations in minutes.</Text>
+                <Text style={styles.brandText}>
+                  Build the business profile, verify ownership, and unlock the dashboard without losing focus.
                 </Text>
-              )}
-            </TouchableOpacity>
-          </>
-        )}
-
-        {step === 2 && (
-          <>
-            {/* OTP Verification UI Improvements */}
-            <View style={{ alignItems: 'center', marginBottom: 20 }}>
-              <Text
-                style={{
-                  fontSize: 24,
-                  fontWeight: '700',
-                  color: colors.text,
-                  marginBottom: 8,
-                }}
-              >
-                Verify Your Email
-              </Text>
-              <Text
-                style={{
-                  fontSize: 16,
-                  color: colors.textSecondary,
-                  textAlign: 'center',
-                }}
-              >
-                Code was sent to {email}
-              </Text>
+              </View>
+              <View style={styles.brandBadge}>
+                <ShieldCheck size={18} color="#FFFFFF" />
+                <Text style={styles.brandBadgeText}>Verified accounts protect store access</Text>
+              </View>
             </View>
+          ) : null}
 
-            <TextInput
-              placeholder="Enter 6-digit OTP code"
-              value={otpCode}
-              onChangeText={setOtpCode}
-              keyboardType="number-pad"
-              maxLength={6}
-              style={{
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: 6,
-                padding: 16,
-                backgroundColor: colors.surface,
-                color: colors.text,
-                fontSize: 18,
-                textAlign: 'center',
-                letterSpacing: 8,
-              }}
-              placeholderTextColor={colors.textSecondary}
-            />
+        <View style={styles.card}>
+          <Image source={require('@/assets/images/logo_transparent.png')} style={styles.logo} resizeMode="contain" />
 
-            <TouchableOpacity
-              onPress={handleVerify}
-              disabled={loading || resendLoading}
-              style={{
-                backgroundColor: colors.primary,
-                padding: 14,
-                borderRadius: 6,
-                alignItems: 'center',
-                marginTop: 10,
-                opacity: loading || resendLoading ? 0.5 : 1,
-              }}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={{ color: '#fff', fontWeight: '700' }}>
-                  Verify OTP
-                </Text>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={handleResendOTP}
-              disabled={loading || resendLoading}
-              style={{
-                padding: 14,
-                borderRadius: 6,
-                alignItems: 'center',
-                marginTop: 10,
-                opacity: loading || resendLoading ? 0.5 : 1,
-              }}
-            >
-              {resendLoading ? (
-                <ActivityIndicator color={colors.primary} />
-              ) : (
-                <Text style={{ color: colors.primary, fontWeight: '600' }}>
-                  Resend Code
-                </Text>
-              )}
-            </TouchableOpacity>
-
-            {resendMessage ? (
-              <Text
-                style={{
-                  color: '#10b981',
-                  fontSize: 14,
-                  textAlign: 'center',
-                  marginTop: 10,
-                }}
-              >
-                {resendMessage}
-              </Text>
-            ) : null}
-          </>
-        )}
-
-        {step === 3 && (
-          <>
-            <TextInput
-              placeholder="Organization Name"
-              value={orgName}
-              onChangeText={setOrgName}
-              style={{
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: 6,
-                padding: 12,
-                backgroundColor: colors.surface,
-                color: colors.text,
-              }}
-              placeholderTextColor={colors.textSecondary}
-            />
-            <TouchableOpacity
-              onPress={handleCreateOrg}
-              disabled={loading}
-              style={{
-                backgroundColor: colors.primary,
-                padding: 14,
-                borderRadius: 6,
-                alignItems: 'center',
-                opacity: loading ? 0.5 : 1,
-              }}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={{ color: '#fff', fontWeight: '700' }}>
-                  Create Organization
-                </Text>
-              )}
-            </TouchableOpacity>
-          </>
-        )}
-
-        {step === 4 && (
-          <>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              {['BASIC', 'GOLD'].map((option) => (
-                <TouchableOpacity
-                  key={option}
-                  onPress={() => setPlan(option as 'BASIC' | 'GOLD')}
-                  style={{
-                    flex: 1,
-                    borderWidth: 1,
-                    borderColor:
-                      plan === option ? colors.primary : colors.border,
-                    backgroundColor:
-                      plan === option ? colors.primary : colors.surface,
-                    borderRadius: 6,
-                    padding: 12,
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text
-                    style={{ color: plan === option ? '#fff' : colors.text }}
+          <View style={styles.progressRow}>
+            {STEP_LABELS.map((label, index) => {
+              const number = index + 1;
+              const active = number === step;
+              const complete = number < step;
+              return (
+                <View key={label} style={styles.progressItem}>
+                  <View
+                    style={[
+                      styles.progressDot,
+                      {
+                        backgroundColor: active || complete ? colors.accent : colors.card,
+                        borderColor: active || complete ? colors.accent : colors.border,
+                      },
+                    ]}
                   >
-                    {option}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+                    {complete ? <CheckCircle2 size={14} color="#FFFFFF" /> : <Text style={{ color: active ? '#FFFFFF' : '#64748B', fontSize: 11, fontWeight: '800' }}>{number}</Text>}
+                  </View>
+                  <Text style={{ color: active ? '#0F172A' : '#64748B', fontSize: 11, fontWeight: '800' }}>{label}</Text>
+                </View>
+              );
+            })}
+          </View>
 
-            <TouchableOpacity
-              onPress={handleSubscription}
-              disabled={loading}
-              style={{
-                backgroundColor: colors.primary,
-                padding: 14,
-                borderRadius: 6,
-                alignItems: 'center',
-                opacity: loading ? 0.5 : 1,
-              }}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={{ color: '#fff', fontWeight: '700' }}>
-                  Finish Onboarding
+          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.subtitle}>{subtitle}</Text>
+
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+          {step === 1 ? (
+            <View style={styles.form}>
+              {renderInput('Full name', fullName, setFullName)}
+              {renderInput('Email address', email, setEmail, { keyboardType: 'email-address', autoCapitalize: 'none' })}
+              {renderInput('Password', password, setPassword, { secureTextEntry: true })}
+              {renderInput('Contact number', contactNumber, setContactNumber, { keyboardType: 'phone-pad' })}
+              <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.accent }]} onPress={handleRegister} disabled={loading}>
+                {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Create Account</Text>}
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => router.replace('/login')} style={styles.linkButton}>
+                <Text style={[styles.linkText, { color: colors.primary }]}>Already have an account?</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
+          {step === 2 ? (
+            <View style={styles.form}>
+              <View style={[styles.verificationIcon, { backgroundColor: colors.primaryLight }]}>
+                <MailCheck size={30} color={colors.primary} />
+              </View>
+              {renderInput('Enter 6-digit OTP', otpCode, setOtpCode, {
+                keyboardType: 'number-pad',
+                maxLength: 6,
+                textAlign: 'center',
+              })}
+              <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.accent }]} onPress={handleVerify} disabled={loading || resendLoading}>
+                {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Verify Email</Text>}
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleResendOTP} disabled={loading || resendLoading} style={styles.linkButton}>
+                <Text style={[styles.linkText, { color: colors.primary }]}>
+                  {resendLoading ? 'Sending...' : 'Resend code'}
                 </Text>
-              )}
-            </TouchableOpacity>
-          </>
-        )}
+              </TouchableOpacity>
+              {resendMessage ? <Text style={[styles.successText, { color: colors.success }]}>{resendMessage}</Text> : null}
+            </View>
+          ) : null}
+
+          {step === 3 ? (
+            <View style={styles.form}>
+              <View style={[styles.verificationIcon, { backgroundColor: colors.accentLight }]}>
+                <Store size={30} color={colors.accent} />
+              </View>
+              {renderInput('Organization or store name', orgName, setOrgName)}
+              <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.accent }]} onPress={handleCreateOrg} disabled={loading}>
+                {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Create Workspace</Text>}
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
+          {step === 4 ? (
+            <View style={styles.form}>
+              <View style={styles.planGrid}>
+                {(['BASIC', 'GOLD'] as const).map((option) => {
+                  const selected = plan === option;
+                  return (
+                    <TouchableOpacity
+                      key={option}
+                      onPress={() => setPlan(option)}
+                      style={[
+                        styles.planCard,
+                        {
+                          backgroundColor: selected ? colors.primaryLight : colors.card,
+                          borderColor: selected ? colors.primary : colors.border,
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.planTitle, { color: colors.text }]}>{option}</Text>
+                      <Text style={[styles.planText, { color: colors.textSecondary }]}>
+                        {option === 'BASIC' ? 'Core sales and inventory tools.' : 'Advanced ERP and analytics modules.'}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.accent }]} onPress={handleSubscription} disabled={loading}>
+                {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Finish Setup</Text>}
+              </TouchableOpacity>
+            </View>
+          ) : null}
+          </View>
+        </View>
       </View>
     </ScrollView>
   );
 }
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    position: 'relative',
+    backgroundColor: '#07111F',
+  },
+  scroll: {
+    flexGrow: 1,
+    overflow: 'hidden',
+  },
+  orbOne: {
+    position: 'absolute',
+    width: 420,
+    height: 420,
+    borderRadius: 210,
+    top: -150,
+    left: -130,
+    backgroundColor: 'rgba(37,99,235,0.18)',
+  },
+  orbTwo: {
+    position: 'absolute',
+    width: 380,
+    height: 380,
+    borderRadius: 190,
+    right: -130,
+    bottom: -150,
+    backgroundColor: 'rgba(249,115,22,0.14)',
+  },
+  shell: {
+    minHeight: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+  },
+  shellMobile: {
+    padding: 18,
+  },
+  connectedPanel: {
+    width: '100%',
+    maxWidth: 1100,
+    minHeight: 650,
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: '#203A5C',
+    borderRadius: 34,
+    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 28 },
+    shadowOpacity: 0.32,
+    shadowRadius: 46,
+    elevation: 10,
+  },
+  connectedPanelMobile: {
+    minHeight: 0,
+    maxWidth: 540,
+    borderRadius: 28,
+  },
+  brandRail: {
+    flex: 1,
+    maxWidth: 520,
+    padding: 40,
+    justifyContent: 'space-between',
+    backgroundColor: '#0E1B2E',
+    borderRightWidth: 1,
+    borderRightColor: '#203A5C',
+    overflow: 'hidden',
+  },
+  brandPattern: {
+    position: 'absolute',
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    right: -110,
+    top: -90,
+    backgroundColor: 'rgba(37,99,235,0.18)',
+  },
+  brandTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  brandMark: {
+    width: 44,
+    height: 44,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E87722',
+  },
+  brandName: {
+    color: '#F8FAFC',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  brandCopy: {
+    gap: 16,
+  },
+  brandEyebrow: {
+    color: '#FDBA74',
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  brandTitle: {
+    color: '#F8FAFC',
+    fontSize: 35,
+    lineHeight: 42,
+    fontWeight: '900',
+    maxWidth: 460,
+  },
+  brandText: {
+    color: '#CBD5E1',
+    fontSize: 16,
+    lineHeight: 24,
+    maxWidth: 430,
+  },
+  brandBadge: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: '#0F172A',
+  },
+  brandBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  card: {
+    width: '100%',
+    maxWidth: 540,
+    flex: 1,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    padding: 44,
+    overflow: 'hidden',
+  },
+  logo: {
+    width: 174,
+    height: 54,
+    marginBottom: 24,
+  },
+  progressRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 28,
+  },
+  progressItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 8,
+  },
+  progressDot: {
+    width: 32,
+    height: 32,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: {
+    color: '#0F172A',
+    fontSize: 30,
+    lineHeight: 36,
+    fontWeight: '900',
+    marginBottom: 8,
+  },
+  subtitle: {
+    color: '#64748B',
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  form: {
+    gap: 14,
+  },
+  input: {
+    minHeight: 58,
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    fontSize: 15,
+    backgroundColor: '#F8FAFC',
+    borderColor: '#D8E1EE',
+    color: '#0F172A',
+    outlineStyle: 'none' as any,
+  },
+  primaryButton: {
+    minHeight: 60,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  primaryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  linkButton: {
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  linkText: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  errorText: {
+    color: '#B91C1C',
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    padding: 12,
+    borderRadius: 18,
+    marginBottom: 16,
+    fontWeight: '700',
+  },
+  successText: {
+    textAlign: 'center',
+    fontWeight: '700',
+  },
+  verificationIcon: {
+    width: 70,
+    height: 70,
+    borderRadius: 22,
+    alignSelf: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  planGrid: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  planCard: {
+    flex: 1,
+    minHeight: 130,
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: 16,
+    justifyContent: 'center',
+  },
+  planTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    marginBottom: 8,
+  },
+  planText: {
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '600',
+  },
+});

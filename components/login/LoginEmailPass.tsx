@@ -1,184 +1,185 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
-  View,
-  Text,
+  ActivityIndicator,
+  Alert,
+  Image,
+  Platform,
+  SafeAreaView,
   StyleSheet,
+  Text,
   TextInput,
   TouchableOpacity,
-  Alert,
-  SafeAreaView,
-  Image,
-  ActivityIndicator,
-  Platform,
+  View,
 } from 'react-native';
-import { useResponsive } from '@/hooks/useResponsive';
-import { Fingerprint, Eye, EyeOff } from 'lucide-react-native';
-import { useAuth } from '@/contexts/AuthContext';
+import { Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, Sparkles } from 'lucide-react-native';
 import { router } from 'expo-router';
+import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useLoading } from '@/contexts/LoadingContext';
-import { responsive } from '@/styles/desktopAndTablet';
+
 interface Props {
   isDesktop?: boolean;
 }
+
 export default function LoginScreenDefault({ isDesktop }: Props) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setLoading] = useState(false);
-  const { colors, theme } = useTheme();
+  const [error, setError] = useState('');
+  const { colors } = useTheme();
   const { login } = useAuth();
-  const { isTablet } = useResponsive();
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
-      Alert.alert('Error', 'Please enter both email and password');
+      setError('Enter your email and password to continue.');
       return;
     }
+
     setLoading(true);
+    setError('');
 
     try {
       await login(email, password);
-      // Don't redirect here - let the navigation logic in index.tsx handle routing
-      // based on user onboarding state
       router.replace('/');
     } catch (error: any) {
       const message = (error as Error).message || 'Something went wrong';
 
-      const showAlert = () => {
+      if (message.toLowerCase().includes('verify your email')) {
         if (Platform.OS === 'web') {
-          alert('Login Failed: ' + message);
+          window.alert('Login Failed: ' + message);
         } else {
           Alert.alert('Login Failed', message);
         }
-      };
-
-      // Check if user needs email verification
-      if (message.toLowerCase().includes('verify your email')) {
-        showAlert(); // 👈 show alert FIRST
 
         router.replace({
           pathname: '/onboarding',
           params: { step: 'verify', email },
         });
-
-        return; // 👈 stop further execution
+        return;
       }
 
-      // Default case
-      showAlert();
+      setError(message);
     } finally {
       setLoading(false);
     }
   };
-  const icon =
-    theme === 'dark'
-      ? require('@/assets/images/icon_dark.png')
-      : require('@/assets/images/icon_light.png');
+
+  const showSplit = !!isDesktop;
 
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: colors.background }]}
-    >
-      <View style={styles.content}>
-        <View style={styles.header}>
-          {/**<Image source={icon} style={styles.logo} />**/}
-          <Text style={[styles.title, { color: colors.text }]}>
-            Welcome Back
-          </Text>
-          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-            Sign in to your Pos account
-          </Text>
-        </View>
+    <SafeAreaView style={styles.screen} dataSet={{ authScreen: 'true' }}>
+      <View style={styles.orbOne} />
+      <View style={styles.orbTwo} />
+      <View style={[styles.shell, !showSplit && styles.shellMobile]}>
+        <View style={[styles.connectedPanel, !showSplit && styles.connectedPanelMobile]}>
+          {showSplit ? (
+            <View style={styles.brandRail}>
+              <View style={styles.brandPattern} />
+              <View style={styles.brandTop}>
+                <View style={styles.brandMark}>
+                  <Sparkles size={22} color="#FFFFFF" strokeWidth={2.4} />
+                </View>
+                <Text style={styles.brandName}>KompraPOS</Text>
+              </View>
 
-        <View
-          style={[
-            styles.form,
-            isDesktop && responsive.desktopPadding,
-            isTablet && responsive.tabletPadding,
-          ]}
-        >
-          <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: colors.text }]}>Email</Text>
-            <TextInput
-              style={[
-                styles.input,
-                {
-                  backgroundColor: colors.card,
-                  borderColor: colors.border,
-                  color: colors.text,
-                },
-              ]}
-              placeholder="Enter your email"
-              placeholderTextColor="#9CA3AF"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
+              <View style={styles.brandCopy}>
+                <Text style={styles.brandEyebrow}>Retail command center</Text>
+                <Text style={styles.brandTitle}>
+                  A cleaner command center for modern retail teams.
+                </Text>
+                <Text style={styles.brandText}>
+                  Built for teams that need a fast POS today and a more organized operation tomorrow.
+                </Text>
+              </View>
+
+              <View style={styles.brandBadge}>
+                <ShieldCheck size={18} color="#FFFFFF" />
+                <Text style={styles.brandBadgeText}>Secure owner and staff access</Text>
+              </View>
+            </View>
+          ) : null}
+
+          <View style={styles.card}>
+          <View style={styles.logoWrap}>
+            <Image
+              source={require('@/assets/images/logo_transparent.png')}
+              style={styles.logo}
+              resizeMode="contain"
             />
           </View>
-          <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: colors.text }]}>Password</Text>
-            <View
-              style={[
-                styles.passwordContainer,
-                { backgroundColor: colors.card, borderColor: colors.border },
-              ]}
-            >
+
+          <Text style={styles.title}>Welcome back</Text>
+          <Text style={styles.subtitle}>
+            Sign in to continue managing your store.
+          </Text>
+
+          {error ? (
+            <View style={[styles.errorBox, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]}>
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          ) : null}
+
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>Email address</Text>
+            <View style={styles.inputShell}>
+              <Mail size={18} color="#64748B" />
               <TextInput
-                style={[styles.passwordInput, { color: colors.text }]}
-                placeholder="Enter your password"
-                placeholderTextColor="#9CA3AF"
-                value={password}
-                onChangeText={setPassword}
-                keyboardType="default"
-                secureTextEntry={!showPassword}
+                style={styles.input}
+                placeholder="you@company.com"
+                placeholderTextColor="#94A3B8"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
               />
-              <TouchableOpacity
-                style={styles.eyeButton}
-                onPress={() => setShowPassword(!showPassword)}
-              >
+            </View>
+          </View>
+
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>Password</Text>
+            <View style={styles.inputShell}>
+              <LockKeyhole size={18} color="#64748B" />
+              <TextInput
+                style={styles.input}
+                placeholder="Enter your password"
+                placeholderTextColor="#94A3B8"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+                onSubmitEditing={handleLogin}
+              />
+              <TouchableOpacity style={styles.iconButton} onPress={() => setShowPassword((v) => !v)}>
                 {showPassword ? (
-                  <EyeOff size={20} color="#6B7280" />
+                  <EyeOff size={19} color="#64748B" />
                 ) : (
-                  <Eye size={20} color="#6B7280" />
+                  <Eye size={19} color="#64748B" />
                 )}
               </TouchableOpacity>
             </View>
           </View>
+
           <TouchableOpacity
             onPress={handleLogin}
-            style={[
-              { backgroundColor: colors.accent },
-              styles.loginButton,
-              isLoading && { backgroundColor: colors.accentLight },
-            ]}
+            style={[styles.primaryButton, { backgroundColor: colors.accent }, isLoading && { opacity: 0.7 }]}
             disabled={isLoading}
           >
             {isLoading ? (
-              <ActivityIndicator size="small" color="white" />
+              <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
-              <Text style={styles.loginButtonText}>Sign In</Text>
+              <Text style={styles.primaryButtonText}>Sign In</Text>
             )}
           </TouchableOpacity>
-        </View>
-        <View style={{ alignItems: 'center', marginTop: 16 }}>
-          <Text style={{ color: colors.textSecondary }}>New here?</Text>
-          <TouchableOpacity onPress={() => router.replace('/onboarding')}>
-            <Text style={{ color: colors.accent, fontWeight: '700' }}>
-              Get Started
-            </Text>
-          </TouchableOpacity>
-        </View>
-        <View style={styles.poweredBy}>
-          <Text style={{ color: colors.textSecondary }}>KompraPOS:</Text>
-          <Image
-            source={require('@/assets/images/logo_transparent.png')}
-            style={[styles.poweredlogo, { backgroundColor: colors.card }]}
-          />
+
+          <View style={styles.switchRow}>
+            <Text style={{ color: '#64748B' }}>New to Kompra?</Text>
+            <TouchableOpacity onPress={() => router.replace('/onboarding')}>
+              <Text style={[styles.linkText, { color: colors.primary }]}>Create account</Text>
+            </TouchableOpacity>
+          </View>
+          </View>
         </View>
       </View>
     </SafeAreaView>
@@ -186,133 +187,232 @@ export default function LoginScreenDefault({ isDesktop }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    overflow: 'hidden',
+    backgroundColor: '#07111F',
   },
-  content: {
+  orbOne: {
+    position: 'absolute',
+    width: 420,
+    height: 420,
+    borderRadius: 210,
+    top: -150,
+    right: -120,
+    backgroundColor: 'rgba(37,99,235,0.18)',
+  },
+  orbTwo: {
+    position: 'absolute',
+    width: 340,
+    height: 340,
+    borderRadius: 170,
+    left: -120,
+    bottom: -140,
+    backgroundColor: 'rgba(249,115,22,0.14)',
+  },
+  shell: {
     flex: 1,
-    padding: 24,
-    justifyContent: 'center',
-  },
-
-  header: {
     alignItems: 'center',
-    marginBottom: 48,
+    justifyContent: 'center',
+    padding: 32,
+  },
+  shellMobile: {
+    padding: 18,
+  },
+  connectedPanel: {
+    width: '100%',
+    maxWidth: 1100,
+    minHeight: 620,
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: '#203A5C',
+    borderRadius: 34,
+    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 28 },
+    shadowOpacity: 0.32,
+    shadowRadius: 46,
+    elevation: 10,
+  },
+  connectedPanelMobile: {
+    minHeight: 0,
+    maxWidth: 520,
+    borderRadius: 28,
+  },
+  brandRail: {
+    flex: 1,
+    maxWidth: 520,
+    padding: 40,
+    justifyContent: 'space-between',
+    backgroundColor: '#0E1B2E',
+    borderRightWidth: 1,
+    borderRightColor: '#203A5C',
+    overflow: 'hidden',
+  },
+  brandPattern: {
+    position: 'absolute',
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    right: -110,
+    top: -90,
+    backgroundColor: 'rgba(37,99,235,0.18)',
+  },
+  brandTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  brandMark: {
+    width: 44,
+    height: 44,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E87722',
+  },
+  brandName: {
+    color: '#F8FAFC',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  brandCopy: {
+    gap: 16,
+  },
+  brandEyebrow: {
+    color: '#FDBA74',
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  brandTitle: {
+    color: '#F8FAFC',
+    fontSize: 36,
+    lineHeight: 42,
+    fontWeight: '900',
+    maxWidth: 430,
+  },
+  brandText: {
+    color: '#CBD5E1',
+    fontSize: 16,
+    lineHeight: 24,
+    maxWidth: 420,
+  },
+  brandBadge: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: '#0F172A',
+  },
+  brandBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  card: {
+    width: '100%',
+    maxWidth: 520,
+    flex: 1,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    padding: 44,
+    overflow: 'hidden',
+  },
+  logoWrap: {
+    alignSelf: 'flex-start',
+    width: 174,
+    height: 54,
+    marginBottom: 30,
   },
   logo: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    marginBottom: 24,
+    width: '100%',
+    height: '100%',
   },
   title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#1F2937',
+    color: '#0F172A',
+    fontSize: 32,
+    lineHeight: 38,
+    fontWeight: '900',
     marginBottom: 8,
   },
   subtitle: {
-    fontSize: 16,
-    color: '#6B7280',
+    color: '#64748B',
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 30,
   },
-  form: {
-    marginBottom: 32,
-  },
-  inputContainer: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 8,
-  },
-  input: {
+  errorBox: {
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: '#1F2937',
+    borderRadius: 18,
+    padding: 12,
+    marginBottom: 18,
   },
-  passwordContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-  },
-  passwordInput: {
-    flex: 1,
-    fontSize: 16,
-    color: '#1F2937',
-  },
-  eyeButton: {
-    padding: 14,
-  },
-  loginButton: {
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  loginButtonText: {
-    color: 'white',
-    fontSize: 16,
+  errorText: {
+    color: '#B91C1C',
+    fontSize: 13,
     fontWeight: '700',
   },
-  biometricButton: {
+  fieldGroup: {
+    marginBottom: 18,
+  },
+  label: {
+    color: '#0F172A',
+    fontSize: 13,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+  inputShell: {
+    minHeight: 54,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#EBF4FF',
-    borderRadius: 12,
-    paddingVertical: 16,
-    marginTop: 16,
-    gap: 8,
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    backgroundColor: '#F8FAFC',
+    borderColor: '#D8E1EE',
   },
-  biometricButtonText: {
-    color: '#3B82F6',
+  input: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 15,
+    color: '#0F172A',
+    outlineStyle: 'none' as any,
+  },
+  iconButton: {
+    padding: 6,
+  },
+  primaryButton: {
+    minHeight: 56,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+    shadowColor: '#E87722',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.22,
+    shadowRadius: 20,
+    elevation: 3,
+  },
+  primaryButtonText: {
+    color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '800',
   },
-  demoSection: {
-    alignItems: 'center',
-  },
-  demoTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6B7280',
-    marginBottom: 12,
-  },
-  demoButtons: {
+  switchRow: {
     flexDirection: 'row',
-    gap: 12,
-  },
-  demoButton: {
-    backgroundColor: '#F3F4F6',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  demoButtonText: {
-    color: '#374151',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  poweredBy: {
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: 5,
-    marginTop: 80,
     justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 24,
   },
-  poweredlogo: {
-    width: 180,
-    height: 50,
-    borderRadius: 40,
+  linkText: {
+    fontWeight: '800',
   },
 });

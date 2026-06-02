@@ -2,6 +2,7 @@
 
 
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { Platform } from "react-native";
 import { useAuth } from "./AuthContext";
 
 const WebSocketContext = createContext<WebSocket | null>(null);
@@ -13,7 +14,16 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         if (!user) return;
 
-        const wsUrl = process.env.EXPO_PUBLIC_WS_URL_ANDROID_EMULATOR!;
+        const wsUrl =
+            Platform.OS === "web"
+                ? process.env.EXPO_PUBLIC_WS_URL
+                : process.env.EXPO_PUBLIC_WS_URL_ANDROID_EMULATOR || process.env.EXPO_PUBLIC_WS_URL;
+
+        if (!wsUrl) {
+            console.warn("Missing websocket URL environment variable");
+            return;
+        }
+
         const ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
