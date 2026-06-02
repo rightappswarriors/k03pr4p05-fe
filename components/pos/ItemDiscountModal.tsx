@@ -51,6 +51,15 @@ export function ItemDiscountModal({
   const [fixedAmount, setFixedAmount] = useState<string>('');
 
   const basePrice = item.priceAtSale ?? item.price;
+  const parsedCustomPercent = parseFloat(customPercent);
+  const isCustomPercentValid =
+    discountType !== 'percentage' ||
+    (!Number.isNaN(parsedCustomPercent) && parsedCustomPercent >= 0 && parsedCustomPercent <= 100);
+
+  const sanitizePercentInput = (value: string) => {
+    const sanitized = value.replace(/[^0-9.]/g, '');
+    setCustomPercent(sanitized);
+  };
 
   // Initialize with existing discount if any
   useEffect(() => {
@@ -92,16 +101,17 @@ export function ItemDiscountModal({
 
     let rate = 0;
     let amount = 0;
+    const percentValue = Number.isFinite(parsedCustomPercent) ? parsedCustomPercent : 0;
 
     if (discountType === 'percentage') {
-      rate = parseFloat(customPercent) / 100 || 0;
+      rate = isCustomPercentValid ? percentValue / 100 : 0;
       amount = basePrice * rate * discountedQty;
     } else if (discountType === 'fixed') {
       amount = parseFloat(fixedAmount) || 0;
       rate = amount / (basePrice * discountedQty);
     } else {
       // Outlet promo
-      const promo = discountOptions.find(d => d.key === discountType);
+      const promo = discountOptions.find((d) => d.key === discountType);
       rate = promo?.rate ?? 0;
       amount = basePrice * rate * discountedQty;
     }
@@ -112,6 +122,10 @@ export function ItemDiscountModal({
   const discount = calculateDiscount();
 
   const handleApply = () => {
+    if (discountType === 'percentage' && !isCustomPercentValid) {
+      return;
+    }
+
     if (discountType === 'none') {
       onApply({ discountAmount: 0, discountQuantity: 0, discountRate: 0 });
     } else {
@@ -319,19 +333,26 @@ export function ItemDiscountModal({
               </TouchableOpacity>
 
               {discountType === 'percentage' && (
-                <View style={[styles.inputRow, { borderColor: colors.border }]}>
-                  <TextInput
-                    value={customPercent}
-                    onChangeText={setCustomPercent}
-                    keyboardType="numeric"
-                    placeholder="0"
-                    placeholderTextColor={colors.textSecondary}
-                    style={[styles.input, { color: colors.text }]}
-                  />
-                  <Text style={[styles.inputSuffix, { color: colors.textSecondary }]}>
-                    %
-                  </Text>
-                </View>
+                <>
+                  <View style={[styles.inputRow, { borderColor: colors.border }]}> 
+                    <TextInput
+                      value={customPercent}
+                      onChangeText={sanitizePercentInput}
+                      keyboardType="numeric"
+                      placeholder="0"
+                      placeholderTextColor={colors.textSecondary}
+                      style={[styles.input, { color: colors.text }]}
+                    />
+                    <Text style={[styles.inputSuffix, { color: colors.textSecondary }]}> 
+                      %
+                    </Text>
+                  </View>
+                  {!isCustomPercentValid && (
+                    <Text style={[styles.errorText, { color: '#EF4444', marginTop: 8 }]}> 
+                      Percentage must be between 0 and 100.
+                    </Text>
+                  )}
+                </>
               )}
 
               {/* Fixed Amount */}
@@ -438,9 +459,15 @@ export function ItemDiscountModal({
             )}
             <TouchableOpacity
               onPress={handleApply}
+              disabled={discountType === 'percentage' && !isCustomPercentValid}
               style={[
                 styles.applyBtn,
-                { backgroundColor: colors.primary },
+                {
+                  backgroundColor:
+                    discountType === 'percentage' && !isCustomPercentValid
+                      ? colors.border
+                      : colors.primary,
+                },
               ]}
             >
               <Text style={styles.applyBtnText}>
@@ -575,6 +602,10 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     paddingVertical: 12,
+  },
+  errorText: {
+    fontSize: 12,
+    marginTop: 4,
   },
   preview: {
     borderRadius: 12,

@@ -5,8 +5,10 @@ import {
   Dimensions,
   FlatList,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -46,6 +48,7 @@ import {
   type SalesOrderItemInput,
   type SalesOrderStatus,
   type ScPwdCustomerInput,
+  type DiscountStatus,
 } from '@/services/salesOrder.service';
 import type { CartItem } from '@/types';
 
@@ -244,36 +247,56 @@ function StatusModal({
   if (!order) return null;
   const options = nextStatuses(order);
 
+  const confirmCancel = async () => {
+    if (Platform.OS === 'web' || typeof window !== 'undefined') {
+      return Promise.resolve(
+        window.confirm(
+          'Cancel order?\n\nAre you sure you want to cancel this order? This cannot be undone.',
+        ),
+      );
+    }
+
+    return new Promise<boolean>((resolve) => {
+      Alert.alert(
+        'Cancel order?',
+        'Are you sure you want to cancel this order? This cannot be undone.',
+        [
+          {
+            text: 'Keep Order',
+            style: 'cancel',
+            onPress: () => resolve(false),
+          },
+          {
+            text: 'Cancel Order',
+            style: 'destructive',
+            onPress: () => resolve(true),
+          },
+        ],
+      );
+    });
+  };
+
   const update = async (status: SalesOrderStatus) => {
     if (status === 'CANCELLED') {
-      const confirmed = await new Promise<boolean>((resolve) => {
-        Alert.alert(
-          'Cancel order?',
-          'Are you sure you want to cancel this order? This cannot be undone.',
-          [
-            {
-              text: 'Keep Order',
-              style: 'cancel',
-              onPress: () => resolve(false),
-            },
-            {
-              text: 'Cancel Order',
-              style: 'destructive',
-              onPress: () => resolve(true),
-            },
-          ],
-        );
-      });
+      const confirmed = await confirmCancel();
       if (!confirmed) return;
     }
+
     setLoading(true);
     try {
-      const updated = await SalesOrderService.updateSalesOrderStatus(
-        order.id,
-        status,
-      );
+      const updated =
+        status === 'CANCELLED'
+          ? await SalesOrderService.cancelSalesOrder(order.id)
+          : await SalesOrderService.updateSalesOrderStatus(order.id, status);
       onUpdated(updated);
       onClose();
+    } catch (error: unknown) {
+      Alert.alert(
+        'Unable to update order',
+        error instanceof Error
+          ? error.message
+          : 'Something went wrong while updating the order.',
+      );
     } finally {
       setLoading(false);
     }
@@ -559,6 +582,10 @@ function CreateOrderModal({
   const [charges, setCharges] = useState<ChargeDraft[]>([]);
   const [customerType, setCustomerType] = useState<CustomerType>('REGULAR');
   const [discountType, setDiscountType] = useState<DiscountType>('NONE');
+  const [discountStatus, setDiscountStatus] = useState<DiscountStatus | null>(null);
+  const [discountStatusError, setDiscountStatusError] = useState<string | null>(null);
+  const [isLoadingDiscountStatus, setIsLoadingDiscountStatus] = useState(false);
+  const [applyBnpcDiscount, setApplyBnpcDiscount] = useState(true);
   const [scPwdData, setScPwdData] = useState<ScPwdCustomerInput>({
     fullName: '',
     idNumber: '',
@@ -594,11 +621,100 @@ function CreateOrderModal({
     SalesOrderService.getOutletsByBranch(selectedBranchId).then(setOutlets);
   }, [selectedBranchId]);
 
+  
+
+  useEffect(() => {
+    if (customerType === 'REGULAR') {
+      setApplyBnpcDiscount(false);
+      setDiscountType('NONE');
+      return;
+    }
+
+    const baseType = customerType === 'PWD' ? 'PWD' : 'SENIOR_CITIZEN';
+    const bnpcType = customerType === 'PWD' ? 'BNPC_PWD' : 'BNPC_SENIOR_CITIZEN';
+    const capRemaining = discountStatus?.capRemaining ?? 0;
+
+    if (discountStatus && capRemaining <= 0 && applyBnpcDiscount) {
+      setApplyBnpcDiscount(false);
+      setDiscountType(baseType);
+      return;
+    }
+
+    if (applyBnpcDiscount && capRemaining > 0) {
+      setDiscountType(bnpcType);
+    } else {
+      setDiscountType(baseType);
+    }
+  }, [customerType, discountStatus, applyBnpcDiscount]);
+
   useEffect(() => {
     if (visible) loadItems();
   }, [selectedOutlet?.id, selectedBranchId, visible, loadItems]);
 
+  useEffect(() => {
+    const oscaGovId = scPwdData.idNumber?.trim().toUpperCase();
+    if (customerType === 'REGULAR' || !oscaGovId || !GOVERNMENT_ID_PATTERN.test(oscaGovId)) {
+      setDiscountStatus(null);
+      setDiscountStatusError(null);
+      setIsLoadingDiscountStatus(false);
+      return;
+    }
+
+    let active = true;
+    setIsLoadingDiscountStatus(true);
+    setDiscountStatusError(null);
+
+    SalesOrderService.getDiscountStatus(undefined, oscaGovId)
+      .then((status) => {
+        if (!active) return;
+        setDiscountStatus(status);
+      })
+      .catch((error) => {
+        if (!active) return;
+        setDiscountStatus(null);
+        setDiscountStatusError(error?.message || 'Unable to load BNPC status');
+      })
+      .finally(() => {
+        if (!active) return;
+        setIsLoadingDiscountStatus(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [customerType, scPwdData.idNumber]);
+
   const cartItems = cart.map(cartToCartItem);
+  // Normalize BNPC usage: only consider recorded weekly usage if the
+  // backend's lastResetDate falls within the current week (Sunday 00:00).
+  const normalizeBnpcUsage = () => {
+    if (!discountStatus) return { bnpcDiscountUsed: undefined, bnpcEligibleAmountUsed: undefined, bnpcCapManuallyReached: undefined };
+    try {
+      const lastReset = discountStatus.lastResetDate ? new Date(discountStatus.lastResetDate) : null;
+      const now = new Date();
+      const day = now.getDay(); // 0 = Sunday
+      const weekStart = new Date(now);
+      weekStart.setDate(now.getDate() - day);
+      weekStart.setHours(0, 0, 0, 0);
+
+      if (lastReset && lastReset >= weekStart) {
+        return {
+          bnpcDiscountUsed: discountStatus.weeklyCapUsed ?? 0,
+          bnpcEligibleAmountUsed: discountStatus.eligibleAmountUsed ?? 0,
+          bnpcCapManuallyReached: discountStatus.capManuallyReached ?? false,
+        };
+      }
+    } catch (err) {
+      // If parsing fails, fall back to using the provided numbers conservatively.
+      console.warn('Failed to parse discountStatus.lastResetDate', err);
+    }
+
+    return { bnpcDiscountUsed: 0, bnpcEligibleAmountUsed: 0, bnpcCapManuallyReached: false };
+  };
+
+  const { bnpcDiscountUsed, bnpcEligibleAmountUsed, bnpcCapManuallyReached } = normalizeBnpcUsage();
+  const BNPC_WEEKLY_DISCOUNT_CAP = 125;
+  const capRemainingNormalized = Math.max(0, BNPC_WEEKLY_DISCOUNT_CAP - (bnpcDiscountUsed ?? 0));
   const totals = computeSalesOrderTotals({
     items: cartItems,
     extraCharges: charges,
@@ -608,10 +724,14 @@ function CreateOrderModal({
         ? undefined
         : {
             customerType,
-            discountType: 'NONE',
+            discountType: discountType,
             totalPax,
             scPwdPax,
             isVatRegistered: true,
+            bnpcDiscountUsed,
+            bnpcEligibleAmountUsed,
+            bnpcCapManuallyReached,
+            disableBnpc: !applyBnpcDiscount,
           },
   });
 
@@ -791,11 +911,11 @@ function CreateOrderModal({
         outletId: selectedOutlet?.id,
         items: orderItems,
         customerType,
-        discountType: 'NONE',
         scPwdCustomerInput:
           customerType === 'REGULAR'
             ? undefined
             : { ...scPwdData, customerType },
+        discountType: customerType === 'REGULAR' ? 'NONE' : discountType,
         totalPax,
         scPwdPax,
         extraCharges: charges.map(({ label, amount }) => ({
@@ -1326,11 +1446,48 @@ function CreateOrderModal({
                 scPwdPax={scPwdPax}
                 onPaxChange={(nextTotal, nextScPwd) => {
                   setTotalPax(Math.max(1, nextTotal));
-                  setScPwdPax(
-                    Math.min(Math.max(1, nextScPwd), Math.max(1, nextTotal)),
-                  );
+                  setScPwdPax(Math.min(Math.max(1, nextScPwd), Math.max(1, nextTotal)));
                 }}
               />
+              
+              {customerType !== 'REGULAR' && (
+                <View style={styles.discountToggleRow}>
+                  <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={[styles.discountToggleLabel, { color: colors.text }]}>Apply 5% BNPC Discount</Text>
+                  </View>
+                  <Switch
+                    value={applyBnpcDiscount}
+                    onValueChange={(value) => setApplyBnpcDiscount(value)}
+                    disabled={discountStatus?.capRemaining === 0}
+                  />
+                </View>
+              )}
+              {customerType !== 'REGULAR' && (
+                <Text style={[styles.discountStatusText, { color: colors.textSecondary }]}>Toggle off to disable BNPC discount even when weekly cap remains.</Text>
+              )}
+              {customerType !== 'REGULAR' && (
+                <Text
+                  style={[
+                    styles.discountStatusText,
+                    {
+                      color:
+                        discountStatus?.capRemaining === 0
+                          ? '#B91C1C'
+                          : '#047857',
+                    },
+                  ]}
+                >
+                  {isLoadingDiscountStatus
+                    ? 'Checking BNPC weekly status…'
+                    : discountStatus
+                    ? discountStatus.capRemaining > 0
+                      ? `BNPC discount remaining: ₱${discountStatus.capRemaining.toFixed(2)} this week.`
+                      : 'BNPC discount capped. Only 20% VAT-exempt medical discount applies.'
+                    : discountStatusError
+                    ? discountStatusError
+                    : 'Enter a valid OSCA ID to load BNPC weekly status.'}
+                </Text>
+              )}
               {errors.scPwdName ? <ErrorText text={errors.scPwdName} /> : null}
               {errors.scPwdId ? <ErrorText text={errors.scPwdId} /> : null}
             </FormSection>
@@ -2228,6 +2385,23 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     fontSize: 12,
     fontWeight: '800',
+  },
+  discountToggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+  },
+  discountToggleLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  discountStatusText: {
+    marginTop: -5,
+    fontSize: 12,
+    lineHeight: 18,
   },
   flexText: { flex: 1 },
   strong: { fontWeight: '900' },

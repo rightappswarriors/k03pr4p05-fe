@@ -117,6 +117,7 @@ export class ReceiptService {
 
     const receiptData: Receipt = {
       outlet,
+      user,
       transaction: {
         id: `TXN-${Date.now()}`,
         date: new Date().toISOString(),
@@ -130,15 +131,19 @@ export class ReceiptService {
         vatExemptSale: parseFloat((vatExemptSale ?? 0).toFixed(2)),
         total: parseFloat(total.toFixed(2)),
         discountType:
-          discountOption !== 'NONE' && (discount !== 0 || isVatExempt)
-            ? discountOption
+          discount > 0 || isVatExempt
+            ? discountOption !== 'NONE'
+              ? discountOption
+              : 'CUSTOM'
             : undefined,
         discountPercent:
-          discountOption !== 'NONE' && (discount !== 0 || isVatExempt)
-            ? discountRate * 100
+          discount > 0 || isVatExempt
+            ? discountOption !== 'NONE'
+              ? discountRate * 100
+              : undefined
             : undefined,
         discountTotal:
-          discountOption !== 'NONE' && (discount !== 0 || isVatExempt)
+          discount > 0 || isVatExempt
             ? discount
             : undefined,
         isVatExempt: Boolean(isVatExempt),

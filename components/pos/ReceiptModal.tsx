@@ -8,14 +8,13 @@ import {
   TouchableOpacity,
   TextInput,
   StyleSheet,
-  ScrollView,
   Image,
   KeyboardAvoidingView,
   Platform,
   Alert,
+  ScrollView,
 } from 'react-native';
-import { CustomCheckbox } from '@/components/pos/checkbox/CustomCheckbox';
-import { PaymentBottomSheetRef } from '@/types';
+import { DEFAULT_VAT_RATE, PaymentBottomSheetRef } from '@/types';
 import {
   X,
   Printer,
@@ -33,10 +32,11 @@ import { ItemDiscountModal } from './ItemDiscountModal';
 import RootView from '@/components/ui/RootView';
 import { useAuth } from '@/contexts/AuthContext';
 import { ReceiptService } from '@/services/paymentService';
+import { SalesOrderService } from '@/services/salesOrder.service';
 import useNetworkStatus from '@/hooks/useNetworkStatus';
 import { useResponsive } from '@/hooks/useResponsive';
 import ScPwdCustomerForm from '@/components/ScPwdCustomerForm';
-import type { ScPwdCustomerInput } from '@/services/salesOrder.service';
+import type { ScPwdCustomerInput, DiscountStatus } from '@/services/salesOrder.service';
 
 const WEIGHT_UNITS = ['kg', 'gram', 'g', 'grams', 'kilo', 'kilos'];
 const GOVERNMENT_ID_PATTERN = /^[a-z0-9]{4,32}$/i;
@@ -71,16 +71,18 @@ const ItemRow = React.memo(
       data.unitName && WEIGHT_UNITS.includes(data.unitName.toLowerCase());
     const unitPrice = data.priceAtSale ?? data.price;
     const discountAmount = data.discountAmount ?? 0;
-    const discountQty = data.discountQuantity ?? 0;
     const discountRate = data.discountRate ?? 0;
+    const itemQuantity = data.quantity ?? 0;
+    const discountQty = data.discountQuantity ?? (discountAmount > 0 && discountRate > 0 ? itemQuantity : 0);
 
     const discountedPrice = unitPrice * (1 - discountRate);
     const discountedTotal = discountedPrice * discountQty;
-    const regularTotal = unitPrice * (data.quantity - discountQty);
-    const lineTotal = discountedTotal + regularTotal;
+    const regularTotal = unitPrice * (itemQuantity - discountQty);
+    const computedLineTotal = discountedTotal + regularTotal;
+    const lineTotal = data.lineTotal !== undefined ? data.lineTotal : computedLineTotal;
 
     // Use pre-calculated VAT amount
-    const itemVat = data.itemVatAmount ?? 0;
+    const itemVat = data.itemVatAmount ?? DEFAULT_VAT_RATE;
     const lineTotalWithVat = lineTotal;
 
     return (
@@ -120,7 +122,7 @@ const ItemRow = React.memo(
               </Text>
               {itemVat > 0 && (
                 <View style={rs.vatBadge}>
-                  <Text style={rs.vatBadgeText}>VAT 12%</Text>
+                  <Text style={rs.vatBadgeText}>VAT Inclusive</Text>
                 </View>
               )}
             </View>
@@ -173,6 +175,7 @@ interface TotalsBlockProps {
   colors: any;
   outlet: any;
   subtotal: number;
+  vatableSale?: number;
   vatAmount: number;
   vatExemptAmount: number | undefined;
   discount: number;
@@ -190,6 +193,7 @@ const TotalsBlock = React.memo(
     colors,
     outlet,
     subtotal,
+    vatableSale,
     vatAmount,
     vatExemptAmount,
     discount,
@@ -200,65 +204,67 @@ const TotalsBlock = React.memo(
     isVatExemptOption,
     applyVatExempt,
     isVatExemptActive,
-  }: TotalsBlockProps) => (
-    <View style={[rs.totalsBlock, { borderColor: colors.border }]}>
-      <View style={rs.totalRow}>
-        <Text style={[rs.totalLabel, { color: colors.textSecondary }]}>
-          Subtotal
-        </Text>
-        <Text style={[rs.totalValue, { color: colors.text }]}>
-          ₱{subtotal.toFixed(2)}
-        </Text>
+  }: TotalsBlockProps) => {
+    const hasVat = outlet.isVatRegistered && vatAmount > 0;
+    const discountLabel = discountOption !== 'NONE' ? `Discount ${discountOption}` : 'Discount';
+
+    return (
+      <View style={[rs.totalsBlock, { borderColor: colors.border }]}> 
+        <View style={rs.totalRow}>
+          <Text style={[rs.totalLabel, { color: colors.textSecondary }]}> 
+            {hasVat ? 'VATable Sale' : 'Subtotal'}
+          </Text>
+          <Text style={[rs.totalValue, { color: colors.text }]}> 
+            ₱{((hasVat ? vatableSale ?? subtotal : subtotal) ?? subtotal).toFixed(2)}
+          </Text>
+        </View>
+
+        {hasVat && (
+          <View style={rs.totalRow}>
+            <Text style={[rs.totalLabel, { color: colors.textSecondary }]}> 
+              VAT
+            </Text>
+            <Text style={[rs.totalValue, { color: colors.text }]}> 
+              ₱{vatAmount.toFixed(2)}
+            </Text>
+          </View>
+        )}
+
+        {isVatExemptActive && vatExemptAmount !== undefined && vatExemptAmount > 0 && (
+          <View style={rs.totalRow}>
+            <Text style={[rs.totalLabel, { color: '#10B981' }]}> 
+              VAT Exempt Sale
+            </Text>
+            <Text style={[rs.totalValue, { color: '#10B981' }]}> 
+              ₱{vatExemptAmount.toFixed(2)}
+            </Text>
+          </View>
+        )}
+
+        {discount > 0 && (
+          <View style={rs.totalRow}>
+            <Text style={[rs.totalLabel, { color: colors.textSecondary }]}> 
+              {discountLabel}{discountRate > 0 ? ` (${(discountRate * 100).toFixed(0)}%)` : ''}
+            </Text>
+            <Text style={[rs.totalValue, { color: '#EF4444' }]}> 
+              -₱{discount.toFixed(2)}
+            </Text>
+          </View>
+        )}
+
+        <View
+          style={[rs.totalRow, rs.grandRow, { borderTopColor: colors.border }]}
+        >
+          <Text style={[rs.grandLabel, { color: colors.text }]}>Total</Text>
+          <Text style={[rs.grandValue, { color: colors.accent }]}> 
+            ₱{total.toFixed(2)}
+          </Text>
+        </View>
       </View>
-
-      {outlet.isVatRegistered && vatAmount > 0 && (
-        <View style={rs.totalRow}>
-          <Text style={[rs.totalLabel, { color: colors.textSecondary }]}>
-            VAT
-          </Text>
-          <Text style={[rs.totalValue, { color: colors.text }]}>
-            ₱{vatAmount.toFixed(2)}
-          </Text>
-        </View>
-      )}
-
-      {isVatExemptActive && vatExemptAmount !== undefined && (
-        <View style={rs.totalRow}>
-          <Text style={[rs.totalLabel, { color: '#10B981' }]}>
-            VAT Exempted
-          </Text>
-          <Text style={[rs.totalValue, { color: '#10B981' }]}>
-            -₱{vatExemptAmount.toFixed(2)}
-          </Text>
-        </View>
-      )}
-
-      {isDiscounted && discount > 0 && (
-        <View style={rs.totalRow}>
-          <Text style={[rs.totalLabel, { color: colors.textSecondary }]}>
-            Discount {discountOption} ({(discountRate * 100).toFixed(0)}%)
-          </Text>
-          <Text style={[rs.totalValue, { color: '#EF4444' }]}>
-            -₱{discount.toFixed(2)}
-          </Text>
-        </View>
-      )}
-
-      <View
-        style={[rs.totalRow, rs.grandRow, { borderTopColor: colors.border }]}
-      >
-        <Text style={[rs.grandLabel, { color: colors.text }]}>Total</Text>
-        <Text style={[rs.grandValue, { color: colors.accent }]}>
-          ₱{total.toFixed(2)}
-        </Text>
-      </View>
-    </View>
-  ),
+    );
+  },
 );
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PaymentBlock — outside ReceiptModal, receives all state/setters as props
-// ─────────────────────────────────────────────────────────────────────────────
 interface PaymentBlockProps {
   colors: any;
   outlet: any;
@@ -289,39 +295,15 @@ const PaymentBlock = React.memo(
     colors,
     outlet,
     isConnected,
-    isDiscounted,
-    isVatExemptOption,
-    applyVatExempt,
-    onToggleVatExempt,
-    discountOption,
-    onOpenDiscountModal,
-    setIsDiscounted,
-    setDiscountOption,
-    setSelectedPromoId,
-    subtotal,
-    vatAmount,
-    vatExemptRefNo,
-    setVatExemptRefNo,
     cashReceived,
     setCashReceived,
     cashAmount,
     change,
-    total,
     paymentSheetRef,
   }: PaymentBlockProps) => (
     <View style={rs.paymentBlock}>
       {/* Discount + payment method row */}
       <View style={rs.paymentTopRow}>
-        <View style={rs.paymentTopLeft}>
-          <View style={rs.vatExemptCheckbox}>
-            <CustomCheckbox
-              label="VAT Exempt"
-              checked={applyVatExempt}
-              onPress={onToggleVatExempt}
-              colors={colors}
-            />
-          </View>
-        </View>
         <TouchableOpacity
           style={rs.payMethodBtn}
           disabled={!isConnected || !outlet.hasKey}
@@ -355,37 +337,6 @@ const PaymentBlock = React.memo(
         </TouchableOpacity>
       </View>
 
-      {/* SC/PWD ID Input */}
-      {applyVatExempt && (
-        <View
-          style={[
-            rs.cashRow,
-            {
-              backgroundColor: colors.background,
-              borderColor: applyVatExempt ? '#10B981' : colors.border,
-            },
-          ]}
-        >
-          <Text
-            style={{
-              fontSize: 13,
-              color: applyVatExempt ? '#10B981' : colors.textSecondary,
-              fontWeight: '600',
-            }}
-          >
-            SC/PWD ID
-          </Text>
-          <TextInput
-            style={[rs.cashInput, { color: colors.text }]}
-            placeholder="Enter Senior Citizen or PWD ID No."
-            placeholderTextColor={colors.textSecondary}
-            value={vatExemptRefNo}
-            onChangeText={setVatExemptRefNo}
-            editable={true}
-            selectTextOnFocus={false}
-          />
-        </View>
-      )}
 
       {/* Cash input */}
       <View
@@ -472,6 +423,7 @@ export function ReceiptModal({
   const [discountOption, setDiscountOption] = useState<DiscountType>('NONE');
   const [isDiscounted, setIsDiscounted] = useState(false);
   const [applyVatExempt, setApplyVatExempt] = useState(false);
+  const [applyBnpcDiscount, setApplyBnpcDiscount] = useState(true);
   const [selectedPromoId, setSelectedPromoId] = useState<number | undefined>(
     undefined,
   );
@@ -480,6 +432,9 @@ export function ReceiptModal({
   >({});
   const [discountModalVisible, setDiscountModalVisible] = useState(false);
   const [selectedDiscountItem, setSelectedDiscountItem] = useState<any>(null);
+  const [discountStatus, setDiscountStatus] = useState<DiscountStatus | null>(null);
+  const [discountStatusError, setDiscountStatusError] = useState<string | null>(null);
+  const [isLoadingDiscountStatus, setIsLoadingDiscountStatus] = useState(false);
 
   useEffect(() => {
     if (!isDiscounted) {
@@ -497,14 +452,56 @@ export function ReceiptModal({
   useEffect(() => {
     if (customerType === 'REGULAR') {
       setApplyVatExempt(false);
+      setIsDiscounted(false);
       setDiscountOption('NONE');
       return;
     }
+
     setApplyVatExempt(true);
     setIsDiscounted(true);
-    setDiscountOption(customerType === 'PWD' ? 'PWD' : 'SENIOR_CITIZEN');
     setScPwdIdType(customerType === 'PWD' ? 'PWD-PDAO' : 'OSCA');
-  }, [customerType]);
+
+    const baseType = customerType === 'PWD' ? 'PWD' : 'SENIOR_CITIZEN';
+    const bnpcType = customerType === 'PWD' ? 'BNPC_PWD' : 'BNPC_SENIOR_CITIZEN';
+
+    if (applyBnpcDiscount && discountStatus?.capRemaining && discountStatus.capRemaining > 0) {
+      setDiscountOption(bnpcType);
+    } else {
+      setDiscountOption(baseType);
+    }
+  }, [customerType, discountStatus, applyBnpcDiscount]);
+
+  useEffect(() => {
+    const oscaGovId = vatExemptRefNo.trim();
+    if (customerType === 'REGULAR' || !oscaGovId || !GOVERNMENT_ID_PATTERN.test(oscaGovId)) {
+      setDiscountStatus(null);
+      setDiscountStatusError(null);
+      return;
+    }
+
+    let active = true;
+    setIsLoadingDiscountStatus(true);
+    setDiscountStatusError(null);
+
+    SalesOrderService.getDiscountStatus(undefined, oscaGovId)
+      .then((status) => {
+        if (!active) return;
+        setDiscountStatus(status);
+      })
+      .catch((error) => {
+        if (!active) return;
+        setDiscountStatus(null);
+        setDiscountStatusError(error?.message || 'Unable to load BNPC status');
+      })
+      .finally(() => {
+        if (!active) return;
+        setIsLoadingDiscountStatus(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [customerType, vatExemptRefNo]);
 
   // ── All hooks must come before any early return ──────────────────────────
   const handleClose = useCallback(() => {
@@ -546,11 +543,13 @@ export function ReceiptModal({
   const {
     total,
     subtotal,
+    vatableSale,
     vatAmount,
     discount,
     discountRate,
     vatExemptAmount,
     bnpcCapReached,
+    itemBreakdown,
   } = calculateTotal(
     itemsWithDiscounts,
     outlet,
@@ -565,11 +564,16 @@ export function ReceiptModal({
       totalPax: parseInt(totalPax) || 1,
       scPwdPax: parseInt(scPwdPax) || 1,
       isVatRegistered: outlet?.isVatRegistered,
+      bnpcDiscountUsed: discountStatus?.weeklyCapUsed,
+      bnpcEligibleAmountUsed: discountStatus?.eligibleAmountUsed,
+      bnpcCapManuallyReached: discountStatus?.capManuallyReached,
     },
   );
 
+  const itemsSource = itemBreakdown && itemBreakdown.length > 0 ? itemBreakdown : itemsWithDiscounts;
+
   // Then calculate itemVatAmount for display purposes AFTER getting the calculation
-  const itemsWithVat = itemsWithDiscounts.map((item) => {
+  const itemsWithVat = itemsSource.map((item) => {
     const itemVat = outlet?.isVatRegistered && item.vatExempt !== true && !isVatExemptActive
       ? calculateItemVat(item, outlet.isVatRegistered, isVatExemptActive)
       : 0;
@@ -591,6 +595,11 @@ export function ReceiptModal({
   });
 
   const bnpcCapIndicatorActive = Boolean(bnpcCapReached && /BNPC/.test(discountOption));
+  const bnpcStatusMessage = discountStatus
+    ? discountStatus.capRemaining <= 0
+      ? 'BNPC weekly cap reached — BNPC pricing will fallback to standard senior/PWD pricing for this bill.'
+      : `BNPC used ₱${discountStatus.weeklyCapUsed.toFixed(2)} / ₱125, eligible purchase ₱${discountStatus.eligibleAmountUsed.toFixed(2)} / ₱2500. Reset week of ${new Date(discountStatus.lastResetDate).toLocaleDateString()}.`
+    : null;
   const effectiveVatExemptActive = isVatExemptActive || bnpcCapIndicatorActive;
   const cashAmount = parseFloat(cashReceived) || 0;
   const change = cashAmount - total;
@@ -680,6 +689,7 @@ export function ReceiptModal({
     colors,
     outlet,
     subtotal,
+    vatableSale,
     vatAmount,
     vatExemptAmount,
     discount,
@@ -740,6 +750,8 @@ export function ReceiptModal({
     setRepresentativeIdNumber(data.representativeIdNumber ?? '');
   };
 
+  // SC/PWD customer input is segmented into its own wrapper so the receipt modal body
+  // remains stable and the fields do not get squeezed by the totals/payment pane.
   const customerCaptureBlock = (
     <View style={rs.customerBlock}>
       <Text style={[rs.sectionTitle, { color: colors.text }]}>Customer Type</Text>
@@ -761,6 +773,37 @@ export function ReceiptModal({
           setScPwdPax(String(Math.min(nextScPwdPax, nextTotalPax)));
         }}
       />
+      {customerType !== 'REGULAR' && (
+        <>
+          <View style={rs.discountToggleRow}>
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={[rs.discountToggleLabel, { color: colors.text }]}>Apply 5% BNPC Discount</Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => setApplyBnpcDiscount((prev) => !prev)}
+              style={rs.switchFake}
+            >
+              <View style={[rs.switchTrack, applyBnpcDiscount && { backgroundColor: colors.primary }]} />
+              <View style={[rs.switchThumb, applyBnpcDiscount && { left: 20 }]} />
+            </TouchableOpacity>
+          </View>
+          <Text style={[rs.discountStatusText, { color: colors.textSecondary }]}>Toggle off to disable BNPC discount even when weekly cap remains.</Text>
+          {discountStatus && (
+            <Text
+              style={[
+                rs.discountStatusText,
+                {
+                  color: discountStatus.capRemaining <= 0 ? '#B91C1C' : '#047857',
+                },
+              ]}
+            >
+              {discountStatus.capRemaining <= 0
+                ? 'BNPC weekly cap reached — BNPC pricing will fallback to standard senior/PWD pricing for this bill.'
+                : `BNPC discount remaining: ₱${discountStatus.capRemaining.toFixed(2)} this week.`}
+            </Text>
+          )}
+        </>
+      )}
     </View>
   );
 
@@ -857,14 +900,27 @@ export function ReceiptModal({
                         BNPC cap reached - applying 20% VAT-exempt discount.
                       </Text>
                     )}
+                    {discountStatus && (
+                      <Text
+                        style={[
+                          rs.capNotice,
+                          {
+                            color: discountStatus.capRemaining <= 0 ? '#B91C1C' : '#047857',
+                            borderColor: discountStatus.capRemaining <= 0 ? '#FCA5A5' : '#10B981',
+                          },
+                        ]}
+                      >
+                        {bnpcStatusMessage}
+                      </Text>
+                    )}
                   </View>
-                  <View style={rs.wideRight}>
+                  <ScrollView style={rs.wideRight}>
                     <Text style={[rs.sectionTitle, { color: colors.text }]}>
                       Payment
                     </Text>
                     {customerCaptureBlock}
                     <PaymentBlock {...paymentProps} />
-                  </View>
+                  </ScrollView>
                 </View>
               ) : (
                 <ScrollView
@@ -896,6 +952,19 @@ export function ReceiptModal({
                   {bnpcCapIndicatorActive && (
                     <Text style={[rs.capNotice, { color: '#047857', borderColor: '#10B981' }]}>
                       BNPC cap reached - applying 20% VAT-exempt discount.
+                    </Text>
+                  )}
+                  {discountStatus && (
+                    <Text
+                      style={[
+                        rs.capNotice,
+                        {
+                          color: discountStatus.capRemaining <= 0 ? '#B91C1C' : '#047857',
+                          borderColor: discountStatus.capRemaining <= 0 ? '#FCA5A5' : '#10B981',
+                        },
+                      ]}
+                    >
+                      {bnpcStatusMessage}
                     </Text>
                   )}
                   <Text
@@ -998,7 +1067,7 @@ const rs = StyleSheet.create({
   closeBtn: { padding: 6 },
   wideBody: { flex: 1, flexDirection: 'row' },
   wideLeft: { flex: 1, padding: 20, borderRightWidth: 1 },
-  wideRight: { width: 300, padding: 20 },
+  wideRight: { width: '2%', minWidth: 50, padding: 20 },
   mobileBody: { flex: 1, padding: 16 },
   sectionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 12 },
   itemRow: {
@@ -1051,7 +1120,21 @@ const rs = StyleSheet.create({
   grandLabel: { fontSize: 16, fontWeight: '800' },
   grandValue: { fontSize: 20, fontWeight: '800' },
   paymentBlock: { gap: 12 },
-  customerBlock: { gap: 10, marginBottom: 14 },
+  customerBlock: { gap: 10, marginBottom: 14, flexShrink: 0 },
+  discountToggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
+  },
+  discountToggleLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  discountStatusText: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
   segmentRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   segmentBtn: {
     borderWidth: 1,
@@ -1076,6 +1159,34 @@ const rs = StyleSheet.create({
   vatExemptCheckbox: { marginTop: 8 },
   discountBtn: { paddingVertical: 4 },
   discountBtnTxt: { fontSize: 13, fontWeight: '600' },
+  switchFake: {
+    width: 44,
+    height: 24,
+    borderRadius: 999,
+    justifyContent: 'center',
+    padding: 2,
+    backgroundColor: '#D1D5DB',
+  },
+  switchTrack: {
+    position: 'absolute',
+    width: '100%',
+    height: 20,
+    borderRadius: 999,
+    backgroundColor: '#D1D5DB',
+  },
+  switchThumb: {
+    position: 'absolute',
+    width: 20,
+    height: 20,
+    borderRadius: 999,
+    backgroundColor: '#fff',
+    left: 2,
+    top: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 2,
+    elevation: 1,
+  },
   payMethodBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   payMethodTxt: { fontSize: 13, fontWeight: '600' },
   cashRow: {

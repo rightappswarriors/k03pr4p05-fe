@@ -27,6 +27,7 @@ export interface ScPwdDiscountParams {
   bnpcDiscountUsed?: number;
   bnpcEligibleAmountUsed?: number;
   bnpcCapManuallyReached?: boolean;
+  disableBnpc?: boolean;
 }
 
 export interface ExtraCharge {
@@ -69,11 +70,10 @@ export function calculateItemVat(
   const itemPrice = item.priceAtSale ?? item.price;
   const discountQty = item.discountQuantity ?? 0;
   const discountRate = item.discountRate ?? 0;
-  const discountedPrice = itemPrice * (1 - discountRate);
-  const regularQty = item.quantity - discountQty;
-  const lineTotal = discountedPrice * discountQty + itemPrice * regularQty;
+  const discountAmount = roundMoney(item.discountAmount ?? itemPrice * discountRate * discountQty);
+  const lineTotal = roundMoney(itemPrice * item.quantity - discountAmount);
 
-  return roundMoney(lineTotal - removeVat(lineTotal, item.vatRate ?? DEFAULT_VAT_RATE));
+  return roundMoney(lineTotal - removeVat(lineTotal, rate));
 }
 
 function normalizeDiscountType(type?: string): DiscountType {
@@ -116,8 +116,15 @@ export function computeScPwdDiscount(
     const quantity = item.quantity;
     const vatRate = item.vatRate ?? DEFAULT_VAT_RATE;
     const isVatExemptItem = item.vatExempt === true || item.isVatExempt === true;
-    const eligibleBnpc = isBnpc && !bnpcCapReached && item.isBNPC === true;
-    const eligibleSenior = (isScPwd || (isBnpc && bnpcCapReached)) && item.hasSeniorDiscountVATExempt === true;
+    const discountQty = Math.max(0, Math.min(quantity, item.discountQuantity ?? 0));
+    const manualDiscountRate = item.discountRate ?? 0;
+    const manualDiscountAmount = roundMoney(
+      item.discountAmount !== undefined && item.discountAmount !== 0
+        ? item.discountAmount
+        : Math.max(0, originalPrice * manualDiscountRate * discountQty),
+    );
+    const eligibleBnpc = isBnpc && !bnpcCapReached && item.isBNPC === true && !params.disableBnpc;
+    const eligibleSenior = (isScPwd || (isBnpc && (bnpcCapReached || params.disableBnpc))) && item.hasSeniorDiscountVATExempt === true;
     const eligible = eligibleBnpc || eligibleSenior;
     const eligibleQty = eligible ? quantity * proportion : 0;
     const regularQty = quantity - eligibleQty;
@@ -126,17 +133,19 @@ export function computeScPwdDiscount(
       : 0;
 
     if (!eligible || rate <= 0) {
+      const lineTotal = roundMoney(originalPrice * quantity - manualDiscountAmount);
+      discountAmount += manualDiscountAmount;
       vatAmount += regularVat * quantity;
-      netTotal += originalPrice * quantity;
+      netTotal += lineTotal;
       return {
         ...item,
-        discountType: 'NONE',
-        discountRate: 0,
-        discountAmount: 0,
+        discountType: manualDiscountAmount > 0 ? 'CUSTOM' : 'NONE',
+        discountRate: manualDiscountAmount > 0 ? manualDiscountRate : 0,
+        discountAmount: manualDiscountAmount,
         originalPrice,
         vatExclusivePrice: isVatExemptItem ? originalPrice : removeVat(originalPrice, vatRate),
-        finalPrice: originalPrice,
-        lineTotal: originalPrice * quantity,
+        finalPrice: lineTotal / quantity,
+        lineTotal,
       };
     }
 
@@ -145,9 +154,10 @@ export function computeScPwdDiscount(
       const eligibleAmount = originalPrice * eligibleQty;
       const eligibleAmountToDiscount = Math.max(0, Math.min(eligibleAmount, remainingBnpcPurchase));
       const lineDiscount = roundMoney(Math.min(eligibleAmountToDiscount * rate, remainingBnpcDiscount));
-      const lineTotal = roundMoney(lineGross - lineDiscount);
+      const totalDiscount = roundMoney(lineDiscount + manualDiscountAmount);
+      const lineTotal = roundMoney(lineGross - totalDiscount);
 
-      discountAmount += lineDiscount;
+      discountAmount += totalDiscount;
       vatAmount += regularVat * quantity;
       netTotal += lineTotal;
       remainingBnpcPurchase = Math.max(0, remainingBnpcPurchase - eligibleAmountToDiscount);
@@ -155,12 +165,12 @@ export function computeScPwdDiscount(
 
       return {
         ...item,
-        discountType,
-        discountRate: rate,
-        discountAmount: lineDiscount,
+        discountType: manualDiscountAmount > 0 ? 'CUSTOM' : discountType,
+        discountRate: manualDiscountAmount > 0 ? manualDiscountRate : rate,
+        discountAmount: totalDiscount,
         originalPrice,
         vatExclusivePrice: isVatExemptItem ? originalPrice : removeVat(originalPrice, vatRate),
-        finalPrice: roundMoney(originalPrice - originalPrice * rate),
+        finalPrice: roundMoney(lineTotal / quantity),
         lineTotal,
       };
     }
@@ -174,22 +184,23 @@ export function computeScPwdDiscount(
       : discountType;
     const perUnitDiscount = vatExclusivePrice * effectiveRate;
     const discountedUnit = vatExclusivePrice - perUnitDiscount;
-    const lineDiscount = roundMoney(perUnitDiscount * eligibleQty);
-    const lineTotal = roundMoney(originalPrice * regularQty + discountedUnit * eligibleQty);
+    const seniorLineDiscount = roundMoney(perUnitDiscount * eligibleQty);
+    const totalDiscount = roundMoney(seniorLineDiscount + manualDiscountAmount);
+    const lineTotal = roundMoney(originalPrice * regularQty + discountedUnit * eligibleQty - manualDiscountAmount);
 
-    discountAmount += lineDiscount;
+    discountAmount += totalDiscount;
     vatExemptSale += roundMoney(vatExclusivePrice * eligibleQty);
     vatAmount += regularVat * regularQty;
     netTotal += lineTotal;
 
     return {
       ...item,
-      discountType: effectiveDiscountType,
-      discountRate: effectiveRate,
-      discountAmount: lineDiscount,
+      discountType: manualDiscountAmount > 0 ? 'CUSTOM' : effectiveDiscountType,
+      discountRate: manualDiscountAmount > 0 ? manualDiscountRate : effectiveRate,
+      discountAmount: totalDiscount,
       originalPrice,
       vatExclusivePrice: roundMoney(vatExclusivePrice),
-      finalPrice: roundMoney(discountedUnit),
+      finalPrice: roundMoney(lineTotal / quantity),
       lineTotal,
     };
   });
@@ -233,8 +244,8 @@ export function computeAutomaticItemDiscounts(
     const vatRate = item.vatRate ?? DEFAULT_VAT_RATE;
     const isVatExemptItem = item.vatExempt === true || item.isVatExempt === true;
     const seniorEligible = isEligibleCustomer && item.hasSeniorDiscountVATExempt === true;
-    const bnpcEligible = isEligibleCustomer && !bnpcCapReached && !seniorEligible && item.isBNPC === true;
-    const seniorFallbackEligible = isEligibleCustomer && bnpcCapReached && item.hasSeniorDiscountVATExempt === true;
+    const bnpcEligible = isEligibleCustomer && !bnpcCapReached && !seniorEligible && item.isBNPC === true && !params.disableBnpc;
+    const seniorFallbackEligible = isEligibleCustomer && (bnpcCapReached || params.disableBnpc) && item.hasSeniorDiscountVATExempt === true;
     const eligibleQty = (seniorEligible || bnpcEligible || seniorFallbackEligible) ? quantity * proportion : 0;
     const regularQty = quantity - eligibleQty;
     const regularVat = params.isVatRegistered && !isVatExemptItem
@@ -363,30 +374,65 @@ export function calculateTotal(
     };
   }
 
-  const vatAmount = items.reduce(
-    (sum, item) => sum + calculateItemVat(item, isVatRegistered, false),
-    0,
+  let discountTotal = 0;
+  let netTotal = 0;
+
+  const itemBreakdown = items.map((item) => {
+    const originalPrice = item.priceAtSale ?? item.price;
+    const discountQty = Math.max(0, Math.min(item.quantity, item.discountQuantity ?? 0));
+    const discountRate = item.discountRate ?? 0;
+    const lineDiscount = roundMoney(
+      item.discountAmount !== undefined && item.discountAmount !== 0
+        ? item.discountAmount
+        : Math.max(0, originalPrice * discountRate * discountQty),
+    );
+    const lineTotal = roundMoney(originalPrice * item.quantity - lineDiscount);
+    const itemDiscountType = (item as any).discountType as DiscountType | undefined;
+    const knownDiscountTypes: DiscountType[] = [
+      'SENIOR',
+      'SENIOR_CITIZEN',
+      'PWD',
+      'BNPC_SENIOR_CITIZEN',
+      'BNPC_PWD',
+      'CUSTOM',
+      'PROMO',
+    ];
+    const discountType = lineDiscount > 0
+      ? knownDiscountTypes.includes(itemDiscountType ?? 'NONE') && itemDiscountType !== 'NONE'
+        ? itemDiscountType
+        : 'CUSTOM'
+      : 'NONE';
+
+    discountTotal += lineDiscount;
+    netTotal += lineTotal;
+
+    return {
+      ...item,
+      discountType,
+      discountRate,
+      discountAmount: lineDiscount,
+      originalPrice,
+      vatExclusivePrice: originalPrice,
+      finalPrice: item.quantity ? roundMoney(lineTotal / item.quantity) : originalPrice,
+      lineTotal,
+    };
+  });
+
+  const vatAmount = roundMoney(
+    items.reduce((sum, item) => sum + calculateItemVat(item, isVatRegistered, false), 0),
   );
 
   return {
     subtotal,
     grossSubtotal: subtotal,
-    vatableSale: roundMoney(Math.max(0, subtotal - vatAmount)),
-    discount: 0,
-    vatAmount: roundMoney(vatAmount),
+    vatableSale: roundMoney(Math.max(0, netTotal - vatAmount)),
+    discount: roundMoney(discountTotal),
+    vatAmount,
     vatExemptSale: 0,
     discountRate: 0,
-    total: roundMoney(subtotal),
-    netTotal: roundMoney(subtotal),
-    itemBreakdown: items.map((item) => ({
-      ...item,
-      discountType: 'NONE',
-      discountRate: item.discountRate ?? 0,
-      discountAmount: item.discountAmount ?? 0,
-      originalPrice: item.priceAtSale ?? item.price,
-      vatExclusivePrice: item.priceAtSale ?? item.price,
-      finalPrice: item.priceAtSale ?? item.price,
-    })),
+    total: roundMoney(netTotal),
+    netTotal: roundMoney(netTotal),
+    itemBreakdown,
   };
 }
 

@@ -393,7 +393,7 @@ Thank you for testing!
   }
 
   private static money(value?: number | null): string {
-    return `₱${Number(value ?? 0).toFixed(2)}`;
+    return `Php ${Number(value ?? 0).toFixed(2)}`;
   }
 
   private static salesOrderItemName(item: SalesOrder['items'][number]): string {

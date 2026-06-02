@@ -57,6 +57,18 @@ export interface ScPwdCustomer {
   representativeIdNumber?: string;
 }
 
+export interface DiscountStatus {
+  customerId?: string | null;
+  oscaGovId?: string | null;
+  weeklyCapUsed: number;
+  eligibleAmountUsed: number;
+  capRemaining: number;
+  purchaseRemaining: number;
+  bnpcDiscountApplied: boolean;
+  capManuallyReached: boolean;
+  lastResetDate: string;
+}
+
 export interface ExtraCharge {
   id: string;
   label: string;
@@ -443,6 +455,38 @@ export class SalesOrderService {
       return response.getSalesOrder;
     } catch (error) {
       console.error("getSalesOrder error:", formatGraphQLError(error));
+      return null;
+    }
+  }
+
+  static async getDiscountStatus(
+    customerId?: string | null,
+    oscaGovId?: string | null,
+  ): Promise<DiscountStatus | null> {
+    const QUERY = gql`
+      query GetBnpcDiscountStatus($customerId: String, $oscaGovId: String) {
+        bnpcDiscountStatus(customerId: $customerId, oscaGovId: $oscaGovId) {
+          customerId
+          oscaGovId
+          weeklyCapUsed
+          eligibleAmountUsed
+          capRemaining
+          purchaseRemaining
+          bnpcDiscountApplied
+          capManuallyReached
+          lastResetDate
+        }
+      }
+    `;
+    if (!customerId && !oscaGovId) return null;
+    try {
+      const response = await graphQLRequest<{ bnpcDiscountStatus: DiscountStatus | null }>(
+        QUERY,
+        { customerId, oscaGovId },
+      );
+      return response.bnpcDiscountStatus ?? null;
+    } catch (error) {
+      console.error('getDiscountStatus error:', formatGraphQLError(error));
       return null;
     }
   }
