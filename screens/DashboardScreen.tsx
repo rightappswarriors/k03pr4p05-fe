@@ -58,6 +58,7 @@ import {
   FinanceService,
   DashboardService,
 } from '@/services';
+import { AnalyticsService, type DateRangePreset } from '@/services/analyticsService';
 import type { GISRow, SummaryRow } from '@/data/SummaryData';
 import {
   PAGE_SIZE,
@@ -87,6 +88,7 @@ import { SubCenterService } from '@/services/subCenterService';
 import { VatTypeService } from '@/services/vatTypeService';
 import { MasterFileFinanceService } from '@/services/masterFileFinanceService';
 import { autoCode } from '@/utils/autoCode';
+import { useWebSocket } from '@/contexts/WSContext';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 function getDateRange(
@@ -1031,6 +1033,16 @@ export default function DashboardScreen() {
     };
   };
 
+  const getAnalyticsWindow = (
+    startDate: string,
+    endDate: string,
+  ): { preset: DateRangePreset; dateRange: { startDate: string; endDate: string } } => ({
+    // Dashboard presets include ranges that Sales Analytics does not expose as
+    // presets, so use custom to make both screens aggregate over the exact same dates.
+    preset: 'custom',
+    dateRange: { startDate, endDate },
+  });
+
   const isCompletedTransaction = (tx: any) =>
     ['COMPLETED', 'PAID', 'SYNCED'].includes(String(tx.status ?? '').toUpperCase());
 
@@ -1048,6 +1060,8 @@ export default function DashboardScreen() {
   };
 
   const { user } = useAuth();
+  const socket = useWebSocket();
+  const dashboardRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   if (!user?.orgId) {
     return null;
   }
@@ -1062,6 +1076,11 @@ export default function DashboardScreen() {
       customEndDate,
     );
     const previousRange = getPreviousDateRange(startDate, endDate);
+    const analyticsWindow = getAnalyticsWindow(startDate, endDate);
+    const previousAnalyticsWindow = getAnalyticsWindow(
+      previousRange.startDate,
+      previousRange.endDate,
+    );
     const emptyOrderStats = {
       receivableSalesTotal: 0,
       receivableOrderCount: 0,
@@ -1099,7 +1118,6 @@ export default function DashboardScreen() {
 
       const [
         transactions,
-        previousTransactions,
         accountTitles,
         centers,
         subCenters,
@@ -1107,13 +1125,11 @@ export default function DashboardScreen() {
         summaryData,
         orderStats,
         previousOrderStats,
+        salesAnalytics,
+        previousSalesAnalytics,
         vatTypesData,
       ] = await Promise.all([
         SalesService.getTransactionsByOrgId(startDate, endDate).catch(() => []),
-        SalesService.getTransactionsByOrgId(
-          previousRange.startDate,
-          previousRange.endDate,
-        ).catch(() => []),
         MasterFileFinanceService.getAccountTitles(),
         CenterService.getCenters(),
         SubCenterService.getAll(),
@@ -1127,6 +1143,14 @@ export default function DashboardScreen() {
           startDate: previousRange.startDate,
           endDate: previousRange.endDate,
         }).catch(() => emptyOrderStats),
+        AnalyticsService.getSalesAnalytics(
+          analyticsWindow.preset,
+          analyticsWindow.dateRange,
+        ),
+        AnalyticsService.getSalesAnalytics(
+          previousAnalyticsWindow.preset,
+          previousAnalyticsWindow.dateRange,
+        ),
         VatTypeService.getAll().catch(() => [
           { id: 'default', label: 'Default', rate: 0 },
         ]),
@@ -1142,17 +1166,16 @@ export default function DashboardScreen() {
           rate: v.rate,
         })),
       );
-      const posSalesTotal = sumTransactions(transactions);
-      const previousPosSalesTotal = sumTransactions(previousTransactions);
+      const posSalesTotal =
+        salesAnalytics.sourceBreakdown.find((source) => source.source === 'pos')
+          ?.totalRevenue ?? sumTransactions(transactions);
       const posCompletedCount = countTransactions(transactions);
-      const previousPosCompletedCount = countTransactions(previousTransactions);
-      const completedSalesTotal = orderStats.totalSalesAmount + posSalesTotal;
+      const completedSalesTotal = salesAnalytics.summary.totalRevenue;
       const previousCompletedSalesTotal =
-        previousOrderStats.totalSalesAmount + previousPosSalesTotal;
-      const completedOrderCount =
-        orderStats.totalSalesOrderCount + posCompletedCount;
+        previousSalesAnalytics.summary.totalRevenue;
+      const completedOrderCount = salesAnalytics.summary.totalOrders;
       const previousCompletedOrderCount =
-        previousOrderStats.totalSalesOrderCount + previousPosCompletedCount;
+        previousSalesAnalytics.summary.totalOrders;
       const expenses = gisData.reduce((sum: number, row: any) => {
         const isIncome = String(row.main ?? '').toLowerCase() === 'income';
         if (isIncome) return sum;
@@ -1225,21 +1248,18 @@ export default function DashboardScreen() {
             },
           ],
           totalSales: [
-            {
-              label: 'Sales Order Completed',
-              value: orderStats.salesOrderCompletedTotal,
-              kind: 'money',
-            },
-            {
-              label: 'Kompra Completed',
-              value: orderStats.kompraCompletedTotal,
-              kind: 'money',
-            },
-            {
-              label: 'POS Terminal',
-              value: posSalesTotal,
-              kind: 'money',
-            },
+            ...salesAnalytics.sourceBreakdown.map((source) => ({
+              label:
+                source.source === 'pos'
+                  ? 'POS Terminal'
+                  : source.source === 'sales_order_walk_in'
+                    ? 'Sales Order Walk-in'
+                    : source.source === 'sales_order_other'
+                      ? 'Sales Orders'
+                      : 'Kompra Orders',
+              value: source.totalRevenue,
+              kind: 'money' as const,
+            })),
           ],
           activeOrders: [
             {
@@ -1254,21 +1274,18 @@ export default function DashboardScreen() {
             },
           ],
           completedOrders: [
-            {
-              label: 'Sales Order Completed',
-              value: orderStats.salesOrderCompletedCount,
-              kind: 'count',
-            },
-            {
-              label: 'Kompra Completed',
-              value: orderStats.kompraCompletedCount,
-              kind: 'count',
-            },
-            {
-              label: 'POS Terminal Orders',
-              value: posCompletedCount,
-              kind: 'count',
-            },
+            ...salesAnalytics.sourceBreakdown.map((source) => ({
+              label:
+                source.source === 'pos'
+                  ? 'POS Terminal Orders'
+                  : source.source === 'sales_order_walk_in'
+                    ? 'Sales Order Walk-in'
+                    : source.source === 'sales_order_other'
+                      ? 'Sales Orders'
+                      : 'Kompra Orders',
+              value: source.totalOrders,
+              kind: 'count' as const,
+            })),
           ],
         },
       });
@@ -1284,9 +1301,9 @@ export default function DashboardScreen() {
       });
 
       setFinanceData({
-        revenue: posSalesTotal,
+        revenue: completedSalesTotal,
         expenses: totalExpenses,
-        profit: posSalesTotal - totalExpenses,
+        profit: completedSalesTotal - totalExpenses,
         revenueVsExpenses: {
           revenue: buildSalesTrend(transactions),
           expenses: buildExpenseTrend(gisData, summaryData),
@@ -1366,6 +1383,46 @@ export default function DashboardScreen() {
   useEffect(() => {
     loadDashboardData();
   }, [loadDashboardData]);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    const refreshEvents = new Set([
+      'NEW_TRANSACTION',
+      'SALES_ORDER_CREATED',
+      'SALES_ORDER_UPDATED',
+      'KOMPRA_ORDER_CREATED',
+      'KOMPRA_ORDER_UPDATED',
+      'DASHBOARD_METRICS_CHANGED',
+    ]);
+
+    const handleMessage = (event: MessageEvent) => {
+      try {
+        const message = JSON.parse(String(event.data ?? '{}'));
+        if (!refreshEvents.has(message.type)) return;
+        if (message.orgId && Number(message.orgId) !== Number(user.orgId)) return;
+
+        // WebSocket messages are the subscription signal; refetch keeps all
+        // dashboard cards/charts consistent with the backend aggregate queries.
+        if (dashboardRefreshTimer.current) {
+          clearTimeout(dashboardRefreshTimer.current);
+        }
+        dashboardRefreshTimer.current = setTimeout(() => {
+          void loadDashboardData();
+        }, 350);
+      } catch {
+        // Ignore non-JSON websocket traffic from older clients.
+      }
+    };
+
+    socket.addEventListener('message', handleMessage);
+    return () => {
+      socket.removeEventListener('message', handleMessage);
+      if (dashboardRefreshTimer.current) {
+        clearTimeout(dashboardRefreshTimer.current);
+      }
+    };
+  }, [socket, loadDashboardData, user.orgId]);
 
   const GET_NOTIFICATIONS = gql`
     query {

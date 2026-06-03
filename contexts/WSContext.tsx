@@ -24,6 +24,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
                     type: "AUTH",
                     userId: user.id,
                     role: user.role,
+                    orgId: user.orgId,
                 }),
             );
         };

@@ -35,7 +35,7 @@ export class ReceiptService {
   outlet: Outlet;
   discountOption?: string;
   onSuccess?: () => void;
-  onFail?: () => void;
+  onFail?: (message?: string) => void;
   isVatExempt?: boolean;
   vatExemptType?: 'SENIOR_CITIZEN' | 'PWD' | 'DIPLOMAT' | 'GOVERNMENT';
   vatExemptRefNo?: string;
@@ -182,13 +182,19 @@ export class ReceiptService {
       finalPrice: itemBreakdown?.find((line: any) => line.id === data.id)?.finalPrice,
     }));
 
-    await SalesService.createTransaction({
+    // Print first, then save the transaction only after successful printing.
+    const printed = await PrinterService.printOrderReceipt(receiptData, activePrintWindow);
+    if (!printed) {
+      throw new Error('Unable to print receipt.');
+    }
+
+    const createdTransaction = await SalesService.createTransaction({
       outletId,
       cashierId: userId,
       total: parseFloat(total.toFixed(2)),
       subtotal: parseFloat(subtotal.toFixed(2)),
       vatAmount: parseFloat(vatAmount.toFixed(2)),
-        vatExemptSale: parseFloat((vatExemptSale ?? 0).toFixed(2)),
+      vatExemptSale: parseFloat((vatExemptSale ?? 0).toFixed(2)),
       paymentMethod,
       status: 'COMPLETED',
       createdAt: new Date().toISOString(),
@@ -216,11 +222,19 @@ export class ReceiptService {
       vatExemptAmount: isVatExempt ? vatExemptAmount : undefined,
     });
 
-    // ← await print, no setTimeout
-    const printed = await PrinterService.printOrderReceipt(receiptData, activePrintWindow);
-    if (!printed) {
-      throw new Error('Unable to print receipt.');
-    }
+    await TransactionService.createOrder(
+      items as any,
+      userId,
+      outletId,
+      paymentMethod,
+      paymentMethod === 'CASH' ? parseFloat(cashReceived.toFixed(2)) : 0,
+      parseFloat(vatAmount.toFixed(2)),
+      parseFloat(total.toFixed(2)),
+      parseFloat(subtotal.toFixed(2)),
+      paymentMethod === 'CASH' ? parseFloat(change.toFixed(2)) : 0,
+      'SYNCED',
+      createdTransaction?.id,
+    );
 
     if (Platform.OS === 'web') {
       alert('Transaction completed successfully!');
@@ -235,12 +249,7 @@ export class ReceiptService {
   } catch (error: any) {
     console.error('Error printing receipt:', error);
     const errorMessage = error?.message ?? 'Failed to process the receipt.';
-    if (Platform.OS === 'web') {
-      alert(errorMessage);
-    } else {
-      Alert.alert('Error', errorMessage);
-    }
-    onFail?.();
+    onFail?.(errorMessage);
   }
 }
 }

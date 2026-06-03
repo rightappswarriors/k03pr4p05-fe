@@ -64,7 +64,7 @@ export const FILTERS: DateRangeFilter[] = [
   'this_month',
   'custom',
 ];
-const OUTLET_TYPES = [{id:'retail', label: 'Retail'}, {id:'wholesale', label: 'Wholesale'}, {id:'service', label: 'Service'}];
+const OUTLET_TYPES = [{ id: 'retail', label: 'Retail' }, { id: 'wholesale', label: 'Wholesale' }, { id: 'service', label: 'Service' }];
 const OUTLET_STATUSES = [{ id: 'open', label: 'Open' }, { id: 'closed', label: 'Closed' }, { id: 'maintenance', label: 'Maintenance' }];
 
 const isWeb = Platform.OS === 'web';
@@ -712,13 +712,13 @@ function AddOutletModal({
   const sheetStyle = isWeb
     ? [aom.sheet, aom.webDialog, { backgroundColor: colors.surface }]
     : [
-        aom.sheet,
-        {
-          backgroundColor: colors.surface,
-          maxWidth: 600,
-          width: '100%' as any,
-        },
-      ];
+      aom.sheet,
+      {
+        backgroundColor: colors.surface,
+        maxWidth: 600,
+        width: '100%' as any,
+      },
+    ];
 
   return (
     <>
@@ -1625,6 +1625,7 @@ function OutletCard({
   getStatusColor: (s: string) => string;
 }) {
   const statusColor = getStatusColor(outlet.status);
+  console.log('outlet.bannerImage:', outlet.name, outlet.bannerImage);
   return (
     <TouchableOpacity
       style={[ols.outletCard, { backgroundColor: colors.card }]}

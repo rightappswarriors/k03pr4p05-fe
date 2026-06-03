@@ -205,7 +205,7 @@ export function DropdownField({
             backgroundColor: 'rgba(0,0,0,0.45)',
             justifyContent: 'center',
             padding: 24,
-            alignItems: 'center', // 👈 ADD THIS
+            alignItems: 'center',
           }}
           activeOpacity={1}
           onPress={() => setOpen(false)}
@@ -215,7 +215,7 @@ export function DropdownField({
               backgroundColor: colors.surface,
               borderRadius: 14,
               overflow: 'hidden',
-              maxWidth: isMobile ? '100%' : 600, // 👈 KEY FIX
+              maxWidth: isMobile ? '100%' : 600, 
               alignSelf: 'center',
               width: '100%',
               maxHeight: 380,

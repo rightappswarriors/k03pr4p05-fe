@@ -673,9 +673,13 @@ export function ReceiptModal({
           clearCart();
           handleClose();
         },
-        onFail: () => {
+        onFail: (message?: string) => {
           setIsProcessing(false);
-          printWindow?.close(); // ✅ clean up on failure
+          printWindow?.close();
+          Alert.alert(
+            'Transaction Cancelled',
+            message || 'Receipt printing failed or was cancelled. The transaction has not been saved.',
+          );
         },
       });
     } catch {

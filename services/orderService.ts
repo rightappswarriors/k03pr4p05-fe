@@ -16,14 +16,15 @@ export class TransactionService {
     total: number,
     subtotal: number,
     change: number,
-    status: Transaction['status'] = 'PENDING' // default
+    status: Transaction['status'] = 'PENDING', // default
+    id?: string,
   ): Promise<Transaction> {
     const deviceId = await DeviceService.getDeviceId();
     
     let outlet = Number(outletId);
     let cashier = Number(cashierId);
     const order: Transaction = {
-      id: uuid.v4() as string,
+      id: id ?? (uuid.v4() as string),
       outletId: outlet,
       cashierId: cashier,
       deviceId,

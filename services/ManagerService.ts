@@ -217,6 +217,8 @@ export class AdminService {
           status: o.status === null ? "open" : o.status,
           outletType: o.outletType,
           address: o.address,
+
+          bannerImage: o.bannerImage ?? null,
           createdAt: o.createdAt,
           assignedCashierIds: o.staff.map((s: any) => s.id) ?? [],
           currentCashiers: o.staff.filter((s: any) => s.isPresent === true).map((s: any) => {
@@ -360,13 +362,13 @@ export class AdminService {
   }
 
   static async getRecentTransactions(
-  outletId: string,
-  limit: number = 50,
-  offset: number = 0,
-  startDate?: Date,
-  endDate?: Date,
-): Promise<AdminTransaction[]> {
-  const QUERY = gql`
+    outletId: string,
+    limit: number = 50,
+    offset: number = 0,
+    startDate?: Date,
+    endDate?: Date,
+  ): Promise<AdminTransaction[]> {
+    const QUERY = gql`
     query GetOutletTransactions(
       $outletId: ID!,
       $limit: Int,
@@ -385,20 +387,20 @@ export class AdminService {
       }
     }
   `;
-  try {
-    const { accessToken } = await AuthService.getTokens();
-    const client = await getGraphQLClient();
-    const res = await client.request(
-      QUERY,
-      { outletId: parseInt(outletId), limit, offset, startDate, endDate },
-      { Authorization: `Bearer ${accessToken}` },
-    ) as any;
-    return (res.getOutletTransactions ?? []).map(mapTransaction);
-  } catch (error) {
-    console.error('Failed to get transactions query getRecentTransactions:', error);
-    return [];
+    try {
+      const { accessToken } = await AuthService.getTokens();
+      const client = await getGraphQLClient();
+      const res = await client.request(
+        QUERY,
+        { outletId: parseInt(outletId), limit, offset, startDate, endDate },
+        { Authorization: `Bearer ${accessToken}` },
+      ) as any;
+      return (res.getOutletTransactions ?? []).map(mapTransaction);
+    } catch (error) {
+      console.error('Failed to get transactions query getRecentTransactions:', error);
+      return [];
+    }
   }
-}
   static async getTransactionById(id: string): Promise<AdminTransaction | null> {
     const QUERY = gql`
     query GetTransactionById($id: Int!) {

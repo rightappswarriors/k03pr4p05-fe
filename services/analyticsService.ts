@@ -39,6 +39,12 @@ export interface ItemPerformance {
   profitMargin: number;
   unitsSold: number;
   revenuePerUnit: number;
+  posSalesCount: number;
+  posUnitsSold: number;
+  salesOrderWalkInSalesCount: number;
+  salesOrderWalkInUnitsSold: number;
+  kompraOrderCount: number;
+  kompraUnitsSold: number;
   trend: 'up' | 'down' | 'stable';
   trendPct: number;
   status: 'top_seller' | 'stable' | 'slow_mover' | 'loss_item';
@@ -50,6 +56,15 @@ export interface SalesTrendPoint {
   cost: number;
   profit: number;
   orders: number;
+}
+
+export interface SourceBreakdown {
+  source: 'pos' | 'sales_order_walk_in' | 'sales_order_other' | 'kompra';
+  totalRevenue: number;
+  totalCost: number;
+  grossProfit: number;
+  totalOrders: number;
+  unitsSold: number;
 }
 
 export interface AnalyticsSummary {
@@ -71,6 +86,7 @@ export interface SalesAnalyticsPayload {
   topItems: ItemPerformance[];
   bottomItems: ItemPerformance[];
   trend: SalesTrendPoint[];
+  sourceBreakdown: SourceBreakdown[];
 }
 export interface PaginatedItemAnalyticsPayload {
   items: ItemPerformance[];
@@ -138,6 +154,12 @@ export class AnalyticsService {
             profitMargin
             unitsSold
             revenuePerUnit
+            posSalesCount
+            posUnitsSold
+            salesOrderWalkInSalesCount
+            salesOrderWalkInUnitsSold
+            kompraOrderCount
+            kompraUnitsSold
             trend
             trendPct
             status
@@ -153,6 +175,12 @@ export class AnalyticsService {
             profitMargin
             unitsSold
             revenuePerUnit
+            posSalesCount
+            posUnitsSold
+            salesOrderWalkInSalesCount
+            salesOrderWalkInUnitsSold
+            kompraOrderCount
+            kompraUnitsSold
             trend
             trendPct
             status
@@ -163,6 +191,14 @@ export class AnalyticsService {
             cost
             profit
             orders
+          }
+          sourceBreakdown {
+            source
+            totalRevenue
+            totalCost
+            grossProfit
+            totalOrders
+            unitsSold
           }
         }
       }
@@ -285,6 +321,12 @@ export class AnalyticsService {
                     profitMargin
                     unitsSold
                     revenuePerUnit
+                    posSalesCount
+                    posUnitsSold
+                    salesOrderWalkInSalesCount
+                    salesOrderWalkInUnitsSold
+                    kompraOrderCount
+                    kompraUnitsSold
                     trend
                     trendPct
                     status
@@ -347,6 +389,12 @@ export class AnalyticsService {
             profitMargin
             unitsSold
             revenuePerUnit
+            posSalesCount
+            posUnitsSold
+            salesOrderWalkInSalesCount
+            salesOrderWalkInUnitsSold
+            kompraOrderCount
+            kompraUnitsSold
             trend
             trendPct
             status
@@ -362,6 +410,12 @@ export class AnalyticsService {
             profitMargin
             unitsSold
             revenuePerUnit
+            posSalesCount
+            posUnitsSold
+            salesOrderWalkInSalesCount
+            salesOrderWalkInUnitsSold
+            kompraOrderCount
+            kompraUnitsSold
             trend
             trendPct
             status

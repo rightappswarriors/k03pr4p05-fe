@@ -20,10 +20,10 @@ export class AdminCategoryService {
         pageSize: size,
         orderBy,
       });
-      console.log('raw res:', JSON.stringify(res)); // ← add this
+      console.log('raw res:', JSON.stringify(res)); 
       return res.getAllCategories;
     } catch (error) {
-      console.log('full error:', JSON.stringify(error)); // ← and this
+      console.log('full error:', JSON.stringify(error));
       throw error;
     }
   }

@@ -93,15 +93,6 @@ export default function AdminTabLayout() {
           
           */}
           <Tabs.Screen
-            name="orderManagement"
-            options={{
-              title: 'Orders',
-              tabBarIcon: ({ size, color }) => (
-                <ShoppingCart size={size} color={color} />
-              ),
-            }}
-          />
-          <Tabs.Screen
             name="outlets"
             options={{
               title: 'Outlets',

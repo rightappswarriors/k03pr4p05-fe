@@ -46,7 +46,6 @@ import * as ImagePicker from 'expo-image-picker';
 import { AdminService } from '@/services/ManagerService';
 import { AuthService } from '@/services/authService';
 import { HrService } from '@/services/hrService';
-import { MasterFileService } from '@/services/masterFileService';
 import { AdminTransaction, Cashier, OutletRevenue } from '@/types';
 import { DateRangeFilter, getDateRange } from '@/utils/dateHelpers';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -61,7 +60,6 @@ import { gql } from 'graphql-request';
 import { getGraphQLClient } from '@/utils/constants';
 import { VatTypeItem, VatTypeService } from '@/services/vatTypeService';
 import { PromoTypeItem, PromoTypeService } from '@/services/promoTypeService';
-import * as outletPromoService from '@/services/outletPromoService';
 import {
   OutletPromoItem,
   OutletPromoService,
@@ -1599,7 +1597,6 @@ export default function OutletDetailScreen() {
     {},
   );
   const [itemPrices, setItemPrices] = useState<Record<string, number>>({});
-  const [selectedStaff, setSelectedStaff] = useState<string[]>([]);
   const [txnView, setTxnView] = useState<TxnView>('card');
   const [txnPage, setTxnPage] = useState(1);
   const [activeFilter, setActiveFilter] =

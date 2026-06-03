@@ -30,7 +30,6 @@ import { useResponsive } from '@/hooks/useResponsive';
 import { styles } from '@/styles/settings';
 import SettingItem from '@/components/dashboard/SettingItem';
 import { StorageService } from '@/services/storageService';
-import { useTransactionSync } from '@/hooks/useTransactionSync';
 import eventBus from '@/utils/eventBus';
 import { responsive } from '@/styles/desktopAndTablet';
 import { useSegments } from 'expo-router';
@@ -52,7 +51,6 @@ export default React.memo(function SettingsScreen({
   const { theme, toggleTheme, colors } = useTheme();
   const [biometricSupported, setBiometricSupported] = useState(false);
   const [biometricEnabled, setBiometricEnabledState] = useState(false);
-  const { setTransactions } = useTransactionSync({ refreshTrigger: 1 });
   const [assignment, setAssignment] = useState<{
     outletId: number;
     role: string;
@@ -114,7 +112,24 @@ export default React.memo(function SettingsScreen({
     }
   };
 
-  const clearLocalData = () => {
+  const clearLocalData = async () => {
+    try {
+      const orders = await StorageService.getOfflineOrders();
+      const unsynced = orders.filter(
+        (order) => order.status === 'PENDING' || order.status === 'FAILED'
+      );
+
+      if (unsynced.length > 0) {
+        Alert.alert(
+          'Cannot Clear Local Data',
+          'There are unsynced transactions in history. Please sync or retry them before clearing local data.',
+        );
+        return;
+      }
+    } catch (error) {
+      console.error('Failed to check transaction status before clearing data:', error);
+    }
+
     Alert.alert(
       'Clear Local Data',
       'This will delete all locally stored orders and sync logs. This action cannot be undone. Continue?',
@@ -125,7 +140,6 @@ export default React.memo(function SettingsScreen({
           style: 'destructive',
           onPress: async () => {
             await StorageService.clearAllData();
-            setTransactions([]);
             eventBus.emit('transactionsCleared');
             Alert.alert('Success', 'All local data has been cleared');
           },

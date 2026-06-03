@@ -9,11 +9,11 @@ interface TransactionHistoryProps {
   refreshTrigger: number;
 }
 export function OrderHistory({ refreshTrigger }: TransactionHistoryProps) {
-  const { 
+  const {
     transactions,
     loading,
     getStatusText,
-    retryTransactions, } = useTransactionSync({refreshTrigger})
+    retryTransactions, } = useTransactionSync({ refreshTrigger })
   const { colors } = useTheme()
 
 
@@ -30,45 +30,48 @@ export function OrderHistory({ refreshTrigger }: TransactionHistoryProps) {
     }
   };
 
-  const renderTransactionItem = ({ item: order }: { item: Transaction }) => (
-    <View style={[styles.orderCard, { backgroundColor: colors.card }]}>
-      <View style={styles.orderHeader}>
-        <Text style={[styles.orderId, { color: colors.text }]}>Order #{order.id.slice(-8)}</Text>
-        <View style={styles.statusContainer}>
-          {getStatusIcon(order.status)}
-          <Text style={[styles.statusText, { color: getStatusColor(order.status) }]}>
-            {getStatusText(order.status)}
-          </Text>
+  const renderTransactionItem = ({ item: order }: { item: Transaction }) => {
+    const orderId = String(order.id ?? '');
+
+    return (
+      <View style={[styles.orderCard, { backgroundColor: colors.card }]}>
+        <View style={styles.orderHeader}>
+          <Text style={[styles.orderId, { color: colors.text }]}>Order #{orderId.slice(-8)}</Text>
+          <View style={styles.statusContainer}>
+            {getStatusIcon(order.status)}
+            <Text style={[styles.statusText, { color: getStatusColor(order.status) }]}>
+              {getStatusText(order.status)}
+            </Text>
+          </View>
         </View>
-      </View>
 
-      <View style={styles.orderDetails}>
-        <Text style={[styles.orderTime, { color: colors.textSecondary }]}>
-          {new Date(order.createdAt).toLocaleString()}
-        </Text>
-        <Text style={styles.orderTotal}>₱{order.total.toFixed(2)}</Text>
-      </View>
-
-      <View style={styles.orderItems}>
-        {order.items.map((item, index) => (
-          <Text key={index} style={[styles.itemText, { color: colors.textSecondary }]}>
-            {item.quantity}x {item.name} - ₱{(item.price * item.quantity).toFixed(2)}
+        <View style={styles.orderDetails}>
+          <Text style={[styles.orderTime, { color: colors.textSecondary }]}>
+            {new Date(order.createdAt).toLocaleString()}
           </Text>
-        ))}
+          <Text style={styles.orderTotal}>₱{order.total.toFixed(2)}</Text>
+        </View>
+
+        <View style={styles.orderItems}>
+          {order.items.map((item, index) => (
+            <Text key={index} style={[styles.itemText, { color: colors.textSecondary }]}>
+              {item.quantity}x {item.name} - ₱{(item.price * item.quantity).toFixed(2)}
+            </Text>
+          ))}
+        </View>
+
+        {order.status === 'FAILED' && (
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => retryTransactions(String(order.id))}
+          >
+            <RefreshCw size={16} color="white" />
+            <Text style={[styles.retryButtonText, { color: colors.textSecondary }]}>Retry Sync</Text>
+          </TouchableOpacity>
+        )}
       </View>
-
-      {order.status === 'FAILED' && (
-        <TouchableOpacity
-          style={styles.retryButton}
-          onPress={() => retryTransactions(order.id)}
-        >
-          <RefreshCw size={16} color="white" />
-          <Text style={[styles.retryButtonText, { color: colors.textSecondary }]}>Retry Sync</Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  );
-
+    );
+  };
   const getStatusColor = (status: Transaction['status']) => {
     switch (status) {
       case 'SYNCED':
@@ -95,7 +98,7 @@ export function OrderHistory({ refreshTrigger }: TransactionHistoryProps) {
       <FlatList
         data={transactions}
         renderItem={renderTransactionItem}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => String(item.id)}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
       />

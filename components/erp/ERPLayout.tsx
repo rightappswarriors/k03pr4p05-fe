@@ -48,6 +48,7 @@ import MasterFileScreen from '@/screens/MasterFileScreen';
 import RestockSchedulingScreen from '@/screens/RestockSchedulingScreen';
 import AuditLogScreen from '@/screens/AuditLogScreen';
 import DiscountTrackingScreen from '@/screens/DiscountTrackingScreen';
+import OrderManagement from '@/screens/KompraOrderManagement';
 import { useAuth } from '@/contexts/AuthContext';
 
 // ─── DEV: Plan Toggle FAB ─────────────────────────────────────────────────────
@@ -125,7 +126,8 @@ function PlanToggleFAB() {
 
 type ERPRoute =
   | 'Dashboard'
-  | 'Sales'
+  | 'SalesOrders'
+  | 'KompraOrders'
   | 'Inventory'
   | 'HR'
   | 'Finance'
@@ -145,7 +147,8 @@ const NAV_ICON_MAP: Record<
   React.FC<{ size: number; color: string; strokeWidth?: number }>
 > = {
   Dashboard: LayoutDashboard,
-  Sales: ShoppingCart,
+  SalesOrders: ShoppingCart,
+  KompraOrders: ShoppingCart,
   Inventory: Package,
   RestockScheduling: PackagePlus,
   HR: Users,
@@ -166,7 +169,8 @@ interface NavItem {
 // Always visible for both Basic and Gold
 const FREE_NAV: NavItem[] = [
   { key: 'Dashboard', label: 'Dashboard' },
-  { key: 'Sales', label: 'Sales' },
+  { key: 'SalesOrders', label: 'Sales Orders' },
+  { key: 'KompraOrders', label: 'Kompra Orders' },
   { key: 'Inventory', label: 'Inventory' },
   { key: 'DiscountTracking', label: 'Discounts' },
   { key: 'AuditLog', label: 'Audit Log' },
@@ -616,7 +620,8 @@ export default function ERPLayout() {
   const SCREEN_MAP = React.useMemo(
     (): Record<ERPRoute, React.ReactElement> => ({
       Dashboard: <DashboardScreen />,
-      Sales: <SalesScreen />,
+      SalesOrders: <SalesScreen />,
+      KompraOrders: <OrderManagement />,
       Inventory: <InventoryScreen />,
       RestockScheduling: limits.canAccessRestockScheduling ? (
         <RestockSchedulingScreen />

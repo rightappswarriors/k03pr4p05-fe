@@ -1,8 +1,15 @@
 // screens/OrderManagement.tsx
 // POSVine Terminal — Kompra Order Management
 // React Native — mock data, swap apiFetch calls when backend is ready
-
-import React, { useState, useRef, useCallback } from 'react';
+// this is Kompra Order management, where staff can view and update order statuses, see details, and manage deliveries
+// Related files: frontend service (not implemented yet): kompraCOrders.ts, kompra.type.ts(developing), create backend queries, and connect to real data instead of mock orders
+// Write a backend graphql query, mutation, if needed(subscription), frontend service, and connect to real data instead of mock orders.
+// the result should be a fully functional order management screen that can display real orders from the backend, update their statuses, and reflect those changes in the UI
+// assigning riders and marking orders as delivered should also update the backend and show correct info on the frontend
+// backend table KompraCOrders, KompraCustomer, Courier, in schema.prisma, use prisma client to query and update order data, including related customer and courier info. Make sure to handle status updates correctly and reflect them in the UI.
+// put Courier Details, KompraCOrders, and KompraCustomer in the same query to get all necessary info in one go for the frontend
+// put comments as you updates for implementation details and to explain your code
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -17,8 +24,14 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
+import {
+  KompraCOrderService,
+  type KompraCOrder,
+} from '@/services/kompraCOrderService';
 
 const { width } = Dimensions.get('window');
 
@@ -62,6 +75,7 @@ interface KompraOrder {
   packedAt?: string;
   deliveredAt?: string;
   riderName?: string;
+  riderPhone?: string;
   customerNote?: string;
   rating?: number;
   review?: string;
@@ -251,6 +265,57 @@ function formatTime(iso?: string) {
   });
 }
 
+function hasTrackingEvent(order: KompraCOrder, event: string) {
+  return order.tracking?.some((row) => row.event === event) ?? false;
+}
+
+function mapBackendOrder(order: KompraCOrder): KompraOrder {
+  const deliveryFee =
+    order.fees?.find((fee) => fee.type === 'delivery')?.amount ??
+    Math.max(0, Number(order.total ?? 0) - Number(order.subtotal ?? 0));
+  const packedAt = order.tracking?.find(
+    (row) => row.event === 'outlet_preparing',
+  )?.statusAt;
+  const uiStatus: OrderStatus =
+    order.status === 'preparing' && hasTrackingEvent(order, 'outlet_preparing')
+      ? 'packed'
+      : (order.status as OrderStatus);
+
+  return {
+    id: order.id,
+    txNum: order.transactionNumber,
+    customerName: order.customer?.fullname ?? 'Kompra Customer',
+    customerPhone: order.customer?.phone ?? '',
+    address: order.deliveryAddress?.address ?? 'No delivery address',
+    lat: order.deliveryAddress?.latitude ?? 0,
+    lng: order.deliveryAddress?.longitude ?? 0,
+    paymentMethod: order.paymentMethod as PaymentMethod,
+    paymentStatus: order.paymentStatus === 'paid' ? 'paid' : 'unpaid',
+    items: (order.items ?? []).map((item) => ({
+      id: item.id,
+      name: item.item?.name ?? `Item #${item.itemId}`,
+      quantity: item.quantity,
+      unit: item.unit?.unitName ?? item.inventoryItem?.baseUnit ?? 'unit',
+      price: Number(item.priceSnapshot ?? 0),
+      checked:
+        uiStatus === 'packed' ||
+        uiStatus === 'in_delivery' ||
+        uiStatus === 'received',
+      image: item.item?.image ?? undefined,
+    })),
+    subtotal: Number(order.subtotal ?? 0),
+    deliveryFee: Number(deliveryFee ?? 0),
+    total: Number(order.total ?? 0),
+    status: uiStatus,
+    placedAt: order.createdAt,
+    packedAt,
+    deliveredAt: order.deliveredAt,
+    riderName: order.courier?.name ?? order.riderName ?? undefined,
+    riderPhone: order.courier?.phone ?? order.riderPhone ?? undefined,
+    customerNote: order.customerNote ?? undefined,
+  };
+}
+
 // ─── Item Check Row ───────────────────────────────────────────────────────────
 
 function ItemCheckRow({
@@ -342,19 +407,22 @@ function RiderNameModal({
   colors,
 }: {
   visible: boolean;
-  onConfirm: (name: string) => void;
+  onConfirm: (name: string, phone?: string) => void;
   onCancel: () => void;
   colors: ReturnType<typeof useTheme>['colors'];
 }) {
   const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
 
   const handleConfirm = () => {
-    onConfirm(name.trim() || 'Rider');
+    onConfirm(name.trim() || 'Rider', phone.trim() || undefined);
     setName('');
+    setPhone('');
   };
 
   const handleCancel = () => {
     setName('');
+    setPhone('');
     onCancel();
   };
 
@@ -418,6 +486,26 @@ function RiderNameModal({
               marginBottom: 20,
             }}
             autoFocus
+            returnKeyType="done"
+            onSubmitEditing={handleConfirm}
+          />
+          <TextInput
+            value={phone}
+            onChangeText={setPhone}
+            placeholder="Rider phone (optional)"
+            placeholderTextColor={colors.textSecondary}
+            keyboardType="phone-pad"
+            style={{
+              backgroundColor: colors.background,
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: colors.border,
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              fontSize: 15,
+              color: colors.text,
+              marginBottom: 20,
+            }}
             returnKeyType="done"
             onSubmitEditing={handleConfirm}
           />
@@ -764,12 +852,13 @@ function OrderDetailModal({
     id: number,
     status: OrderStatus,
     updates?: Partial<KompraOrder>,
-  ) => void;
+  ) => Promise<KompraOrder>;
 }) {
   const { colors } = useTheme();
   const [order, setOrder] = useState<KompraOrder | null>(initialOrder);
   // FIX: cross-platform rider name input instead of Alert.prompt
   const [riderModalVisible, setRiderModalVisible] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
 
   // Sync when initialOrder changes (also picks up parent state changes when modal re-opens)
   React.useEffect(() => {
@@ -811,10 +900,29 @@ function OrderDetailModal({
     );
   };
 
+  const persistStatus = async (
+    status: OrderStatus,
+    updates?: Partial<KompraOrder>,
+  ) => {
+    if (!order || actionLoading) return null;
+    setActionLoading(true);
+    try {
+      const updated = await onStatusChange(order.id, status, updates);
+      setOrder(updated);
+      return updated;
+    } catch (error) {
+      Alert.alert(
+        'Update failed',
+        error instanceof Error ? error.message : 'Please try again.',
+      );
+      return null;
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleConfirm = () => {
-    const updated: KompraOrder = { ...order, status: 'confirmed' };
-    setOrder(updated);
-    onStatusChange(order.id, 'confirmed');
+    void persistStatus('confirmed');
   };
 
   const handleDonePacking = () => {
@@ -825,11 +933,9 @@ function OrderDetailModal({
       );
       return;
     }
-    const packedAt = new Date().toISOString();
-    const updated: KompraOrder = { ...order, status: 'packed', packedAt };
-    setOrder(updated);
-    // FIX: propagate to parent so In Progress tab shows the order with correct status
-    onStatusChange(order.id, 'packed', { packedAt, items: order.items });
+    // Backend persists this as preparing plus an outlet_preparing tracking row;
+    // mapBackendOrder turns that combination into the UI-only packed state.
+    void persistStatus('packed', { items: order.items });
   };
 
   // FIX: replaced Alert.prompt (iOS-only) with a cross-platform Modal
@@ -837,11 +943,9 @@ function OrderDetailModal({
     setRiderModalVisible(true);
   };
 
-  const confirmRider = (riderName: string) => {
+  const confirmRider = (riderName: string, riderPhone?: string) => {
     setRiderModalVisible(false);
-    const updated: KompraOrder = { ...order, status: 'in_delivery', riderName };
-    setOrder(updated);
-    onStatusChange(order.id, 'in_delivery', { riderName });
+    void persistStatus('in_delivery', { riderName, riderPhone });
   };
 
   const handleDelivered = () => {
@@ -854,15 +958,9 @@ function OrderDetailModal({
           text: 'Delivered',
           style: 'default',
           onPress: () => {
-            const deliveredAt = new Date().toISOString();
-            const updated: KompraOrder = {
-              ...order,
-              status: 'received',
-              deliveredAt,
-            };
-            setOrder(updated);
-            onStatusChange(order.id, 'received', { deliveredAt });
-            onClose();
+            void persistStatus('received').then((updated) => {
+              if (updated) onClose();
+            });
           },
         },
       ],
@@ -1279,6 +1377,7 @@ function OrderDetailModal({
                   alignItems: 'center',
                 }}
                 onPress={handleConfirm}
+                disabled={actionLoading}
               >
                 <Text
                   style={{ fontSize: 16, fontWeight: '700', color: '#fff' }}
@@ -1296,6 +1395,7 @@ function OrderDetailModal({
                   alignItems: 'center',
                 }}
                 onPress={handleDonePacking}
+                disabled={actionLoading || !allChecked}
               >
                 <Text
                   style={{ fontSize: 16, fontWeight: '700', color: '#fff' }}
@@ -1315,6 +1415,7 @@ function OrderDetailModal({
                   alignItems: 'center',
                 }}
                 onPress={handleOutForDelivery}
+                disabled={actionLoading}
               >
                 <Text
                   style={{ fontSize: 16, fontWeight: '700', color: '#fff' }}
@@ -1332,6 +1433,7 @@ function OrderDetailModal({
                   alignItems: 'center',
                 }}
                 onPress={handleDelivered}
+                disabled={actionLoading}
               >
                 <Text
                   style={{ fontSize: 16, fontWeight: '700', color: '#fff' }}
@@ -1465,20 +1567,94 @@ function NewOrderBanner({
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function OrderManagement() {
-  const { colors, theme } = useTheme();
-  const [orders, setOrders] = useState<KompraOrder[]>(MOCK_ORDERS);
+  const { colors } = useTheme();
+  const [orders, setOrders] = useState<KompraOrder[]>([]);
   const [activeTab, setActiveTab] = useState<0 | 1 | 2>(0);
   const [selectedOrder, setSelected] = useState<KompraOrder | null>(null);
   const [modalVisible, setModal] = useState(false);
   const [newOrderBanner, setBanner] = useState<KompraOrder | null>(null);
+  const [loadingOrders, setLoadingOrders] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  // FIX: onStatusChange also syncs items (for packed items checklist state)
+  const syncOrders = useCallback((nextOrders: KompraOrder[]) => {
+    setOrders(nextOrders);
+    setSelected((current) =>
+      current ? nextOrders.find((order) => order.id === current.id) ?? current : current,
+    );
+  }, []);
+
+  const loadOrders = useCallback(
+    async (showRefresh = false) => {
+      if (showRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoadingOrders(true);
+      }
+
+      try {
+        const backendOrders =
+          await KompraCOrderService.getKompraCOrdersForManagement({
+            status: [
+              'pending',
+              'confirmed',
+              'preparing',
+              'in_delivery',
+              'received',
+            ],
+            take: 100,
+          });
+        syncOrders(backendOrders.map(mapBackendOrder));
+      } catch (error) {
+        Alert.alert(
+          'Unable to load orders',
+          error instanceof Error ? error.message : 'Please try again.',
+        );
+      } finally {
+        setLoadingOrders(false);
+        setRefreshing(false);
+      }
+    },
+    [syncOrders],
+  );
+
+  useEffect(() => {
+    void loadOrders();
+  }, [loadOrders]);
+
+  // Every action persists through GraphQL and then replaces local state with
+  // the backend response, including customer, courier, item, fee, and tracking joins.
   const handleStatusChange = useCallback(
-    (id: number, status: OrderStatus, updates?: Partial<KompraOrder>) => {
+    async (
+      id: number,
+      status: OrderStatus,
+      updates?: Partial<KompraOrder>,
+    ) => {
+      let backendOrder: KompraCOrder;
+
+      if (status === 'confirmed') {
+        backendOrder = await KompraCOrderService.confirmKompraOrder(id);
+      } else if (status === 'packed') {
+        backendOrder = await KompraCOrderService.markKompraOrderPacked(id);
+      } else if (status === 'in_delivery') {
+        backendOrder = await KompraCOrderService.assignKompraOrderRider(
+          id,
+          updates?.riderName ?? 'Rider',
+          updates?.riderPhone,
+        );
+      } else if (status === 'received') {
+        backendOrder = await KompraCOrderService.markKompraOrderDelivered(id);
+      } else {
+        throw new Error(`Unsupported order status update: ${status}`);
+      }
+
+      const updatedOrder = mapBackendOrder(backendOrder);
       setOrders((prev) =>
-        prev.map((o) => (o.id === id ? { ...o, status, ...updates } : o)),
+        prev.map((order) => (order.id === id ? updatedOrder : order)),
       );
-      // TODO: call real API
+      setSelected((current) =>
+        current?.id === id ? updatedOrder : current,
+      );
+      return updatedOrder;
     },
     [],
   );
@@ -1608,11 +1784,27 @@ export default function OrderManagement() {
         ))}
       </View>
 
+      {loadingOrders && (
+        <View style={{ paddingTop: 24, alignItems: 'center', gap: 8 }}>
+          <ActivityIndicator color={colors.primary} />
+          <Text style={{ fontSize: 13, color: colors.textSecondary }}>
+            Loading Kompra orders...
+          </Text>
+        </View>
+      )}
+
       {/* Order list */}
       <FlatList
         data={tabs[activeTab].data}
         keyExtractor={(o) => String(o.id)}
         contentContainerStyle={{ padding: 12, gap: 10, paddingBottom: 40 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void loadOrders(true)}
+            tintColor={colors.primary}
+          />
+        }
         renderItem={({ item }) => (
           <OrderCard
             order={item}

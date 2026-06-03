@@ -149,7 +149,7 @@ export function ItemGrid({
     <View
       style={[styles.container, { backgroundColor: colors.background }]}
       pointerEvents={isDropdownOpen ? 'none' : 'auto'}
-      onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)} // ← key fix
+      onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)} 
     >
       {/* Don't render FlatList until we have a real width */}
       {containerWidth > 0 && (

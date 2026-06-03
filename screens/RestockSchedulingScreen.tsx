@@ -350,7 +350,7 @@ interface Cycle {
   firedAt?: string;
   createdAt: string;
   cycleItems: CycleItem[];
-  supplierOrders: SupplierOrder[];  // ← add this
+  supplierOrders: SupplierOrder[];  
 }
 
 interface ScheduleItem {

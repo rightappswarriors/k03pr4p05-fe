@@ -1,5 +1,5 @@
 // screens/SalesAnalyticsScreen.tsx
-
+// put comment as you edit.
 import React, {
   useCallback,
   useEffect,
@@ -19,6 +19,8 @@ import {
   View,
 } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
+
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   TrendingDown,
   TrendingUp,
@@ -42,6 +44,7 @@ import {
   type BranchPerformance,
   type ItemPerformance,
   type PaginatedItemAnalyticsPayload,
+  type SourceBreakdown,
 } from '@/services/analyticsService';
 import { formatShortDate } from '@/utils/dateHelpers';
 import ItemControls from '@/components/ItemControls';
@@ -75,14 +78,28 @@ const STATUS_META: Record<
   loss_item: { label: 'Loss Item', bg: '#FEE2E2', text: '#991B1B' },
 };
 
+const SOURCE_META: Record<
+  SourceBreakdown['source'],
+  { label: string; color: string }
+> = {
+  pos: { label: 'POS Terminal', color: '#1B3A6B' },
+  sales_order_walk_in: { label: 'Sales Order Walk-in', color: '#E87722' },
+  sales_order_other: { label: 'Sales Orders', color: '#7C3AED' },
+  kompra: { label: 'Kompra Orders', color: '#10B981' },
+};
+
 // ─── Formatters ───────────────────────────────────────────────────────────────
 
-const fmtM = (n: number) =>
-  Math.abs(n) >= 1_000_000
-    ? `₱${(n / 1_000_000).toFixed(2)}M`
-    : Math.abs(n) >= 1_000
-      ? `₱${(n / 1_000).toFixed(0)}K`
-      : `₱${n.toFixed(0)}`;
+const fmtM = (n: number) => {
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) {
+    return `₱${(n / 1_000_000).toFixed(2)}M`;
+  }
+  if (abs >= 100_000) {
+    return `₱${Math.round(n / 1_000)}K`;
+  }
+  return `₱${Math.round(n).toLocaleString('en-PH')}`;
+};
 
 const fmtFull = (n: number, decimals = 0) =>
   (n < 0 ? '-₱' : '₱') +
@@ -555,7 +572,7 @@ function BranchCard({
                 fontStyle: 'italic',
               }}
             >
-              No transactions recorded yet
+              No sales recorded yet
             </Text>
             <MiniSparkline
               data={[0, 0, 0, 0, 0, 0]}
@@ -786,6 +803,26 @@ function ItemDetailModal({
   const hasData = item.totalRevenue > 0;
   const isLoss = hasData && item.grossProfit < 0;
   const meta = STATUS_META[item.status];
+  const sourceBreakdown = [
+    {
+      label: 'POS Terminal',
+      count: item.posSalesCount ?? 0,
+      units: item.posUnitsSold ?? 0,
+      color: colors.primary,
+    },
+    {
+      label: 'Sales Order Walk-in',
+      count: item.salesOrderWalkInSalesCount ?? 0,
+      units: item.salesOrderWalkInUnitsSold ?? 0,
+      color: colors.accent,
+    },
+    {
+      label: 'Kompra Orders',
+      count: item.kompraOrderCount ?? 0,
+      units: item.kompraUnitsSold ?? 0,
+      color: '#10B981',
+    },
+  ];
 
   return (
     <Modal
@@ -803,7 +840,7 @@ function ItemDetailModal({
         <TouchableOpacity
           style={[mdl.card, { backgroundColor: colors.surface ?? colors.card }]}
           activeOpacity={1}
-          onPress={() => {}}
+          onPress={() => { }}
         >
           <View style={[mdl.header, { borderBottomColor: colors.border }]}>
             <View style={{ flex: 1 }}>
@@ -910,6 +947,39 @@ function ItemDetailModal({
                 <Text style={[mdl.cellVal, { color: s.color }]}>{s.value}</Text>
               </View>
             ))}
+          </View>
+
+          <View style={mdl.sourceSection}>
+            <Text style={[mdl.sourceTitle, { color: colors.textSecondary }]}>
+              SOLD THROUGH
+            </Text>
+            <View style={mdl.sourceGrid}>
+              {sourceBreakdown.map((source) => (
+                <View
+                  key={source.label}
+                  style={[
+                    mdl.sourceCard,
+                    {
+                      backgroundColor: colors.background,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[mdl.sourceLabel, { color: colors.textSecondary }]}
+                    numberOfLines={2}
+                  >
+                    {source.label}
+                  </Text>
+                  <Text style={[mdl.sourceCount, { color: source.color }]}>
+                    {source.count.toLocaleString()}
+                  </Text>
+                  <Text style={[mdl.sourceUnits, { color: colors.textSecondary }]}>
+                    {source.units.toLocaleString()} units
+                  </Text>
+                </View>
+              ))}
+            </View>
           </View>
 
           {hasData && (
@@ -1021,6 +1091,42 @@ const mdl = StyleSheet.create({
     marginBottom: 4,
   },
   cellVal: { fontSize: 16, fontWeight: '900' },
+  sourceSection: {
+    paddingHorizontal: 18,
+    paddingBottom: 14,
+  },
+  sourceTitle: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1,
+    marginBottom: 10,
+  },
+  sourceGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  sourceCard: {
+    flex: 1,
+    minWidth: '28%',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+  },
+  sourceLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  sourceCount: {
+    fontSize: 16,
+    fontWeight: '900',
+    marginBottom: 2,
+  },
+  sourceUnits: {
+    fontSize: 11,
+    color: '#6B7280',
+  },
   closeFullBtn: {
     margin: 16,
     marginTop: 10,
@@ -1098,6 +1204,39 @@ export default function SalesAnalyticsScreen() {
   const [preset, setPreset] = useState<DateRangePreset>('this_month');
   const [customStart, setCustomStart] = useState<Date | undefined>();
   const [customEnd, setCustomEnd] = useState<Date | undefined>();
+  const [persistReady, setPersistReady] = useState(false);
+
+  // ── Restore persisted filter on mount ─────────────────────────────────────
+  useEffect(() => {
+    (async () => {
+      try {
+        const saved = await AsyncStorage.getItem('salesAnalyticsFilter');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.preset) setPreset(parsed.preset);
+          if (parsed.customStart) setCustomStart(new Date(parsed.customStart));
+          if (parsed.customEnd) setCustomEnd(new Date(parsed.customEnd));
+        }
+      } catch (e) {
+        // ignore
+      } finally {
+        setPersistReady(true);
+      }
+    })();
+  }, []);
+
+  // ── Persist filter whenever it changes ────────────────────────────────────
+  useEffect(() => {
+    if (!persistReady) return;
+    AsyncStorage.setItem(
+      'salesAnalyticsFilter',
+      JSON.stringify({
+        preset,
+        customStart: customStart?.toISOString(),
+        customEnd: customEnd?.toISOString(),
+      }),
+    ).catch(() => { });
+  }, [preset, customStart, customEnd, persistReady]);
   const [heroLoading, setHeroLoading] = useState(true);
   const [branchLoading, setBranchLoading] = useState(true);
   const [rawBranches, setRawBranches] = useState<RawBranch[]>([]);
@@ -1163,9 +1302,9 @@ export default function SalesAnalyticsScreen() {
       const dateRange =
         preset === 'custom' && customStart && customEnd
           ? {
-              startDate: customStart.toISOString(),
-              endDate: customEnd.toISOString(),
-            }
+            startDate: customStart.toISOString(),
+            endDate: customEnd.toISOString(),
+          }
           : undefined;
       const result = await AnalyticsService.getSalesAnalytics(
         preset,
@@ -1181,8 +1320,9 @@ export default function SalesAnalyticsScreen() {
   }, [preset, customStart, customEnd]);
 
   useEffect(() => {
+    if (!persistReady) return;
     loadAnalytics();
-  }, [loadAnalytics]);
+  }, [loadAnalytics, persistReady]);
 
   // ── Paginated item loader ──────────────────────────────────────────────────
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1197,9 +1337,9 @@ export default function SalesAnalyticsScreen() {
           const dateRange =
             preset === 'custom' && customStart && customEnd
               ? {
-                  startDate: customStart.toISOString(),
-                  endDate: customEnd.toISOString(),
-                }
+                startDate: customStart.toISOString(),
+                endDate: customEnd.toISOString(),
+              }
               : undefined;
           const result = await AnalyticsService.getItemAnalyticsPaginated(
             preset,
@@ -1224,9 +1364,10 @@ export default function SalesAnalyticsScreen() {
 
   // Reset to page 1 and reload when search/take/section/preset changes
   useEffect(() => {
+    if (!persistReady) return;
     setItemPage(1);
     triggerItemLoad(itemSearch, takeNum, 1, itemSection);
-  }, [itemSearch, takeNum, itemSection, preset, customStart, customEnd]);
+  }, [itemSearch, takeNum, itemSection, preset, customStart, customEnd, persistReady]);
 
   // Reload when only page changes
   useEffect(() => {
@@ -1269,7 +1410,11 @@ export default function SalesAnalyticsScreen() {
   );
 
   const trendScale = useMemo(() => {
-    const maxVal = Math.max(...(analytics?.trend.map((p) => p.revenue) ?? [0]));
+    const nonZeroPts = (analytics?.trend ?? []).filter(
+      (p) => p.revenue > 0 || p.cost > 0,
+    );
+    const relevant = nonZeroPts.length ? nonZeroPts : (analytics?.trend ?? []);
+    const maxVal = Math.max(...relevant.map((p) => p.revenue), 0);
     return maxVal >= 100_000 ? 1000 : 1;
   }, [analytics]);
 
@@ -1278,20 +1423,33 @@ export default function SalesAnalyticsScreen() {
   const trendChart = useMemo(() => {
     const pts = analytics?.trend ?? [];
     if (!pts.length) return null;
+
+    // For sparse datasets (e.g. All Time), drop leading/trailing zero-only
+    // entries so the chart uses its full height on the data that exists.
+    const nonZero = pts.filter((p) => p.revenue > 0 || p.cost > 0);
+    const source = nonZero.length >= 2 ? nonZero : pts;
+
     const s =
-      pts.length > 8
-        ? pts.filter((_, i) => i % Math.ceil(pts.length / 8) === 0)
-        : pts;
+      source.length > 8
+        ? source.filter((_, i) => i % Math.ceil(source.length / 8) === 0)
+        : source;
+
+    // Ensure we never feed all-zero arrays to the chart (causes flat render)
+    const revenueData = s.map((p) => Math.round(p.revenue / trendScale));
+    const costData = s.map((p) => Math.round(p.cost / trendScale));
+    const hasAnyValue = revenueData.some((v) => v > 0) || costData.some((v) => v > 0);
+    if (!hasAnyValue) return null;
+
     return {
       labels: s.map((p) => p.label),
       datasets: [
         {
-          data: s.map((p) => Math.round(p.revenue / trendScale)),
+          data: revenueData,
           color: (o = 1) => `rgba(27,58,107,${o})`,
           strokeWidth: 2,
         },
         {
-          data: s.map((p) => Math.round(p.cost / trendScale)),
+          data: costData,
           color: (o = 1) => `rgba(232,119,34,${o})`,
           strokeWidth: 2,
         },
@@ -1301,6 +1459,22 @@ export default function SalesAnalyticsScreen() {
   }, [analytics, trendScale]);
 
   const s = analytics?.summary;
+  const sourceCards = useMemo(() => {
+    const totalRevenue = s?.totalRevenue ?? 0;
+    return (analytics?.sourceBreakdown ?? []).map((source) => {
+      const meta = SOURCE_META[source.source] ?? {
+        label: source.source,
+        color: colors.textSecondary,
+      };
+      return {
+        ...source,
+        ...meta,
+        revenueShare:
+          totalRevenue > 0 ? (source.totalRevenue / totalRevenue) * 100 : 0,
+      };
+    });
+  }, [analytics, colors.textSecondary, s?.totalRevenue]);
+
   const periodLabel =
     preset === 'today'
       ? 'Today'
@@ -1397,6 +1571,62 @@ export default function SalesAnalyticsScreen() {
           marginBottom: 4,
         },
         summaryVal: { fontSize: 15, fontWeight: '900' },
+        sourceGrid: {
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          gap: 10,
+          marginBottom: 16,
+        },
+        sourceCard: {
+          width: isDesktop ? '23.7%' : isTablet ? '48%' : '100%',
+          backgroundColor: colors.card,
+          borderRadius: 12,
+          padding: 13,
+          borderWidth: 1,
+          borderColor: colors.border,
+        },
+        sourceHeader: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 10,
+          gap: 8,
+        },
+        sourceDot: {
+          width: 9,
+          height: 9,
+          borderRadius: 5,
+        },
+        sourceLabel: {
+          flex: 1,
+          fontSize: 12,
+          fontWeight: '800',
+        },
+        sourceShare: {
+          fontSize: 11,
+          fontWeight: '800',
+        },
+        sourceRevenue: {
+          fontSize: 20,
+          fontWeight: '900',
+          marginBottom: 8,
+        },
+        sourceStats: {
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          gap: 10,
+        },
+        sourceStatLabel: {
+          fontSize: 9,
+          fontWeight: '700',
+          letterSpacing: 0.4,
+          textTransform: 'uppercase' as const,
+          marginBottom: 2,
+        },
+        sourceStatValue: {
+          fontSize: 12,
+          fontWeight: '800',
+        },
         branchGrid: {
           flexDirection: 'row',
           flexWrap: 'wrap',
@@ -1509,6 +1739,102 @@ export default function SalesAnalyticsScreen() {
             </Text>
           </View>
         </View>
+      )}
+
+      {!heroLoading && sourceCards.length > 0 && (
+        <>
+          <Text style={styles.sectionTitle}>Sales by Source</Text>
+          <View style={styles.sourceGrid}>
+            {sourceCards.map((source) => (
+              <View key={source.source} style={styles.sourceCard}>
+                <View style={styles.sourceHeader}>
+                  <View
+                    style={[
+                      styles.sourceDot,
+                      { backgroundColor: source.color },
+                    ]}
+                  />
+                  <Text
+                    style={[styles.sourceLabel, { color: colors.text }]}
+                    numberOfLines={1}
+                  >
+                    {source.label}
+                  </Text>
+                  <Text
+                    style={[styles.sourceShare, { color: source.color }]}
+                  >
+                    {source.revenueShare.toFixed(1)}%
+                  </Text>
+                </View>
+                <Text
+                  style={[styles.sourceRevenue, { color: source.color }]}
+                  numberOfLines={1}
+                >
+                  {fmtM(source.totalRevenue)}
+                </Text>
+                <View style={styles.sourceStats}>
+                  <View>
+                    <Text
+                      style={[
+                        styles.sourceStatLabel,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      Orders
+                    </Text>
+                    <Text
+                      style={[
+                        styles.sourceStatValue,
+                        { color: colors.text },
+                      ]}
+                    >
+                      {source.totalOrders.toLocaleString()}
+                    </Text>
+                  </View>
+                  <View>
+                    <Text
+                      style={[
+                        styles.sourceStatLabel,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      Units
+                    </Text>
+                    <Text
+                      style={[
+                        styles.sourceStatValue,
+                        { color: colors.text },
+                      ]}
+                    >
+                      {source.unitsSold.toLocaleString()}
+                    </Text>
+                  </View>
+                  <View>
+                    <Text
+                      style={[
+                        styles.sourceStatLabel,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      Profit
+                    </Text>
+                    <Text
+                      style={[
+                        styles.sourceStatValue,
+                        {
+                          color:
+                            source.grossProfit >= 0 ? '#10B981' : '#EF4444',
+                        },
+                      ]}
+                    >
+                      {fmtM(source.grossProfit)}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            ))}
+          </View>
+        </>
       )}
 
       {/* ── Trend charts ──────────────────────────────────────────────────── */}

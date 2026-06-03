@@ -99,36 +99,104 @@ export class PrinterService {
         }
 
         return new Promise<boolean>((resolve, reject) => {
+          let completed = false;
+          let closedCheckInterval: ReturnType<typeof setInterval> | null = null;
+
+          const cleanup = () => {
+            try {
+              targetWindow.removeEventListener('afterprint', afterPrintHandler);
+              targetWindow.removeEventListener('beforeunload', beforeUnloadHandler);
+            } catch {
+              // ignore cleanup errors
+            }
+            if (closedCheckInterval) {
+              clearInterval(closedCheckInterval);
+              closedCheckInterval = null;
+            }
+            try {
+              if (!targetWindow.closed) {
+                targetWindow.close();
+              }
+            } catch {
+              // ignore close errors
+            }
+          };
+
+          const afterPrintHandler = () => {
+            if (completed) return;
+            completed = true;
+            cleanup();
+            resolve(true);
+          };
+
+          const beforeUnloadHandler = () => {
+            if (!completed) {
+              completed = true;
+              cleanup();
+              reject(new Error('Receipt printing was cancelled.'));
+            }
+          };
+
           try {
-            // ✅ Use Blob URL instead of document.write() — works reliably on desktop
             const blob = new Blob([htmlContent], { type: 'text/html' });
             const blobUrl = URL.createObjectURL(blob);
 
+            const startClosedCheck = () => {
+              if (closedCheckInterval) return;
+              closedCheckInterval = setInterval(() => {
+                if (targetWindow.closed && !completed) {
+                  completed = true;
+                  cleanup();
+                  reject(new Error('Receipt printing was cancelled.'));
+                }
+              }, 250);
+            };
+
             targetWindow.location.href = blobUrl;
+            targetWindow.addEventListener('afterprint', afterPrintHandler);
+            targetWindow.addEventListener('beforeunload', beforeUnloadHandler);
+            startClosedCheck();
 
             targetWindow.onload = () => {
               try {
-                URL.revokeObjectURL(blobUrl); // clean up memory
+                URL.revokeObjectURL(blobUrl);
                 targetWindow.focus();
                 targetWindow.print();
-                resolve(true);
+                if (!completed) {
+                  completed = true;
+                  cleanup();
+                  resolve(true);
+                }
               } catch (err) {
-                reject(err);
+                if (!completed) {
+                  completed = true;
+                  cleanup();
+                  reject(err);
+                }
               }
             };
 
-            // Fallback if onload doesn't fire
             setTimeout(() => {
+              if (completed) return;
               try {
                 targetWindow.focus();
                 targetWindow.print();
-                resolve(true);
+                if (!completed) {
+                  completed = true;
+                  cleanup();
+                  resolve(true);
+                }
               } catch (err) {
-                reject(err);
+                if (!completed) {
+                  completed = true;
+                  cleanup();
+                  reject(err);
+                }
               }
             }, 1000);
-
           } catch (error) {
+            completed = true;
+            cleanup();
             reject(error);
           }
         });
