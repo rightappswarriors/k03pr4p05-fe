@@ -2288,7 +2288,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
   },
-  sheet: { borderRadius: 12, padding: 16, maxHeight: '90%', gap: 14 },
+  sheet: { borderRadius: 12, padding: 16, maxHeight: 670, gap: 14, maxWidth: 700, alignSelf: 'center' },
   itemPickerSheet: {
     width: '80%',
     maxWidth: 860,

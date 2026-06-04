@@ -121,195 +121,214 @@ function EmployeeDetailModal({
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
-      presentationStyle="pageSheet"
+      animationType="fade"
       onRequestClose={onClose}
     >
-      <View style={{ flex: 1, backgroundColor: colors.background }}>
-        {/* Header — dept color */}
-        <View style={[edm.header, { backgroundColor: deptColor }]}>
-          <View style={edm.avatarLarge}>
-            <Text style={edm.avatarText}>{getInitials(employee.name)}</Text>
+      <View style={{
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.45)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 24,
+      }}>
+        <TouchableOpacity
+          style={StyleSheet.absoluteFillObject}
+          activeOpacity={1}
+          onPress={onClose}
+        />
+        <View style={{
+          width: '100%',
+          maxWidth: 560,
+          maxHeight: '90%',
+          borderRadius: 20,
+          overflow: 'hidden',
+          backgroundColor: colors.background,
+        }}>
+          {/* Header — dept color */}
+          <View style={[edm.header, { backgroundColor: deptColor }]}>
+            <View style={edm.avatarLarge}>
+              <Text style={edm.avatarText}>{getInitials(employee.name)}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={edm.headerName}>{employee.name}</Text>
+              <Text style={edm.headerRole}>{employee.role || 'No role assigned'}</Text>
+              <Text style={edm.headerDept}>
+                {employee.department} · {yearsOfService(employee.hireDate)} tenure
+              </Text>
+            </View>
+            <TouchableOpacity style={edm.closeBtn} onPress={onClose}>
+              <X size={16} color="#fff" strokeWidth={2.5} />
+            </TouchableOpacity>
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={edm.headerName}>{employee.name}</Text>
-            <Text style={edm.headerRole}>{employee.role || 'No role assigned'}</Text>
-            <Text style={edm.headerDept}>
-              {employee.department} · {yearsOfService(employee.hireDate)} tenure
-            </Text>
-          </View>
-          <TouchableOpacity style={edm.closeBtn} onPress={onClose}>
-            <X size={16} color="#fff" strokeWidth={2.5} />
-          </TouchableOpacity>
-        </View>
 
-        <ScrollView
-          contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Status badge */}
-          <View style={[edm.statusRow, { backgroundColor: statusStyle.bg }]}>
-            <View
-              style={[edm.statusDot, { backgroundColor: statusStyle.text }]}
-            />
-            <Text style={[edm.statusText, { color: statusStyle.text }]}>
-              {employee.status}
-            </Text>
-          </View>
-
-          {/* Info section */}
-          <View
-            style={[
-              edm.section,
-              { backgroundColor: colors.card, borderColor: colors.border },
-            ]}
+          <ScrollView
+            contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+            showsVerticalScrollIndicator={false}
           >
-            <Text style={[edm.sectionTitle, { color: colors.textSecondary }]}>
-              EMPLOYEE INFORMATION
-            </Text>
-            {[
-//              ['Employee ID', employee.id],
-              ['Email', employee.email],
-              ['Department', employee.department],
-              ['Role', employee.role],
-              ['Position', employee.position || 'No position'],
-              ['Hire Date', formatDate(employee.hireDate)],
-              ['Tenure', yearsOfService(employee.hireDate)],
-            ].map(([label, value], i, arr) => (
+            {/* Status badge */}
+            <View style={[edm.statusRow, { backgroundColor: statusStyle.bg }]}>
               <View
-                key={label}
+                style={[edm.statusDot, { backgroundColor: statusStyle.text }]}
+              />
+              <Text style={[edm.statusText, { color: statusStyle.text }]}>
+                {employee.status}
+              </Text>
+            </View>
+
+            {/* Info section */}
+            <View
+              style={[
+                edm.section,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
+              <Text style={[edm.sectionTitle, { color: colors.textSecondary }]}>
+                EMPLOYEE INFORMATION
+              </Text>
+              {[
+                //              ['Employee ID', employee.id],
+                ['Email', employee.email],
+                ['Department', employee.department],
+                ['Role', employee.role],
+                ['Position', employee.position || 'No position'],
+                ['Hire Date', formatDate(employee.hireDate)],
+                ['Tenure', yearsOfService(employee.hireDate)],
+              ].map(([label, value], i, arr) => (
+                <View
+                  key={label}
+                  style={[
+                    edm.row,
+                    {
+                      borderBottomColor: colors.border,
+                      borderBottomWidth: i < arr.length - 1 ? 1 : 0,
+                    },
+                  ]}
+                >
+                  <Text style={[edm.rowLabel, { color: colors.textSecondary }]}>
+                    {label}
+                  </Text>
+                  <Text style={[edm.rowValue, { color: colors.text }]}>
+                    {value}
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Salary */}
+            <View
+              style={[
+                edm.section,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                  marginTop: 12,
+                },
+              ]}
+            >
+              <Text style={[edm.sectionTitle, { color: colors.textSecondary }]}>
+                COMPENSATION
+              </Text>
+              <View
                 style={[
                   edm.row,
-                  {
-                    borderBottomColor: colors.border,
-                    borderBottomWidth: i < arr.length - 1 ? 1 : 0,
-                  },
+                  { borderBottomColor: 'transparent', borderBottomWidth: 0 },
                 ]}
               >
                 <Text style={[edm.rowLabel, { color: colors.textSecondary }]}>
-                  {label}
+                  Monthly Salary
                 </Text>
-                <Text style={[edm.rowValue, { color: colors.text }]}>
-                  {value}
+                <Text
+                  style={{
+                    fontSize: 22,
+                    fontWeight: '900',
+                    color: colors.accent,
+                  }}
+                >
+                  {formatPeso(employee.salary)}
                 </Text>
               </View>
-            ))}
-          </View>
+            </View>
 
-          {/* Salary */}
-          <View
-            style={[
-              edm.section,
-              {
-                backgroundColor: colors.card,
-                borderColor: colors.border,
-                marginTop: 12,
-              },
-            ]}
-          >
-            <Text style={[edm.sectionTitle, { color: colors.textSecondary }]}>
-              COMPENSATION
-            </Text>
+            {/* Position update */}
             <View
               style={[
-                edm.row,
-                { borderBottomColor: 'transparent', borderBottomWidth: 0 },
+                edm.section,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                  marginTop: 12,
+                },
               ]}
             >
-              <Text style={[edm.rowLabel, { color: colors.textSecondary }]}>
-                Monthly Salary
+              <Text style={[edm.sectionTitle, { color: colors.textSecondary }]}>
+                POSITION ASSIGNMENT
               </Text>
-              <Text
-                style={{
-                  fontSize: 22,
-                  fontWeight: '900',
-                  color: colors.accent,
+              <SearchableDropdown
+                label="Assign Position"
+                value={employee.position || 'No position'}
+                options={positions.map(p => ({ label: p.label }))}
+                onSelect={(pos) => {
+                  const posItem = positions.find(p => p.label === pos);
+                  if (posItem) {
+                    onUpdatePosition(employee.id, posItem.id);
+                  }
                 }}
-              >
-                {formatPeso(employee.salary)}
-              </Text>
+                colors={colors}
+                placeholder="Select position…"
+              />
             </View>
-          </View>
 
-          {/* Position update */}
-          <View
-            style={[
-              edm.section,
-              {
-                backgroundColor: colors.card,
-                borderColor: colors.border,
-                marginTop: 12,
-              },
-            ]}
-          >
-            <Text style={[edm.sectionTitle, { color: colors.textSecondary }]}>
-              POSITION ASSIGNMENT
-            </Text>
-            <SearchableDropdown
-              label="Assign Position"
-              value={employee.position || 'No position'}
-              options={positions.map(p => ({ label: p.label }))}
-              onSelect={(pos) => {
-                const posItem = positions.find(p => p.label === pos);
-                if (posItem) {
-                  onUpdatePosition(employee.id, posItem.id);
-                }
-              }}
-              colors={colors}
-              placeholder="Select position…"
-            />
-          </View>
-
-          {/* Status update */}
-          <View
-            style={[
-              edm.section,
-              {
-                backgroundColor: colors.card,
-                borderColor: colors.border,
-                marginTop: 12,
-              },
-            ]}
-          >
-            <Text style={[edm.sectionTitle, { color: colors.textSecondary }]}>
-              UPDATE STATUS
-            </Text>
-            <View style={{ flexDirection: 'row', gap: 8, padding: 12 }}>
-              {ALL_STATUSES.map((s) => {
-                const ss = STATUS_STYLES[s];
-                const isActive = employee.status === s;
-                return (
-                  <TouchableOpacity
-                    key={s}
-                    style={[
-                      edm.statusBtn,
-                      {
-                        backgroundColor: isActive ? ss.text : ss.bg,
-                        borderColor: ss.text,
-                        flex: 1,
-                      },
-                    ]}
-                    onPress={() => {
-                      onUpdateStatus(employee.id, s);
-                      onClose();
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        fontWeight: '700',
-                        color: isActive ? '#fff' : ss.text,
-                        textAlign: 'center',
+            {/* Status update */}
+            <View
+              style={[
+                edm.section,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                  marginTop: 12,
+                },
+              ]}
+            >
+              <Text style={[edm.sectionTitle, { color: colors.textSecondary }]}>
+                UPDATE STATUS
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 8, padding: 12 }}>
+                {ALL_STATUSES.map((s) => {
+                  const ss = STATUS_STYLES[s];
+                  const isActive = employee.status === s;
+                  return (
+                    <TouchableOpacity
+                      key={s}
+                      style={[
+                        edm.statusBtn,
+                        {
+                          backgroundColor: isActive ? ss.text : ss.bg,
+                          borderColor: ss.text,
+                          flex: 1,
+                        },
+                      ]}
+                      onPress={() => {
+                        onUpdateStatus(employee.id, s);
+                        onClose();
                       }}
                     >
-                      {s}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: '700',
+                          color: isActive ? '#fff' : ss.text,
+                          textAlign: 'center',
+                        }}
+                      >
+                        {s}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             </View>
-          </View>
-        </ScrollView>
+          </ScrollView>
+        </View>
       </View>
     </Modal>
   );
@@ -494,7 +513,7 @@ function SearchableDropdown({
           activeOpacity={1}
           onPress={() => setOpen(false)}
         >
-          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+          <TouchableOpacity activeOpacity={1} onPress={() => { }}>
             <View
               style={{
                 backgroundColor: colors.surface,
@@ -764,23 +783,19 @@ function AddEmployeeModal({
     overlay: {
       flex: 1,
       backgroundColor: 'rgba(0,0,0,0.5)',
-      justifyContent: 'flex-end',
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 24,
     },
     sheet: {
       backgroundColor: colors.surface,
-      borderTopLeftRadius: 20,
-      borderTopRightRadius: 20,
-      paddingBottom: 32,
+      borderRadius: 20,                // ← all corners
+      width: '100%',
+      maxWidth: 520,                   // ← fixed max width
       maxHeight: '93%',
     },
     handle: {
-      width: 40,
-      height: 4,
-      borderRadius: 2,
-      backgroundColor: colors.border,
-      alignSelf: 'center',
-      marginTop: 12,
-      marginBottom: 4,
+      display: 'none',                 // ← hide drag handle
     },
     header: {
       flexDirection: 'row',
@@ -841,12 +856,12 @@ function AddEmployeeModal({
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
+      animationType="fade"
       onRequestClose={onClose}
     >
       <View style={s.overlay}>
         <TouchableOpacity
-          style={{ flex: 1 }}
+          style={StyleSheet.absoluteFillObject}   // ← works for centered modals
           activeOpacity={1}
           onPress={onClose}
         />
@@ -1456,9 +1471,9 @@ export default function HRScreen() {
                     styles.pill,
                     deptFilter === dept && styles.pillActive,
                     dept !== 'All' &&
-                      deptFilter !== dept && {
-                        borderColor: deptMap[dept] ?? colors.border,
-                      },
+                    deptFilter !== dept && {
+                      borderColor: deptMap[dept] ?? colors.border,
+                    },
                   ]}
                   onPress={() => setDeptFilter(dept)}
                 >
@@ -1467,9 +1482,9 @@ export default function HRScreen() {
                       styles.pillText,
                       deptFilter === dept && styles.pillTextAct,
                       dept !== 'All' &&
-                        deptFilter !== dept && {
-                          color: deptMap[dept] ?? colors.text,
-                        },
+                      deptFilter !== dept && {
+                        color: deptMap[dept] ?? colors.text,
+                      },
                     ]}
                   >
                     {dept}

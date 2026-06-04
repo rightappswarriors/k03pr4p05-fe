@@ -99,7 +99,7 @@ const TABLES: TableMeta[] = [
     accent: '#0EA5E9',
     placeholder: 'e.g. Main Supplier Cebu',
   },
-  
+
   {
     key: 'centers',
     label: 'Centers',
@@ -136,7 +136,7 @@ const TABLES: TableMeta[] = [
     accent: '#1B3A6B',
     placeholder: 'e.g. Transportation Allowance',
   },
-  
+
 ];
 
 const DEPT_COLORS = [
@@ -495,47 +495,67 @@ function ContactFormModal({
   );
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={onClose}
-    >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1, backgroundColor: colors.background }}
-      >
-        {/* Header */}
-        <View
-          style={{
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            paddingTop: Platform.OS === 'ios' ? 56 : 20,
-            paddingBottom: 16,
-            paddingHorizontal: 20,
-            backgroundColor: ACCENT,
-          }}
-        >
-          <TouchableOpacity
-            onPress={onClose}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 15 }}>
-              Cancel
-            </Text>
-          </TouchableOpacity>
-          <Text style={{ color: '#fff', fontSize: 16, fontWeight: '800' }}>
-            {existing ? 'Edit Contact' : 'Add Contact'}
-          </Text>
-          <AtSign size={20} color="rgba(255,255,255,0.75)" strokeWidth={2} />
-        </View>
+    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
+  <KeyboardAvoidingView
+    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    style={{
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.45)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 24,
+    }}
+  >
+    {/* Backdrop tap-to-close */}
+    <TouchableOpacity
+      style={StyleSheet.absoluteFillObject}
+      activeOpacity={1}
+      onPress={onClose}
+    />
 
-        <ScrollView
-          contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
+    {/* ── Card container ── */}
+    <View
+      style={{
+        width: '100%',
+        maxWidth: 560,
+        maxHeight: '90%',
+        borderRadius: 20,
+        overflow: 'hidden',
+        backgroundColor: colors.background,
+      }}
+    >
+      {/* Header — now INSIDE the card */}
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          paddingTop: 20,          // flat 20, no iOS inset needed
+          paddingBottom: 16,
+          paddingHorizontal: 20,
+          backgroundColor: ACCENT,
+        }}
+      >
+        <TouchableOpacity
+          onPress={onClose}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
+          <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 15 }}>
+            Cancel
+          </Text>
+        </TouchableOpacity>
+        <Text style={{ color: '#fff', fontSize: 16, fontWeight: '800' }}>
+          {existing ? 'Edit Contact' : 'Add Contact'}
+        </Text>
+        <AtSign size={20} color="rgba(255,255,255,0.75)" strokeWidth={2} />
+      </View>
+
+      {/* ScrollView — also INSIDE the card */}
+      <ScrollView
+        contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
           {/* ── Scope ── */}
           <FL
             t="SCOPE"
@@ -816,6 +836,7 @@ function ContactFormModal({
             </Text>
           </TouchableOpacity>
         </ScrollView>
+        </View>
 
         <BranchSelectorModal
           visible={branchOpen}
@@ -906,14 +927,14 @@ function ItemModal({
             normalized.map((p): [string, PermissionRow] => [
               p.id,
               ep?.[p.id] ??
-                (sel === 'Custom'
-                  ? {
-                      canView: true,
-                      canCreate: false,
-                      canEdit: false,
-                      canDelete: false,
-                    }
-                  : PERMISSION_TEMPLATES[sel as PermissionTemplateKey]),
+              (sel === 'Custom'
+                ? {
+                  canView: true,
+                  canCreate: false,
+                  canEdit: false,
+                  canDelete: false,
+                }
+                : PERMISSION_TEMPLATES[sel as PermissionTemplateKey]),
             ]),
           ),
         );
@@ -934,13 +955,13 @@ function ItemModal({
     }
     let extra: Record<string, any> | undefined = config?.extraFields
       ? Object.fromEntries(
-          config.extraFields.map((f) => [
-            f.key,
-            f.type === 'number'
-              ? parseFloat(extraValues[f.key] ?? '0')
-              : (extraValues[f.key] ?? ''),
-          ]),
-        )
+        config.extraFields.map((f) => [
+          f.key,
+          f.type === 'number'
+            ? parseFloat(extraValues[f.key] ?? '0')
+            : (extraValues[f.key] ?? ''),
+        ]),
+      )
       : undefined;
     if (meta.key === 'positions')
       extra = {
@@ -965,7 +986,7 @@ function ItemModal({
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
+      animationType="fade"
       onRequestClose={onClose}
     >
       <KeyboardAvoidingView
@@ -973,7 +994,7 @@ function ItemModal({
         style={im.overlay}
       >
         <TouchableOpacity
-          style={{ flex: 1 }}
+          style={StyleSheet.absoluteFillObject}
           activeOpacity={1}
           onPress={onClose}
         />
@@ -1079,7 +1100,7 @@ function ItemModal({
                                 pages.map((p): [string, PermissionRow] => [
                                   p.id,
                                   PERMISSION_TEMPLATES[
-                                    opt as PermissionTemplateKey
+                                  opt as PermissionTemplateKey
                                   ],
                                 ]),
                               ),
@@ -1253,17 +1274,17 @@ const im = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',       // ← center vertically
+    alignItems: 'center',           // ← center horizontally
+    padding: 24,                    // ← breathing room on all sides
   },
-  sheet: { borderTopLeftRadius: 20, borderTopRightRadius: 20 },
-  handle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
+  sheet: {
+    borderRadius: 20,               // ← all corners rounded (no longer bottom-sheet)
+    width: '100%',
+    maxWidth: 520,                  // ← fixed max width
     alignSelf: 'center',
-    marginTop: 12,
-    marginBottom: 4,
   },
+  handle: { display: 'none' },     // ← hide the drag handle (irrelevant now)
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',

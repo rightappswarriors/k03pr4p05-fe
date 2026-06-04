@@ -53,6 +53,7 @@ import { DropdownField } from './branch';
 import { formatPeso } from '@/utils/moneyHelpers';
 import DateRangePickerModal from '@/components/DateRangePickerModal';
 import { aom, FILTERS } from './outlets';
+import AddInventoryItemModal from '@/components/AddInventoryItemModal';
 import { useAuth } from '@/contexts/AuthContext';
 import { MediaService } from '@/services/mediaService';
 import { useResponsiveGrid } from '@/hooks/useResponsiveGrid';
@@ -364,13 +365,13 @@ function EditOutletModal({
   const sheetStyle = isWeb
     ? [eom.sheet, eom.webDialog, { backgroundColor: colors.surface }]
     : [
-        eom.sheet,
-        {
-          backgroundColor: colors.surface,
-          maxWidth: 600,
-          width: '100%' as any,
-        },
-      ];
+      eom.sheet,
+      {
+        backgroundColor: colors.surface,
+        maxWidth: 600,
+        width: '100%' as any,
+      },
+    ];
 
   return (
     <Modal
@@ -1006,13 +1007,13 @@ function CreateStaffModal({
   const sheetStyle = isWeb
     ? [csm2.sheet, csm2.webDialog, { backgroundColor: colors.surface }]
     : [
-        csm2.sheet,
-        {
-          backgroundColor: colors.surface,
-          maxWidth: 560,
-          width: '100%' as any,
-        },
-      ];
+      csm2.sheet,
+      {
+        backgroundColor: colors.surface,
+        maxWidth: 560,
+        width: '100%' as any,
+      },
+    ];
 
   return (
     <Modal
@@ -1276,13 +1277,13 @@ function AssignStaffModal({
   const sheetStyle = isWeb
     ? [asm2.sheet, asm2.webDialog, { backgroundColor: colors.surface }]
     : [
-        asm2.sheet,
-        {
-          backgroundColor: colors.surface,
-          maxWidth: 560,
-          width: '100%' as any,
-        },
-      ];
+      asm2.sheet,
+      {
+        backgroundColor: colors.surface,
+        maxWidth: 560,
+        width: '100%' as any,
+      },
+    ];
 
   return (
     <Modal
@@ -1588,6 +1589,8 @@ export default function OutletDetailScreen() {
   const [availableStaff, setAvailableStaff] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [showAddItemModal, setShowAddItemModal] = useState(false);
+  const [editingInventoryItemId, setEditingInventoryItemId] = useState<string | undefined>();
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -1830,18 +1833,10 @@ export default function OutletDetailScreen() {
               borderWidth: isLow ? 1.5 : 1,
             },
           ]}
-          onPress={() =>
-            router.push({
-              pathname: '/(erp)/add-inventory-item',
-              params: {
-                outletId,
-                outletName,
-                branchId,
-                branchName,
-                inventoryItemId: item.id.toString(),
-              },
-            })
-          }
+          onPress={() => {
+            setEditingInventoryItemId(item.id.toString());
+            setShowAddItemModal(true);
+          }}
           activeOpacity={0.8}
         >
           <View style={{ flex: 1 }}>
@@ -1968,24 +1963,24 @@ export default function OutletDetailScreen() {
   const inlineOverlay = isWeb ? centeredOverlay : bottomSheetOverlay;
   const inlineSheetBase: any = isWeb
     ? {
-        borderRadius: 16,
-        width: 520,
-        maxWidth: '90vw',
-        maxHeight: '85vh',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.15,
-        shadowRadius: 24,
-        elevation: 24,
-      }
+      borderRadius: 16,
+      width: 520,
+      maxWidth: '90vw',
+      maxHeight: '85vh',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.15,
+      shadowRadius: 24,
+      elevation: 24,
+    }
     : {
-        borderTopLeftRadius: 20,
-        borderTopRightRadius: 20,
-        maxHeight: '80%',
-        maxWidth: 560,
-        width: '100%',
-        alignSelf: 'center',
-      };
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      maxHeight: '80%',
+      maxWidth: 560,
+      width: '100%',
+      alignSelf: 'center',
+    };
 
   return (
     <SafeAreaView
@@ -2625,12 +2620,11 @@ export default function OutletDetailScreen() {
             </Text>
             <TouchableOpacity
               style={[st.addBtn, { backgroundColor: colors.primary }]}
-              onPress={() =>
-                router.push({
-                  pathname: '/(erp)/add-inventory-item',
-                  params: { outletId, outletName, branchId, branchName },
-                })
-              }
+              onPress={() => {
+                setEditingInventoryItemId(undefined);
+                setShowAddItemModal(true);
+                setShowAssignItemsModal(false);
+              }}
               activeOpacity={0.85}
             >
               <Plus size={14} color="#fff" strokeWidth={2.5} />
@@ -3287,7 +3281,20 @@ export default function OutletDetailScreen() {
           </KeyboardAvoidingView>
         </View>
       </Modal>
-
+      <AddInventoryItemModal
+        visible={showAddItemModal}
+        onClose={() => {
+          setShowAddItemModal(false);
+          setEditingInventoryItemId(undefined);
+          // Delay loadData so modal finishes closing first
+          setTimeout(() => loadData(), 300);
+        }}
+        outletId={outletId ?? ''}
+        outletName={outletName ?? ''}
+        branchName={branchName ?? ''}
+        branchId={branchId ?? ''}
+        inventoryItemId={editingInventoryItemId}
+      />
       <TransactionDetailModal
         transactionId={selectedTxnId}
         onClose={() => setSelectedTxnId(null)}
@@ -3296,6 +3303,7 @@ export default function OutletDetailScreen() {
     </SafeAreaView>
   );
 }
+
 
 const st = StyleSheet.create({
   container: { flex: 1 },
