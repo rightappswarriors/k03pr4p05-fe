@@ -89,6 +89,7 @@ import { VatTypeService } from '@/services/vatTypeService';
 import { MasterFileFinanceService } from '@/services/masterFileFinanceService';
 import { autoCode } from '@/utils/autoCode';
 import { useWebSocket } from '@/contexts/WSContext';
+import { exportERPExcel, exportERPPDF } from '@/utils/exportERP';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 function getDateRange(
@@ -1630,15 +1631,36 @@ export default function DashboardScreen() {
     setDeleteTarget(null);
   };
 
-  // ── CSV Export ────────────────────────────────────────────────────────────
-  const handleExport = () => {
-    const csv =
-      activeTab === 'expense'
-        ? exportGISToCSV(gisRows)
-        : exportSummaryToCSV(summaryRows);
-    console.log('[CSV EXPORT]', csv);
-    setExportSuccess(true);
-    setTimeout(() => setExportSuccess(false), 2000);
+  // ── Styled Export (Excel/PDF) ────────────────────────────────────────────
+  const handleExport = async () => {
+    try {
+      const exportConfig = {
+        table: activeTab as 'expense' | 'itemnet',
+        theme: theme as 'light' | 'dark',
+        fullName: user?.fullName || 'User',
+        organization: user?.organization || 'Organization',
+        dateLabel: customStartDate && customEndDate 
+          ? `${formatShortDate(customStartDate)} – ${formatShortDate(customEndDate)}`
+          : datePreset,
+        gisRows,
+        summaryRows,
+      };
+
+      if (Platform.OS === 'web') {
+        // Web: Export as Excel
+        await exportERPExcel(exportConfig);
+      } else {
+        // Native: Export as Excel (primary)
+        await exportERPExcel(exportConfig);
+      }
+
+      setExportSuccess(true);
+      setTimeout(() => setExportSuccess(false), 2000);
+    } catch (error) {
+      console.error('[EXPORT ERROR]', error);
+      setExportSuccess(true);
+      setTimeout(() => setExportSuccess(false), 2000);
+    }
   };
 
   // ── Card interaction ──────────────────────────────────────────────────────
@@ -2500,259 +2522,255 @@ export default function DashboardScreen() {
         />
       </ChartCard>
 
-      {/* TABS */}
-      <View
-        style={[
-          s.tabBar,
-          { backgroundColor: colors.surface, borderBottomColor: colors.border },
-        ]}
-      >
-        {limits.canAccessExpenseSummary ? (
-          <TouchableOpacity
+      {/* ─────────────────────────────────────────────────────────────────────── */}
+      {/* DEVELOPMENT MODE: Hide Expense & Item Net Summary                      */}
+      {/* To re-enable: Remove the __DEV__ check below (lines ~2525-2770)        */}
+      {/* ─────────────────────────────────────────────────────────────────────── */}
+      {__DEV__ && (
+        <>
+          {/* TABS */}
+          <View
             style={[
-              s.tab,
-              activeTab === 'expense' && {
-                borderBottomColor: colors.primary,
-                borderBottomWidth: 2.5,
-              },
+              s.tabBar,
+              { backgroundColor: colors.surface, borderBottomColor: colors.border },
             ]}
-            onPress={() => handleTabChange('expense')}
-            activeOpacity={0.8}
           >
-            <FileText
-              size={15}
-              color={
-                activeTab === 'expense' ? colors.primary : colors.textSecondary
-              }
-              strokeWidth={activeTab === 'expense' ? 2.5 : 2}
-            />
-            <Text
-              style={[
-                s.tabLabel,
-                {
-                  color:
-                    activeTab === 'expense'
-                      ? colors.primary
-                      : colors.textSecondary,
-                  fontWeight: activeTab === 'expense' ? '700' : '500',
-                },
-              ]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-            >
-              Expense Summary
-            </Text>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={[s.tab, { opacity: 0.5 }]}
-            activeOpacity={0.7}
-          >
-            <Lock size={13} color={colors.textSecondary} strokeWidth={2} />
-            <Text
-              style={[
-                s.tabLabel,
-                { color: colors.textSecondary, fontWeight: '500' },
-              ]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-            >
-              Expense Summary
-            </Text>
-            <Lock
-              size={10}
-              color={colors.textSecondary}
-              strokeWidth={2}
-              style={{ marginLeft: 2 }}
-            />
-          </TouchableOpacity>
-        )}
-
-        <TouchableOpacity
-          style={[
-            s.tab,
-            activeTab === 'itemnet' && {
-              borderBottomColor: colors.primary,
-              borderBottomWidth: 2.5,
-            },
-          ]}
-          onPress={() => handleTabChange('itemnet')}
-          activeOpacity={0.8}
-        >
-          <BarChart2
-            size={15}
-            color={
-              activeTab === 'itemnet' ? colors.primary : colors.textSecondary
-            }
-            strokeWidth={activeTab === 'itemnet' ? 2.5 : 2}
-          />
-          <Text
-            style={[
-              s.tabLabel,
-              {
-                color:
-                  activeTab === 'itemnet'
-                    ? colors.primary
-                    : colors.textSecondary,
-                fontWeight: activeTab === 'itemnet' ? '700' : '500',
-              },
-            ]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-          >
-            Item Net Summary
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* TABLE / CARD AREA */}
-      <View style={styles.tableScrollWrapper}>
-        {/* TOOLBAR */}
-        <View style={styles.toolbarFull}>
-          <View style={styles.searchBox}>
-            <Search size={13} color={colors.textSecondary} strokeWidth={2} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder={
-                activeTab === 'expense' ? 'Search entries…' : 'Search items…'
-              }
-              placeholderTextColor={colors.textSecondary}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              returnKeyType="search"
-              autoCorrect={false}
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <X size={13} color={colors.textSecondary} strokeWidth={2} />
+            {limits.canAccessExpenseSummary ? (
+              <TouchableOpacity
+                style={[
+                  s.tab,
+                  activeTab === 'expense' && {
+                    borderBottomColor: colors.primary,
+                    borderBottomWidth: 2.5,
+                  },
+                ]}
+                onPress={() => handleTabChange('expense')}
+                activeOpacity={0.8}
+              >
+                <FileText
+                  size={15}
+                  color={
+                    activeTab === 'expense' ? colors.primary : colors.textSecondary
+                  }
+                  strokeWidth={activeTab === 'expense' ? 2.5 : 2}
+                />
+                <Text
+                  style={[
+                    s.tabLabel,
+                    {
+                      color:
+                        activeTab === 'expense'
+                          ? colors.primary
+                          : colors.textSecondary,
+                      fontWeight: activeTab === 'expense' ? '700' : '500',
+                    },
+                  ]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                >
+                  Expense Summary
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[s.tab, { opacity: 0.5 }]}
+                activeOpacity={0.7}
+              >
+                <Lock size={13} color={colors.textSecondary} strokeWidth={2} />
+                <Text
+                  style={[
+                    s.tabLabel,
+                    { color: colors.textSecondary, fontWeight: '500' },
+                  ]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                >
+                  Expense Summary
+                </Text>
+                <Lock
+                  size={10}
+                  color={colors.textSecondary}
+                  strokeWidth={2}
+                  style={{ marginLeft: 2 }}
+                />
               </TouchableOpacity>
             )}
-          </View>
-          <ViewToggle
-            viewMode={viewMode}
-            onChange={handleViewModeChange}
-            colors={colors}
-          />
 
-          {limits.canExport ? (
             <TouchableOpacity
               style={[
-                styles.iconBtn,
-                {
-                  borderColor: exportSuccess ? colors.success : colors.border,
-                  backgroundColor: exportSuccess
-                    ? colors.success + '20'
-                    : undefined,
+                s.tab,
+                activeTab === 'itemnet' && {
+                  borderBottomColor: colors.primary,
+                  borderBottomWidth: 2.5,
                 },
               ]}
-              onPress={handleExport}
+              onPress={() => handleTabChange('itemnet')}
               activeOpacity={0.8}
             >
-              <Download
+              <BarChart2
                 size={15}
-                color={exportSuccess ? colors.success : colors.textSecondary}
-                strokeWidth={2}
+                color={
+                  activeTab === 'itemnet' ? colors.primary : colors.textSecondary
+                }
+                strokeWidth={activeTab === 'itemnet' ? 2.5 : 2}
               />
+              <Text
+                style={[
+                  s.tabLabel,
+                  {
+                    color:
+                      activeTab === 'itemnet'
+                        ? colors.primary
+                        : colors.textSecondary,
+                    fontWeight: activeTab === 'itemnet' ? '700' : '500',
+                  },
+                ]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
+                Item Net Summary
+              </Text>
             </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={[
-                styles.iconBtn,
-                { borderColor: colors.border, opacity: 0.45 },
-              ]}
-              activeOpacity={0.7}
-            >
-              <Lock size={15} color={colors.textSecondary} strokeWidth={2} />
-            </TouchableOpacity>
-          )}
-        </View>
+          </View>
 
-        {/* result count */}
-        <View
-          style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 4 }}
-        >
-          <Text style={{ fontSize: 11, color: colors.textSecondary }}>
-            {activeDataset.length}{' '}
-            {activeTab === 'expense' ? 'entries' : 'items'}
-            {searchQuery ? ` matching "${searchQuery}"` : ''}
-          </Text>
-        </View>
-
-        {/* Table / Card content */}
-        <View style={styles.tableInner}>
-          {isLoadingDashboardData ? (
-            viewMode === 'table' ? (
-              [0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
-                <SkeletonTableRow key={i} colors={colors} />
-              ))
-            ) : (
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                {[0, 1, 2, 3].map((i) => (
-                  <SkeletonFinancialCard
-                    key={i}
-                    colors={colors}
-                    cardWidth={cardWidth}
-                  />
-                ))}
-              </View>
-            )
-          ) : viewMode === 'table' ? (
-            activeTab === 'expense' ? (
-              <View style={{ width: '100%' }}>
-                <GISTable
-                  rows={pagedGISRows}
-                  colors={colors}
-                  onDeleteRow={handleDelete}
-                />
-              </View>
-            ) : (
-              <View style={{ width: '100%' }}>
-                <SummaryTable rows={pagedSummaryRows} colors={colors} />
-              </View>
-            )
-          ) : (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-              {pagedData.map((item) => (
-                <FinancialCard
-                  key={item.type === 'gis' ? item.row.id : item.row.id}
-                  data={item}
-                  colors={colors}
-                  cardWidth={cardWidth}
-                  onPress={handleCardPress}
-                  onDelete={
-                    item.type === 'gis'
-                      ? () => handleDelete(item.row as GISRow)
-                      : undefined
+          {/* TABLE / CARD AREA */}
+          <View style={styles.tableScrollWrapper}>
+            {/* TOOLBAR */}
+            <View style={styles.toolbarFull}>
+              <View style={styles.searchBox}>
+                <Search size={13} color={colors.textSecondary} strokeWidth={2} />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder={
+                    activeTab === 'expense' ? 'Search entries…' : 'Search items…'
                   }
+                  placeholderTextColor={colors.textSecondary}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  returnKeyType="search"
+                  autoCorrect={false}
                 />
-              ))}
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => setSearchQuery('')}>
+                    <X size={13} color={colors.textSecondary} strokeWidth={2} />
+                  </TouchableOpacity>
+                )}
+              </View>
+              <ViewToggle
+                viewMode={viewMode}
+                onChange={handleViewModeChange}
+                colors={colors}
+              />
+
+              <TouchableOpacity
+                style={[
+                  styles.iconBtn,
+                  {
+                    borderColor: exportSuccess ? colors.success : colors.border,
+                    backgroundColor: exportSuccess
+                      ? colors.success + '20'
+                      : undefined,
+                  },
+                ]}
+                onPress={handleExport}
+                activeOpacity={0.8}
+              >
+                <Download
+                  size={15}
+                  color={exportSuccess ? colors.success : colors.textSecondary}
+                  strokeWidth={2}
+                />
+              </TouchableOpacity>
             </View>
-          )}
-        </View>
 
-        <PaginationControls
-          page={currentPage}
-          totalPages={totalPages}
-          totalItems={activeDataset.length}
-          onPrev={() => setCurrentPage((p) => Math.max(1, p - 1))}
-          onNext={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-          colors={colors}
-        />
-      </View>
+            {/* result count */}
+            <View
+              style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 4 }}
+            >
+              <Text style={{ fontSize: 11, color: colors.textSecondary }}>
+                {activeDataset.length}{' '}
+                {activeTab === 'expense' ? 'entries' : 'items'}
+                {searchQuery ? ` matching "${searchQuery}"` : ''}
+              </Text>
+            </View>
 
-      {/* NEW ENTRY BUTTON */}
-      <TouchableOpacity
-        style={[styles.newEntryBtn, { backgroundColor: colors.primary }]}
-        onPress={activeTab === 'expense' ? openModal : openItemNetModal}
-        activeOpacity={0.88}
-      >
-        <FileText size={isTablet ? 14 : 16} color="#fff" strokeWidth={2} />
-        <Text style={[s.newEntryBtnText, isTablet && { fontSize: 13 }]}>
-          {activeTab === 'expense'
-            ? 'New Expense Entry'
-            : 'New Item Net Summary'}
-        </Text>
-      </TouchableOpacity>
+            {/* Table / Card content */}
+            <View style={styles.tableInner}>
+              {isLoadingDashboardData ? (
+                viewMode === 'table' ? (
+                  [0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+                    <SkeletonTableRow key={i} colors={colors} />
+                  ))
+                ) : (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                    {[0, 1, 2, 3].map((i) => (
+                      <SkeletonFinancialCard
+                        key={i}
+                        colors={colors}
+                        cardWidth={cardWidth}
+                      />
+                    ))}
+                  </View>
+                )
+              ) : viewMode === 'table' ? (
+                activeTab === 'expense' ? (
+                  <View style={{ width: '100%' }}>
+                    <GISTable
+                      rows={pagedGISRows}
+                      colors={colors}
+                      onDeleteRow={handleDelete}
+                    />
+                  </View>
+                ) : (
+                  <View style={{ width: '100%' }}>
+                    <SummaryTable rows={pagedSummaryRows} colors={colors} />
+                  </View>
+                )
+              ) : (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {pagedData.map((item) => (
+                    <FinancialCard
+                      key={item.type === 'gis' ? item.row.id : item.row.id}
+                      data={item}
+                      colors={colors}
+                      cardWidth={cardWidth}
+                      onPress={handleCardPress}
+                      onDelete={
+                        item.type === 'gis'
+                          ? () => handleDelete(item.row as GISRow)
+                          : undefined
+                      }
+                    />
+                  ))}
+                </View>
+              )}
+            </View>
+
+            <PaginationControls
+              page={currentPage}
+              totalPages={totalPages}
+              totalItems={activeDataset.length}
+              onPrev={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              onNext={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              colors={colors}
+            />
+          </View>
+
+          {/* NEW ENTRY BUTTON */}
+          <TouchableOpacity
+            style={[styles.newEntryBtn, { backgroundColor: colors.primary }]}
+            onPress={activeTab === 'expense' ? openModal : openItemNetModal}
+            activeOpacity={0.88}
+          >
+            <FileText size={isTablet ? 14 : 16} color="#fff" strokeWidth={2} />
+            <Text style={[s.newEntryBtnText, isTablet && { fontSize: 13 }]}>
+              {activeTab === 'expense'
+                ? 'New Expense Entry'
+                : 'New Item Net Summary'}
+            </Text>
+          </TouchableOpacity>
+        </>
+      )}
 
       {/* EXPORT SUCCESS TOAST */}
       {exportSuccess && (

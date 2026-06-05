@@ -752,7 +752,6 @@ export default function ERPLayout() {
           <Text style={styles.headerBadgeTx}>ERP</Text>
         </View>
 
-        <PlanToggleFAB />
       </View>
 
       <View style={styles.body}>
