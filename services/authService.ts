@@ -66,18 +66,24 @@ export class AuthService {
    */
   static deviceBound: boolean = false;
   static async getTokens() {
-    // ✅ Corrected: Use the correct keys for each token.
     const accessToken = await secureStorage.getItemAsync(AUTH_TOKEN_KEY);
-
     const refreshToken = await secureStorage.getItemAsync(REFRESH_TOKEN_KEY);
     return { accessToken, refreshToken };
   }
+
   static async storeTokens(
     accessToken: string,
     refreshToken: string
   ): Promise<void> {
     await secureStorage.setItemAsync(AUTH_TOKEN_KEY, accessToken);
     await secureStorage.setItemAsync(REFRESH_TOKEN_KEY, refreshToken);
+  }
+
+  static async ensureAccessToken(): Promise<string | null> {
+    const { accessToken, refreshToken } = await this.getTokens();
+    if (accessToken) return accessToken;
+    if (!refreshToken) return null;
+    return await this.refreshAccessToken(refreshToken);
   }
   /**
    * Calls the login API, stores tokens, and returns the user.
@@ -122,8 +128,7 @@ export class AuthService {
 
       const { user, token, refresh_token } = response.login;
 
-      await secureStorage.setItemAsync(AUTH_TOKEN_KEY, token);
-      await secureStorage.setItemAsync(REFRESH_TOKEN_KEY, refresh_token);
+      await this.storeTokens(token, refresh_token);
       await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
       return user;
     } catch (error: any) {
@@ -242,8 +247,7 @@ export class AuthService {
 
       // Store tokens immediately after verification for onboarding flow
       // User will use these to create organization and subscription
-      await secureStorage.setItemAsync(AUTH_TOKEN_KEY, token);
-      await secureStorage.setItemAsync(REFRESH_TOKEN_KEY, refresh_token);
+      await this.storeTokens(token, refresh_token);
       await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
 
       console.log(`[AuthService] ✅ Email verified successfully for:`, user.email)
@@ -303,11 +307,11 @@ export class AuthService {
       const response = (await client.request(REFRESH_MUTATION, {
         refresh_token: refreshToken,
       })) as any;
-      const { token } = response.refreshToken;
+      const { token, refresh_token: newRefreshToken } = response.refreshToken;
       await secureStorage.setItemAsync(AUTH_TOKEN_KEY, token);
+      await secureStorage.setItemAsync(REFRESH_TOKEN_KEY, newRefreshToken);
       return token;
     } catch (error) {
-      //console.error('GraphQL refresh error:', error);
       await this.removeUser();
       throw error;
     }
@@ -324,87 +328,100 @@ export class AuthService {
       const LOGOUT_MUTATION = gql`
       mutation Mutation($outletId: ID!) {
         StaffLogout(outletId: $outletId) 
-      }`
-      const { accessToken } = await this.getTokens()
-      const client = await getGraphQLClient()
+      }`;
+      const { accessToken } = await this.getTokens();
+      const client = await getGraphQLClient();
       try {
         await client.request(LOGOUT_MUTATION, { outletId }, {
-          Authorization: `Bearer ${accessToken}`
-        })
+          Authorization: `Bearer ${accessToken}`,
+        });
       } catch (error) {
         //console.error("Logout error in:", error)
       }
     }
-    await secureStorage.deleteItemAsync(AUTH_TOKEN_KEY);
-    // await AsyncStorage.removeItem(BIOMETRIC_ENABLED_KEY);
+
+    await this.removeUser();
   }
 
   //! Fetch user from backend
   static async fetchCurrentUser(): Promise<User | null> {
-    try {
-      // get token  data after login
-
-      const client = await getGraphQLClient();
-      const { accessToken } = await this.getTokens();
-      if (!accessToken) return null;
-      const ME_QUERY = gql`
-        query ME {
-          ME {
+    const ME_QUERY = gql`
+      query ME {
+        ME {
+          id
+          username
+          email
+          profilePhoto
+          fullname
+          role
+          isVerified
+          orgId
+          org {
             id
-            username
-            email
-            profilePhoto
-            fullname
-            role
-            isVerified
-            orgId
-            org {
+            name
+            subscription {
               id
-              name
-              subscription {
-                id
-                plan
-              }
+              plan
             }
           }
         }
-      `;
-      const response = (await client.request(
-        ME_QUERY,
-        {},
-        { Authorization: `Bearer ${accessToken}` }
-      )) as any;
+      }
+    `;
 
-      const user = response.ME;
-      if (user) {
-        await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
+    const requestUser = async (token: string): Promise<User | null> => {
+      try {
+        const client = await getGraphQLClient();
+        const response = (await client.request(
+          ME_QUERY,
+          {},
+          { Authorization: `Bearer ${token}` }
+        )) as any;
+
+        const user = response.ME;
+        if (user) {
+          await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
+        }
+        return user;
+      } catch (error) {
+        return null;
+      }
+    };
+
+    try {
+      const { accessToken, refreshToken } = await this.getTokens();
+      if (accessToken) {
+        const user = await requestUser(accessToken);
+        if (user) return user;
       }
 
-      return user;
+      if (!refreshToken) {
+        return null;
+      }
+
+      const newAccessToken = await this.refreshAccessToken(refreshToken);
+      if (!newAccessToken) {
+        return null;
+      }
+
+      return await requestUser(newAccessToken);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error)
+      const errorMessage = error instanceof Error ? error.message : String(error);
       if (process.env.EXPO_PUBLIC_ENV === 'development') {
-        console.warn('[AuthService] fetchCurrentUser error:', errorMessage)
+        console.warn('[AuthService] fetchCurrentUser error:', errorMessage);
       }
-      // Don't show alert during onboarding - silently return null for token refresh
       return null;
     }
   }
 
   static async getCurrentUser(): Promise<User | null> {
     try {
-      // get token  data after login
-      const token = await secureStorage.getItemAsync(AUTH_TOKEN_KEY);
-
-      if (!token) return null;
-
       // get user data after login
       const userData = await AsyncStorage.getItem(USER_DATA_KEY);
       if (!userData) return null;
 
       return JSON.parse(userData);
     } catch (error) {
-      //console.error('Error geting current user:', error);
+      //console.error('Error getting current user:', error);
       return null;
     }
   }
@@ -479,10 +496,33 @@ export class AuthService {
       wifiAuthorized?: boolean;
     }
     */
+  static async getStoredAuthState(): Promise<AuthState | null> {
+    const { accessToken, refreshToken } = await this.getTokens();
+    const user = await this.getCurrentUser();
+
+    if (user && (accessToken || refreshToken)) {
+      return {
+        user,
+        isLoading: false,
+        accessToken,
+        refreshToken,
+        isAuthenticated: true,
+      };
+    }
+
+    return null;
+  }
+
   static async initializeAuth(): Promise<AuthState> {
     try {
-      const user = await this.getCurrentUser();
+      const storedAuthState = await this.getStoredAuthState();
+      if (storedAuthState) {
+        return storedAuthState;
+      }
+
+      const user = await this.fetchCurrentUser();
       const { accessToken, refreshToken } = await this.getTokens();
+
       if (!user || !accessToken) {
         return {
           user: null,
@@ -492,15 +532,15 @@ export class AuthService {
           isAuthenticated: false,
         };
       }
+
       return {
         user,
         isLoading: false,
         accessToken,
         refreshToken,
-        isAuthenticated: !!accessToken && !!user,
+        isAuthenticated: true,
       };
     } catch (error) {
-      //console.error('Error initializing auth:', error);
       return {
         user: null,
         isLoading: false,

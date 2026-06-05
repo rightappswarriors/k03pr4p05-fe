@@ -54,17 +54,13 @@ export default function LayoutScreen() {
     );
   }
 
-  // Access control: if NOT owner AND has NOT timed in, show HR screen
+  // Access control: if NOT owner AND has NOT timed in, show HR screen.
+  // HRScreen also uses master file hooks, so it must be inside MasterFileProvider.
   const isOwner = user?.role === 'OWNER';
-  
-  if (!isOwner && !hasTimeIn) {
-    return <HRScreen />;
-  }
 
-  // Otherwise, show full ERP layout
   return (
     <MasterFileProvider>
-      <ERPLayout />
+      {!isOwner && !hasTimeIn ? <HRScreen /> : <ERPLayout />}
     </MasterFileProvider>
   );
 }

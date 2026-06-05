@@ -31,41 +31,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const checkAuthStatus = async () => {
     try {
-      setLoading(true)
-      const user = await AuthService.fetchCurrentUser();
-      setAuthState({
-        user,
-        isLoading: false,
-        isAuthenticated: !!user,
-      });
+      setLoading(true);
+      const authState = await AuthService.initializeAuth();
+      setAuthState(authState);
     } catch (error) {
       setAuthState({
         user: null,
         isLoading: false,
         isAuthenticated: false,
+        accessToken: null,
+        refreshToken: null,
       });
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   };
 
   const refreshUser = async () => {
     try {
-      setLoading(true)
-      const user = await AuthService.fetchCurrentUser();
-      setAuthState({
-        user,
-        isLoading: false,
-        isAuthenticated: !!user,
-      });
+      setLoading(true);
+      const authState = await AuthService.initializeAuth();
+      setAuthState(authState);
     } catch (error) {
       setAuthState({
         user: null,
         isLoading: false,
         isAuthenticated: false,
+        accessToken: null,
+        refreshToken: null,
       });
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   };
 
@@ -73,13 +69,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setLoading(true);
       const user = await AuthService.login(email, password);
+      const { accessToken, refreshToken } = await AuthService.getTokens();
 
       setAuthState({
         user,
         isLoading: false,
         isAuthenticated: true,
-        //accessToken,
-        //refreshToken,
+        accessToken,
+        refreshToken,
       });
     } finally {
       setLoading(false);
