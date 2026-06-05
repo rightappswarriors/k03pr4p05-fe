@@ -1,6 +1,4 @@
 // contexts/SubscriptionContext.tsx
-// Fixed: canAddBranch / canAddOutlet check >= not <
-// Basic: 1 branch, 3 outlets. Gold: unlimited.
 
 import React, { createContext, useContext, useState } from 'react';
 
@@ -19,18 +17,28 @@ interface SubscriptionLimits {
   canAccessRestockScheduling: boolean;
 }
 
+// ─── PRODUCTION NOTE ─────────────────────────────────────────────────────────
+// All features are currently unlocked (open beta / single-tier launch).
+// Finance and RestockScheduling are hidden in the UI via ERPLayout (not here).
+//
+// TO RESTORE GATING when subscription tiers go live:
+//   1. Replace PLAN_LIMITS below with the commented-out version underneath it.
+//   2. In ERPLayout.tsx, restore Finance and RestockScheduling inside GATED_NAV.
+//   3. Remove PlanToggleFAB from the header in ERPLayout.tsx.
+// ─────────────────────────────────────────────────────────────────────────────
+
 const PLAN_LIMITS: Record<SubscriptionPlan, SubscriptionLimits> = {
   basic: {
-    maxBranches: 1,
-    maxOutlets: 3,
-    canAccessHR: false,
-    canAccessFinance: false,
-    canAccessAnalytics: false,
-    canAccessMasterFile: false,
-    canExport: false,
-    canAccessExpenseSummary: false,
+    maxBranches: Infinity,   // RESTORE TO: 1
+    maxOutlets: Infinity,    // RESTORE TO: 3
+    canAccessHR: true,               // RESTORE TO: false
+    canAccessFinance: true,          // RESTORE TO: false  (also hidden in UI)
+    canAccessAnalytics: true,        // RESTORE TO: false
+    canAccessMasterFile: true,       // RESTORE TO: false
+    canExport: true,                 // RESTORE TO: false
+    canAccessExpenseSummary: true,   // RESTORE TO: false
     canAccessItemNetSummary: true,
-    canAccessRestockScheduling: false,
+    canAccessRestockScheduling: true, // RESTORE TO: false (also hidden in UI)
   },
   gold: {
     maxBranches: Infinity,
@@ -46,11 +54,39 @@ const PLAN_LIMITS: Record<SubscriptionPlan, SubscriptionLimits> = {
   },
 };
 
+// ─── RESTORE: Gated limits (uncomment when tiers go live) ────────────────────
+// const PLAN_LIMITS: Record<SubscriptionPlan, SubscriptionLimits> = {
+//   basic: {
+//     maxBranches: 1,
+//     maxOutlets: 3,
+//     canAccessHR: false,
+//     canAccessFinance: false,
+//     canAccessAnalytics: false,
+//     canAccessMasterFile: false,
+//     canExport: false,
+//     canAccessExpenseSummary: false,
+//     canAccessItemNetSummary: true,
+//     canAccessRestockScheduling: false,
+//   },
+//   gold: {
+//     maxBranches: Infinity,
+//     maxOutlets: Infinity,
+//     canAccessHR: true,
+//     canAccessFinance: true,
+//     canAccessAnalytics: true,
+//     canAccessMasterFile: true,
+//     canExport: true,
+//     canAccessExpenseSummary: true,
+//     canAccessItemNetSummary: true,
+//     canAccessRestockScheduling: true,
+//   },
+// };
+// ─────────────────────────────────────────────────────────────────────────────
+
 interface SubscriptionContextType {
   plan: SubscriptionPlan;
   limits: SubscriptionLimits;
   setPlan: (plan: SubscriptionPlan) => void;
-  // FIX: returns true if user CAN add (currentCount < max)
   canAddBranch: (currentCount: number) => boolean;
   canAddOutlet: (currentCount: number) => boolean;
 }
@@ -64,15 +100,9 @@ export function SubscriptionProvider({
 }: {
   children: React.ReactNode;
 }) {
-  // Default to 'basic' — set to 'gold' once backend confirms the user's plan.
-  // In production: read from JWT payload or user profile API on login.
-  // To test Gold features during dev: change 'basic' → 'gold' here temporarily.
   const [plan, setPlan] = useState<SubscriptionPlan>('basic');
   const limits = PLAN_LIMITS[plan];
 
-  // FIX: was using < but maxBranches is 1, so 1 < 1 = false correctly
-  // The real bug was that branches.length was stale. Now we pass the
-  // *current* count explicitly so it's always fresh.
   const canAddBranch = (currentCount: number) =>
     limits.maxBranches === Infinity || currentCount < limits.maxBranches;
 

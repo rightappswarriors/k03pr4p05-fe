@@ -50,6 +50,7 @@ import AuditLogScreen from '@/screens/AuditLogScreen';
 import DiscountTrackingScreen from '@/screens/DiscountTrackingScreen';
 import OrderManagement from '@/screens/KompraOrderManagement';
 import { useAuth } from '@/contexts/AuthContext';
+import { ComingSoonScreen } from '../ComingSoon';
 
 // ─── DEV: Plan Toggle FAB ─────────────────────────────────────────────────────
 // Floating badge for presentations and testing — tap to switch Basic ↔ Gold.
@@ -176,23 +177,23 @@ const FREE_NAV: NavItem[] = [
   { key: 'AuditLog', label: 'Audit Log' },
 ];
 
-// Gold-only nav items — shown as LockedNavItem for Basic
+// Gold-only nav items — LockedNavItem for Basic, normal for Gold
+// Finance and RestockScheduling are DEV-only: hidden in production builds.
+// TO RESTORE in production: remove the __DEV__ wrapper and move them here permanently.
 const GATED_NAV: (NavItem & { featureName: string })[] = [
-  {
-    key: 'RestockScheduling',
-    label: 'Restock Item',
-    featureName: 'Restock Scheduling',
-  },
   { key: 'HR', label: 'HR', featureName: 'HR Module' },
-  { key: 'Finance', label: 'Finance', featureName: 'Finance & Budget Planner' },
+  { key: 'SalesAnalytics', label: 'Sales Analytics', featureName: 'Sales Analytics' },
 
-  {
-    key: 'SalesAnalytics',
-    label: 'Sales Analytics',
-    featureName: 'Sales Analytics',
-  },
+  // ─── DEV ONLY ────────────────────────────────────────────────────────────
+  // Visible in `expo start` / debug builds. Hidden in `eas build --profile production`.
+  // To promote to production: move these two entries outside the __DEV__ spread.
+  ...(__DEV__
+    ? [
+      { key: 'RestockScheduling' as ERPRoute, label: 'Restock Item', featureName: 'Restock Scheduling' },
+      { key: 'Finance' as ERPRoute, label: 'Finance', featureName: 'Finance & Budget Planner' },
+    ]
+    : []),
 ];
-
 // Combined for label lookups
 const ALL_NAV: NavItem[] = [
   ...FREE_NAV,
@@ -623,33 +624,40 @@ export default function ERPLayout() {
       SalesOrders: <SalesScreen />,
       KompraOrders: <OrderManagement />,
       Inventory: <InventoryScreen />,
-      RestockScheduling: limits.canAccessRestockScheduling ? (
-        <RestockSchedulingScreen />
-      ) : (
-        <LockedScreen featureName="Restock Scheduling" />
-      ),
-      HR: limits.canAccessHR ? (
-        <HRScreen />
-      ) : (
-        <LockedScreen featureName="HR Module" />
-      ),
-      Finance: limits.canAccessFinance ? (
-        <FinanceScreen />
-      ) : (
-        <LockedScreen featureName="Finance & Budget Planner" />
-      ),
-      SalesAnalytics: limits.canAccessAnalytics ? (
-        <SalesAnalyticsScreen />
-      ) : (
-        <LockedScreen featureName="Sales Analytics" />
-      ),
-      MasterFile: limits.canAccessMasterFile ? (
-        <MasterFileScreen />
-      ) : (
-        <LockedScreen featureName="Master File" />
-      ),
+      HR: limits.canAccessHR ? <HRScreen /> : <LockedScreen featureName="HR Module" />,
+      SalesAnalytics: limits.canAccessAnalytics
+        ? <SalesAnalyticsScreen />
+        : <LockedScreen featureName="Sales Analytics" />,
+      MasterFile: limits.canAccessMasterFile
+        ? <MasterFileScreen />
+        : <LockedScreen featureName="Master File" />,
       DiscountTracking: <DiscountTrackingScreen />,
       AuditLog: <AuditLogScreen />,
+
+      // ─── DEV ONLY ──────────────────────────────────────────────────────────
+      // In dev (__DEV__ = true): renders the real screen so you can build/test it.
+      // In production (__DEV__ = false): renders ComingSoonScreen — nav item is
+      //   also hidden (see GATED_NAV), so this is just a safety net for direct
+      //   route access or stale state.
+      //
+      // TO PROMOTE to production:
+      //   Replace the ternary with the real gated version, e.g.:
+      //     Finance: limits.canAccessFinance
+      //       ? <FinanceScreen />
+      //       : <LockedScreen featureName="Finance & Budget Planner" />
+      //   Then move Finance + RestockScheduling back into GATED_NAV permanently.
+      // ───────────────────────────────────────────────────────────────────────
+      Finance: __DEV__
+        ? limits.canAccessFinance
+          ? <FinanceScreen />
+          : <LockedScreen featureName="Finance & Budget Planner" />
+        : <ComingSoonScreen featureName="Finance" />,
+
+      RestockScheduling: __DEV__
+        ? limits.canAccessRestockScheduling
+          ? <RestockSchedulingScreen />
+          : <LockedScreen featureName="Restock Scheduling" />
+        : <ComingSoonScreen featureName="Restock Scheduling" />,
     }),
     [limits],
   );
