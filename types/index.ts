@@ -87,9 +87,10 @@ export interface User {
   email: string;
   fullname?: string;
   name: string;
+  
   role: 'OWNER' | 'CASHIER' | 'STAFF' | 'MANAGER' | 'ADMIN';
   isVerified?: boolean;
-  orgId?: number;
+  orgId: number;
   org?: OrganizationInfo | null;
   assignedOutletId?: string; // For cashiers
   assignedStoreId?: string;

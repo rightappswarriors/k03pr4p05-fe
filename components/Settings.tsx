@@ -23,6 +23,7 @@ import {
   Sun,
   Moon,
   Trash2,
+  Building2,
 } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -35,6 +36,8 @@ import { responsive } from '@/styles/desktopAndTablet';
 import { useSegments } from 'expo-router';
 import { router } from 'expo-router';
 import { AuthService } from '@/services/authService';
+import UserProfileModal from '@/components/UserProfileModal';
+import OrganizationProfileModal from '@/components/OrganizationProfileModal';
 
 export default React.memo(function SettingsScreen({
   outletId,
@@ -58,17 +61,24 @@ export default React.memo(function SettingsScreen({
   } | null>(null);
   const [assignmentLoading, setAssignmentLoading] = useState(true);
 
+  // ── Modal visibility state ──────────────────────────────────
+  const [userProfileVisible, setUserProfileVisible] = useState(false);
+  const [orgProfileVisible, setOrgProfileVisible] = useState(false);
+
   const segments = useSegments();
   const isInTabs = segments[0] === '(tabs)';
   const isInEmployee = segments[0] === '(employee)';
+  const { isDesktop, isTablet } = useResponsive();
+
+  const isOwner = user?.role === 'OWNER';
+
   useEffect(() => {
     checkBiometricSettings();
-
     AuthService.getMyOutletAssignment()
       .then(setAssignment)
       .finally(() => setAssignmentLoading(false));
   }, []);
-  const { isDesktop, isTablet } = useResponsive();
+
   const checkBiometricSettings = async () => {
     const supported = await isBiometricSupported();
     const enabled = await isBiometricEnabled();
@@ -90,15 +100,14 @@ export default React.memo(function SettingsScreen({
       Alert.alert('Error', 'Failed to update biometric settings');
     }
   };
+
   const handleLogout = async () => {
     if (Platform.OS === 'web') {
       const confirmed = window.confirm('Are you sure you want to logout?');
       if (confirmed) {
         try {
           await logout(Number(outletId));
-        } catch (error) {
-          //console.error('Logout Failed')
-        }
+        } catch (error) { }
       }
     } else {
       Alert.alert('Logout', 'Are you sure you want to logout?', [
@@ -116,9 +125,8 @@ export default React.memo(function SettingsScreen({
     try {
       const orders = await StorageService.getOfflineOrders();
       const unsynced = orders.filter(
-        (order) => order.status === 'PENDING' || order.status === 'FAILED'
+        (order) => order.status === 'PENDING' || order.status === 'FAILED',
       );
-
       if (unsynced.length > 0) {
         Alert.alert(
           'Cannot Clear Local Data',
@@ -147,6 +155,19 @@ export default React.memo(function SettingsScreen({
       ],
     );
   };
+
+  // ── Guard: only OWNER can open the org modal ────────────────
+  const handleOrgProfilePress = () => {
+    if (!isOwner) {
+      Alert.alert(
+        'Access Restricted',
+        'Only the organization owner can edit the organization profile.',
+      );
+      return;
+    }
+    setOrgProfileVisible(true);
+  };
+
   return (
     <SafeAreaView
       edges={['top']}
@@ -165,6 +186,7 @@ export default React.memo(function SettingsScreen({
           Powered by Right Apps
         </Text>
       </View>
+
       <ScrollView
         style={[
           styles.content,
@@ -186,20 +208,11 @@ export default React.memo(function SettingsScreen({
               <Text style={[styles.profileName, { color: colors.text }]}>
                 {user?.name}
               </Text>
-              <Text
-                style={[styles.profileEmail, { color: colors.textSecondary }]}
-              >
+              <Text style={[styles.profileEmail, { color: colors.textSecondary }]}>
                 {user?.email}
               </Text>
-              <View
-                style={[
-                  styles.roleBadge,
-                  { backgroundColor: colors.background },
-                ]}
-              >
-                <Text
-                  style={[styles.roleText, { color: colors.textSecondary }]}
-                >
+              <View style={[styles.roleBadge, { backgroundColor: colors.background }]}>
+                <Text style={[styles.roleText, { color: colors.textSecondary }]}>
                   {user?.role === 'OWNER' ? 'Owner' : 'Cashier'}
                 </Text>
               </View>
@@ -207,17 +220,39 @@ export default React.memo(function SettingsScreen({
           </View>
         </View>
 
+        {/* Account Section — User Profile & Org Profile */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
+            Account
+          </Text>
+          <View style={[styles.settingsGroup, { backgroundColor: colors.card }]}>
+
+            {/* Any logged-in user can view/edit their own profile */}{
+              __DEV__ && <SettingItem
+                icon={<User size={20} color={colors.primary} />}
+                title="My Profile"
+                subtitle="Edit your personal information"
+                onPress={() => setUserProfileVisible(true)}
+              />
+            }
+            {/* Org profile — tappable for all, but guarded inside handler */}
+            <SettingItem
+              icon={<Building2 size={20} color={isOwner ? colors.accent : colors.textSecondary} />}
+              title="Organization Profile"
+              subtitle={isOwner ? 'Edit your organization details' : 'Owner access required'}
+              onPress={handleOrgProfilePress}
+            />
+
+          </View>
+        </View>
+
         {/* Security Settings */}
         {biometricSupported && (
           <View style={styles.section}>
-            <Text
-              style={[styles.sectionTitle, { color: colors.textSecondary }]}
-            >
+            <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
               Security
             </Text>
-            <View
-              style={[styles.settingsGroup, { backgroundColor: colors.card }]}
-            >
+            <View style={[styles.settingsGroup, { backgroundColor: colors.card }]}>
               <SettingItem
                 icon={<Fingerprint size={20} color="#8B5CF6" />}
                 title="Biometric Login"
@@ -237,22 +272,18 @@ export default React.memo(function SettingsScreen({
         )}
 
         {/* App Settings */}
-        <View style={[styles.section]}>
+        <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
             App Settings
           </Text>
-          <View
-            style={[styles.settingsGroup, { backgroundColor: colors.card }]}
-          >
+          <View style={[styles.settingsGroup, { backgroundColor: colors.card }]}>
             <SettingItem
               icon={
-                theme === 'light' ? (
-                  <Moon size={20} color="#6366F1" />
-                ) : (
-                  <Sun size={20} color="#F59E0B" />
-                )
+                theme === 'light'
+                  ? <Moon size={20} color="#6366F1" />
+                  : <Sun size={20} color="#F59E0B" />
               }
-              title={'Theme'}
+              title="Theme"
               subtitle={theme === 'light' ? 'Light Mode' : 'Dark Mode'}
               showChevron={false}
               rightComponent={
@@ -264,19 +295,18 @@ export default React.memo(function SettingsScreen({
                 />
               }
             />
-
             <SettingItem
               icon={<Smartphone size={20} color="#6B7280" />}
-              title={'App Version'}
-              subtitle={'1.0.0'}
+              title="App Version"
+              subtitle="1.0.0"
               showChevron={false}
             />
             <SettingItem
-              style={'warning'}
+              style="warning"
               onPress={clearLocalData}
               icon={<Trash2 size={20} color="#6B7280" />}
-              title={'Clear local data'}
-              subtitle={'1.0.0'}
+              title="Clear local data"
+              subtitle="Remove all offline orders and sync logs"
               showChevron={false}
             />
           </View>
@@ -285,14 +315,10 @@ export default React.memo(function SettingsScreen({
         {/* Attendance — hidden if already in /(employee) */}
         {!isInEmployee && (
           <View style={styles.section}>
-            <Text
-              style={[styles.sectionTitle, { color: colors.textSecondary }]}
-            >
+            <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
               Attendance
             </Text>
-            <View
-              style={[styles.settingsGroup, { backgroundColor: colors.card }]}
-            >
+            <View style={[styles.settingsGroup, { backgroundColor: colors.card }]}>
               <SettingItem
                 icon={<Store size={20} color="#EF4444" />}
                 title="Attendance Management"
@@ -306,14 +332,10 @@ export default React.memo(function SettingsScreen({
         {/* POS Terminal — only if assigned as CASHIER, hidden if already in /(tabs) */}
         {!assignmentLoading && assignment?.role === 'CASHIER' && !isInTabs && (
           <View style={styles.section}>
-            <Text
-              style={[styles.sectionTitle, { color: colors.textSecondary }]}
-            >
+            <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
               POS Terminal
             </Text>
-            <View
-              style={[styles.settingsGroup, { backgroundColor: colors.card }]}
-            >
+            <View style={[styles.settingsGroup, { backgroundColor: colors.card }]}>
               <SettingItem
                 icon={<Store size={20} color="#10B981" />}
                 title={assignment.outletName}
@@ -328,14 +350,10 @@ export default React.memo(function SettingsScreen({
         {(user?.role === 'OWNER' || user?.role === 'MANAGER') &&
           segments[0] !== '(erp)' && (
             <View style={styles.section}>
-              <Text
-                style={[styles.sectionTitle, { color: colors.textSecondary }]}
-              >
+              <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
                 Management
               </Text>
-              <View
-                style={[styles.settingsGroup, { backgroundColor: colors.card }]}
-              >
+              <View style={[styles.settingsGroup, { backgroundColor: colors.card }]}>
                 <SettingItem
                   icon={<SettingsIcon size={20} color="#3B82F6" />}
                   title="Back to ERP"
@@ -346,23 +364,18 @@ export default React.memo(function SettingsScreen({
             </View>
           )}
 
-        {/* Support Section */}
+        {/* Support */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
             Support
           </Text>
-          <View
-            style={[styles.settingsGroup, { backgroundColor: colors.card }]}
-          >
+          <View style={[styles.settingsGroup, { backgroundColor: colors.card }]}>
             <SettingItem
               icon={<SettingsIcon size={20} color="#6B7280" />}
-              title={'Help & Support'}
-              subtitle={'Get help and contact support'}
+              title="Help & Support"
+              subtitle="Get help and contact support"
               onPress={() =>
-                Alert.alert(
-                  'Support',
-                  'Contact support at support@techstore.com',
-                )
+                Alert.alert('Support', 'Contact support at support@techstore.com')
               }
             />
           </View>
@@ -375,15 +388,34 @@ export default React.memo(function SettingsScreen({
             onPress={handleLogout}
           >
             <LogOut size={20} color="#EF4444" />
-            <Text
-              style={[styles.logoutText, { color: colors.textSecondary }]}
-              className="transition-all duration-400"
-            >
+            <Text style={[styles.logoutText, { color: colors.textSecondary }]}>
               Logout
             </Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* ── Modals ───────────────────────────────────────────── */}
+      {__DEV__ && (<UserProfileModal
+        visible={userProfileVisible}
+        onClose={() => setUserProfileVisible(false)}
+        onUpdated={() => {
+          // Optionally refresh user data here, e.g. refetchUser()
+        }}
+      />)}
+
+      {/* Only mount the org modal if the user is owner to avoid
+          unnecessary service calls for non-owners */}
+      {isOwner && (
+        <OrganizationProfileModal
+          visible={orgProfileVisible}
+          onClose={() => setOrgProfileVisible(false)}
+          organizationId={user?.orgId}
+          onUpdated={() => {
+            // Optionally refresh org data here
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 });

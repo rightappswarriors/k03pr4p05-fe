@@ -17,13 +17,21 @@ export class OrganizationService {
     const response = await graphQLRequest<{ organizations: any[] }>(QUERY);
     return response.organizations;
   }
-
   static async getOrganization(id: number): Promise<any | null> {
     const QUERY = gql`
       query GetOrganization($id: Int!) {
         organization(id: $id) {
           id
           name
+          bio
+          email
+          contactNumber
+          location
+          profileImg
+          bannerImg
+          facebookLink
+          instagramLink
+          twitterLink
           createdAt
           updatedAt
           subscription {
@@ -34,19 +42,19 @@ export class OrganizationService {
         }
       }
     `;
-
     const response = await graphQLRequest<{ organization: any | null }>(QUERY, { id });
     return response.organization;
   }
+
 
   static async createOrganization(name: string): Promise<any> {
     if (!name || !name.trim()) {
       throw new Error('Organization name is required');
     }
-    
+
     try {
       console.log(`[Frontend] Creating organization: ${name}`)
-      
+
       const MUTATION = gql`
         mutation CreateOrganization($name: String!) {
           createOrganization(name: $name) {
@@ -58,11 +66,11 @@ export class OrganizationService {
       `;
 
       const response = await graphQLRequest<{ createOrganization: any }>(MUTATION, { name });
-      
+
       if (!response?.createOrganization) {
         throw new Error('No organization returned from server');
       }
-      
+
       console.log(`[Frontend] ✅ Organization created:`, response.createOrganization)
       return response.createOrganization;
     } catch (error) {
@@ -72,22 +80,66 @@ export class OrganizationService {
     }
   }
 
-  static async updateOrganization(id: number, name: string): Promise<any> {
+  static async updateOrganization(
+    id: number,
+    data: {
+      name?: string;
+      bio?: string;
+      email?: string;
+      contactNumber?: string;
+      location?: string;
+      profileImg?: string;
+      bannerImg?: string;
+      facebookLink?: string;
+      instagramLink?: string;
+      twitterLink?: string;
+    }
+  ): Promise<any> {
     const MUTATION = gql`
-      mutation UpdateOrganization($id: Int!, $name: String) {
-        updateOrganization(id: $id, name: $name) {
+      mutation UpdateOrganization(
+        $id:            Int!
+        $name:          String
+        $bio:           String
+        $email:         String
+        $contactNumber: String
+        $location:      String
+        $profileImg:    String
+        $bannerImg:     String
+        $facebookLink:  String
+        $instagramLink: String
+        $twitterLink:   String
+      ) {
+        updateOrganization(
+          id:            $id
+          name:          $name
+          bio:           $bio
+          email:         $email
+          contactNumber: $contactNumber
+          location:      $location
+          profileImg:    $profileImg
+          bannerImg:     $bannerImg
+          facebookLink:  $facebookLink
+          instagramLink: $instagramLink
+          twitterLink:   $twitterLink
+        ) {
           id
           name
+          bio
+          email
+          contactNumber
+          location
+          profileImg
+          bannerImg
+          facebookLink
+          instagramLink
+          twitterLink
           createdAt
           updatedAt
         }
       }
     `;
 
-    const response = await graphQLRequest<{ updateOrganization: any }>(MUTATION, {
-      id,
-      name,
-    });
+    const response = await graphQLRequest<{ updateOrganization: any }>(MUTATION, { id, ...data });
     return response.updateOrganization;
   }
 }

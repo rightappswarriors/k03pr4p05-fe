@@ -87,7 +87,7 @@ export default function LoginScreenDefault({ isDesktop }: Props) {
             Welcome Back
           </Text>
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-            Sign in to your Pos account
+            Sign in to your Kompra portal account
           </Text>
         </View>
 

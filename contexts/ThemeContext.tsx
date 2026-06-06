@@ -32,6 +32,8 @@ const lightColors = {
   success: '#10B981',
   warning: '#E87722', // reuse brand orange for warnings
   error: '#EF4444',
+  danger: '#EF4444',        // mirrors error; diverge later if needed
+  cardBackground: '#F0F4FF', // faint navy wash — depth vs #F5F7FA bg
 };
 
 const darkColors = {
@@ -47,7 +49,9 @@ const darkColors = {
   card: '#162D52', // slightly lighter than background
   success: '#34D399',
   warning: '#FBBF24',
-  error: '#F87171',
+  error: '#F87171', 
+  danger: '#F87171',         // mirrors error for dark mode
+  cardBackground: '#1A3355', // slightly lighter than card (#162D52)
 };
 
 // ── Context ─────────────────────────────────────────────────────
