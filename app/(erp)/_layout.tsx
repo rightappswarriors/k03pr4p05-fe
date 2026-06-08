@@ -1,6 +1,6 @@
 import { SubscriptionProvider } from '@/contexts/SubscriptionContext';
 import { WebSocketProvider } from '@/contexts/WSContext';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuth } from '@/contexts/AuthContext';
 import { router, Tabs } from 'expo-router';
 import {
   BarChart3,

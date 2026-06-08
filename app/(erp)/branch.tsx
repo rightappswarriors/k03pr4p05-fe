@@ -30,7 +30,7 @@ import {
   Package,
 } from 'lucide-react-native';
 import { router } from 'expo-router';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuth } from '@/contexts/AuthContext';
 import { AdminService } from '@/services/ManagerService';
 import { Branch, BranchRevenue } from '@/types';
 import { DateRangeFilter, getDateRange } from '@/utils/dateHelpers';

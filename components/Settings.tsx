@@ -39,7 +39,7 @@ import { AuthService } from '@/services/authService';
 import UserProfileModal from '@/components/UserProfileModal';
 import OrganizationProfileModal from '@/components/OrganizationProfileModal';
 
-export default React.memo(function SettingsScreen({
+export default function SettingsScreen({
   outletId,
 }: {
   outletId?: number | null;
@@ -54,6 +54,9 @@ export default React.memo(function SettingsScreen({
   const { theme, toggleTheme, colors } = useTheme();
   const [biometricSupported, setBiometricSupported] = useState(false);
   const [biometricEnabled, setBiometricEnabledState] = useState(false);
+
+  const [userProfileVisible, setUserProfileVisible] = useState(false);
+  const [orgProfileVisible, setOrgProfileVisible] = useState(false);
   const [assignment, setAssignment] = useState<{
     outletId: number;
     role: string;
@@ -62,8 +65,6 @@ export default React.memo(function SettingsScreen({
   const [assignmentLoading, setAssignmentLoading] = useState(true);
 
   // ── Modal visibility state ──────────────────────────────────
-  const [userProfileVisible, setUserProfileVisible] = useState(false);
-  const [orgProfileVisible, setOrgProfileVisible] = useState(false);
 
   const segments = useSegments();
   const isInTabs = segments[0] === '(tabs)';
@@ -73,7 +74,15 @@ export default React.memo(function SettingsScreen({
   const isOwner = user?.role === 'OWNER';
 
   useEffect(() => {
-    checkBiometricSettings();
+    // ✅ These are async functions from context, not hooks — safe to call inside useEffect
+    const init = async () => {
+      const supported = await isBiometricSupported();
+      const enabled = await isBiometricEnabled();
+      setBiometricSupported(supported);
+      setBiometricEnabledState(enabled);
+    };
+    init();
+
     AuthService.getMyOutletAssignment()
       .then(setAssignment)
       .finally(() => setAssignmentLoading(false));
@@ -120,7 +129,7 @@ export default React.memo(function SettingsScreen({
       ]);
     }
   };
-
+  console.log('segments:', segments);
   const clearLocalData = async () => {
     try {
       const orders = await StorageService.getOfflineOrders();
@@ -418,4 +427,4 @@ export default React.memo(function SettingsScreen({
       )}
     </SafeAreaView>
   );
-});
+};

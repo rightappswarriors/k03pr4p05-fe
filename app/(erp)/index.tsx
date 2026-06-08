@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import ERPLayout from '@/components/erp/ERPLayout';
 import HRScreen from '@/screens/HRScreen';
 import { MasterFileProvider } from '@/contexts/MasterFileContext';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuth } from '@/contexts/AuthContext';
 import { HrService } from '@/services';
 import { ActivityIndicator, View } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';

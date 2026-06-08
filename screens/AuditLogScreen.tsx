@@ -15,7 +15,7 @@ import {
   ChevronDown,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuth } from '@/contexts/AuthContext';
 import { AuditService } from '@/services/auditService';
 import { HrService } from '@/services/hrService';
 

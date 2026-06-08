@@ -11,7 +11,7 @@ import { OrgCategoryService } from '@/services/orgCategoryService';
 import { PositionService } from '@/services/positionService';
 import { SubCenterService } from '@/services/subCenterService';
 import { VatTypeService } from '@/services/vatTypeService';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuth } from '@/contexts/AuthContext';
 import React, {
   createContext,
   useCallback,
