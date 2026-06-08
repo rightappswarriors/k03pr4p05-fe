@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { AppState } from 'react-native'; // ✅ add this import
 import { AuthService } from '@/services/authService';
 import type { AuthState } from '@/types';
 import { useLoading } from '@/contexts/LoadingContext'
@@ -6,7 +7,7 @@ import { useLoading } from '@/contexts/LoadingContext'
 interface AuthContextType extends AuthState {
   login: (email: string, password: string) => Promise<void>;
   loginWithBiometric: () => Promise<void>;
-  logout: (outletId: number) => Promise<void>;  // ✅ add outletId here
+  logout: (outletId: number) => Promise<void>;
   removeUser: () => Promise<void>;
   refreshUser: () => Promise<void>;
   setBiometricEnabled: (enabled: boolean) => Promise<void>;
@@ -15,6 +16,7 @@ interface AuthContextType extends AuthState {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { setLoading } = useLoading()
   const [authState, setAuthState] = useState<AuthState>({
@@ -25,9 +27,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refreshToken: null,
   });
 
+  // ─── Initial auth check on mount ───────────────────────────────────────────
   useEffect(() => {
     checkAuthStatus();
   }, []);
+
+  // ─── Refresh token when app comes back to foreground ───────────────────────
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', async (nextState) => {
+      if (nextState === 'active') {
+        const updated = await AuthService.onAppForeground();
+        if (updated) {
+          // Token refreshed — update state silently, no loading spinner needed
+          setAuthState(updated);
+        } else {
+          // Refresh token expired or invalid — force logout
+          setAuthState({
+            user: null,
+            isLoading: false,
+            isAuthenticated: false,
+            accessToken: null,
+            refreshToken: null,
+          });
+        }
+      }
+    });
+
+    return () => sub.remove(); // ✅ cleanup on unmount
+  }, []);
+
+  // ───────────────────────────────────────────────────────────────────────────
 
   const checkAuthStatus = async () => {
     try {
@@ -125,6 +154,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const setBiometricEnabled = async (enabled: boolean) => {
     await AuthService.setBiometricEnabled(enabled);
   };
+
   const removeUser = async () => {
     try {
       setLoading(true)
@@ -140,6 +170,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false)
     }
   }
+
   const isBiometricSupported = async () => {
     return await AuthService.isBiometricSupported();
   };
@@ -166,7 +197,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     </AuthContext.Provider>
   );
 }
-
 
 export function useAuth() {
   const context = useContext(AuthContext)

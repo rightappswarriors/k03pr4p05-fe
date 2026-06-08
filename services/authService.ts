@@ -562,5 +562,94 @@ export class AuthService {
       return false;
     }
   }
+  /**
+ * Decodes a JWT and returns its expiry timestamp (in ms), or null if invalid.
+ */
+  static getTokenExpiry(token: string): number | null {
+    try {
+      const [, payloadB64] = token.split('.');
+      if (!payloadB64) return null;
+      const decoded = JSON.parse(atob(payloadB64));
+      return decoded.exp ? decoded.exp * 1000 : null;
+    } catch {
+      return null;
+    }
+  }
 
+  /**
+   * Returns true if the token is expired or expiring within the threshold.
+   * Defaults to 2 minutes — gives enough runway to refresh before a request fails.
+   */
+  static isTokenExpiringSoon(token: string, thresholdMs = 2 * 60 * 1000): boolean {
+    const expiry = this.getTokenExpiry(token);
+    if (!expiry) return true; // treat undecodable as already expired
+    return Date.now() >= expiry - thresholdMs;
+  }
+
+  /**
+   * Silently refreshes the access token if it is expired or expiring soon.
+   * Safe to call on every app foreground — no-ops if the token is still valid.
+   *
+   * Returns the valid access token, or null if refresh failed (user must log in again).
+   */
+  static async silentRefresh(): Promise<string | null> {
+    try {
+      const { accessToken, refreshToken } = await this.getTokens();
+
+      // Token is still valid — nothing to do
+      if (accessToken && !this.isTokenExpiringSoon(accessToken)) {
+        return accessToken;
+      }
+
+      if (!refreshToken) return null;
+
+      // Refresh token itself is expired — full re-login required
+      if (this.isTokenExpiringSoon(refreshToken, 0)) {
+        await this.removeUser();
+        return null;
+      }
+
+      return await this.refreshAccessToken(refreshToken);
+    } catch (error) {
+      if (process.env.EXPO_PUBLIC_ENV === 'development') {
+        console.warn('[AuthService] silentRefresh failed:', error instanceof Error ? error.message : error);
+      }
+      return null; // refreshAccessToken already called removeUser() on failure
+    }
+  }
+
+  /**
+   * Call this when the app returns to foreground (AppState → "active").
+   * Refreshes the token silently and returns a fresh AuthState for your context.
+   *
+   * Example usage in your AuthContext or root layout:
+   *
+   *   useEffect(() => {
+   *     const sub = AppState.addEventListener('change', async (next) => {
+   *       if (next === 'active') {
+   *         const updated = await AuthService.onAppForeground();
+   *         if (updated) dispatch({ type: 'RESTORE_AUTH', payload: updated });
+   *         else dispatch({ type: 'LOGOUT' });
+   *       }
+   *     });
+   *     return () => sub.remove();
+   *   }, []);
+   */
+  static async onAppForeground(): Promise<AuthState | null> {
+    const token = await this.silentRefresh();
+    if (!token) return null;
+
+    const user = await this.getCurrentUser();
+    if (!user) return null;
+
+    const { refreshToken } = await this.getTokens();
+    return {
+      user,
+      isLoading: false,
+      isAuthenticated: true,
+      accessToken: token,
+      refreshToken: refreshToken ?? null,
+    };
+  }
 }
+
