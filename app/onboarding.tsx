@@ -13,9 +13,64 @@ import { AuthService } from '@/services/authService';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { OnboardingContext } from './_layout';
 import { useAuth } from '@/contexts/AuthContext';
+import { getPasswordStrength as getSharedPasswordStrength } from '@/utils/passwordStrength';
 
+import { Eye, EyeOff } from 'lucide-react-native';
 interface OnboardingScreenProps {
   initialStep?: 'register' | 'verify' | 'organization' | 'subscription';
+}
+
+// --- Password validation ---
+interface PasswordStrength {
+  score: number; // 0–4
+  label: 'Too short' | 'Weak' | 'Fair' | 'Good' | 'Strong';
+  color: string;
+  rules: {
+    label: string;
+    met: boolean;
+  }[];
+}
+
+function getPasswordStrength(password: string): PasswordStrength {
+  return getSharedPasswordStrength(password);
+
+  const rules = [
+    { label: 'At least 8 characters', met: password.length >= 8 },
+    { label: 'At least one uppercase letter (A–Z)', met: /[A-Z]/.test(password) },
+    { label: 'At least one lowercase letter (a–z)', met: /[a-z]/.test(password) },
+    { label: 'At least one number (0–9)', met: /[0-9]/.test(password) },
+    {
+      label: 'At least one special character (!@#$…)',
+      met: /[^A-Za-z0-9]/.test(password),
+    },
+  ];
+
+  const score = rules.filter((r) => r.met).length;
+
+  const levels: PasswordStrength['label'][] = [
+    'Too short',
+    'Weak',
+    'Fair',
+    'Good',
+    'Strong',
+  ];
+  const colors = ['#ef4444', '#f97316', '#eab308', '#84cc16', '#22c55e'];
+
+  return {
+    score,
+    label: levels[score] as PasswordStrength['label'],
+    color: colors[score],
+    rules,
+  };
+}
+
+
+function EyeIcon({ visible }: { visible: boolean }) {
+  return visible ? (
+    <EyeOff size={18} color="#9ca3af" />
+  ) : (
+    <Eye size={18} color="#9ca3af" />
+  );
 }
 
 export default function OnboardingScreen({
@@ -27,7 +82,6 @@ export default function OnboardingScreen({
   const onboarding = useContext(OnboardingContext);
   const { user, refreshUser } = useAuth();
 
-  // Map string steps to numbers for backward compatibility
   const stepMap = {
     register: 1,
     verify: 2,
@@ -36,15 +90,20 @@ export default function OnboardingScreen({
   };
 
   useEffect(() => {
-    // Pre-fill email if passed via params (e.g. from failed login)
     if (params.email && typeof params.email === 'string') {
       setEmail(params.email);
     }
   }, [params.email]);
+
   const [step, setStep] = useState<number>(1);
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordTouched, setPasswordTouched] = useState(false);
+  const [confirmTouched, setConfirmTouched] = useState(false);
   const [contactNumber, setContactNumber] = useState('');
   const [otpCode, setOtpCode] = useState('');
   const [orgName, setOrgName] = useState('');
@@ -55,90 +114,74 @@ export default function OnboardingScreen({
   const [resendLoading, setResendLoading] = useState(false);
   const [resendMessage, setResendMessage] = useState('');
 
-  // Set organizationId whenever user data is available
+  const passwordStrength = getPasswordStrength(password);
+  const isPasswordStrong = passwordStrength.score === 5;
+  const passwordsMatch = password === confirmPassword;
+
   useEffect(() => {
     if (user) {
       const orgId = user.orgId || user.org?.id;
       if (orgId && !organizationId) {
         setOrganizationId(Number(orgId));
-        console.log('[Onboarding] Set organizationId from user data:', orgId);
       }
-      // Also set email from user data if not already set
       if (user.email && !email) {
         setEmail(user.email);
-        console.log('[Onboarding] Set email from user data:', user.email);
       }
     }
   }, [user, organizationId, email]);
-  // Determine initial step based on user state or prop or URL param
+
   useEffect(() => {
     const stepFromParams = params.step as string;
     if (initialStep) {
       setStep(stepMap[initialStep]);
-    } else if (
-      stepFromParams &&
-      stepMap[stepFromParams as keyof typeof stepMap]
-    ) {
+    } else if (stepFromParams && stepMap[stepFromParams as keyof typeof stepMap]) {
       setStep(stepMap[stepFromParams as keyof typeof stepMap]);
     } else if (user) {
-      // Determine step based on user state
-      console.log('[Onboarding] User state:', {
-        isVerified: user.isVerified,
-        orgId: user.orgId,
-        orgIdFromRelation: user.org?.id,
-        hasSubscription: !!user.org?.subscription?.id,
-      });
-
       if (!user.isVerified) {
-        setStep(2); // Verify email
+        setStep(2);
       } else if (!user.orgId && !user.org?.id) {
-        setStep(3); // Create organization
+        setStep(3);
       } else if (!user.org?.subscription?.id) {
-        setStep(4); // Choose subscription
-        console.log('[Onboarding] User has org, going to subscription step');
+        setStep(4);
       } else {
-        // Fully onboarded, redirect to dashboard
-        console.log(
-          '[Onboarding] User fully onboarded, redirecting to dashboard',
-        );
         router.replace('/(erp)/erp');
       }
     }
-  }, [user, initialStep, params.step, router, stepMap]);
+  }, [user, initialStep, params.step, router]);
+
   const goToComplete = async () => {
     try {
-      console.log('[Onboarding] goToComplete: Starting completion process');
       if (onboarding) {
-        console.log('[Onboarding] goToComplete: Setting onboarding states...');
         await onboarding.setHasOnboarded(true);
         await onboarding.setIsLoggedIn(true);
-
-        console.log('[Onboarding] goToComplete: Onboarding states set successfully');
       }
-      console.log('[Onboarding] goToComplete: Navigating to admin dashboard...');
       router.replace('/(erp)/erp');
-    } catch (error) {
-      console.error('[Onboarding] goToComplete: Error during completion:', error);
-      console.log('[Onboarding] goToComplete: Attempting navigation despite error...');
+    } catch {
       router.replace('/(erp)/erp');
     }
   };
 
   const handleRegister = async () => {
+    setPasswordTouched(true);
+    setConfirmTouched(true);
+
     if (!fullName || !email || !password) {
       setError('Full name, email and password are required');
       return;
     }
+    if (!isPasswordStrong) {
+      setError('Please create a stronger password that meets all requirements.');
+      return;
+    }
+    if (!passwordsMatch) {
+      setError('Passwords do not match.');
+      return;
+    }
+
     setLoading(true);
     setError('');
     try {
-      const user = await AuthService.registerUser({
-        fullname: fullName,
-        email,
-        password,
-        contactNumber,
-      });
-      // Store password temporarily for auto-login after subscription
+      await AuthService.registerUser({ fullname: fullName, email, password, contactNumber });
       await AsyncStorage.setItem('temp_password', password);
       setStep(2);
     } catch (err) {
@@ -149,18 +192,12 @@ export default function OnboardingScreen({
   };
 
   const handleVerify = async () => {
-    if (!otpCode) {
-      setError('OTP code is required');
-      return;
-    }
+    if (!otpCode) { setError('OTP code is required'); return; }
     setLoading(true);
     setError('');
     try {
       await AuthService.verifyEmail(email, otpCode);
-      // Refresh user context after successful verification
-      if (refreshUser) {
-        await refreshUser();
-      }
+      if (refreshUser) await refreshUser();
       setStep(3);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Verification failed');
@@ -184,362 +221,470 @@ export default function OnboardingScreen({
   };
 
   const handleCreateOrg = async () => {
-    if (!orgName) {
-      setError('Organization name is required');
-      return;
-    }
+    if (!orgName) { setError('Organization name is required'); return; }
     setLoading(true);
     setError('');
     try {
-
-      console.log('[Onboarding] handleCreateOrg: Creating organization:', orgName);
       const org = await AuthService.createOrganization(orgName);
-      console.log('[Onboarding] handleCreateOrg: Organization created:', org);
-      console.log('[Onboarding] handleCreateOrg: Setting organizationId to', org.id);
       setOrganizationId(org.id);
-
-      // During onboarding, we don't need to refresh user context
-      // We'll let the subscription step handle the final refresh
-      console.log('[Onboarding] handleCreateOrg: Advancing to subscription step (step 4)');
       setStep(4);
-      console.log('[Onboarding] handleCreateOrg: Successfully advanced to step 4');
     } catch (err) {
-      console.error('[Onboarding] handleCreateOrg: Caught error:', err);
-
-      setError(
-        err instanceof Error ? err.message : 'Organization creation failed',
-      );
+      setError(err instanceof Error ? err.message : 'Organization creation failed');
     } finally {
       setLoading(false);
     }
   };
 
   const handleSubscription = async () => {
-    if (!organizationId) {
-      setError('Organization setup required first');
-      return;
-    }
+    if (!organizationId) { setError('Organization setup required first'); return; }
     setLoading(true);
     setError('');
     try {
-      console.log('[Onboarding] handleSubscription: Creating subscription with plan:', plan);
       await AuthService.createSubscription(organizationId, plan);
-      console.log('[Onboarding] handleSubscription: Subscription created successfully');
-
-      // Check if we need to auto-login (fresh registration flow) or if already authenticated (login flow)
       const tempPassword = await AsyncStorage.getItem('temp_password');
       if (tempPassword && email) {
-        // Fresh registration flow: user came from register → verify → organization → subscription
-        console.log('[Onboarding] handleSubscription: Fresh registration detected, auto-logging in');
         try {
           await AuthService.login(email, tempPassword);
           await AsyncStorage.removeItem('temp_password');
-          console.log('[Onboarding] handleSubscription: Auto-login successful');
-        } catch (loginErr) {
-          console.warn('[Onboarding] handleSubscription: Auto-login failed, but continuing:', loginErr);
-          // Continue even if login fails - user might be able to navigate
-        }
-      } else {
-        // Login flow: user logged in and is completing onboarding
-        // Already authenticated, just refresh user context
-        console.log('[Onboarding] handleSubscription: Existing user completing onboarding, refreshing context');
-        if (refreshUser) {
-          try {
-            await refreshUser();
-            console.log('[Onboarding] handleSubscription: User context refreshed');
-          } catch (refreshErr) {
-            console.warn('[Onboarding] handleSubscription: User refresh failed, continuing anyway:', refreshErr);
-          }
-        }
+        } catch { /* continue */ }
+      } else if (refreshUser) {
+        try { await refreshUser(); } catch { /* continue */ }
       }
-
-      console.log('[Onboarding] handleSubscription: Going to completion');
       await goToComplete();
     } catch (err) {
-      console.error('[Onboarding] handleSubscription: Error:', err);
-      setError(
-        err instanceof Error ? err.message : 'Subscription creation failed',
-      );
+      setError(err instanceof Error ? err.message : 'Subscription creation failed');
     } finally {
       setLoading(false);
     }
   };
 
-  const stepTitle = [
-    'Register',
-    'Email Verification',
-    'Organization Setup',
-    'Subscription',
-  ][step - 1];
+  const stepTitle = ['Register', 'Email Verification', 'Organization Setup', 'Subscription'][step - 1];
+
+  // --- Shared input style ---
+  const inputStyle = {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: colors.surface,
+    color: colors.text,
+    fontSize: 15,
+  };
+
+  const labelStyle = {
+    fontSize: 13,
+    fontWeight: '500' as const,
+    color: colors.textSecondary,
+    marginBottom: 4,
+  };
+
+  // Step indicator dots
+  const StepIndicator = () => (
+    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 24 }}>
+      {[1, 2, 3, 4].map((s) => (
+        <View
+          key={s}
+          style={{
+            flex: 1,
+            height: 4,
+            borderRadius: 2,
+            backgroundColor: s <= step ? colors.primary : colors.border,
+          }}
+        />
+      ))}
+    </View>
+  );
+
+  // Password strength bar + rules
+  const PasswordStrengthUI = () => {
+    if (!passwordTouched || !password) return null;
+    return (
+      <View style={{ marginTop: 8, gap: 6 }}>
+        {/* Strength bar */}
+        <View style={{ flexDirection: 'row', gap: 4 }}>
+          {[1, 2, 3, 4, 5].map((i) => (
+            <View
+              key={i}
+              style={{
+                flex: 1,
+                height: 4,
+                borderRadius: 2,
+                backgroundColor: i <= passwordStrength.score ? passwordStrength.color : colors.border,
+              }}
+            />
+          ))}
+        </View>
+        <Text style={{ fontSize: 12, color: passwordStrength.color, fontWeight: '600' }}>
+          {passwordStrength.label}
+        </Text>
+        {/* Rules checklist */}
+        <View style={{ gap: 3 }}>
+          {passwordStrength.rules.map((rule) => (
+            <View key={rule.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={{ fontSize: 12, color: rule.met ? '#22c55e' : '#ef4444' }}>
+                {rule.met ? '✓' : '✗'}
+              </Text>
+              <Text style={{ fontSize: 12, color: rule.met ? colors.textSecondary : '#ef4444' }}>
+                {rule.label}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </View>
+    );
+  };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.background }}>
-      <View style={{ flex: 1, padding: 24, gap: 16 }}>
-        <Text style={{ fontSize: 24, fontWeight: '700', color: colors.text }}>
-          {stepTitle}
-        </Text>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: colors.background }}
+      contentContainerStyle={{
+        flexGrow: 1,
+        alignItems: 'center',
+        paddingVertical: 40,
+        paddingHorizontal: 16,
+      }}
+    >
+      {/* Centered card with max-width */}
+      <View
+        style={{
+          width: '100%',
+          maxWidth: 480,
+          gap: 16,
+        }}
+      >
+        {/* Logo / branding area */}
+        <View style={{ alignItems: 'center', marginBottom: 8 }}>
+          <Text style={{ fontSize: 28, fontWeight: '800', color: colors.primary, letterSpacing: -0.5 }}>
+            Welcome
+          </Text>
+          <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 4 }}>
+            Step {step} of 4 — {stepTitle}
+          </Text>
+        </View>
 
+        <StepIndicator />
+
+        {/* Error banner */}
         {error ? (
-          <Text
+          <View
             style={{
-              color: '#ef4444',
-              fontSize: 13,
-              padding: 10,
-              backgroundColor: '#fee2e2',
-              borderRadius: 6,
+              padding: 12,
+              backgroundColor: '#fef2f2',
+              borderRadius: 8,
+              borderLeftWidth: 3,
+              borderLeftColor: '#ef4444',
             }}
           >
-            {error}
-          </Text>
+            <Text style={{ color: '#dc2626', fontSize: 13, lineHeight: 18 }}>{error}</Text>
+          </View>
         ) : null}
 
+        {/* ── STEP 1: Register ── */}
         {step === 1 && (
           <>
-            <TextInput
-              placeholder="Full Name"
-              value={fullName}
-              onChangeText={setFullName}
-              style={{
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: 6,
-                padding: 12,
-                backgroundColor: colors.surface,
-                color: colors.text,
-              }}
-              placeholderTextColor={colors.textSecondary}
-            />
-            <TextInput
-              placeholder="Email"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              style={{
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: 6,
-                padding: 12,
-                backgroundColor: colors.surface,
-                color: colors.text,
-              }}
-              placeholderTextColor={colors.textSecondary}
-            />
-            <TextInput
-              placeholder="Password"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              style={{
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: 6,
-                padding: 12,
-                backgroundColor: colors.surface,
-                color: colors.text,
-              }}
-              placeholderTextColor={colors.textSecondary}
-            />
-            <TextInput
-              placeholder="Contact Number"
-              value={contactNumber}
-              onChangeText={setContactNumber}
-              keyboardType="phone-pad"
-              style={{
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: 6,
-                padding: 12,
-                backgroundColor: colors.surface,
-                color: colors.text,
-              }}
-              placeholderTextColor={colors.textSecondary}
-            />
+            <View>
+              <Text style={labelStyle}>Full Name</Text>
+              <TextInput
+                placeholder="Jane Doe"
+                value={fullName}
+                onChangeText={setFullName}
+                style={inputStyle}
+                placeholderTextColor={colors.textSecondary}
+              />
+            </View>
+
+            <View>
+              <Text style={labelStyle}>Email Address</Text>
+              <TextInput
+                placeholder="jane@example.com"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                style={inputStyle}
+                placeholderTextColor={colors.textSecondary}
+              />
+            </View>
+
+            <View>
+              <Text style={labelStyle}>Password</Text>
+              <View style={{ position: 'relative' }}>
+                <TextInput
+                  placeholder="Create a strong password"
+                  value={password}
+                  onChangeText={(v) => { setPassword(v); setPasswordTouched(true); }}
+                  onBlur={() => setPasswordTouched(true)}
+                  secureTextEntry={!showPassword}
+                  style={[
+                    inputStyle,
+                    { paddingRight: 48 },
+                    passwordTouched && password && !isPasswordStrong
+                      ? { borderColor: '#ef4444' }
+                      : {},
+                    passwordTouched && isPasswordStrong
+                      ? { borderColor: '#22c55e' }
+                      : {},
+                  ]}
+                  placeholderTextColor={colors.textSecondary}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowPassword((v) => !v)}
+                  style={{
+                    position: 'absolute',
+                    right: 12,
+                    top: 0,
+                    bottom: 0,
+                    justifyContent: 'center',
+                  }}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <EyeIcon visible={showPassword} />
+                </TouchableOpacity>
+              </View>
+              <PasswordStrengthUI />
+            </View>
+
+            <View>
+              <Text style={labelStyle}>Confirm Password</Text>
+              <View style={{ position: 'relative' }}>
+                <TextInput
+                  placeholder="Re-enter your password"
+                  value={confirmPassword}
+                  onChangeText={(v) => { setConfirmPassword(v); setConfirmTouched(true); }}
+                  onBlur={() => setConfirmTouched(true)}
+                  secureTextEntry={!showConfirmPassword}
+                  style={[
+                    inputStyle,
+                    { paddingRight: 48 },
+                    confirmTouched && confirmPassword && !passwordsMatch
+                      ? { borderColor: '#ef4444' }
+                      : {},
+                    confirmTouched && confirmPassword && passwordsMatch
+                      ? { borderColor: '#22c55e' }
+                      : {},
+                  ]}
+                  placeholderTextColor={colors.textSecondary}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowConfirmPassword((v) => !v)}
+                  style={{
+                    position: 'absolute',
+                    right: 12,
+                    top: 0,
+                    bottom: 0,
+                    justifyContent: 'center',
+                  }}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <EyeIcon visible={showConfirmPassword} />
+                </TouchableOpacity>
+              </View>
+              {confirmTouched && confirmPassword && !passwordsMatch && (
+                <Text style={{ fontSize: 12, color: '#ef4444', marginTop: 4 }}>
+                  ✗ Passwords do not match
+                </Text>
+              )}
+              {confirmTouched && confirmPassword && passwordsMatch && (
+                <Text style={{ fontSize: 12, color: '#22c55e', marginTop: 4 }}>
+                  ✓ Passwords match
+                </Text>
+              )}
+            </View>
+
+            <View>
+              <Text style={labelStyle}>Contact Number (optional)</Text>
+              <TextInput
+                placeholder="+63 912 345 6789"
+                value={contactNumber}
+                onChangeText={setContactNumber}
+                keyboardType="phone-pad"
+                style={inputStyle}
+                placeholderTextColor={colors.textSecondary}
+              />
+            </View>
+
             <TouchableOpacity
               onPress={handleRegister}
               disabled={loading}
               style={{
                 backgroundColor: colors.primary,
-                padding: 14,
-                borderRadius: 6,
+                padding: 15,
+                borderRadius: 8,
                 alignItems: 'center',
+                marginTop: 4,
                 opacity: loading ? 0.5 : 1,
               }}
             >
               {loading ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={{ color: '#fff', fontWeight: '700' }}>
-                  Register
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>
+                  Create Account
                 </Text>
               )}
             </TouchableOpacity>
           </>
         )}
 
+        {/* ── STEP 2: Verify ── */}
         {step === 2 && (
           <>
-            {/* OTP Verification UI Improvements */}
-            <View style={{ alignItems: 'center', marginBottom: 20 }}>
-              <Text
-                style={{
-                  fontSize: 24,
-                  fontWeight: '700',
-                  color: colors.text,
-                  marginBottom: 8,
-                }}
-              >
-                Verify Your Email
-              </Text>
-              <Text
-                style={{
-                  fontSize: 16,
-                  color: colors.textSecondary,
-                  textAlign: 'center',
-                }}
-              >
-                Code was sent to {email}
+            <View style={{ alignItems: 'center', paddingVertical: 8 }}>
+              <Text style={{ fontSize: 40, marginBottom: 12 }}>📧</Text>
+              <Text style={{ fontSize: 15, color: colors.textSecondary, textAlign: 'center', lineHeight: 22 }}>
+                We sent a 6-digit code to{' '}
+                <Text style={{ color: colors.text, fontWeight: '600' }}>{email}</Text>
               </Text>
             </View>
 
-            <TextInput
-              placeholder="Enter 6-digit OTP code"
-              value={otpCode}
-              onChangeText={setOtpCode}
-              keyboardType="number-pad"
-              maxLength={6}
-              style={{
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: 6,
-                padding: 16,
-                backgroundColor: colors.surface,
-                color: colors.text,
-                fontSize: 18,
-                textAlign: 'center',
-                letterSpacing: 8,
-              }}
-              placeholderTextColor={colors.textSecondary}
-            />
+            <View>
+              <Text style={labelStyle}>Verification Code</Text>
+              <TextInput
+                placeholder="000000"
+                value={otpCode}
+                onChangeText={setOtpCode}
+                keyboardType="number-pad"
+                maxLength={6}
+                style={[
+                  inputStyle,
+                  { fontSize: 24, textAlign: 'center', letterSpacing: 10, fontWeight: '700' },
+                ]}
+                placeholderTextColor={colors.textSecondary}
+              />
+            </View>
 
             <TouchableOpacity
               onPress={handleVerify}
               disabled={loading || resendLoading}
               style={{
                 backgroundColor: colors.primary,
-                padding: 14,
-                borderRadius: 6,
+                padding: 15,
+                borderRadius: 8,
                 alignItems: 'center',
-                marginTop: 10,
+                marginTop: 4,
                 opacity: loading || resendLoading ? 0.5 : 1,
               }}
             >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={{ color: '#fff', fontWeight: '700' }}>
-                  Verify OTP
-                </Text>
+              {loading ? <ActivityIndicator color="#fff" /> : (
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Verify Code</Text>
               )}
             </TouchableOpacity>
 
             <TouchableOpacity
               onPress={handleResendOTP}
               disabled={loading || resendLoading}
-              style={{
-                padding: 14,
-                borderRadius: 6,
-                alignItems: 'center',
-                marginTop: 10,
-                opacity: loading || resendLoading ? 0.5 : 1,
-              }}
+              style={{ padding: 12, alignItems: 'center', opacity: loading || resendLoading ? 0.5 : 1 }}
             >
-              {resendLoading ? (
-                <ActivityIndicator color={colors.primary} />
-              ) : (
-                <Text style={{ color: colors.primary, fontWeight: '600' }}>
-                  Resend Code
-                </Text>
+              {resendLoading ? <ActivityIndicator color={colors.primary} /> : (
+                <Text style={{ color: colors.primary, fontWeight: '600' }}>Resend Code</Text>
               )}
             </TouchableOpacity>
 
             {resendMessage ? (
-              <Text
-                style={{
-                  color: '#10b981',
-                  fontSize: 14,
-                  textAlign: 'center',
-                  marginTop: 10,
-                }}
-              >
-                {resendMessage}
+              <Text style={{ color: '#22c55e', fontSize: 14, textAlign: 'center' }}>
+                ✓ {resendMessage}
               </Text>
             ) : null}
           </>
         )}
 
+        {/* ── STEP 3: Organization ── */}
         {step === 3 && (
           <>
-            <TextInput
-              placeholder="Organization Name"
-              value={orgName}
-              onChangeText={setOrgName}
-              style={{
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: 6,
-                padding: 12,
-                backgroundColor: colors.surface,
-                color: colors.text,
-              }}
-              placeholderTextColor={colors.textSecondary}
-            />
+            <View style={{ alignItems: 'center', paddingVertical: 8 }}>
+              <Text style={{ fontSize: 40, marginBottom: 12 }}>🏢</Text>
+              <Text style={{ fontSize: 15, color: colors.textSecondary, textAlign: 'center' }}>
+                Set up your organization to get started.
+              </Text>
+            </View>
+
+            <View>
+              <Text style={labelStyle}>Organization Name</Text>
+              <TextInput
+                placeholder="Acme Corp"
+                value={orgName}
+                onChangeText={setOrgName}
+                style={inputStyle}
+                placeholderTextColor={colors.textSecondary}
+              />
+            </View>
+
             <TouchableOpacity
               onPress={handleCreateOrg}
               disabled={loading}
               style={{
                 backgroundColor: colors.primary,
-                padding: 14,
-                borderRadius: 6,
+                padding: 15,
+                borderRadius: 8,
                 alignItems: 'center',
+                marginTop: 4,
                 opacity: loading ? 0.5 : 1,
               }}
             >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={{ color: '#fff', fontWeight: '700' }}>
-                  Create Organization
-                </Text>
+              {loading ? <ActivityIndicator color="#fff" /> : (
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Create Organization</Text>
               )}
             </TouchableOpacity>
           </>
         )}
 
+        {/* ── STEP 4: Subscription ── */}
         {step === 4 && (
           <>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              {['BASIC', 'GOLD'].map((option) => (
+            <View style={{ alignItems: 'center', paddingVertical: 8 }}>
+              <Text style={{ fontSize: 40, marginBottom: 12 }}>⭐</Text>
+              <Text style={{ fontSize: 15, color: colors.textSecondary, textAlign: 'center' }}>
+                Choose a plan to activate your workspace.
+              </Text>
+            </View>
+
+            <View style={{ gap: 10 }}>
+              {(['BASIC', 'GOLD'] as const).map((option) => (
                 <TouchableOpacity
                   key={option}
-                  onPress={() => setPlan(option as 'BASIC' | 'GOLD')}
+                  onPress={() => setPlan(option)}
                   style={{
-                    flex: 1,
-                    borderWidth: 1,
-                    borderColor:
-                      plan === option ? colors.primary : colors.border,
-                    backgroundColor:
-                      plan === option ? colors.primary : colors.surface,
-                    borderRadius: 6,
-                    padding: 12,
+                    borderWidth: 2,
+                    borderColor: plan === option ? colors.primary : colors.border,
+                    backgroundColor: plan === option
+                      ? (colors.primary + '15') // subtle tint
+                      : colors.surface,
+                    borderRadius: 10,
+                    padding: 16,
+                    flexDirection: 'row',
                     alignItems: 'center',
+                    gap: 12,
                   }}
                 >
-                  <Text
-                    style={{ color: plan === option ? '#fff' : colors.text }}
+                  <View
+                    style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: 10,
+                      borderWidth: 2,
+                      borderColor: plan === option ? colors.primary : colors.border,
+                      backgroundColor: plan === option ? colors.primary : 'transparent',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
                   >
-                    {option}
-                  </Text>
+                    {plan === option && (
+                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#fff' }} />
+                    )}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: '700', color: colors.text, fontSize: 15 }}>
+                      {option === 'BASIC' ? 'Basic' : 'Gold'}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
+                      {option === 'BASIC' ? 'Essential features for small teams' : 'Advanced features + priority support'}
+                    </Text>
+                  </View>
+                  {option === 'GOLD' && (
+                    <View style={{ backgroundColor: '#f59e0b', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
+                      <Text style={{ fontSize: 10, color: '#fff', fontWeight: '700' }}>PRO</Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
               ))}
             </View>
@@ -549,18 +694,15 @@ export default function OnboardingScreen({
               disabled={loading}
               style={{
                 backgroundColor: colors.primary,
-                padding: 14,
-                borderRadius: 6,
+                padding: 15,
+                borderRadius: 8,
                 alignItems: 'center',
+                marginTop: 4,
                 opacity: loading ? 0.5 : 1,
               }}
             >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={{ color: '#fff', fontWeight: '700' }}>
-                  Finish Onboarding
-                </Text>
+              {loading ? <ActivityIndicator color="#fff" /> : (
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Finish Setup</Text>
               )}
             </TouchableOpacity>
           </>

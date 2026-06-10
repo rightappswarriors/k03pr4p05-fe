@@ -22,6 +22,10 @@ const DEVICE_BINDING_KEY = 'device_binding';
 interface LoginResponse {
   login: AuthPayload;
 }
+
+interface RefreshResponse {
+  refreshToken: AuthPayload;
+}
 // Tokens
 export const AUTH_TOKEN_KEY =
   Constants.expoConfig?.extra?.AUTH_TOKEN_KEY ?? 'auth_token';
@@ -81,8 +85,12 @@ export class AuthService {
 
   static async ensureAccessToken(): Promise<string | null> {
     const { accessToken, refreshToken } = await this.getTokens();
-    if (accessToken) return accessToken;
+    if (accessToken && !this.isTokenExpiringSoon(accessToken)) return accessToken;
     if (!refreshToken) return null;
+    if (this.isTokenExpiringSoon(refreshToken, 0)) {
+      await this.removeUser();
+      return null;
+    }
     return await this.refreshAccessToken(refreshToken);
   }
   /**
@@ -306,7 +314,7 @@ export class AuthService {
 
       const response = (await client.request(REFRESH_MUTATION, {
         refresh_token: refreshToken,
-      })) as any;
+      })) as RefreshResponse;
       const { token, refresh_token: newRefreshToken } = response.refreshToken;
       await secureStorage.setItemAsync(AUTH_TOKEN_KEY, token);
       await secureStorage.setItemAsync(REFRESH_TOKEN_KEY, newRefreshToken);
@@ -497,10 +505,11 @@ export class AuthService {
     }
     */
   static async getStoredAuthState(): Promise<AuthState | null> {
-    const { accessToken, refreshToken } = await this.getTokens();
     const user = await this.getCurrentUser();
+    const accessToken = await this.ensureAccessToken();
+    const { refreshToken } = await this.getTokens();
 
-    if (user && (accessToken || refreshToken)) {
+    if (user && accessToken) {
       return {
         user,
         isLoading: false,

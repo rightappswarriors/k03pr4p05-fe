@@ -119,6 +119,23 @@ export class UserProfileService {
         return response.updateMyProfile;
     }
 
+    static async changePassword(data: {
+        oldPassword: string;
+        newPassword: string;
+    }): Promise<boolean> {
+        const MUTATION = gql`
+      mutation ChangePassword($oldPassword: String!, $newPassword: String!) {
+        changePassword(oldPassword: $oldPassword, newPassword: $newPassword)
+      }
+    `;
+
+        const response = await graphQLRequest<{ changePassword: boolean }>(
+            MUTATION,
+            data
+        );
+        return response.changePassword;
+    }
+
     static async updateUserProfile(
         userId: number,
         data: {
@@ -167,7 +184,7 @@ export class UserProfileService {
     `;
 
         const response = await graphQLRequest<{ updateUserProfile: any }>(MUTATION, {
-            userId,
+            id: userId,
             ...data,
         });
         return response.updateUserProfile;

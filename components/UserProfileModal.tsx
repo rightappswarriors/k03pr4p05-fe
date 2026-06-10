@@ -10,10 +10,11 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { X } from 'lucide-react-native';
+import { Eye, EyeOff, X } from 'lucide-react-native';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../hooks/useAuth';
 import { UserProfileService } from '../services/userProfileService';
+import { getPasswordStrength } from '../utils/passwordStrength';
 
 interface UserProfileModalProps {
   visible: boolean;
@@ -53,9 +54,29 @@ export default function UserProfileModal({
     dateOfBirth: '',
     profilePhoto: '',
   });
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showOldPassword, setShowOldPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [newPasswordTouched, setNewPasswordTouched] = useState(false);
+  const [confirmPasswordTouched, setConfirmPasswordTouched] = useState(false);
+
+  const passwordStrength = getPasswordStrength(newPassword);
+  const isPasswordStrong = passwordStrength.score === 5;
+  const passwordsMatch = newPassword === confirmPassword;
 
   useEffect(() => {
-    if (visible) loadProfile();
+    if (visible) {
+      loadProfile();
+    } else {
+      resetPasswordForm();
+    }
   }, [visible]);
 
   const loadProfile = async () => {
@@ -112,6 +133,61 @@ export default function UserProfileModal({
     }
   };
 
+  const resetPasswordForm = () => {
+    setShowChangePassword(false);
+    setPasswordSaving(false);
+    setPasswordError('');
+    setPasswordSuccess('');
+    setOldPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setShowOldPassword(false);
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
+    setNewPasswordTouched(false);
+    setConfirmPasswordTouched(false);
+  };
+
+  const handleChangePassword = async () => {
+    setNewPasswordTouched(true);
+    setConfirmPasswordTouched(true);
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    if (!oldPassword || !newPassword || !confirmPassword) {
+      setPasswordError('Old password, new password, and confirm password are required');
+      return;
+    }
+
+    if (!isPasswordStrong) {
+      setPasswordError('Please enter a stronger new password that meets all requirements.');
+      return;
+    }
+
+    if (!passwordsMatch) {
+      setPasswordError('New password and confirm password do not match.');
+      return;
+    }
+
+    try {
+      setPasswordSaving(true);
+      await UserProfileService.changePassword({ oldPassword, newPassword });
+      setPasswordSuccess('Password changed successfully');
+      setOldPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setNewPasswordTouched(false);
+      setConfirmPasswordTouched(false);
+      Alert.alert('Success', 'Password changed successfully');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to change password';
+      setPasswordError(message);
+      Alert.alert('Error', message);
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
+
   const updateField = (field: keyof ProfileData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
@@ -124,6 +200,89 @@ export default function UserProfileModal({
       backgroundColor: colors.cardBackground,
     },
   ];
+
+  const passwordInputStyle = [
+    inputStyle,
+    styles.passwordInput,
+  ];
+
+  const PasswordField = ({
+    label,
+    value,
+    onChangeText,
+    visible,
+    onToggleVisible,
+    onBlur,
+  }: {
+    label: string;
+    value: string;
+    onChangeText: (value: string) => void;
+    visible: boolean;
+    onToggleVisible: () => void;
+    onBlur?: () => void;
+  }) => (
+    <View>
+      <Text style={[styles.label, { color: colors.text }]}>{label}</Text>
+      <View style={styles.passwordField}>
+        <TextInput
+          style={passwordInputStyle}
+          placeholderTextColor={colors.textSecondary}
+          value={value}
+          onChangeText={onChangeText}
+          onBlur={onBlur}
+          secureTextEntry={!visible}
+          autoCapitalize="none"
+        />
+        <TouchableOpacity
+          onPress={onToggleVisible}
+          style={styles.passwordToggle}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          {visible ? (
+            <EyeOff size={18} color={colors.textSecondary} />
+          ) : (
+            <Eye size={18} color={colors.textSecondary} />
+          )}
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  const PasswordStrengthUI = () => {
+    if (!newPasswordTouched || !newPassword) return null;
+    return (
+      <View style={styles.strengthContainer}>
+        <View style={styles.strengthBar}>
+          {[1, 2, 3, 4, 5].map((i) => (
+            <View
+              key={i}
+              style={[
+                styles.strengthSegment,
+                {
+                  backgroundColor:
+                    i <= passwordStrength.score ? passwordStrength.color : colors.border,
+                },
+              ]}
+            />
+          ))}
+        </View>
+        <Text style={[styles.strengthLabel, { color: passwordStrength.color }]}>
+          {passwordStrength.label}
+        </Text>
+        {passwordStrength.rules.map((rule) => (
+          <Text
+            key={rule.label}
+            style={[
+              styles.ruleText,
+              { color: rule.met ? colors.textSecondary : colors.danger },
+            ]}
+          >
+            {rule.met ? '[x]' : '[ ]'} {rule.label}
+          </Text>
+        ))}
+      </View>
+    );
+  };
 
   return (
     <Modal visible={visible} animationType="fade" transparent={true}>
@@ -234,6 +393,89 @@ export default function UserProfileModal({
               />
 
               <TouchableOpacity
+                onPress={() => {
+                  setShowChangePassword((value) => !value);
+                  setPasswordError('');
+                  setPasswordSuccess('');
+                }}
+                style={[styles.secondaryButton, { borderColor: colors.border }]}
+              >
+                <Text style={[styles.secondaryButtonText, { color: colors.text }]}>
+                  {showChangePassword ? 'Cancel Change Password' : 'Change Password'}
+                </Text>
+              </TouchableOpacity>
+
+              {showChangePassword && (
+                <View style={[styles.passwordSection, { borderColor: colors.border }]}>
+                  {passwordError ? (
+                    <View style={[styles.errorBox, { backgroundColor: colors.danger }]}>
+                      <Text style={styles.errorText}>{passwordError}</Text>
+                    </View>
+                  ) : null}
+                  {passwordSuccess ? (
+                    <View style={[styles.successBox, { borderColor: colors.primary }]}>
+                      <Text style={[styles.successText, { color: colors.primary }]}>
+                        {passwordSuccess}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  <PasswordField
+                    label="Old Password"
+                    value={oldPassword}
+                    onChangeText={setOldPassword}
+                    visible={showOldPassword}
+                    onToggleVisible={() => setShowOldPassword((value) => !value)}
+                  />
+
+                  <PasswordField
+                    label="New Password"
+                    value={newPassword}
+                    onChangeText={(value) => {
+                      setNewPassword(value);
+                      setNewPasswordTouched(true);
+                    }}
+                    visible={showNewPassword}
+                    onToggleVisible={() => setShowNewPassword((value) => !value)}
+                    onBlur={() => setNewPasswordTouched(true)}
+                  />
+                  <PasswordStrengthUI />
+
+                  <PasswordField
+                    label="Confirm New Password"
+                    value={confirmPassword}
+                    onChangeText={(value) => {
+                      setConfirmPassword(value);
+                      setConfirmPasswordTouched(true);
+                    }}
+                    visible={showConfirmPassword}
+                    onToggleVisible={() => setShowConfirmPassword((value) => !value)}
+                    onBlur={() => setConfirmPasswordTouched(true)}
+                  />
+                  {confirmPasswordTouched && confirmPassword && !passwordsMatch ? (
+                    <Text style={[styles.ruleText, { color: colors.danger }]}>
+                      Passwords do not match
+                    </Text>
+                  ) : null}
+
+                  <TouchableOpacity
+                    onPress={handleChangePassword}
+                    disabled={passwordSaving}
+                    style={[
+                      styles.saveButton,
+                      { backgroundColor: colors.primary, opacity: passwordSaving ? 0.6 : 1 },
+                    ]}
+                  >
+                    {passwordSaving ? (
+                      <ActivityIndicator color="white" />
+                    ) : (
+                      <Text style={styles.saveButtonText}>Update Password</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              <TouchableOpacity
                 onPress={handleSave}
                 disabled={saving}
                 style={[
@@ -325,6 +567,68 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 14,
     minHeight: 40,
+  },
+  passwordField: {
+    position: 'relative',
+  },
+  passwordInput: {
+    paddingRight: 44,
+  },
+  passwordToggle: {
+    position: 'absolute',
+    right: 12,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+  },
+  passwordSection: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 12,
+  },
+  strengthContainer: {
+    marginTop: 8,
+    gap: 4,
+  },
+  strengthBar: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  strengthSegment: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+  },
+  strengthLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  ruleText: {
+    fontSize: 12,
+  },
+  successBox: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+  },
+  successText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  secondaryButton: {
+    marginTop: 20,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingVertical: 12,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  secondaryButtonText: {
+    fontWeight: '700',
+    fontSize: 14,
   },
   textArea: {
     minHeight: 80,
