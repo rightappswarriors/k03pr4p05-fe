@@ -47,9 +47,9 @@ export default function Login() {
   }
 
   return savedUserExist && user ? (
-    <LoginSaved user={user} onRemoveUser={checkSavedUser} isDesktop={isDesktop}/>
+    <LoginSaved user={user} onRemoveUser={checkSavedUser}/>
   ) : (
-    <LoginScreenDefault isDesktop={isDesktop}/>
+    <LoginScreenDefault/>
   )
 }
 

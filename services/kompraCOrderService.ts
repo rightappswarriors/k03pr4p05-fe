@@ -1,5 +1,6 @@
 import { gql } from 'graphql-request';
 import { graphQLRequest } from './apiClient';
+import { CustomerType, DiscountType } from '@/types';
 
 export type KompraCOrderStatus =
   | 'pending'
@@ -34,6 +35,16 @@ export interface KompraCOrderFee {
   type: string;
   label: string;
   amount: number;
+}
+
+export interface ScPwdCustomer {
+  id: string;
+  fullName: string;
+  idNumber: string;
+  idType: string;
+  customerType: CustomerType;
+  isRepresentative?: boolean;
+  representativeName?: string;
 }
 
 export interface KompraCOrderTracking {
@@ -85,6 +96,16 @@ export interface KompraCOrder {
   riderPhone?: string | null;
   customerNote?: string | null;
   outletNote?: string | null;
+  // BNPC and Customer Type fields (for SalesScreen compatibility)
+  customerType?: CustomerType | undefined;
+  discountType?: DiscountType | undefined;
+  scPwdCustomer?: ScPwdCustomer;
+  scPwdPax?: number;
+  totalPax?: number;
+  vatExemptSale?: number;
+  discountAmount?: number;
+  vatAmount?: number;
+  grandTotal?: number;
 }
 
 export interface KompraCOrderSummary {
@@ -180,6 +201,27 @@ export class KompraCOrderService {
         actorType
         actorId
       }
+      customerType
+      discountType
+      scPwdPax
+      totalPax
+      vatExemptSale
+      discountAmount
+      vatAmount
+      grandTotal
+    }
+  `;
+
+  // Fields for BNPC/Customer Type support
+  private static readonly BNPC_CUSTOMER_FIELDS = gql`
+    fragment BnpcCustomerFields on ScPwdCustomer {
+      id
+      fullName
+      idNumber
+      idType
+      customerType
+      isRepresentative
+      representativeName
     }
   `;
 

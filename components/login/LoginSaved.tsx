@@ -8,6 +8,7 @@ import {
   SafeAreaView,
   Image,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import { useResponsive } from '@/hooks/useResponsive';
 import { Fingerprint, Eye, EyeOff } from 'lucide-react-native';
@@ -16,17 +17,14 @@ import { router } from 'expo-router';
 import { User } from '@/types/index';
 import { styles } from '@/styles/loginStyle';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useLoading } from '@/contexts/LoadingContext';
 import { responsive } from '@/styles/desktopAndTablet';
 interface Props {
   user: User;
   onRemoveUser: () => void;
-  isDesktop?: boolean;
 }
 export default function LoginScreenDefault({
   user,
   onRemoveUser,
-  isDesktop,
 }: Props) {
   const { colors } = useTheme();
   const [email, setEmail] = useState('');
@@ -36,6 +34,10 @@ export default function LoginScreenDefault({
   const [biometricSupported, setBiometricSupported] = useState(false);
   const [biometricEnabled, setBiometricEnabledState] = useState(false);
 
+
+  const { width: windowWidth } = useWindowDimensions();
+  const isTablet = windowWidth >= 768 ? true : false
+  const isDesktop = windowWidth >= 1024 ? true : false
   const {
     login,
     loginWithBiometric,
@@ -43,7 +45,6 @@ export default function LoginScreenDefault({
     isBiometricSupported,
     isBiometricEnabled,
   } = useAuth();
-  const { isTablet } = useResponsive();
   useEffect(() => {
     setEmail(user.email);
     checkBiometricAvailability();
@@ -156,8 +157,8 @@ export default function LoginScreenDefault({
         <View
           style={[
             styles.form,
-            isDesktop && responsive.desktopPadding,
-            isTablet && responsive.tabletPadding,
+            isDesktop && responsive.desktopForm,
+            isTablet && responsive.tabletForm,
           ]}
         >
           <View style={styles.inputContainer}>

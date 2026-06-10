@@ -749,7 +749,6 @@ export default function ERPLayout() {
         </View>
         <View style={styles.headerBadge}>
           <Building2 size={12} color="#fff" strokeWidth={2} />
-          <Text style={styles.headerBadgeTx}>ERP</Text>
         </View>
 
       </View>

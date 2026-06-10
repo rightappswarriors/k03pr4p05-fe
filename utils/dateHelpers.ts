@@ -50,3 +50,63 @@ export const getDateRange = (
 export const formatShortDate = (date: Date) => {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
+
+// FIX: Safe date parser — prevents NaN propagation from invalid ISO strings
+// that can come from the backend (null, undefined, empty string, malformed).
+export function safeParseDate(iso?: string | null): Date | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (isNaN(date.getTime())) return null;
+  return date;
+}
+
+
+// FIX: Uses safeParseDate; handles null, future dates, and all edge cases.
+export function timeAgo(iso?: string | null): string {
+  const date = safeParseDate(iso);
+  if (!date) return '—';
+  const diff = Date.now() - date.getTime();
+  if (diff < 0 || !isFinite(diff)) return 'just now';
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return `${Math.floor(days / 7)}w ago`;
+}
+
+// FIX: Uses safeParseDate; never throws or returns "Invalid Date".
+export function formatTime(iso?: string | null): string {
+  const date = safeParseDate(iso);
+  if (!date) return '—';
+  try {
+    return date.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '—';
+  }
+}
+
+export function formatDateTime(iso?: string | null): string {
+  const date = safeParseDate(iso);
+  if (!date) return '—';
+
+  try {
+    const time = date.toLocaleTimeString('en-PH', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+
+    const datePart = date.toLocaleDateString('en-PH', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    });
+
+    return `${time} ${datePart}`;
+  } catch {
+    return '—';
+  }
+}

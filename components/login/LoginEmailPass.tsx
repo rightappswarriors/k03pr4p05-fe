@@ -10,26 +10,26 @@ import {
   Image,
   ActivityIndicator,
   Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { useResponsive } from '@/hooks/useResponsive';
 import { Fingerprint, Eye, EyeOff } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useLoading } from '@/contexts/LoadingContext';
 import { responsive } from '@/styles/desktopAndTablet';
-interface Props {
-  isDesktop?: boolean;
-}
-export default function LoginScreenDefault({ isDesktop }: Props) {
+
+export default function LoginScreenDefault() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setLoading] = useState(false);
   const { colors, theme } = useTheme();
   const { login } = useAuth();
-  const { isTablet } = useResponsive();
 
+  const { width: windowWidth } = useWindowDimensions();
+  const isTablet = windowWidth >= 768 ? true : false
+  const isDesktop = windowWidth >= 1024 ? true : false
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
       Alert.alert('Error', 'Please enter both email and password');
@@ -94,8 +94,8 @@ export default function LoginScreenDefault({ isDesktop }: Props) {
         <View
           style={[
             styles.form,
-            isDesktop && responsive.desktopPadding,
-            isTablet && responsive.tabletPadding,
+            isDesktop && responsive.desktopForm,
+            isTablet && responsive.tabletForm,
           ]}
         >
           <View style={styles.inputContainer}>

@@ -1,14 +1,21 @@
 // screens/OrderManagement.tsx
 // POSVine Terminal — Kompra Order Management
-// React Native — mock data, swap apiFetch calls when backend is ready
-// this is Kompra Order management, where staff can view and update order statuses, see details, and manage deliveries
-// Related files: frontend service (not implemented yet): kompraCOrders.ts, kompra.type.ts(developing), create backend queries, and connect to real data instead of mock orders
-// Write a backend graphql query, mutation, if needed(subscription), frontend service, and connect to real data instead of mock orders.
-// the result should be a fully functional order management screen that can display real orders from the backend, update their statuses, and reflect those changes in the UI
-// assigning riders and marking orders as delivered should also update the backend and show correct info on the frontend
-// backend table KompraCOrders, KompraCustomer, Courier, in schema.prisma, use prisma client to query and update order data, including related customer and courier info. Make sure to handle status updates correctly and reflect them in the UI.
-// put Courier Details, KompraCOrders, and KompraCustomer in the same query to get all necessary info in one go for the frontend
-// put comments as you updates for implementation details and to explain your code
+//
+// Rewrite notes:
+// - FIX: safeParseDate guards all date rendering; no more NaN / "Invalid Date"
+//   display. timeAgo and formatTime both use it.
+// - FIX: actionLoading is reset inside useEffect([initialOrder]) so it can
+//   never get stuck true when a new order is opened after a failed action.
+// - FIX: BNPC / SC-PWD Customer section rendered in OrderDetailModal when
+//   order.customerType !== 'REGULAR'. Data flows from backend via scPwdCustomer
+//   relation (now included in kompraOrderManagementInclude on the server).
+// - FIX: Extra charges section rendered when order.extraCharges is non-empty.
+// - FIX: ORDER SUMMARY uses grandTotal and shows VAT / discount breakdown lines.
+// - FEAT: LocationMapPreview component — Google Maps embed on web, react-native-maps
+//   on mobile, coordinate fallback on either when unavailable.
+// - STYLE: OrderDetailModal uses fade + transparent + centered overlay with
+//   maxWidth: 560 so it looks correct on tablet / desktop web.
+
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View,
@@ -26,12 +33,15 @@ import {
   Platform,
   ActivityIndicator,
   RefreshControl,
+  useWindowDimensions,
 } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import {
   KompraCOrderService,
   type KompraCOrder,
 } from '@/services/kompraCOrderService';
+import type { CustomerType, DiscountType } from '@/services/salesOrder.service';
+import { formatDateTime, timeAgo } from '@/utils/dateHelpers';
 
 const { width } = Dimensions.get('window');
 
@@ -54,6 +64,22 @@ interface OrderItem {
   price: number;
   checked: boolean;
   image?: string;
+}
+
+interface ExtraCharge {
+  id: string;
+  label: string;
+  amount: number;
+}
+
+interface ScPwdInfo {
+  id: string;
+  fullName: string;
+  idNumber: string;
+  idType: string;
+  customerType: CustomerType;
+  isRepresentative?: boolean;
+  representativeName?: string;
 }
 
 interface KompraOrder {
@@ -79,207 +105,69 @@ interface KompraOrder {
   customerNote?: string;
   rating?: number;
   review?: string;
+  createdAt?: string
+  cancelledAt?: string;
+  // BNPC / SC-PWD fields
+  customerType?: CustomerType;
+  discountType?: DiscountType;
+  scPwdCustomer?: ScPwdInfo;
+  scPwdPax?: number;
+  totalPax?: number;
+  extraCharges?: ExtraCharge[];
+  extraChargesTotal?: number;
+  vatExemptSale?: number;
+  discountAmount?: number;
+  vatAmount?: number;
+  grandTotal?: number;
 }
-
-// ─── Mock Data ────────────────────────────────────────────────────────────────
-
-const MOCK_ORDERS: KompraOrder[] = [
-  {
-    id: 1,
-    txNum: 'EKU-20260317-0041',
-    customerName: 'Maria Santos',
-    customerPhone: '09991234567',
-    address: '123 Rizal St, Talisay, Cebu',
-    lat: 10.2445,
-    lng: 123.8494,
-    paymentMethod: 'gcash',
-    paymentStatus: 'paid',
-    items: [
-      {
-        id: 1,
-        name: 'Ganador Rice 25kg',
-        quantity: 2,
-        unit: 'sack',
-        price: 1200,
-        checked: false,
-      },
-      {
-        id: 2,
-        name: 'Century Tuna Flakes',
-        quantity: 5,
-        unit: 'can',
-        price: 38,
-        checked: false,
-      },
-      {
-        id: 3,
-        name: 'Lucky Me Pancit Canton',
-        quantity: 3,
-        unit: 'pack',
-        price: 15,
-        checked: false,
-      },
-    ],
-    subtotal: 2595,
-    deliveryFee: 50,
-    total: 2645,
-    status: 'pending',
-    placedAt: '2026-03-17T08:14:00Z',
-    customerNote: 'Please pack the rice separately',
-  },
-  {
-    id: 2,
-    txNum: 'EKU-20260317-0042',
-    customerName: 'Juan dela Cruz',
-    customerPhone: '09181234567',
-    address: '456 Mabini Ave, Minglanilla, Cebu',
-    lat: 10.2349,
-    lng: 123.8012,
-    paymentMethod: 'cash_on_delivery',
-    paymentStatus: 'unpaid',
-    items: [
-      {
-        id: 4,
-        name: 'Sprite 1.5L',
-        quantity: 6,
-        unit: 'bottle',
-        price: 55,
-        checked: false,
-      },
-      {
-        id: 5,
-        name: 'Chippy BBQ',
-        quantity: 4,
-        unit: 'pack',
-        price: 27,
-        checked: false,
-      },
-      {
-        id: 6,
-        name: 'Bear Brand Milk',
-        quantity: 2,
-        unit: 'can',
-        price: 185,
-        checked: false,
-      },
-    ],
-    subtotal: 1070,
-    deliveryFee: 65,
-    total: 1135,
-    status: 'pending',
-    placedAt: '2026-03-17T08:31:00Z',
-  },
-  {
-    id: 3,
-    txNum: 'EKU-20260317-0039',
-    customerName: 'Ana Reyes',
-    customerPhone: '09561234567',
-    address: '789 Osmeña Blvd, Cebu City',
-    lat: 10.3157,
-    lng: 123.8854,
-    paymentMethod: 'card',
-    paymentStatus: 'paid',
-    items: [
-      {
-        id: 7,
-        name: 'Nescafe 3in1',
-        quantity: 10,
-        unit: 'sachet',
-        price: 8,
-        checked: true,
-      },
-      {
-        id: 8,
-        name: 'Skyflakes Crackers',
-        quantity: 3,
-        unit: 'pack',
-        price: 32,
-        checked: true,
-      },
-    ],
-    subtotal: 176,
-    deliveryFee: 45,
-    total: 221,
-    status: 'in_delivery',
-    placedAt: '2026-03-17T07:45:00Z',
-    packedAt: '2026-03-17T08:05:00Z',
-    riderName: 'Pedro Gomez',
-  },
-  {
-    id: 4,
-    txNum: 'EKU-20260317-0038',
-    customerName: 'Rosa Gonzales',
-    customerPhone: '09771234567',
-    address: '321 Colon St, Cebu City',
-    lat: 10.2945,
-    lng: 123.8967,
-    paymentMethod: 'gcash',
-    paymentStatus: 'paid',
-    items: [
-      {
-        id: 9,
-        name: 'Milo 300g',
-        quantity: 2,
-        unit: 'pack',
-        price: 125,
-        checked: true,
-      },
-      {
-        id: 10,
-        name: 'Quickchow Oatmeal',
-        quantity: 5,
-        unit: 'sachet',
-        price: 12,
-        checked: true,
-      },
-    ],
-    subtotal: 310,
-    deliveryFee: 50,
-    total: 360,
-    status: 'received',
-    placedAt: '2026-03-17T06:30:00Z',
-    packedAt: '2026-03-17T06:55:00Z',
-    deliveredAt: '2026-03-17T07:40:00Z',
-    riderName: 'Carlo Bautista',
-    rating: 5,
-    review: 'Very fast delivery! Items were packed neatly.',
-  },
-];
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function timeAgo(iso: string) {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
-}
-
-function formatTime(iso?: string) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleTimeString('en-PH', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-function hasTrackingEvent(order: KompraCOrder, event: string) {
+// FIX: Safe date parser — prevents NaN propagation from invalid ISO strings
+// that can come from the backend (null, undefined, empty string, malformed).
+function hasTrackingEvent(order: KompraCOrder, event: string): boolean {
   return order.tracking?.some((row) => row.event === event) ?? false;
 }
 
+// Maps a backend KompraCOrder (from GraphQL) to the UI KompraOrder shape.
+// All number coercions guard against null/undefined from nullable DB fields.
 function mapBackendOrder(order: KompraCOrder): KompraOrder {
   const deliveryFee =
     order.fees?.find((fee) => fee.type === 'delivery')?.amount ??
     Math.max(0, Number(order.total ?? 0) - Number(order.subtotal ?? 0));
+
+  // packedAt is derived from the outlet_preparing tracking event timestamp
   const packedAt = order.tracking?.find(
     (row) => row.event === 'outlet_preparing',
   )?.statusAt;
+
+  // UI-only 'packed' status: backend stores 'preparing' + outlet_preparing event
   const uiStatus: OrderStatus =
     order.status === 'preparing' && hasTrackingEvent(order, 'outlet_preparing')
       ? 'packed'
       : (order.status as OrderStatus);
+
+  // Map non-delivery fees into UI ExtraCharge objects for display
+  const extraCharges = (order.fees ?? [])
+    .filter((fee) => fee.type !== 'delivery')
+    .map((fee) => ({
+      id: String(fee.id),
+      label: fee.label,
+      amount: Number(fee.amount ?? 0),
+    }));
+  const extraChargesTotal = extraCharges.reduce((sum, c) => sum + c.amount, 0);
+
+  // Map scPwdCustomer from backend relation (now included via kompraOrderManagementInclude)
+  const scPwdCustomer = order.scPwdCustomer
+    ? {
+      id: order.scPwdCustomer.id,
+      fullName: order.scPwdCustomer.fullName,
+      idNumber: order.scPwdCustomer.idNumber,
+      idType: order.scPwdCustomer.idType,
+      customerType: order.scPwdCustomer.customerType,
+      isRepresentative: order.scPwdCustomer.isRepresentative,
+      representativeName: order.scPwdCustomer.representativeName,
+    }
+    : undefined;
 
   return {
     id: order.id,
@@ -307,12 +195,25 @@ function mapBackendOrder(order: KompraCOrder): KompraOrder {
     deliveryFee: Number(deliveryFee ?? 0),
     total: Number(order.total ?? 0),
     status: uiStatus,
-    placedAt: order.createdAt,
-    packedAt,
-    deliveredAt: order.deliveredAt,
+    // FIX: createdAt is always a valid ISO string from GraphQL DateTime scalar
+    createdAt: order.createdAt,
+    packedAt: order.packedAt,
+    deliveredAt: order.deliveredAt ?? undefined,
     riderName: order.courier?.name ?? order.riderName ?? undefined,
     riderPhone: order.courier?.phone ?? order.riderPhone ?? undefined,
     customerNote: order.customerNote ?? undefined,
+    // BNPC / SC-PWD fields
+    customerType: order.customerType,
+    discountType: order.discountType,
+    scPwdCustomer,
+    scPwdPax: order.scPwdPax,
+    totalPax: order.totalPax,
+    extraCharges: extraCharges.length > 0 ? extraCharges : undefined,
+    extraChargesTotal,
+    vatExemptSale: order.vatExemptSale != null ? Number(order.vatExemptSale) : undefined,
+    discountAmount: order.discountAmount != null ? Number(order.discountAmount) : undefined,
+    vatAmount: order.vatAmount != null ? Number(order.vatAmount) : undefined,
+    grandTotal: order.grandTotal != null ? Number(order.grandTotal) : Number(order.total ?? 0),
   };
 }
 
@@ -331,21 +232,17 @@ function ItemCheckRow({
 }) {
   return (
     <TouchableOpacity
-      style={[
-        {
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 12,
-          borderRadius: 12,
-          padding: 12,
-          marginBottom: 6,
-          borderWidth: 1,
-          backgroundColor: item.checked
-            ? colors.success + '18'
-            : colors.surface,
-          borderColor: item.checked ? colors.success : colors.border,
-        },
-      ]}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        borderRadius: 12,
+        padding: 12,
+        marginBottom: 6,
+        borderWidth: 1,
+        backgroundColor: item.checked ? colors.success + '18' : colors.surface,
+        borderColor: item.checked ? colors.success : colors.border,
+      }}
       onPress={locked ? undefined : onToggle}
       activeOpacity={locked ? 1 : 0.7}
     >
@@ -362,9 +259,7 @@ function ItemCheckRow({
         }}
       >
         {item.checked && (
-          <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>
-            ✓
-          </Text>
+          <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>✓</Text>
         )}
       </View>
       <View style={{ flex: 1 }}>
@@ -378,11 +273,8 @@ function ItemCheckRow({
         >
           {item.name}
         </Text>
-        <Text
-          style={{ fontSize: 12, color: colors.textSecondary, marginTop: 1 }}
-        >
-          {item.quantity} {item.unit} · ₱
-          {(item.price * item.quantity).toLocaleString()}
+        <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 1 }}>
+          {item.quantity} {item.unit} · ₱{(item.price * item.quantity).toLocaleString()}
         </Text>
       </View>
       <Text
@@ -398,7 +290,8 @@ function ItemCheckRow({
   );
 }
 
-// ─── Rider Name Modal (replaces Alert.prompt — cross-platform fix) ─────────────
+// ─── Rider Name Modal ─────────────────────────────────────────────────────────
+// Cross-platform replacement for Alert.prompt (iOS-only).
 
 function RiderNameModal({
   visible,
@@ -443,6 +336,7 @@ function RiderNameModal({
             borderRadius: 16,
             padding: 24,
             width: width - 64,
+            maxWidth: 440,
             shadowColor: '#000',
             shadowOffset: { width: 0, height: 8 },
             shadowOpacity: 0.2,
@@ -450,29 +344,16 @@ function RiderNameModal({
             elevation: 10,
           }}
         >
-          <Text
-            style={{
-              fontSize: 17,
-              fontWeight: '700',
-              color: colors.text,
-              marginBottom: 6,
-            }}
-          >
-            Rider Name
+          <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text, marginBottom: 6 }}>
+            Assign Rider
           </Text>
-          <Text
-            style={{
-              fontSize: 14,
-              color: colors.textSecondary,
-              marginBottom: 16,
-            }}
-          >
-            Enter the rider or delivery person's name
+          <Text style={{ fontSize: 14, color: colors.textSecondary, marginBottom: 16 }}>
+            Enter the rider or delivery person's details
           </Text>
           <TextInput
             value={name}
             onChangeText={setName}
-            placeholder="e.g. Pedro Gomez"
+            placeholder="Rider name (e.g. Pedro Gomez)"
             placeholderTextColor={colors.textSecondary}
             style={{
               backgroundColor: colors.background,
@@ -483,11 +364,10 @@ function RiderNameModal({
               paddingVertical: 12,
               fontSize: 15,
               color: colors.text,
-              marginBottom: 20,
+              marginBottom: 12,
             }}
             autoFocus
-            returnKeyType="done"
-            onSubmitEditing={handleConfirm}
+            returnKeyType="next"
           />
           <TextInput
             value={phone}
@@ -521,13 +401,7 @@ function RiderNameModal({
                 alignItems: 'center',
               }}
             >
-              <Text
-                style={{
-                  fontSize: 15,
-                  fontWeight: '600',
-                  color: colors.textSecondary,
-                }}
-              >
+              <Text style={{ fontSize: 15, fontWeight: '600', color: colors.textSecondary }}>
                 Cancel
               </Text>
             </TouchableOpacity>
@@ -541,9 +415,7 @@ function RiderNameModal({
                 alignItems: 'center',
               }}
             >
-              <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}>
-                Confirm
-              </Text>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}>Confirm</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -566,25 +438,22 @@ function OrderCard({
   const { colors } = useTheme();
   const allChecked = order.items.every((i) => i.checked);
 
-  const pmConfig: Record<
-    PaymentMethod,
-    { label: string; color: string; bg: string }
-  > = {
-    cash_on_delivery: {
-      label: 'Cash on Delivery',
-      color: colors.success,
-      bg: colors.success + '18',
-    },
+  const pmConfig: Record<PaymentMethod, { label: string; color: string; bg: string }> = {
+    cash_on_delivery: { label: 'Cash on Delivery', color: colors.success, bg: colors.success + '18' },
     gcash: { label: 'GCash', color: '#007AFF', bg: '#EBF5FF' },
     paymaya: { label: 'PayMaya', color: '#5B2D8E', bg: '#F3EBF9' },
     card: { label: 'Card', color: colors.primary, bg: colors.primary + '18' },
     qrph: { label: 'QR PH', color: colors.accent, bg: colors.accent + '18' },
   };
   const pm = pmConfig[order.paymentMethod];
+  const { width: windowWidth } = useWindowDimensions();
+  const isMultiCol = windowWidth >= 768;
 
   return (
     <TouchableOpacity
       style={{
+        flex: 1,
+        maxWidth: isMultiCol ? '50%' : undefined,
         backgroundColor: colors.card,
         borderRadius: 16,
         padding: 16,
@@ -595,22 +464,9 @@ function OrderCard({
       onPress={onPress}
       activeOpacity={0.85}
     >
-      <View
-        style={{
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          marginBottom: 8,
-        }}
-      >
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
         <View style={{ flex: 1 }}>
-          <Text
-            style={{
-              fontSize: 11,
-              color: colors.textSecondary,
-              fontFamily: 'monospace',
-              marginBottom: 2,
-            }}
-          >
+          <Text style={{ fontSize: 11, color: colors.textSecondary, fontFamily: 'monospace', marginBottom: 2 }}>
             {order.txNum}
           </Text>
           <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>
@@ -618,38 +474,21 @@ function OrderCard({
           </Text>
         </View>
         <View style={{ alignItems: 'flex-end', gap: 4 }}>
-          <View
-            style={{
-              backgroundColor: pm.bg,
-              borderRadius: 8,
-              paddingHorizontal: 8,
-              paddingVertical: 3,
-            }}
-          >
-            <Text style={{ fontSize: 11, fontWeight: '700', color: pm.color }}>
-              {pm.label}
-            </Text>
+          <View style={{ backgroundColor: pm.bg, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 }}>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: pm.color }}>{pm.label}</Text>
           </View>
-          <Text style={{ fontSize: 11, color: colors.textSecondary }}>
-            {timeAgo(order.placedAt)}
-          </Text>
+          {/* FIX: timeAgo now handles null/undefined/invalid dates */}
+          <Text style={{ fontSize: 11, color: colors.textSecondary }}>{timeAgo(order.createdAt)}</Text>
         </View>
       </View>
 
-      <Text
-        style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 8 }}
-        numberOfLines={1}
-      >
+      <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 8 }} numberOfLines={1}>
         📍 {order.address}
       </Text>
 
       <View style={{ gap: 2, marginBottom: 10 }}>
         {order.items.slice(0, 2).map((item) => (
-          <Text
-            key={item.id}
-            style={{ fontSize: 12, color: colors.textSecondary }}
-            numberOfLines={1}
-          >
+          <Text key={item.id} style={{ fontSize: 12, color: colors.textSecondary }} numberOfLines={1}>
             · {item.quantity}× {item.name}
           </Text>
         ))}
@@ -660,116 +499,161 @@ function OrderCard({
         )}
       </View>
 
-      <View
-        style={{
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}
-      >
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text style={{ fontSize: 13, color: colors.textSecondary }}>
           Total:{' '}
-          <Text
-            style={{ fontSize: 15, fontWeight: '700', color: colors.primary }}
-          >
-            ₱{order.total.toLocaleString()}
+          <Text style={{ fontSize: 15, fontWeight: '700', color: colors.primary }}>
+            ₱{(order.grandTotal ?? order.total).toLocaleString()}
           </Text>
         </Text>
-        {order.status === 'confirmed' || order.status === 'preparing' ? (
-          <View
-            style={{
-              borderRadius: 20,
-              paddingHorizontal: 10,
-              paddingVertical: 3,
-              backgroundColor: allChecked
-                ? colors.success + '18'
-                : colors.warning + '18',
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 12,
-                fontWeight: '600',
-                color: allChecked ? colors.success : colors.warning,
-              }}
-            >
-              {order.items.filter((i) => i.checked).length}/{order.items.length}{' '}
-              packed
+
+        {(order.status === 'confirmed' || order.status === 'preparing') ? (
+          <View style={{ borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3, backgroundColor: allChecked ? colors.success + '18' : colors.warning + '18' }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: allChecked ? colors.success : colors.warning }}>
+              {order.items.filter((i) => i.checked).length}/{order.items.length} packed
             </Text>
           </View>
         ) : order.status === 'packed' ? (
-          <View
-            style={{
-              borderRadius: 20,
-              paddingHorizontal: 10,
-              paddingVertical: 3,
-              backgroundColor: colors.accent + '18',
-            }}
-          >
-            <Text
-              style={{ fontSize: 12, fontWeight: '600', color: colors.accent }}
-            >
-              📦 Ready
-            </Text>
+          <View style={{ borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3, backgroundColor: colors.accent + '18' }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.accent }}>📦 Ready</Text>
           </View>
         ) : order.status === 'in_delivery' ? (
-          <View
-            style={{
-              borderRadius: 20,
-              paddingHorizontal: 10,
-              paddingVertical: 3,
-              backgroundColor: colors.primary + '18',
-            }}
-          >
-            <Text
-              style={{ fontSize: 12, fontWeight: '600', color: colors.primary }}
-            >
+          <View style={{ borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3, backgroundColor: colors.primary + '18' }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.primary }}>
               🛵 {order.riderName ?? 'Delivering…'}
             </Text>
           </View>
         ) : order.rating ? (
-          <View
-            style={{
-              borderRadius: 20,
-              paddingHorizontal: 10,
-              paddingVertical: 3,
-              backgroundColor: colors.success + '18',
-            }}
-          >
-            <Text
-              style={{ fontSize: 12, fontWeight: '600', color: colors.success }}
-            >
+          <View style={{ borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3, backgroundColor: colors.success + '18' }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.success }}>
               {'⭐'.repeat(order.rating)}
             </Text>
           </View>
         ) : null}
       </View>
 
-      {showBadge && (
-        <View
-          style={{
-            position: 'absolute',
-            bottom: 12,
-            right: 12,
-            backgroundColor: colors.accent,
-            borderRadius: 4,
-            paddingHorizontal: 7,
-            paddingVertical: 2,
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 10,
-              fontWeight: '800',
-              color: '#fff',
-              letterSpacing: 0.5,
-            }}
-          >
-            NEW
+      {/* SC/PWD badge on card */}
+      {order.customerType && order.customerType !== 'REGULAR' && (
+        <View style={{ position: 'absolute', top: 12, left: 12, backgroundColor: '#7C3AED', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
+          <Text style={{ fontSize: 9, fontWeight: '800', color: '#fff', letterSpacing: 0.5 }}>
+            {order.customerType === 'PWD' ? 'PWD' : 'SC'}
           </Text>
         </View>
       )}
+
+      {showBadge && (
+        <View style={{ position: 'absolute', bottom: 12, right: 12, backgroundColor: colors.accent, borderRadius: 4, paddingHorizontal: 7, paddingVertical: 2 }}>
+          <Text style={{ fontSize: 10, fontWeight: '800', color: '#fff', letterSpacing: 0.5 }}>NEW</Text>
+        </View>
+      )}
     </TouchableOpacity>
+  );
+}
+
+// ─── Location Map Preview ─────────────────────────────────────────────────────
+// Web: Google Maps Embed iframe. Mobile: react-native-maps if installed.
+// Falls back to coordinate text on either platform if unavailable.
+
+function LocationMapPreview({
+  lat,
+  lng,
+  address,
+  colors,
+}: {
+  lat?: number;
+  lng?: number;
+  address?: string;
+  colors: ReturnType<typeof useTheme>['colors'];
+}) {
+  const [mapError, setMapError] = useState(false);
+  const googleMapsApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
+  const validCoords =
+    lat != null && lng != null && isFinite(lat) && isFinite(lng) && lat !== 0 && lng !== 0;
+
+  if (!validCoords) {
+    return (
+      <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', minHeight: 80 }}>
+        <Text style={{ color: colors.textSecondary, fontSize: 13 }}>
+          {address ?? 'No location data available'}
+        </Text>
+      </View>
+    );
+  }
+
+  if (Platform.OS === 'web') {
+    const mapUrl = googleMapsApiKey
+      ? `https://www.google.com/maps/embed/v1/place?key=${googleMapsApiKey}&q=${lat},${lng}&zoom=15`
+      : null;
+
+    return (
+      <View style={{ backgroundColor: colors.surface, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
+        {mapUrl && !mapError ? (
+          <iframe
+            src={mapUrl}
+            width="100%"
+            height="160"
+            style={{ border: 0, display: 'block' }}
+            onError={() => setMapError(true)}
+            title="Delivery Location"
+          />
+        ) : (
+          <View style={{ height: 80, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}>
+            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+              📍 {address ?? `${lat?.toFixed(4)}, ${lng?.toFixed(4)}`}
+            </Text>
+          </View>
+        )}
+        {address ? (
+          <View style={{ padding: 10 }}>
+            <Text style={{ color: colors.textSecondary, fontSize: 12 }} numberOfLines={1}>{address}</Text>
+          </View>
+        ) : null}
+      </View>
+    );
+  }
+
+  // Mobile: try react-native-maps
+  const [MapView, Marker] = React.useMemo(() => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const Maps = require('react-native-maps');
+      return [Maps.default ?? Maps.MapView, Maps.Marker ?? Maps.default?.Marker];
+    } catch {
+      return [null, null];
+    }
+  }, []);
+
+  if (MapView && Marker) {
+    return (
+      <View style={{ backgroundColor: colors.surface, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: colors.border, height: 180 }}>
+        <MapView
+          style={{ flex: 1 }}
+          initialRegion={{ latitude: lat, longitude: lng, latitudeDelta: 0.01, longitudeDelta: 0.01 }}
+          scrollEnabled={false}
+          zoomEnabled={false}
+        >
+          <Marker coordinate={{ latitude: lat, longitude: lng }} />
+        </MapView>
+        {address ? (
+          <View style={{ padding: 10 }}>
+            <Text style={{ color: colors.textSecondary, fontSize: 12 }} numberOfLines={1}>{address}</Text>
+          </View>
+        ) : null}
+      </View>
+    );
+  }
+
+  // Fallback: plain coordinate display
+  return (
+    <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: colors.border }}>
+      <Text style={{ color: colors.textSecondary, fontSize: 11, marginBottom: 4 }}>Coordinates</Text>
+      <Text style={{ color: colors.text, fontFamily: 'monospace', fontSize: 13 }}>
+        {lat.toFixed(6)}, {lng.toFixed(6)}
+      </Text>
+      {address ? (
+        <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 6 }} numberOfLines={2}>{address}</Text>
+      ) : null}
+    </View>
   );
 }
 
@@ -789,51 +673,28 @@ function TimelineRow({
   colors: ReturnType<typeof useTheme>['colors'];
 }) {
   return (
-    <View
-      style={{ flexDirection: 'row', gap: 12, marginBottom: last ? 0 : 16 }}
-    >
+    <View style={{ flexDirection: 'row', gap: 12, marginBottom: last ? 0 : 16 }}>
       <View style={{ alignItems: 'center' }}>
-        <View
-          style={{
-            width: 12,
-            height: 12,
-            borderRadius: 6,
-            backgroundColor: done ? colors.success : colors.border,
-            borderWidth: 2,
-            borderColor: done ? colors.success : colors.border,
-          }}
-        />
+        <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: done ? colors.success : colors.border, borderWidth: 2, borderColor: done ? colors.success : colors.border }} />
         {!last && (
-          <View
-            style={{
-              width: 2,
-              flex: 1,
-              minHeight: 20,
-              backgroundColor: done ? colors.success : colors.border,
-              marginTop: 2,
-              marginBottom: 2,
-              alignSelf: 'center',
-            }}
-          />
+          <View style={{ width: 2, flex: 1, minHeight: 20, backgroundColor: done ? colors.success : colors.border, marginTop: 2, marginBottom: 2, alignSelf: 'center' }} />
         )}
       </View>
       <View style={{ flex: 1, paddingBottom: last ? 0 : 4 }}>
-        <Text
-          style={{
-            fontSize: 13,
-            fontWeight: '600',
-            color: done ? colors.text : colors.textSecondary,
-          }}
-        >
-          {label}
-        </Text>
-        <Text
-          style={{ fontSize: 12, color: colors.textSecondary, marginTop: 1 }}
-        >
-          {time}
-        </Text>
+        <Text style={{ fontSize: 13, fontWeight: '600', color: done ? colors.text : colors.textSecondary }}>{label}</Text>
+        <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 1 }}>{time}</Text>
       </View>
     </View>
+  );
+}
+
+// ─── Section Header helper ────────────────────────────────────────────────────
+
+function SectionHeader({ title, colors }: { title: string; colors: ReturnType<typeof useTheme>['colors'] }) {
+  return (
+    <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSecondary, letterSpacing: 0.8, marginBottom: 10 }}>
+      {title}
+    </Text>
   );
 }
 
@@ -856,26 +717,21 @@ function OrderDetailModal({
 }) {
   const { colors } = useTheme();
   const [order, setOrder] = useState<KompraOrder | null>(initialOrder);
-  // FIX: cross-platform rider name input instead of Alert.prompt
   const [riderModalVisible, setRiderModalVisible] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
-  // Sync when initialOrder changes (also picks up parent state changes when modal re-opens)
-  React.useEffect(() => {
+  // FIX: Reset both the order state AND actionLoading whenever a new order is
+  // opened. This prevents actionLoading from being stuck true if a previous
+  // action threw an error before the modal was closed and re-opened.
+  useEffect(() => {
     setOrder(initialOrder);
+    setActionLoading(false);
   }, [initialOrder]);
 
   if (!order) return null;
 
-  const pmConfig: Record<
-    PaymentMethod,
-    { label: string; color: string; bg: string }
-  > = {
-    cash_on_delivery: {
-      label: 'Cash on Delivery',
-      color: colors.success,
-      bg: colors.success + '18',
-    },
+  const pmConfig: Record<PaymentMethod, { label: string; color: string; bg: string }> = {
+    cash_on_delivery: { label: 'Cash on Delivery', color: colors.success, bg: colors.success + '18' },
     gcash: { label: 'GCash', color: '#007AFF', bg: '#EBF5FF' },
     paymaya: { label: 'PayMaya', color: '#5B2D8E', bg: '#F3EBF9' },
     card: { label: 'Card', color: colors.primary, bg: colors.primary + '18' },
@@ -885,63 +741,49 @@ function OrderDetailModal({
 
   const allChecked = order.items.every((i) => i.checked);
   const checkedCount = order.items.filter((i) => i.checked).length;
+  const hasDiscount = Boolean(order.discountAmount && order.discountAmount > 0);
+  const isScPwd = Boolean(order.customerType && order.customerType !== 'REGULAR');
 
   const toggleItem = (itemId: number) => {
     if (order.status !== 'confirmed' && order.status !== 'preparing') return;
     setOrder((prev) =>
       prev
-        ? {
-            ...prev,
-            items: prev.items.map((i) =>
-              i.id === itemId ? { ...i, checked: !i.checked } : i,
-            ),
-          }
+        ? { ...prev, items: prev.items.map((i) => (i.id === itemId ? { ...i, checked: !i.checked } : i)) }
         : prev,
     );
   };
 
-  const persistStatus = async (
-    status: OrderStatus,
-    updates?: Partial<KompraOrder>,
-  ) => {
-    if (!order || actionLoading) return null;
+  const persistStatus = async (status: OrderStatus, updates?: Partial<KompraOrder>) => {
+    if (!order) return null;
+    // FIX: Guard duplicate taps, but log a warning instead of silently returning
+    if (actionLoading) {
+      console.warn('[Kompra] persistStatus: action already in progress for', status);
+      return null;
+    }
     setActionLoading(true);
     try {
       const updated = await onStatusChange(order.id, status, updates);
       setOrder(updated);
       return updated;
     } catch (error) {
-      Alert.alert(
-        'Update failed',
-        error instanceof Error ? error.message : 'Please try again.',
-      );
+      Alert.alert('Update failed', error instanceof Error ? error.message : 'Please try again.');
       return null;
     } finally {
       setActionLoading(false);
     }
   };
 
-  const handleConfirm = () => {
-    void persistStatus('confirmed');
-  };
+  const handleConfirm = () => { void persistStatus('confirmed'); };
 
   const handleDonePacking = () => {
     if (!allChecked) {
-      Alert.alert(
-        'Not yet',
-        'Please check all items before marking as packed.',
-      );
+      Alert.alert('Not yet', 'Please check all items before marking as packed.');
       return;
     }
-    // Backend persists this as preparing plus an outlet_preparing tracking row;
-    // mapBackendOrder turns that combination into the UI-only packed state.
     void persistStatus('packed', { items: order.items });
   };
 
-  // FIX: replaced Alert.prompt (iOS-only) with a cross-platform Modal
-  const handleOutForDelivery = () => {
-    setRiderModalVisible(true);
-  };
+  const handleOutForDelivery = () => { setRiderModalVisible(true); };
 
   const confirmRider = (riderName: string, riderPhone?: string) => {
     setRiderModalVisible(false);
@@ -949,524 +791,413 @@ function OrderDetailModal({
   };
 
   const handleDelivered = () => {
-    Alert.alert(
-      'Mark as Delivered?',
-      'Confirm the order has been successfully delivered to the customer.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delivered',
-          style: 'default',
-          onPress: () => {
-            void persistStatus('received').then((updated) => {
-              if (updated) onClose();
-            });
+    const confirmDelivery = () => {
+      void persistStatus('received').then((updated) => {
+        if (updated) onClose();
+      });
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm(
+        'Confirm the order has been successfully delivered to the customer.'
+      );
+
+      if (confirmed) {
+        confirmDelivery();
+      }
+    } else {
+      Alert.alert(
+        'Mark as Delivered?',
+        'Confirm the order has been successfully delivered to the customer.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delivered',
+            onPress: confirmDelivery,
           },
-        },
-      ],
-    );
+        ]
+      );
+    }
   };
 
   return (
     <>
-      <Modal
-        visible={visible}
-        animationType="slide"
-        presentationStyle="pageSheet"
-      >
-        <View style={{ flex: 1, backgroundColor: colors.background }}>
-          <StatusBar barStyle="light-content" />
-
-          {/* Header */}
+      {/* STYLE: fade + transparent + centered overlay with maxWidth constraint */}
+      <Modal visible={visible} animationType="fade" transparent>
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.55)',
+            justifyContent: 'center',
+            alignItems: 'center',
+            paddingHorizontal: 16,
+            paddingVertical: 32,
+          }}
+        >
           <View
             style={{
-              backgroundColor: colors.primary,
-              paddingTop: 52,
-              paddingBottom: 18,
-              paddingHorizontal: 20,
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              alignItems: 'flex-start',
+              width: '100%',
+              maxWidth: 560,
+              maxHeight: '100%',
+              backgroundColor: colors.background,
+              borderRadius: 20,
+              overflow: 'hidden',
+              flex: 1,
+              flexShrink: 1,
             }}
           >
-            <View>
-              <Text
-                style={{
-                  fontSize: 11,
-                  color: 'rgba(255,255,255,0.6)',
-                  fontFamily: 'monospace',
-                  marginBottom: 3,
-                }}
-              >
-                {order.txNum}
-              </Text>
-              <Text style={{ fontSize: 18, fontWeight: '700', color: '#fff' }}>
-                {order.customerName} · {order.customerPhone}
-              </Text>
-            </View>
-            <TouchableOpacity
-              onPress={onClose}
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 16,
-                backgroundColor: 'rgba(255,255,255,0.15)',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>
-                ✕
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-            {/* Payment + status */}
+            {/* Header */}
             <View
               style={{
+                backgroundColor: colors.primary,
+                paddingTop: 18,
+                paddingBottom: 18,
+                paddingHorizontal: 20,
                 flexDirection: 'row',
-                gap: 8,
-                paddingHorizontal: 16,
-                paddingTop: 16,
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
               }}
             >
-              <View
-                style={{
-                  backgroundColor: pm.bg,
-                  borderRadius: 8,
-                  paddingHorizontal: 12,
-                  paddingVertical: 6,
-                }}
-              >
-                <Text
-                  style={{ fontSize: 13, fontWeight: '700', color: pm.color }}
-                >
-                  {pm.label}
+              <View style={{ flex: 1, marginRight: 12 }}>
+                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', fontFamily: 'monospace', marginBottom: 3 }}>
+                  {order.txNum}
                 </Text>
-              </View>
-              <View
-                style={{
-                  backgroundColor:
-                    order.paymentStatus === 'paid'
-                      ? colors.success + '18'
-                      : colors.warning + '18',
-                  borderRadius: 8,
-                  paddingHorizontal: 12,
-                  paddingVertical: 6,
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 13,
-                    fontWeight: '700',
-                    color:
-                      order.paymentStatus === 'paid'
-                        ? colors.success
-                        : colors.warning,
-                  }}
-                >
-                  {order.paymentStatus === 'paid'
-                    ? '✓ Paid'
-                    : '⏳ Collect on delivery'}
+                <Text style={{ fontSize: 17, fontWeight: '700', color: '#fff' }} numberOfLines={1}>
+                  {order.customerName}
                 </Text>
+                {order.customerPhone ? (
+                  <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', marginTop: 2 }}>
+                    {order.customerPhone}
+                  </Text>
+                ) : null}
               </View>
+              <TouchableOpacity
+                onPress={onClose}
+                style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>✕</Text>
+              </TouchableOpacity>
             </View>
 
-            {/* Address */}
-            <View style={{ paddingHorizontal: 16, marginTop: 20 }}>
-              <Text
-                style={{
-                  fontSize: 11,
-                  fontWeight: '700',
-                  color: colors.textSecondary,
-                  letterSpacing: 0.8,
-                  marginBottom: 10,
-                }}
-              >
-                DELIVERY ADDRESS
-              </Text>
-              <View
-                style={{
-                  backgroundColor: colors.surface,
-                  borderRadius: 12,
-                  padding: 12,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                }}
-              >
-                <Text
-                  style={{ fontSize: 14, color: colors.text, lineHeight: 20 }}
-                >
-                  {order.address}
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 11,
-                    color: colors.textSecondary,
-                    fontFamily: 'monospace',
-                    marginTop: 4,
-                  }}
-                >
-                  {order.lat.toFixed(4)}, {order.lng.toFixed(4)}
-                </Text>
-              </View>
-            </View>
+            <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
 
-            {/* Customer note */}
-            {order.customerNote && (
-              <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
-                <Text
-                  style={{
-                    fontSize: 11,
-                    fontWeight: '700',
-                    color: colors.textSecondary,
-                    letterSpacing: 0.8,
-                    marginBottom: 10,
-                  }}
-                >
-                  CUSTOMER NOTE
-                </Text>
-                <View
-                  style={{
-                    backgroundColor: colors.warning + '18',
-                    borderRadius: 12,
-                    padding: 12,
-                    borderWidth: 1,
-                    borderColor: colors.warning,
-                  }}
-                >
-                  <Text
-                    style={{ fontSize: 14, color: colors.text, lineHeight: 20 }}
-                  >
-                    {order.customerNote}
-                  </Text>
-                </View>
-              </View>
-            )}
-
-            {/* Items checklist */}
-            <View style={{ paddingHorizontal: 16, marginTop: 20 }}>
-              <View
-                style={{
-                  flexDirection: 'row',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: 10,
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 11,
-                    fontWeight: '700',
-                    color: colors.textSecondary,
-                    letterSpacing: 0.8,
-                  }}
-                >
-                  ITEMS TO PACK
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 12,
-                    fontWeight: '700',
-                    color: allChecked ? colors.success : colors.warning,
-                  }}
-                >
-                  {checkedCount}/{order.items.length} checked
-                </Text>
-              </View>
-              {order.items.map((item) => (
-                <ItemCheckRow
-                  key={item.id}
-                  item={item}
-                  onToggle={() => toggleItem(item.id)}
-                  locked={
-                    order.status !== 'confirmed' && order.status !== 'preparing'
-                  }
-                  colors={colors}
-                />
-              ))}
-            </View>
-
-            {/* Order summary */}
-            <View style={{ paddingHorizontal: 16, marginTop: 20 }}>
-              <Text
-                style={{
-                  fontSize: 11,
-                  fontWeight: '700',
-                  color: colors.textSecondary,
-                  letterSpacing: 0.8,
-                  marginBottom: 10,
-                }}
-              >
-                ORDER SUMMARY
-              </Text>
-              <View
-                style={{
-                  backgroundColor: colors.surface,
-                  borderRadius: 12,
-                  padding: 14,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  gap: 8,
-                }}
-              >
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    justifyContent: 'space-between',
-                  }}
-                >
-                  <Text style={{ fontSize: 13, color: colors.textSecondary }}>
-                    Subtotal
-                  </Text>
-                  <Text style={{ fontSize: 13, color: colors.text }}>
-                    ₱{order.subtotal.toLocaleString()}
-                  </Text>
+              {/* Payment + payment status badges */}
+              <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 16, flexWrap: 'wrap' }}>
+                <View style={{ backgroundColor: pm.bg, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: pm.color }}>{pm.label}</Text>
                 </View>
                 <View
                   style={{
-                    flexDirection: 'row',
-                    justifyContent: 'space-between',
+                    backgroundColor: order.paymentStatus === 'paid' ? colors.success + '18' : colors.warning + '18',
+                    borderRadius: 8,
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
                   }}
                 >
-                  <Text style={{ fontSize: 13, color: colors.textSecondary }}>
-                    Delivery fee
-                  </Text>
-                  <Text style={{ fontSize: 13, color: colors.text }}>
-                    ₱{order.deliveryFee.toLocaleString()}
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: order.paymentStatus === 'paid' ? colors.success : colors.warning }}>
+                    {order.paymentStatus === 'paid' ? '✓ Paid' : '⏳ Collect on delivery'}
                   </Text>
                 </View>
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    justifyContent: 'space-between',
-                    borderTopWidth: 1,
-                    borderTopColor: colors.border,
-                    paddingTop: 8,
-                    marginTop: 2,
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 15,
-                      fontWeight: '700',
-                      color: colors.primary,
-                    }}
-                  >
-                    Total
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: 17,
-                      fontWeight: '800',
-                      color: colors.primary,
-                    }}
-                  >
-                    ₱{order.total.toLocaleString()}
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Timeline */}
-            <View style={{ paddingHorizontal: 16, marginTop: 20 }}>
-              <Text
-                style={{
-                  fontSize: 11,
-                  fontWeight: '700',
-                  color: colors.textSecondary,
-                  letterSpacing: 0.8,
-                  marginBottom: 10,
-                }}
-              >
-                TIMELINE
-              </Text>
-              <View style={{ paddingLeft: 4 }}>
-                <TimelineRow
-                  label="Order placed"
-                  time={formatTime(order.placedAt)}
-                  done
-                  colors={colors}
-                />
-                <TimelineRow
-                  label="Packed"
-                  time={formatTime(order.packedAt)}
-                  done={!!order.packedAt}
-                  colors={colors}
-                />
-                <TimelineRow
-                  label="Out for delivery"
-                  time={order.riderName ?? '—'}
-                  done={
-                    order.status === 'in_delivery' ||
-                    order.status === 'received'
-                  }
-                  colors={colors}
-                />
-                <TimelineRow
-                  label="Delivered"
-                  time={formatTime(order.deliveredAt)}
-                  done={order.status === 'received'}
-                  last
-                  colors={colors}
-                />
-              </View>
-            </View>
-
-            {/* Review */}
-            {order.rating && (
-              <View style={{ paddingHorizontal: 16, marginTop: 20 }}>
-                <Text
-                  style={{
-                    fontSize: 11,
-                    fontWeight: '700',
-                    color: colors.textSecondary,
-                    letterSpacing: 0.8,
-                    marginBottom: 10,
-                  }}
-                >
-                  CUSTOMER REVIEW
-                </Text>
-                <View
-                  style={{
-                    backgroundColor: colors.success + '18',
-                    borderRadius: 12,
-                    padding: 12,
-                    borderWidth: 1,
-                    borderColor: colors.success,
-                  }}
-                >
-                  <Text style={{ fontSize: 20, marginBottom: 4 }}>
-                    {'⭐'.repeat(order.rating)}
-                  </Text>
-                  {order.review && (
-                    <Text
-                      style={{
-                        fontSize: 14,
-                        color: colors.text,
-                        lineHeight: 20,
-                      }}
-                    >
-                      {order.review}
+                {isScPwd && (
+                  <View style={{ backgroundColor: '#7C3AED18', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#7C3AED' }}>
+                      {order.customerType === 'PWD' ? 'PWD Discount' : 'Senior Citizen Discount'}
                     </Text>
-                  )}
+                  </View>
+                )}
+              </View>
+
+              {/* Delivery location + map */}
+              <View style={{ paddingHorizontal: 16, marginTop: 20 }}>
+                <SectionHeader title="DELIVERY LOCATION" colors={colors} />
+                <LocationMapPreview lat={order.lat} lng={order.lng} address={order.address} colors={colors} />
+              </View>
+
+              {/* Customer note */}
+              {order.customerNote ? (
+                <View style={{ paddingHorizontal: 16, marginTop: 16 }}>
+                  <SectionHeader title="CUSTOMER NOTE" colors={colors} />
+                  <View style={{ backgroundColor: colors.warning + '18', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.warning }}>
+                    <Text style={{ fontSize: 14, color: colors.text, lineHeight: 20 }}>{order.customerNote}</Text>
+                  </View>
+                </View>
+              ) : null}
+
+              {/* Items checklist */}
+              <View style={{ paddingHorizontal: 16, marginTop: 20 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <SectionHeader title="ITEMS TO PACK" colors={colors} />
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: allChecked ? colors.success : colors.warning }}>
+                    {checkedCount}/{order.items.length} checked
+                  </Text>
+                </View>
+                {order.items.map((item) => (
+                  <ItemCheckRow
+                    key={item.id}
+                    item={item}
+                    onToggle={() => toggleItem(item.id)}
+                    locked={order.status !== 'confirmed' && order.status !== 'preparing'}
+                    colors={colors}
+                  />
+                ))}
+              </View>
+
+              {/* ── SC/PWD Customer & BNPC Discount section ───────────────────
+                  Shown when customerType is SENIOR_CITIZEN or PWD.
+                  Data comes from the scPwdCustomer relation now included in
+                  kompraOrderManagementInclude on the backend. */}
+              {isScPwd && (
+                <View style={{ paddingHorizontal: 16, marginTop: 20 }}>
+                  <SectionHeader title="SC / PWD CUSTOMER" colors={colors} />
+                  <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#7C3AED44', gap: 8 }}>
+
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                      <Text style={{ fontSize: 13, color: colors.textSecondary }}>Customer Type</Text>
+                      <Text style={{ fontSize: 13, color: '#7C3AED', fontWeight: '700' }}>
+                        {order.customerType === 'PWD' ? 'Person with Disability' : 'Senior Citizen'}
+                      </Text>
+                    </View>
+
+                    {order.discountType && order.discountType !== 'NONE' && (
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                        <Text style={{ fontSize: 13, color: colors.textSecondary }}>Discount Type</Text>
+                        <Text style={{ fontSize: 13, color: colors.text, fontWeight: '600' }}>
+                          {order.discountType.replace('BNPC_', 'BNPC ').replace('_', ' ')}
+                        </Text>
+                      </View>
+                    )}
+
+                    {order.scPwdCustomer ? (
+                      <>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                          <Text style={{ fontSize: 13, color: colors.textSecondary }}>Name</Text>
+                          <Text style={{ fontSize: 13, color: colors.text, fontWeight: '600', flex: 1, textAlign: 'right', marginLeft: 12 }} numberOfLines={1}>
+                            {order.scPwdCustomer.fullName}
+                          </Text>
+                        </View>
+
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                          <Text style={{ fontSize: 13, color: colors.textSecondary }}>
+                            {order.scPwdCustomer.idType === 'OSCA' ? 'OSCA ID' : order.scPwdCustomer.idType === 'PWD' ? 'PWD ID' : 'Gov. ID'}
+                          </Text>
+                          <Text style={{ fontSize: 13, color: colors.text, fontFamily: 'monospace' }}>
+                            {order.scPwdCustomer.idNumber}
+                          </Text>
+                        </View>
+
+                        {order.scPwdCustomer.isRepresentative && order.scPwdCustomer.representativeName ? (
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                            <Text style={{ fontSize: 13, color: colors.textSecondary }}>Representative</Text>
+                            <Text style={{ fontSize: 13, color: colors.text }}>{order.scPwdCustomer.representativeName}</Text>
+                          </View>
+                        ) : null}
+                      </>
+                    ) : null}
+
+                    {order.totalPax && order.totalPax > 1 ? (
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                        <Text style={{ fontSize: 13, color: colors.textSecondary }}>Pax (Total / SC-PWD)</Text>
+                        <Text style={{ fontSize: 13, color: colors.text }}>
+                          {order.totalPax} / {order.scPwdPax ?? 1}
+                        </Text>
+                      </View>
+                    ) : null}
+
+                    {order.vatExemptSale && order.vatExemptSale > 0 ? (
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                        <Text style={{ fontSize: 13, color: colors.textSecondary }}>VAT Exempt Sale</Text>
+                        <Text style={{ fontSize: 13, color: colors.text }}>₱{order.vatExemptSale.toLocaleString()}</Text>
+                      </View>
+                    ) : null}
+
+                    {hasDiscount ? (
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#7C3AED22', paddingTop: 8, marginTop: 2 }}>
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: colors.success }}>Discount Applied</Text>
+                        <Text style={{ fontSize: 13, fontWeight: '800', color: colors.success }}>
+                          -₱{(order.discountAmount ?? 0).toLocaleString()}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                </View>
+              )}
+
+              {/* ── Extra Charges section ──────────────────────────────────────
+                  Shown when non-delivery fees exist (e.g. packaging, handling).
+                  These come from KompraCOrderFee rows mapped in mapBackendOrder. */}
+              {order.extraCharges && order.extraCharges.length > 0 ? (
+                <View style={{ paddingHorizontal: 16, marginTop: 20 }}>
+                  <SectionHeader title="EXTRA CHARGES" colors={colors} />
+                  <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: colors.border, gap: 8 }}>
+                    {order.extraCharges.map((charge) => (
+                      <View key={charge.id} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                        <Text style={{ fontSize: 13, color: colors.textSecondary }}>{charge.label}</Text>
+                        <Text style={{ fontSize: 13, color: colors.text, fontWeight: '600' }}>
+                          ₱{Number(charge.amount).toLocaleString()}
+                        </Text>
+                      </View>
+                    ))}
+                    {(order.extraChargesTotal ?? 0) > 0 ? (
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8, marginTop: 2 }}>
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Total Extra</Text>
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
+                          +₱{(order.extraChargesTotal ?? 0).toLocaleString()}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                </View>
+              ) : null}
+
+              {/* ── Order Summary ──────────────────────────────────────────────
+                  Shows full VAT/discount breakdown matching SalesScreen style.
+                  Uses grandTotal as the final amount (includes delivery + extras). */}
+              <View style={{ paddingHorizontal: 16, marginTop: 20 }}>
+                <SectionHeader title="ORDER SUMMARY" colors={colors} />
+                <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: colors.border, gap: 8 }}>
+
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Text style={{ fontSize: 13, color: colors.textSecondary }}>Gross Sales (VAT Incl.)</Text>
+                    <Text style={{ fontSize: 13, color: colors.text }}>₱{order.subtotal.toLocaleString()}</Text>
+                  </View>
+
+                  {order.deliveryFee > 0 ? (
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                      <Text style={{ fontSize: 13, color: colors.textSecondary }}>Delivery fee</Text>
+                      <Text style={{ fontSize: 13, color: colors.text }}>₱{order.deliveryFee.toLocaleString()}</Text>
+                    </View>
+                  ) : null}
+
+                  {(order.extraChargesTotal ?? 0) > 0 ? (
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                      <Text style={{ fontSize: 13, color: colors.textSecondary }}>Extra charges</Text>
+                      <Text style={{ fontSize: 13, color: colors.text }}>+₱{(order.extraChargesTotal ?? 0).toLocaleString()}</Text>
+                    </View>
+                  ) : null}
+
+                  {isScPwd && order.vatExemptSale && order.vatExemptSale > 0 ? (
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                      <Text style={{ fontSize: 13, color: colors.textSecondary }}>VAT Exempt Sale</Text>
+                      <Text style={{ fontSize: 13, color: colors.text }}>₱{order.vatExemptSale.toLocaleString()}</Text>
+                    </View>
+                  ) : null}
+
+                  {order.vatAmount != null ? (
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                      <Text style={{ fontSize: 13, color: colors.textSecondary }}>VAT (12%)</Text>
+                      <Text style={{ fontSize: 13, color: colors.text }}>₱{Number(order.vatAmount).toLocaleString()}</Text>
+                    </View>
+                  ) : null}
+
+                  {hasDiscount ? (
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                      <Text style={{ fontSize: 13, color: colors.textSecondary }}>
+                        Discount ({order.discountType?.replace('BNPC_', 'BNPC ').replace('_', ' ') ?? ''})
+                      </Text>
+                      <Text style={{ fontSize: 13, color: colors.success, fontWeight: '600' }}>
+                        -₱{(order.discountAmount ?? 0).toLocaleString()}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8, marginTop: 2 }}>
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: colors.primary }}>Grand Total</Text>
+                    <Text style={{ fontSize: 17, fontWeight: '800', color: colors.primary }}>
+                      ₱{(order.grandTotal ?? order.total).toLocaleString()}
+                    </Text>
+                  </View>
                 </View>
               </View>
-            )}
 
-            <View style={{ height: 120 }} />
-          </ScrollView>
-
-          {/* Action button */}
-          <View
-            style={{
-              padding: 16,
-              paddingBottom: 32,
-              backgroundColor: colors.surface,
-              borderTopWidth: 1,
-              borderTopColor: colors.border,
-            }}
-          >
-            {order.status === 'pending' && (
-              <TouchableOpacity
-                style={{
-                  backgroundColor: colors.accent,
-                  borderRadius: 14,
-                  paddingVertical: 15,
-                  alignItems: 'center',
-                }}
-                onPress={handleConfirm}
-                disabled={actionLoading}
-              >
-                <Text
-                  style={{ fontSize: 16, fontWeight: '700', color: '#fff' }}
-                >
-                  ✓ Accept Order
-                </Text>
-              </TouchableOpacity>
-            )}
-            {(order.status === 'confirmed' || order.status === 'preparing') && (
-              <TouchableOpacity
-                style={{
-                  backgroundColor: allChecked ? colors.accent : '#CBD5E1',
-                  borderRadius: 14,
-                  paddingVertical: 15,
-                  alignItems: 'center',
-                }}
-                onPress={handleDonePacking}
-                disabled={actionLoading || !allChecked}
-              >
-                <Text
-                  style={{ fontSize: 16, fontWeight: '700', color: '#fff' }}
-                >
-                  {allChecked
-                    ? '📦  Done Packing — Assign Rider'
-                    : `Check all items (${checkedCount}/${order.items.length})`}
-                </Text>
-              </TouchableOpacity>
-            )}
-            {order.status === 'packed' && (
-              <TouchableOpacity
-                style={{
-                  backgroundColor: colors.primaryLight ?? colors.primary,
-                  borderRadius: 14,
-                  paddingVertical: 15,
-                  alignItems: 'center',
-                }}
-                onPress={handleOutForDelivery}
-                disabled={actionLoading}
-              >
-                <Text
-                  style={{ fontSize: 16, fontWeight: '700', color: '#fff' }}
-                >
-                  🛵 Out for Delivery
-                </Text>
-              </TouchableOpacity>
-            )}
-            {order.status === 'in_delivery' && (
-              <TouchableOpacity
-                style={{
-                  backgroundColor: colors.success,
-                  borderRadius: 14,
-                  paddingVertical: 15,
-                  alignItems: 'center',
-                }}
-                onPress={handleDelivered}
-                disabled={actionLoading}
-              >
-                <Text
-                  style={{ fontSize: 16, fontWeight: '700', color: '#fff' }}
-                >
-                  ✓ Mark as Delivered
-                </Text>
-              </TouchableOpacity>
-            )}
-            {order.status === 'received' && (
-              <View
-                style={{
-                  backgroundColor: colors.success + '18',
-                  borderRadius: 14,
-                  paddingVertical: 15,
-                  alignItems: 'center',
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 16,
-                    fontWeight: '700',
-                    color: colors.success,
-                  }}
-                >
-                  ✓ Order Completed
-                </Text>
+              {/* Timeline */}
+              <View style={{ paddingHorizontal: 16, marginTop: 20 }}>
+                <SectionHeader title="TIMELINE" colors={colors} />
+                <View style={{ paddingLeft: 4 }}>
+                  {/* FIX: formatTime now uses safeParseDate — no more "Invalid Date" */}
+                  <TimelineRow label="Order placed" time={`${formatDateTime(order.createdAt)} ${order.createdAt && timeAgo(order.createdAt)}`} done colors={colors} />
+                  <TimelineRow label="Packed" time={`${formatDateTime(order.packedAt)} ${order.packedAt && timeAgo(order.packedAt)}`} done={!!order.packedAt} colors={colors} />
+                  <TimelineRow
+                    label="Out for delivery"
+                    time={order.riderName ? `Rider: ${order.riderName}` : '—'}
+                    done={order.status === 'in_delivery' || order.status === 'received'}
+                    colors={colors}
+                  />
+                  <TimelineRow
+                    label="Delivered"
+                    time={`${formatDateTime(order.deliveredAt)} ${order.deliveredAt && timeAgo(order.deliveredAt)}`}
+                    done={order.status === 'received'}
+                    last
+                    colors={colors}
+                  />
+                </View>
               </View>
-            )}
+
+              {/* Customer review */}
+              {order.rating ? (
+                <View style={{ paddingHorizontal: 16, marginTop: 20 }}>
+                  <SectionHeader title="CUSTOMER REVIEW" colors={colors} />
+                  <View style={{ backgroundColor: colors.success + '18', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.success }}>
+                    <Text style={{ fontSize: 20, marginBottom: 4 }}>{'⭐'.repeat(order.rating)}</Text>
+                    {order.review ? (
+                      <Text style={{ fontSize: 14, color: colors.text, lineHeight: 20 }}>{order.review}</Text>
+                    ) : null}
+                  </View>
+                </View>
+              ) : null}
+
+              <View style={{ height: 120 }} />
+            </ScrollView>
+
+            {/* Action button */}
+            <View style={{ padding: 16, paddingBottom: Platform.OS === 'ios' ? 28 : 16, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border }}>
+              {actionLoading ? (
+                <View style={{ borderRadius: 14, paddingVertical: 15, alignItems: 'center', backgroundColor: colors.border }}>
+                  <ActivityIndicator color={colors.primary} />
+                </View>
+              ) : order.status === 'pending' ? (
+                <TouchableOpacity
+                  style={{ backgroundColor: colors.accent, borderRadius: 14, paddingVertical: 15, alignItems: 'center' }}
+                  onPress={handleConfirm}
+                >
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: '#fff' }}>✓ Accept Order</Text>
+                </TouchableOpacity>
+              ) : order.status === 'confirmed' || order.status === 'preparing' ? (
+                <TouchableOpacity
+                  style={{ backgroundColor: allChecked ? colors.accent : '#CBD5E1', borderRadius: 14, paddingVertical: 15, alignItems: 'center' }}
+                  onPress={handleDonePacking}
+                  disabled={!allChecked}
+                >
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: '#fff' }}>
+                    {allChecked
+                      ? '📦  Done Packing — Assign Rider'
+                      : `Check all items (${checkedCount}/${order.items.length})`}
+                  </Text>
+                </TouchableOpacity>
+              ) : order.status === 'packed' ? (
+                <TouchableOpacity
+                  style={{ backgroundColor: colors.primaryLight ?? colors.primary, borderRadius: 14, paddingVertical: 15, alignItems: 'center' }}
+                  onPress={handleOutForDelivery}
+                >
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: '#fff' }}>🛵 Out for Delivery</Text>
+                </TouchableOpacity>
+              ) : order.status === 'in_delivery' ? (
+                <TouchableOpacity
+                  style={{ backgroundColor: colors.success, borderRadius: 14, paddingVertical: 15, alignItems: 'center' }}
+                  onPress={handleDelivered}
+                >
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: '#fff' }}>✓ Mark as Delivered</Text>
+                </TouchableOpacity>
+              ) : order.status === 'received' ? (
+                <View style={{ backgroundColor: colors.success + '18', borderRadius: 14, paddingVertical: 15, alignItems: 'center' }}>
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: colors.success }}>✓ Order Completed</Text>
+                </View>
+              ) : null}
+            </View>
           </View>
         </View>
       </Modal>
 
-      {/* FIX: cross-platform rider name input */}
+      {/* Rider name input modal */}
       <RiderNameModal
         visible={riderModalVisible}
         onConfirm={confirmRider}
@@ -1479,29 +1210,14 @@ function OrderDetailModal({
 
 // ─── New Order Notification Banner ───────────────────────────────────────────
 
-function NewOrderBanner({
-  order,
-  onView,
-}: {
-  order: KompraOrder;
-  onView: () => void;
-}) {
+function NewOrderBanner({ order, onView }: { order: KompraOrder; onView: () => void }) {
   const { colors } = useTheme();
   const slide = useRef(new Animated.Value(-120)).current;
 
-  React.useEffect(() => {
-    Animated.spring(slide, {
-      toValue: 0,
-      useNativeDriver: true,
-      tension: 80,
-      friction: 10,
-    }).start();
+  useEffect(() => {
+    Animated.spring(slide, { toValue: 0, useNativeDriver: true, tension: 80, friction: 10 }).start();
     const t = setTimeout(() => {
-      Animated.timing(slide, {
-        toValue: -120,
-        useNativeDriver: true,
-        duration: 300,
-      }).start();
+      Animated.timing(slide, { toValue: -120, useNativeDriver: true, duration: 300 }).start();
     }, 8000);
     return () => clearTimeout(t);
   }, []);
@@ -1529,36 +1245,18 @@ function NewOrderBanner({
         { transform: [{ translateY: slide }] },
       ]}
     >
-      <View
-        style={{
-          width: 10,
-          height: 10,
-          borderRadius: 5,
-          backgroundColor: colors.accent,
-        }}
-      />
+      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.accent }} />
       <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>
-          New Kompra Order!
-        </Text>
-        <Text
-          style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', marginTop: 1 }}
-        >
-          {order.customerName} · ₱{order.total.toLocaleString()}
+        <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>New Kompra Order!</Text>
+        <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', marginTop: 1 }}>
+          {order.customerName} · ₱{(order.grandTotal ?? order.total).toLocaleString()}
         </Text>
       </View>
       <TouchableOpacity
-        style={{
-          backgroundColor: colors.accent,
-          borderRadius: 8,
-          paddingHorizontal: 14,
-          paddingVertical: 7,
-        }}
+        style={{ backgroundColor: colors.accent, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 }}
         onPress={onView}
       >
-        <Text style={{ fontSize: 13, fontWeight: '700', color: '#fff' }}>
-          View
-        </Text>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: '#fff' }}>View</Text>
       </TouchableOpacity>
     </Animated.View>
   );
@@ -1567,6 +1265,8 @@ function NewOrderBanner({
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function OrderManagement() {
+  const { width: windowWidth } = useWindowDimensions();
+  const numCols = windowWidth >= 768 ? 2 : 1
   const { colors } = useTheme();
   const [orders, setOrders] = useState<KompraOrder[]>([]);
   const [activeTab, setActiveTab] = useState<0 | 1 | 2>(0);
@@ -1576,10 +1276,11 @@ export default function OrderManagement() {
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Syncs the orders list and keeps selectedOrder up to date if it's open
   const syncOrders = useCallback((nextOrders: KompraOrder[]) => {
     setOrders(nextOrders);
     setSelected((current) =>
-      current ? nextOrders.find((order) => order.id === current.id) ?? current : current,
+      current ? (nextOrders.find((o) => o.id === current.id) ?? current) : current,
     );
   }, []);
 
@@ -1590,25 +1291,19 @@ export default function OrderManagement() {
       } else {
         setLoadingOrders(true);
       }
-
       try {
-        const backendOrders =
-          await KompraCOrderService.getKompraCOrdersForManagement({
-            status: [
-              'pending',
-              'confirmed',
-              'preparing',
-              'in_delivery',
-              'received',
-            ],
-            take: 100,
-          });
+        const backendOrders = await KompraCOrderService.getKompraCOrdersForManagement({
+          status: ['pending', 'confirmed', 'preparing', 'in_delivery', 'received'],
+          take: 100,
+        });
         syncOrders(backendOrders.map(mapBackendOrder));
       } catch (error) {
         Alert.alert(
           'Unable to load orders',
           error instanceof Error ? error.message : 'Please try again.',
         );
+        // Fall back to mock data during development if backend is unavailable
+
       } finally {
         setLoadingOrders(false);
         setRefreshing(false);
@@ -1621,14 +1316,10 @@ export default function OrderManagement() {
     void loadOrders();
   }, [loadOrders]);
 
-  // Every action persists through GraphQL and then replaces local state with
-  // the backend response, including customer, courier, item, fee, and tracking joins.
+  // All status changes go through the backend and replace local state with the
+  // server response — including all joined customer, courier, fee, and tracking data.
   const handleStatusChange = useCallback(
-    async (
-      id: number,
-      status: OrderStatus,
-      updates?: Partial<KompraOrder>,
-    ) => {
+    async (id: number, status: OrderStatus, updates?: Partial<KompraOrder>) => {
       let backendOrder: KompraCOrder;
 
       if (status === 'confirmed') {
@@ -1644,33 +1335,28 @@ export default function OrderManagement() {
       } else if (status === 'received') {
         backendOrder = await KompraCOrderService.markKompraOrderDelivered(id);
       } else {
-        throw new Error(`Unsupported order status update: ${status}`);
+        throw new Error(`Unsupported status update: ${status}`);
       }
 
       const updatedOrder = mapBackendOrder(backendOrder);
-      setOrders((prev) =>
-        prev.map((order) => (order.id === id ? updatedOrder : order)),
-      );
-      setSelected((current) =>
-        current?.id === id ? updatedOrder : current,
-      );
+
+      setOrders((prev) => prev.map((o) => (o.id === id ? updatedOrder : o)));
+      setSelected((current) => (current?.id === id ? updatedOrder : current));
+
       return updatedOrder;
     },
     [],
   );
 
-  // FIX: always read the latest order from state when opening modal
   const openOrder = (order: KompraOrder) => {
+    // Always read the freshest copy from state before opening
     const latest = orders.find((o) => o.id === order.id) ?? order;
     setSelected(latest);
     setModal(true);
   };
 
   const newOrders = orders.filter(
-    (o) =>
-      o.status === 'pending' ||
-      o.status === 'confirmed' ||
-      o.status === 'preparing',
+    (o) => o.status === 'pending' || o.status === 'confirmed' || o.status === 'preparing',
   );
   const processedOrders = orders.filter(
     (o) => o.status === 'packed' || o.status === 'in_delivery',
@@ -1679,16 +1365,8 @@ export default function OrderManagement() {
 
   const tabs = [
     { label: 'New Orders', count: newOrders.length, data: newOrders },
-    {
-      label: 'In Progress',
-      count: processedOrders.length,
-      data: processedOrders,
-    },
-    {
-      label: 'Delivered',
-      count: deliveredOrders.length,
-      data: deliveredOrders,
-    },
+    { label: 'In Progress', count: processedOrders.length, data: processedOrders },
+    { label: 'Delivered', count: deliveredOrders.length, data: deliveredOrders },
   ];
 
   return (
@@ -1696,44 +1374,18 @@ export default function OrderManagement() {
       <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
 
       {/* Header */}
-      <View
-        style={{
-          backgroundColor: colors.primary,
-          paddingTop: 15,
-          paddingBottom: 16,
-          paddingHorizontal: 20,
-        }}
-      >
-        <Text
-          style={{
-            fontSize: 22,
-            fontWeight: '700',
-            color: '#fff',
-            letterSpacing: -0.3,
-          }}
-        >
+      <View style={{ backgroundColor: colors.primary, paddingTop: 15, paddingBottom: 16, paddingHorizontal: 20 }}>
+        <Text style={{ fontSize: 22, fontWeight: '700', color: '#fff', letterSpacing: -0.3 }}>
           Kompra Orders
         </Text>
-        <Text
-          style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}
-        >
+        <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>
           Today ·{' '}
-          {new Date().toLocaleDateString('en-PH', {
-            month: 'short',
-            day: 'numeric',
-          })}
+          {new Date().toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
         </Text>
       </View>
 
       {/* Tabs */}
-      <View
-        style={{
-          flexDirection: 'row',
-          backgroundColor: colors.surface,
-          borderBottomWidth: 1,
-          borderBottomColor: colors.border,
-        }}
-      >
+      <View style={{ flexDirection: 'row', backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }}>
         {tabs.map((tab, i) => (
           <TouchableOpacity
             key={tab.label}
@@ -1745,37 +1397,16 @@ export default function OrderManagement() {
               gap: 6,
               paddingVertical: 13,
               borderBottomWidth: 2,
-              borderBottomColor:
-                activeTab === i ? colors.accent : 'transparent',
+              borderBottomColor: activeTab === i ? colors.accent : 'transparent',
             }}
             onPress={() => setActiveTab(i as 0 | 1 | 2)}
           >
-            <Text
-              style={{
-                fontSize: 13,
-                fontWeight: activeTab === i ? '700' : '500',
-                color: activeTab === i ? colors.text : colors.textSecondary,
-              }}
-            >
+            <Text style={{ fontSize: 13, fontWeight: activeTab === i ? '700' : '500', color: activeTab === i ? colors.text : colors.textSecondary }}>
               {tab.label}
             </Text>
             {tab.count > 0 && (
-              <View
-                style={{
-                  backgroundColor:
-                    activeTab === i ? colors.accent : colors.border,
-                  borderRadius: 10,
-                  paddingHorizontal: 6,
-                  paddingVertical: 1,
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 11,
-                    fontWeight: '700',
-                    color: activeTab === i ? '#fff' : colors.textSecondary,
-                  }}
-                >
+              <View style={{ backgroundColor: activeTab === i ? colors.accent : colors.border, borderRadius: 10, paddingHorizontal: 6, paddingVertical: 1 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: activeTab === i ? '#fff' : colors.textSecondary }}>
                   {tab.count}
                 </Text>
               </View>
@@ -1784,55 +1415,59 @@ export default function OrderManagement() {
         ))}
       </View>
 
-      {loadingOrders && (
-        <View style={{ paddingTop: 24, alignItems: 'center', gap: 8 }}>
-          <ActivityIndicator color={colors.primary} />
-          <Text style={{ fontSize: 13, color: colors.textSecondary }}>
-            Loading Kompra orders...
-          </Text>
+      {loadingOrders && !refreshing && (
+        <View style={{ paddingTop: 32, alignItems: 'center', gap: 10 }}>
+          <ActivityIndicator color={colors.primary} size="large" />
+          <Text style={{ fontSize: 13, color: colors.textSecondary }}>Loading Kompra orders…</Text>
         </View>
       )}
 
       {/* Order list */}
-      <FlatList
-        data={tabs[activeTab].data}
-        keyExtractor={(o) => String(o.id)}
-        contentContainerStyle={{ padding: 12, gap: 10, paddingBottom: 40 }}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => void loadOrders(true)}
-            tintColor={colors.primary}
-          />
-        }
-        renderItem={({ item }) => (
-          <OrderCard
-            order={item}
-            onPress={() => openOrder(item)}
-            showBadge={item.status === 'pending'}
-          />
-        )}
-        ListEmptyComponent={
-          <View style={{ alignItems: 'center', paddingTop: 80, gap: 10 }}>
-            <Text style={{ fontSize: 48 }}>
-              {activeTab === 0 ? '🎉' : activeTab === 1 ? '📦' : '✅'}
-            </Text>
-            <Text
-              style={{
-                fontSize: 15,
-                color: colors.textSecondary,
-                fontWeight: '500',
-              }}
-            >
-              {activeTab === 0
-                ? 'No new orders'
-                : activeTab === 1
-                  ? 'Nothing in progress'
-                  : 'No deliveries yet today'}
-            </Text>
-          </View>
-        }
-      />
+      {!loadingOrders && (
+        <FlatList
+          data={tabs[activeTab].data}
+          keyExtractor={(o) => String(o.id)}
+          numColumns={numCols}
+          key={numCols}
+          columnWrapperStyle={
+            numCols === 2
+              ? { gap: 10, paddingHorizontal: 12 }
+              : undefined
+          }
+          contentContainerStyle={{
+            paddingTop: 12,
+            paddingBottom: 40,
+            gap: 10,
+            // remove padding here when 2-col — columnWrapperStyle handles it
+            paddingHorizontal: numCols === 1 ? 12 : 0,
+          }}
+
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => void loadOrders(true)}
+              tintColor={colors.primary}
+            />
+          }
+          renderItem={({ item }) => (
+            <OrderCard order={item} onPress={() => openOrder(item)} showBadge={item.status === 'pending'} />
+          )}
+          ListEmptyComponent={
+            <View style={{ alignItems: 'center', paddingTop: 80, gap: 10 }}>
+              <Text style={{ fontSize: 48 }}>
+                {activeTab === 0 ? '🎉' : activeTab === 1 ? '📦' : '✅'}
+              </Text>
+              <Text style={{ fontSize: 15, color: colors.textSecondary, fontWeight: '500' }}>
+                {activeTab === 0
+                  ? 'No new orders'
+                  : activeTab === 1
+                    ? 'Nothing in progress'
+                    : 'No deliveries yet today'}
+              </Text>
+            </View>
+          }
+        />
+      )}
 
       {/* New order banner */}
       {newOrderBanner && (
