@@ -236,14 +236,14 @@ export default function SettingsScreen({
           </Text>
           <View style={[styles.settingsGroup, { backgroundColor: colors.card }]}>
 
-            {/* Any logged-in user can view/edit their own profile */}{
-              __DEV__ && <SettingItem
+            {/* Any logged-in user can view/edit their own profile */}
+            <SettingItem
                 icon={<User size={20} color={colors.primary} />}
                 title="My Profile"
                 subtitle="Edit your personal information"
                 onPress={() => setUserProfileVisible(true)}
               />
-            }
+            
             {/* Org profile — tappable for all, but guarded inside handler */}
             <SettingItem
               icon={<Building2 size={20} color={isOwner ? colors.accent : colors.textSecondary} />}

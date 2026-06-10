@@ -33,6 +33,111 @@ interface ProfileData {
   profilePhoto: string;
 }
 
+// ── Moved OUTSIDE the parent so it never remounts on re-render ──────────────
+
+interface PasswordFieldProps {
+  label: string;
+  value: string;
+  onChangeText: (value: string) => void;
+  visible: boolean;
+  onToggleVisible: () => void;
+  onBlur?: () => void;
+  colors: {
+    text: string;
+    textSecondary: string;
+    border: string;
+    cardBackground: string;
+  };
+  inputStyle: object[];
+}
+
+const PasswordField = ({
+  label,
+  value,
+  onChangeText,
+  visible,
+  onToggleVisible,
+  onBlur,
+  colors,
+  inputStyle,
+}: PasswordFieldProps) => (
+  <View>
+    <Text style={[styles.label, { color: colors.text }]}>{label}</Text>
+    <View style={styles.passwordField}>
+      <TextInput
+        style={[...inputStyle, styles.passwordInput]}
+        placeholderTextColor={colors.textSecondary}
+        value={value}
+        onChangeText={onChangeText}
+        onBlur={onBlur}
+        secureTextEntry={!visible}
+        autoCapitalize="none"
+      />
+      <TouchableOpacity
+        onPress={onToggleVisible}
+        style={styles.passwordToggle}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
+        {visible ? (
+          <EyeOff size={18} color={colors.textSecondary} />
+        ) : (
+          <Eye size={18} color={colors.textSecondary} />
+        )}
+      </TouchableOpacity>
+    </View>
+  </View>
+);
+
+interface PasswordStrengthUIProps {
+  newPasswordTouched: boolean;
+  newPassword: string;
+  passwordStrength: ReturnType<typeof getPasswordStrength>;
+  colors: { border: string; textSecondary: string; danger: string };
+}
+
+const PasswordStrengthUI = ({
+  newPasswordTouched,
+  newPassword,
+  passwordStrength,
+  colors,
+}: PasswordStrengthUIProps) => {
+  if (!newPasswordTouched || !newPassword) return null;
+  return (
+    <View style={styles.strengthContainer}>
+      <View style={styles.strengthBar}>
+        {[1, 2, 3, 4, 5].map((i) => (
+          <View
+            key={i}
+            style={[
+              styles.strengthSegment,
+              {
+                backgroundColor:
+                  i <= passwordStrength.score ? passwordStrength.color : colors.border,
+              },
+            ]}
+          />
+        ))}
+      </View>
+      <Text style={[styles.strengthLabel, { color: passwordStrength.color }]}>
+        {passwordStrength.label}
+      </Text>
+      {passwordStrength.rules.map((rule) => (
+        <Text
+          key={rule.label}
+          style={[
+            styles.ruleText,
+            { color: rule.met ? colors.textSecondary : colors.danger },
+          ]}
+        >
+          {rule.met ? '[x]' : '[ ]'} {rule.label}
+        </Text>
+      ))}
+    </View>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function UserProfileModal({
   visible,
   onClose,
@@ -45,7 +150,6 @@ export default function UserProfileModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [formData, setFormData] = useState<ProfileData>({
-
     contactNumber: '',
     address: '',
     city: '',
@@ -201,89 +305,6 @@ export default function UserProfileModal({
     },
   ];
 
-  const passwordInputStyle = [
-    inputStyle,
-    styles.passwordInput,
-  ];
-
-  const PasswordField = ({
-    label,
-    value,
-    onChangeText,
-    visible,
-    onToggleVisible,
-    onBlur,
-  }: {
-    label: string;
-    value: string;
-    onChangeText: (value: string) => void;
-    visible: boolean;
-    onToggleVisible: () => void;
-    onBlur?: () => void;
-  }) => (
-    <View>
-      <Text style={[styles.label, { color: colors.text }]}>{label}</Text>
-      <View style={styles.passwordField}>
-        <TextInput
-          style={passwordInputStyle}
-          placeholderTextColor={colors.textSecondary}
-          value={value}
-          onChangeText={onChangeText}
-          onBlur={onBlur}
-          secureTextEntry={!visible}
-          autoCapitalize="none"
-        />
-        <TouchableOpacity
-          onPress={onToggleVisible}
-          style={styles.passwordToggle}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          {visible ? (
-            <EyeOff size={18} color={colors.textSecondary} />
-          ) : (
-            <Eye size={18} color={colors.textSecondary} />
-          )}
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-
-  const PasswordStrengthUI = () => {
-    if (!newPasswordTouched || !newPassword) return null;
-    return (
-      <View style={styles.strengthContainer}>
-        <View style={styles.strengthBar}>
-          {[1, 2, 3, 4, 5].map((i) => (
-            <View
-              key={i}
-              style={[
-                styles.strengthSegment,
-                {
-                  backgroundColor:
-                    i <= passwordStrength.score ? passwordStrength.color : colors.border,
-                },
-              ]}
-            />
-          ))}
-        </View>
-        <Text style={[styles.strengthLabel, { color: passwordStrength.color }]}>
-          {passwordStrength.label}
-        </Text>
-        {passwordStrength.rules.map((rule) => (
-          <Text
-            key={rule.label}
-            style={[
-              styles.ruleText,
-              { color: rule.met ? colors.textSecondary : colors.danger },
-            ]}
-          >
-            {rule.met ? '[x]' : '[ ]'} {rule.label}
-          </Text>
-        ))}
-      </View>
-    );
-  };
-
   return (
     <Modal visible={visible} animationType="fade" transparent={true}>
       {/* Dimmed overlay — tap outside to close */}
@@ -330,7 +351,6 @@ export default function UserProfileModal({
                 </View>
               )}
 
-
               <Text style={[styles.label, { color: colors.text }]}>Phone</Text>
               <TextInput
                 style={inputStyle}
@@ -370,7 +390,6 @@ export default function UserProfileModal({
                     onChangeText={(v) => updateField('city', v)}
                   />
                 </View>
-                
               </View>
 
               <Text style={[styles.label, { color: colors.text }]}>Zip Code</Text>
@@ -425,7 +444,9 @@ export default function UserProfileModal({
                     value={oldPassword}
                     onChangeText={setOldPassword}
                     visible={showOldPassword}
-                    onToggleVisible={() => setShowOldPassword((value) => !value)}
+                    onToggleVisible={() => setShowOldPassword((v) => !v)}
+                    colors={colors}
+                    inputStyle={inputStyle}
                   />
 
                   <PasswordField
@@ -436,10 +457,17 @@ export default function UserProfileModal({
                       setNewPasswordTouched(true);
                     }}
                     visible={showNewPassword}
-                    onToggleVisible={() => setShowNewPassword((value) => !value)}
+                    onToggleVisible={() => setShowNewPassword((v) => !v)}
                     onBlur={() => setNewPasswordTouched(true)}
+                    colors={colors}
+                    inputStyle={inputStyle}
                   />
-                  <PasswordStrengthUI />
+                  <PasswordStrengthUI
+                    newPasswordTouched={newPasswordTouched}
+                    newPassword={newPassword}
+                    passwordStrength={passwordStrength}
+                    colors={colors}
+                  />
 
                   <PasswordField
                     label="Confirm New Password"
@@ -449,8 +477,10 @@ export default function UserProfileModal({
                       setConfirmPasswordTouched(true);
                     }}
                     visible={showConfirmPassword}
-                    onToggleVisible={() => setShowConfirmPassword((value) => !value)}
+                    onToggleVisible={() => setShowConfirmPassword((v) => !v)}
                     onBlur={() => setConfirmPasswordTouched(true)}
+                    colors={colors}
+                    inputStyle={inputStyle}
                   />
                   {confirmPasswordTouched && confirmPassword && !passwordsMatch ? (
                     <Text style={[styles.ruleText, { color: colors.danger }]}>
