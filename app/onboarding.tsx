@@ -13,7 +13,6 @@ import { AuthService } from '@/services/authService';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { OnboardingContext } from './_layout';
 import { useAuth } from '@/contexts/AuthContext';
-import { getPasswordStrength as getSharedPasswordStrength } from '@/utils/passwordStrength';
 
 import { Eye, EyeOff } from 'lucide-react-native';
 interface OnboardingScreenProps {
@@ -21,7 +20,7 @@ interface OnboardingScreenProps {
 }
 
 // --- Password validation ---
-interface PasswordStrength {
+export interface PasswordStrength {
   score: number; // 0–4
   label: 'Too short' | 'Weak' | 'Fair' | 'Good' | 'Strong';
   color: string;
@@ -31,9 +30,7 @@ interface PasswordStrength {
   }[];
 }
 
-function getPasswordStrength(password: string): PasswordStrength {
-  return getSharedPasswordStrength(password);
-
+export function getPasswordStrength(password: string): PasswordStrength {
   const rules = [
     { label: 'At least 8 characters', met: password.length >= 8 },
     { label: 'At least one uppercase letter (A–Z)', met: /[A-Z]/.test(password) },
