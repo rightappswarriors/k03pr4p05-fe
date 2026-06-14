@@ -1,6 +1,7 @@
 import { gql } from 'graphql-request';
 import { graphQLRequest } from './apiClient';
 import { CustomerType, DiscountType } from '@/types';
+import { formatGraphQLError } from '@/utils/errorFormatter';
 
 const LOG_PREFIX = '[KompraCOrderService]';
 
@@ -419,8 +420,11 @@ export class KompraCOrderService {
 
       return order;
     } catch (error) {
-      console.error(`${LOG_PREFIX} assignKompraOrderRider — ERROR for orderId ${orderId}:`, error);
-      throw error;
+      if (__DEV__) {
+        console.error(`${LOG_PREFIX} assignKompraOrderRider — ERROR for orderId ${orderId}:`, error);
+      }
+      const errorMessage = formatGraphQLError(error);
+      throw new Error(errorMessage);
     }
   }
 
@@ -455,8 +459,11 @@ export class KompraCOrderService {
       );
       return order;
     } catch (error) {
-      console.error(`${LOG_PREFIX} markKompraOrderDelivered — ERROR for orderId ${orderId}:`, error);
-      throw error;
+      if (__DEV__) {
+        console.error(`${LOG_PREFIX} markKompraOrderDelivered — ERROR for orderId ${orderId}:`, error);
+      }
+      const errorMessage = formatGraphQLError(error);
+      throw new Error(errorMessage);
     }
   }
 
@@ -521,9 +528,13 @@ export class KompraCOrderService {
         '| cancelNote:', order.cancelNote ?? '(none)',
       );
       return order;
-    } catch (error) {
-      console.error(`${LOG_PREFIX} cancelKompraOrder — ERROR for orderId ${orderId}:`, error);
-      throw error;
+    } catch (error: any) {
+      if (__DEV__) {
+        console.error(`${LOG_PREFIX} cancelKompraOrder — ERROR for orderId ${orderId}:`, error);
+      }
+      const errorMessage = formatGraphQLError(error);
+      throw new Error(errorMessage);
+
     }
   }
 
@@ -566,9 +577,12 @@ export class KompraCOrderService {
       const summaries = response.getKompraCOrdersSummary ?? [];
       console.log(`${LOG_PREFIX} getKompraCOrderSummaries — received ${summaries.length} summaries`);
       return summaries;
-    } catch (error) {
-      console.error(`${LOG_PREFIX} getKompraCOrderSummaries — ERROR:`, error);
-      return [];
+    } catch (error: any) {
+      if (__DEV__) {
+        console.error(`${LOG_PREFIX} getKompraCOrderSummaries — ERROR:`, error);
+      }
+      const errorMessage = formatGraphQLError(error);
+      throw new Error(errorMessage);
     }
   }
 }

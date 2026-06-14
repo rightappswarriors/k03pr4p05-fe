@@ -251,7 +251,7 @@ export interface InventoryItemForSales {
     isBNPC?: boolean;
     hasSeniorDiscountVATExempt?: boolean;
     vatRate?: number;
-    vatType? : {
+    vatType?: {
       id: number
       name: string;
       rate: number;
@@ -813,11 +813,17 @@ export class SalesOrderService {
         }
       }
     `;
-    const response = await graphQLRequest<{ updateSalesOrderStatus: SalesOrder }>(
-      MUTATION,
-      { salesOrderId, status }
-    );
-    return response.updateSalesOrderStatus;
+    try {
+      const response = await graphQLRequest<{ updateSalesOrderStatus: SalesOrder }>(
+        MUTATION,
+        { salesOrderId, status }
+      );
+      return response.updateSalesOrderStatus;
+    } catch (error) {
+      if (__DEV__) {
+        console.error("updateSalesOrderStatus error:", formatGraphQLError(error));
+      } throw error;
+    }
   }
 
   static async addExtraCharge(salesOrderId: string, label: string, amount: number): Promise<SalesOrder> {

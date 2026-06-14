@@ -47,6 +47,9 @@ import {
 } from '@/services/kompraCOrderService';
 import type { CustomerType, DiscountType } from '@/services/salesOrder.service';
 import { formatDateTime, timeAgo } from '@/utils/dateHelpers';
+import { useErrorModal } from '@/hooks/errorModalHook';
+import { ErrorModal } from '@/components/ErrorModal';
+import { showErrorCSS } from 'react-native-svg/lib/typescript/deprecated';
 
 const { width } = Dimensions.get('window');
 const VIEW_MODE_KEY = 'orders-view-mode';
@@ -2232,7 +2235,6 @@ function OrderDetailModal({
     updates?: Partial<KompraOrder>,
   ) => Promise<KompraOrder>;
   onCancelConfirmed: (updated: KompraOrder) => void;
-
 }) {
   const { colors } = useTheme();
   const [order, setOrder] = useState<KompraOrder | null>(initialOrder);
@@ -2264,6 +2266,7 @@ function OrderDetailModal({
       } else {
         Alert.alert('Cancel failed', error instanceof Error ? error.message : 'Please try again.');
       }
+
     } finally {
       setCancelLoading(false);
     }
@@ -2310,6 +2313,10 @@ function OrderDetailModal({
     status: OrderStatus,
     updates?: Partial<KompraOrder>,
   ) => {
+    if (__DEV__) {
+      console.log('[persistStatus] called, actionLoading:', actionLoading, 'order:', order?.id);
+
+    }
     if (!order) return null;
     if (actionLoading) return null;
     setActionLoading(true);
@@ -2318,11 +2325,7 @@ function OrderDetailModal({
       setOrder(updated);
       return updated;
     } catch (error) {
-      Alert.alert(
-        'Update failed',
-        error instanceof Error ? error.message : 'Please try again.',
-      );
-      return null;
+      return null
     } finally {
       setActionLoading(false);
     }
@@ -3619,7 +3622,6 @@ function OrderDetailModal({
           </View>
         </View>
       </Modal>
-
       <RiderNameModal
         visible={riderModalVisible}
         onConfirm={confirmRider}
@@ -3752,7 +3754,13 @@ export default function OrderManagement() {
   const [refreshing, setRefreshing] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('card');
   const [viewModeLoaded, setViewModeLoaded] = useState(false);
-
+  const {
+    visible: errorVisible,
+    title,
+    text,
+    showError,
+    closeError,
+  } = useErrorModal();
 
   // ── Persist view mode ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -3837,37 +3845,51 @@ export default function OrderManagement() {
       status: OrderStatus,
       updates?: Partial<KompraOrder>,
     ) => {
-      let backendOrder: KompraCOrder;
+      try {
+        let backendOrder: KompraCOrder;
 
-      if (status === 'confirmed') {
-        backendOrder = await KompraCOrderService.confirmKompraOrder(id);
-      } else if (status === 'packed') {
-        backendOrder =
-          await KompraCOrderService.markKompraOrderPacked(id);
-      } else if (status === 'in_delivery') {
-        backendOrder =
-          await KompraCOrderService.assignKompraOrderRider(
-            id,
-            updates?.riderName ?? 'Rider',
-            updates?.riderPhone,
+        if (status === "confirmed") {
+          backendOrder =
+            await KompraCOrderService.confirmKompraOrder(id);
+        } else if (status === "packed") {
+          backendOrder =
+            await KompraCOrderService.markKompraOrderPacked(id);
+        } else if (status === "in_delivery") {
+          backendOrder =
+            await KompraCOrderService.assignKompraOrderRider(
+              id,
+              updates?.riderName ?? "Rider",
+              updates?.riderPhone,
+            );
+        } else if (status === "received") {
+          backendOrder =
+            await KompraCOrderService.markKompraOrderDelivered(id);
+        } else {
+          throw new Error(
+            `Unsupported status update: ${status}`,
           );
-      } else if (status === 'received') {
-        backendOrder =
-          await KompraCOrderService.markKompraOrderDelivered(id);
-      } else {
-        throw new Error(`Unsupported status update: ${status}`);
-      }
+        }
 
-      const updatedOrder = mapBackendOrder(backendOrder);
-      setOrders((prev) =>
-        prev.map((o) => (o.id === id ? updatedOrder : o)),
-      );
-      setSelected((current) =>
-        current?.id === id ? updatedOrder : current,
-      );
-      return updatedOrder;
+        const updatedOrder = mapBackendOrder(backendOrder);
+
+        setOrders((prev) =>
+          prev.map((o) => (o.id === id ? updatedOrder : o)),
+        );
+
+        setSelected((current) =>
+          current?.id === id ? updatedOrder : current,
+        );
+
+        return updatedOrder;
+      } catch (error) {
+        if (__DEV__) {
+          console.log('[handleStatusChange] caught error:', error)
+        }
+        showError(error, "Order Update Failed");
+        throw error; // optional: keep propagating
+      }
     },
-    [],
+    [showError],
   );
 
 
@@ -4222,6 +4244,13 @@ export default function OrderManagement() {
           setModal(false);
           setSelected(null);
         }}
+      />
+      
+      <ErrorModal
+        visible={errorVisible}
+        title={title}
+        text={text}
+        onClose={closeError}
       />
     </View>
   );
