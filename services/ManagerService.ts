@@ -995,6 +995,10 @@ export class AdminService {
             barcode
             categoryId
             sellingPrice
+            image
+            stock
+            stockLabel
+            remainingStock
             costLines {
               label
               amount

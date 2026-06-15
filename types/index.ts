@@ -515,6 +515,8 @@ export interface CatalogItem {
   sellingPrice: string;
   costLines: CostLine[] | [];
   stock?: number;
+  remainingStock?: number;
+  maxAllocatable?: number;
 }
 
 

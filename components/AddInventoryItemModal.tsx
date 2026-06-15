@@ -83,10 +83,16 @@ export default function AddInventoryItemModal({
   // ─── Prefill on edit ────────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      resetForm();
+      return;
+    }
     if (!inventoryItemId) return;
+    resetForm();
     InventoryService.getInventoryItemById(Number(inventoryItemId)).then((data) => {
+
       if (!data) return;
+      if (__DEV__) console.log('Prefill data:', data);
       setSelectedItem({
         id: data.item.id.toString(),
         name: data.item.name,
@@ -94,6 +100,8 @@ export default function AddInventoryItemModal({
         brand: data.item.brand,
         sellingPrice: data.item.sellingPrice?.toString() ?? '',
         stock: data.item.stock,
+        remainingStock: data.item.remainingStock,
+        maxAllocatable: data.item.maxAllocatable,
         costLines: data.item.costLines ?? [],
       });
       setBasePrice(data.price.toString());
@@ -122,9 +130,6 @@ export default function AddInventoryItemModal({
   }, [visible, inventoryItemId]);
 
   // Reset when modal closes
-  useEffect(() => {
-    if (!visible) resetForm();
-  }, [visible]);
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -160,8 +165,9 @@ export default function AddInventoryItemModal({
     const nextErrors: FieldErrors = {};
     const price = Number(basePrice);
     const qty = Number(baseQty || 0);
-    const maxStock = Number(selectedItem?.stock || 0);
-
+    const maxStock = Number(
+      selectedItem?.maxAllocatable ?? selectedItem?.remainingStock ?? selectedItem?.stock ?? 0
+    );
     if (!selectedItem) nextErrors.item = 'Please select an item from the catalog.';
     if (!basePrice.trim()) {
       nextErrors.basePrice = 'Base price is required.';
@@ -360,6 +366,7 @@ export default function AddInventoryItemModal({
                 }]}
                 onPress={() => setCatalogOpen(true)}
                 activeOpacity={0.82}
+                disabled={isEditMode}
               >
                 {selectedItem ? (
                   <View style={{ flex: 1 }}>
@@ -379,12 +386,19 @@ export default function AddInventoryItemModal({
                     </Text>
                   </View>
                 )}
-                {selectedItem ? (
-                  <TouchableOpacity onPress={() => { setSelectedItem(null); clearFieldError('item'); }}>
-                    <X size={16} color={colors.error} strokeWidth={2} />
-                  </TouchableOpacity>
-                ) : (
-                  <Text style={{ color: colors.textSecondary }}>›</Text>
+                {!isEditMode && (
+                  selectedItem ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setSelectedItem(null);
+                        clearFieldError('item');
+                      }}
+                    >
+                      <X size={16} color={colors.error} strokeWidth={2} />
+                    </TouchableOpacity>
+                  ) : (
+                    <Text style={{ color: colors.textSecondary }}>›</Text>
+                  )
                 )}
               </TouchableOpacity>
               {fieldError('item')}
@@ -407,7 +421,7 @@ export default function AddInventoryItemModal({
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                     <Text style={[s.infoCardLabel, { color: colors.textSecondary }]}>Available Stock:</Text>
                     <Text style={[s.infoCardValue, { color: colors.text }]}>
-                      {selectedItem.stock || 0}
+                      {selectedItem.remainingStock || 0}
                     </Text>
                   </View>
                 </View>

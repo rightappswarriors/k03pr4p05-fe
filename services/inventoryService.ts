@@ -39,7 +39,7 @@ export class InventoryService {
     return data.getItemStockDistribution;
   }
 
-
+  //FrontendService
   static async getInventoryItemById(inventoryItemId: number): Promise<any> {
     const QUERY = gql`
     query GetInventoryItemById($id: ID!) {
@@ -59,6 +59,8 @@ export class InventoryService {
           description
           image
           isBNPC
+          remainingStock
+          maxAllocatable
           hasSeniorDiscountVATExempt
           costLines { id label amount }
         }
