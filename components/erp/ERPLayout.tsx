@@ -18,6 +18,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Image,
 } from 'react-native';
 import {
   BarChart2,
@@ -406,11 +407,20 @@ const SidebarContent = memo(function SidebarContent({
   const { user } = useAuth()
   if (!user) return null; // or a placeholder if user data is required for rendering
   const organizationName = user.org?.name || 'Right ERP';
+  console.log("User organization in SidebarContent:", user.org)
   return (
     <>
       <View style={styles.drawerHeader}>
         <View style={styles.drawerLogoIcon}>
-          <Building2 size={18} color="#fff" strokeWidth={2} />
+          {user.org?.profileImg ? (
+            <Image
+              source={{ uri: user.org.profileImg }}
+              style={{ width: 36, height: 36, borderRadius: 10 }}
+              resizeMode="cover"
+            />
+          ) : (
+            <Building2 size={18} color="#fff" strokeWidth={2} />
+          )}
         </View>
         <View>
           <Text style={styles.drawerLogo}>{organizationName}</Text>

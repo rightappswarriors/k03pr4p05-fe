@@ -80,6 +80,7 @@ export interface OrganizationInfo {
   id: string;
   name: string;
   subscription?: Subscription | null;
+  profileImg?: string
 }
 
 export interface User {

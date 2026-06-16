@@ -114,6 +114,7 @@ export class AuthService {
             org {
               id
               name
+              profileImg
               subscription {
                 id
                 plan
