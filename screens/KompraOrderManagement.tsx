@@ -4068,8 +4068,9 @@ export default function OrderManagement() {
           borderBottomWidth: 1,
           borderBottomColor: colors.border,
           flexGrow: 0,
+          flexShrink: 0,          // ← prevents the tab bar from collapsing
         }}
-        contentContainerStyle={{ flexGrow: 1 }}
+        contentContainerStyle={{ flexDirection: 'row' }}  // ← removes flexGrow: 1
       >
         {tabs.map((tab, i) => (
           <TouchableOpacity
@@ -4084,7 +4085,7 @@ export default function OrderManagement() {
               borderBottomWidth: 2,
               borderBottomColor:
                 activeTab === i ? colors.accent : 'transparent',
-              minWidth: 100,
+              // minWidth: 100  ← remove this; let content size determine width
             }}
             onPress={() => setActiveTab(i as 0 | 1 | 2 | 3)}
           >
@@ -4245,7 +4246,7 @@ export default function OrderManagement() {
           setSelected(null);
         }}
       />
-      
+
       <ErrorModal
         visible={errorVisible}
         title={title}
