@@ -200,7 +200,6 @@ export default function SettingsScreen({
         style={[
           styles.content,
           isDesktop && responsive.padding,
-          isTablet && responsive.tabletPadding,
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -211,6 +210,7 @@ export default function SettingsScreen({
               source={{
                 uri: 'https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg?auto=compress&cs=tinysrgb&w=80&h=80&fit=crop',
               }}
+              defaultSource={require('@/assets/images/placeholder.png')}
               style={styles.profileImage}
             />
             <View style={styles.profileInfo}>
@@ -238,12 +238,12 @@ export default function SettingsScreen({
 
             {/* Any logged-in user can view/edit their own profile */}
             <SettingItem
-                icon={<User size={20} color={colors.primary} />}
-                title="My Profile"
-                subtitle="Edit your personal information"
-                onPress={() => setUserProfileVisible(true)}
-              />
-            
+              icon={<User size={20} color={colors.primary} />}
+              title="My Profile"
+              subtitle="Edit your personal information"
+              onPress={() => setUserProfileVisible(true)}
+            />
+
             {/* Org profile — tappable for all, but guarded inside handler */}
             <SettingItem
               icon={<Building2 size={20} color={isOwner ? colors.accent : colors.textSecondary} />}

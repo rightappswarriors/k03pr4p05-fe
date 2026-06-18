@@ -144,6 +144,7 @@ export default function LoginScreenDefault({
             source={{
               uri: 'https://static.vecteezy.com/system/resources/previews/002/534/006/original/social-media-chatting-online-blank-profile-picture-head-and-body-icon-people-standing-icon-grey-background-free-vector.jpg?auto=compress&cs=tinysrgb&w=200&h=200&fit=crop',
             }}
+            defaultSource={require('@/assets/images/placeholder.png')}
             style={styles.logo}
           />
           <Text style={[styles.title, { color: colors.text }]}>

@@ -380,7 +380,8 @@ function EditOutletModal({
               <Text style={[eom.label, { color: colors.textSecondary, marginTop: 14 }]}>BANNER IMAGE (optional)</Text>
               {bannerImage ? (
                 <View style={{ marginBottom: 12 }}>
-                  <Image source={{ uri: bannerImage }} style={{ width: '100%', height: 140, borderRadius: 10, marginBottom: 8 }} resizeMode="cover" />
+                  <Image source={{ uri: bannerImage }} style={{ width: '100%', height: 140, borderRadius: 10, marginBottom: 8 }} resizeMode="cover"
+                    defaultSource={require('@/assets/images/placeholder.png')} />
                   <TouchableOpacity onPress={() => { setBannerImage(''); setBannerImagePath(''); setBannerImageFile(null); }}>
                     <Text style={{ color: colors.error, fontSize: 12 }}>Remove image</Text>
                   </TouchableOpacity>
@@ -867,7 +868,12 @@ export default function OutletDetailScreen() {
       : '';
 
     return (
-      <View style={{ flex: 1, padding: 6 }}>
+      <View
+        style={{
+          width: 320,
+          padding: 6,
+        }}
+      >
         <TouchableOpacity
           style={[
             invSt.card,
@@ -882,7 +888,8 @@ export default function OutletDetailScreen() {
           {/* Thumbnail */}
           <View style={invSt.imageBox}>
             {item.item?.image ? (
-              <Image source={{ uri: item.item.image }} style={invSt.image} resizeMode="cover" />
+              <Image source={{ uri: item.item.image }} style={invSt.image} resizeMode="cover"
+                defaultSource={require('@/assets/images/placeholder.png')} />
             ) : (
               <View style={[invSt.imagePlaceholder, { backgroundColor: colors.border + '30' }]}>
                 <Package size={22} color={colors.textSecondary} strokeWidth={1.5} />
@@ -979,7 +986,8 @@ export default function OutletDetailScreen() {
                 {/* Image */}
                 <View style={[invSt.td, { width: COL.img }]}>
                   {item.item?.image ? (
-                    <Image source={{ uri: item.item.image }} style={invSt.tableThumb} resizeMode="cover" />
+                    <Image source={{ uri: item.item.image }} style={invSt.tableThumb} resizeMode="cover"
+                      defaultSource={require('@/assets/images/placeholder.png')} />
                   ) : (
                     <View style={[invSt.tableThumbPlaceholder, { backgroundColor: colors.border + '40' }]}>
                       <Package size={16} color={colors.textSecondary} strokeWidth={1.5} />
@@ -1113,7 +1121,8 @@ export default function OutletDetailScreen() {
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}>
           {outletBannerImage ? (
-            <Image source={{ uri: outletBannerImage }} style={{ width: '100%', height: 180 }} resizeMode="cover" />
+            <Image source={{ uri: outletBannerImage }} style={{ width: '100%', height: 180 }} resizeMode="cover"
+              defaultSource={require('@/assets/images/placeholder.png')} />
           ) : (
             <View style={{ width: '100%', height: 150, backgroundColor: colors.border, alignItems: 'center', justifyContent: 'center' }}>
               <Text style={{ color: colors.textSecondary }}>No outlet image</Text>

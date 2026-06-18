@@ -89,7 +89,8 @@ const ItemRow = React.memo(
       <View style={[rs.itemRow, { borderBottomColor: colors.border }]}>
         <View style={rs.itemLeft}>
           {data.image ? (
-            <Image source={{ uri: data.image }} style={rs.itemThumb} />
+            <Image source={{ uri: data.image }} style={rs.itemThumb}
+              defaultSource={require('@/assets/images/placeholder.png')} />
           ) : (
             <View
               style={[
@@ -209,22 +210,22 @@ const TotalsBlock = React.memo(
     const discountLabel = discountOption !== 'NONE' ? `Discount ${discountOption}` : 'Discount';
 
     return (
-      <View style={[rs.totalsBlock, { borderColor: colors.border }]}> 
+      <View style={[rs.totalsBlock, { borderColor: colors.border }]}>
         <View style={rs.totalRow}>
-          <Text style={[rs.totalLabel, { color: colors.textSecondary }]}> 
+          <Text style={[rs.totalLabel, { color: colors.textSecondary }]}>
             {hasVat ? 'VATable Sale' : 'Subtotal'}
           </Text>
-          <Text style={[rs.totalValue, { color: colors.text }]}> 
+          <Text style={[rs.totalValue, { color: colors.text }]}>
             ₱{((hasVat ? vatableSale ?? subtotal : subtotal) ?? subtotal).toFixed(2)}
           </Text>
         </View>
 
         {hasVat && (
           <View style={rs.totalRow}>
-            <Text style={[rs.totalLabel, { color: colors.textSecondary }]}> 
+            <Text style={[rs.totalLabel, { color: colors.textSecondary }]}>
               VAT
             </Text>
-            <Text style={[rs.totalValue, { color: colors.text }]}> 
+            <Text style={[rs.totalValue, { color: colors.text }]}>
               ₱{vatAmount.toFixed(2)}
             </Text>
           </View>
@@ -232,10 +233,10 @@ const TotalsBlock = React.memo(
 
         {isVatExemptActive && vatExemptAmount !== undefined && vatExemptAmount > 0 && (
           <View style={rs.totalRow}>
-            <Text style={[rs.totalLabel, { color: '#10B981' }]}> 
+            <Text style={[rs.totalLabel, { color: '#10B981' }]}>
               VAT Exempt Sale
             </Text>
-            <Text style={[rs.totalValue, { color: '#10B981' }]}> 
+            <Text style={[rs.totalValue, { color: '#10B981' }]}>
               ₱{vatExemptAmount.toFixed(2)}
             </Text>
           </View>
@@ -243,10 +244,10 @@ const TotalsBlock = React.memo(
 
         {discount > 0 && (
           <View style={rs.totalRow}>
-            <Text style={[rs.totalLabel, { color: colors.textSecondary }]}> 
+            <Text style={[rs.totalLabel, { color: colors.textSecondary }]}>
               {discountLabel}{discountRate > 0 ? ` (${(discountRate * 100).toFixed(0)}%)` : ''}
             </Text>
-            <Text style={[rs.totalValue, { color: '#EF4444' }]}> 
+            <Text style={[rs.totalValue, { color: '#EF4444' }]}>
               -₱{discount.toFixed(2)}
             </Text>
           </View>
@@ -256,7 +257,7 @@ const TotalsBlock = React.memo(
           style={[rs.totalRow, rs.grandRow, { borderTopColor: colors.border }]}
         >
           <Text style={[rs.grandLabel, { color: colors.text }]}>Total</Text>
-          <Text style={[rs.grandValue, { color: colors.accent }]}> 
+          <Text style={[rs.grandValue, { color: colors.accent }]}>
             ₱{total.toFixed(2)}
           </Text>
         </View>

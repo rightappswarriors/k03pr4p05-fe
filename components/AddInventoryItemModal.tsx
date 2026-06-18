@@ -812,9 +812,18 @@ export default function AddInventoryItemModal({
                 </View>
               ) : (
                 <TouchableOpacity
-                  style={[s.saveBtn, { backgroundColor: colors.primary, opacity: saving ? 0.7 : 1 }]}
+                  style={[s.saveBtn, {
+                    backgroundColor: colors.primary, opacity:
+                      saving ||
+                        (unitQtyExceedsBase && !overrideQtyConfirmed)
+                        ? 0.5
+                        : 1,
+                  }]}
                   onPress={handleSave}
-                  disabled={saving || success || !overrideQtyConfirmed}
+                  disabled={
+                    saving ||
+                    (unitQtyExceedsBase && !overrideQtyConfirmed)
+                  }
                   activeOpacity={0.85}
                 >
                   <Text style={s.saveTxt}>

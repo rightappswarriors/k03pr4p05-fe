@@ -137,6 +137,7 @@ export function QuantityModal({
                 source={{ uri: item.image }}
                 style={styles.image}
                 resizeMode="cover"
+                defaultSource={require('@/assets/images/placeholder.png')}
               />
             )}
 

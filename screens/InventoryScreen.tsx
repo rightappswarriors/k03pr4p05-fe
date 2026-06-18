@@ -262,6 +262,8 @@ function ImagePickerSection({
             source={{ uri: imageUri }}
             style={s.previewThumb}
             resizeMode="cover"
+
+            defaultSource={require('@/assets/images/placeholder.png')}
           />
           <View style={{ flex: 1 }}>
             <Text
@@ -1623,6 +1625,8 @@ function ItemDetailModal({
                     borderWidth: 2,
                     borderColor: 'rgba(255,255,255,0.3)',
                   }}
+
+                  defaultSource={require('@/assets/images/placeholder.png')}
                   resizeMode="cover"
                 />
               ) : (
@@ -3840,14 +3844,15 @@ export default function InventoryScreen() {
                   // @ts-ignore
                   style={({ hovered }: any) => [
                     tableStyles.row,
-                    { backgroundColor: hovered ? (colors.hover ?? '#F1F5F9') : rowBg, borderBottomColor: colors.border },
+                    { backgroundColor: hovered ? ('#F1F5F9') : rowBg, borderBottomColor: colors.border },
                   ]}
                   onPress={() => { setSelectedItem(item); setDetailVisible(true); }}
                 >
                   {/* Image */}
                   <View style={tableStyles.colImg}>
                     {item.imageUrl ? (
-                      <Image source={{ uri: item.imageUrl }} style={tableStyles.thumbImg} resizeMode="cover" />
+                      <Image source={{ uri: item.imageUrl }} style={tableStyles.thumbImg} resizeMode="cover"
+                        defaultSource={require('@/assets/images/placeholder.png')} />
                     ) : (
                       <View style={[tableStyles.thumbPlaceholder, { backgroundColor: colors.border }]}>
                         <Package size={16} color={colors.textSecondary} strokeWidth={1.5} />
@@ -3962,7 +3967,8 @@ export default function InventoryScreen() {
                   {/* Image */}
                   <View style={desktopCardStyles.imageWrap}>
                     {item.imageUrl ? (
-                      <Image source={{ uri: item.imageUrl }} style={desktopCardStyles.image} resizeMode="cover" />
+                      <Image source={{ uri: item.imageUrl }} style={desktopCardStyles.image} resizeMode="cover"
+                        defaultSource={require('@/assets/images/placeholder.png')} />
                     ) : (
                       <View style={[desktopCardStyles.imagePlaceholder, { backgroundColor: colors.border + '80' }]}>
                         <Package size={28} color={colors.textSecondary} strokeWidth={1.5} />
@@ -4032,7 +4038,8 @@ export default function InventoryScreen() {
               >
                 <View style={styles.cardInner}>
                   {item.imageUrl ? (
-                    <Image source={{ uri: item.imageUrl }} style={styles.thumbImg} resizeMode="cover" />
+                    <Image source={{ uri: item.imageUrl }} style={styles.thumbImg} resizeMode="cover"
+                      defaultSource={require('@/assets/images/placeholder.png')} />
                   ) : (
                     <View style={styles.thumb}>
                       <Package size={24} color={colors.textSecondary} strokeWidth={1.5} />

@@ -18,6 +18,7 @@ export class InventoryService {
         stockDescription
         warehouseStock
         totalAssigned
+        image
         outlets {
           outletId
           outletName

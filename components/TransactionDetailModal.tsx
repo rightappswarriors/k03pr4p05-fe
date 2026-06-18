@@ -22,15 +22,15 @@ import { formatPeso } from '@/utils/moneyHelpers';
 // ── Status badge colours ───────────────────────────────────────────────────────
 const STATUS_COLOR: Record<string, string> = {
   completed: '#059669',
-  pending:   '#d97706',
+  pending: '#d97706',
   cancelled: '#dc2626',
 };
 const METHOD_LABEL: Record<string, string> = {
-  cash:    'Cash',
-  card:    'Card',
+  cash: 'Cash',
+  card: 'Card',
   digital: 'Digital',
-  gcash:   'GCash',
-  maya:    'Maya',
+  gcash: 'GCash',
+  maya: 'Maya',
 };
 
 // ── Props ──────────────────────────────────────────────────────────────────────
@@ -42,9 +42,9 @@ interface Props {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function TransactionDetailModal({ transactionId, onClose, colors }: Props) {
-  const [txn, setTxn]       = useState<AdminTransaction | null>(null);
+  const [txn, setTxn] = useState<AdminTransaction | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError]    = useState('');
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (!transactionId) { setTxn(null); setError(''); return; }
@@ -59,8 +59,8 @@ export default function TransactionDetailModal({ transactionId, onClose, colors 
       .finally(() => setLoading(false));
   }, [transactionId]);
 
-  const statusColor  = txn ? (STATUS_COLOR[txn.status] ?? '#6b7280') : '#6b7280';
-  const methodLabel  = txn ? (METHOD_LABEL[txn.paymentMethod] ?? txn.paymentMethod.toUpperCase()) : '';
+  const statusColor = txn ? (STATUS_COLOR[txn.status] ?? '#6b7280') : '#6b7280';
+  const methodLabel = txn ? (METHOD_LABEL[txn.paymentMethod] ?? txn.paymentMethod.toUpperCase()) : '';
 
   return (
     <Modal
@@ -126,10 +126,10 @@ export default function TransactionDetailModal({ transactionId, onClose, colors 
                       icon={<Clock size={14} color={colors.textSecondary} strokeWidth={2} />}
                       label="Date & Time"
                       value={new Date(txn.createdAt).toLocaleString([], {
-                        year:   'numeric',
-                        month:  'short',
-                        day:    'numeric',
-                        hour:   '2-digit',
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
                         minute: '2-digit',
                       })}
                       colors={colors}
@@ -156,13 +156,13 @@ export default function TransactionDetailModal({ transactionId, onClose, colors 
                       <SectionHeader icon={<User size={14} color={colors.primary} strokeWidth={2} />} label="Customer" colors={colors} />
                       <View style={[td.infoBox, { backgroundColor: colors.card }]}>
                         {(txn as any).customerDetails.name && (
-                          <InfoRow label="Name"    value={(txn as any).customerDetails.name}   colors={colors} />
+                          <InfoRow label="Name" value={(txn as any).customerDetails.name} colors={colors} />
                         )}
                         {(txn as any).customerDetails.address && (
                           <InfoRow label="Address" value={(txn as any).customerDetails.address} colors={colors} />
                         )}
                         {(txn as any).customerDetails.tin && (
-                          <InfoRow label="TIN"     value={(txn as any).customerDetails.tin}    colors={colors} />
+                          <InfoRow label="TIN" value={(txn as any).customerDetails.tin} colors={colors} />
                         )}
                       </View>
                     </View>
@@ -190,6 +190,7 @@ export default function TransactionDetailModal({ transactionId, onClose, colors 
                             source={{ uri: (item as any).image }}
                             style={[td.thumb, { backgroundColor: colors.border }]}
                             resizeMode="cover"
+                            defaultSource={require('@/assets/images/placeholder.png')}
                           />
                         ) : (
                           <View style={[td.thumbPlaceholder, { backgroundColor: colors.primary + '18' }]}>
@@ -224,7 +225,7 @@ export default function TransactionDetailModal({ transactionId, onClose, colors 
                     />
                     <View style={[td.totalsBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
                       <TotalRow label="Subtotal" value={formatPeso(txn.subtotal)} colors={colors} />
-                      <TotalRow label="VAT"      value={formatPeso(txn.tax ?? (txn as any).vatAmount ?? 0)} colors={colors} />
+                      <TotalRow label="VAT" value={formatPeso(txn.tax ?? (txn as any).vatAmount ?? 0)} colors={colors} />
                       {(txn as any).cashReceived != null && (
                         <TotalRow label="Cash Received" value={formatPeso((txn as any).cashReceived)} colors={colors} />
                       )}
@@ -291,33 +292,33 @@ function TotalRow({ label, value, colors }: { label: string; value: string; colo
 
 // ── Styles ─────────────────────────────────────────────────────────────────────
 const td = StyleSheet.create({
-  overlay:   { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
-  sheet:     { borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '92%', paddingBottom: 32 },
-  handle:    { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginTop: 10, marginBottom: 4 },
-  header:    { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1 },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
+  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '92%', paddingBottom: 32 },
+  handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginTop: 10, marginBottom: 4 },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1 },
   headerTitle: { fontSize: 17, fontWeight: '800' },
-  headerSub:   { fontSize: 11, marginTop: 1, fontFamily: 'monospace' },
+  headerSub: { fontSize: 11, marginTop: 1, fontFamily: 'monospace' },
 
   statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1 },
-  statusDot:   { width: 7, height: 7, borderRadius: 4 },
-  statusTxt:   { fontSize: 12, fontWeight: '700' },
+  statusDot: { width: 7, height: 7, borderRadius: 4 },
+  statusTxt: { fontSize: 12, fontWeight: '700' },
 
   body: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 20 },
 
-  loadTxt:  { marginTop: 10, fontSize: 14 },
+  loadTxt: { marginTop: 10, fontSize: 14 },
   errorTxt: { marginTop: 10, fontSize: 14, fontWeight: '600' },
 
   // Meta row
-  metaRow:     { flexDirection: 'row', borderRadius: 14, borderWidth: 1, overflow: 'hidden', marginBottom: 14 },
-  metaItem:    { flex: 1, padding: 12, gap: 4, alignItems: 'center' },
+  metaRow: { flexDirection: 'row', borderRadius: 14, borderWidth: 1, overflow: 'hidden', marginBottom: 14 },
+  metaItem: { flex: 1, padding: 12, gap: 4, alignItems: 'center' },
   metaDivider: { width: 1 },
-  metaLabel:   { fontSize: 10, fontWeight: '600', letterSpacing: 0.5 },
-  metaValue:   { fontSize: 12, fontWeight: '700', textAlign: 'center' },
+  metaLabel: { fontSize: 10, fontWeight: '600', letterSpacing: 0.5 },
+  metaValue: { fontSize: 12, fontWeight: '700', textAlign: 'center' },
 
   // Section
-  section:       { marginBottom: 14 },
+  section: { marginBottom: 14 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
-  sectionLabel:  { fontSize: 14, fontWeight: '800' },
+  sectionLabel: { fontSize: 14, fontWeight: '800' },
 
   // Customer info box
   infoBox: { borderRadius: 12, overflow: 'hidden' },
@@ -326,22 +327,22 @@ const td = StyleSheet.create({
   infoValue: { fontSize: 12, textAlign: 'right', flex: 1, marginLeft: 10 },
 
   // Items
-  itemRow:         { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1 },
-  thumb:           { width: 40, height: 40, borderRadius: 8 },
+  itemRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1 },
+  thumb: { width: 40, height: 40, borderRadius: 8 },
   thumbPlaceholder: { width: 40, height: 40, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  itemName:  { fontSize: 14, fontWeight: '700' },
-  itemUnit:  { fontSize: 11, marginTop: 2 },
+  itemName: { fontSize: 14, fontWeight: '700' },
+  itemUnit: { fontSize: 11, marginTop: 2 },
   itemTotal: { fontSize: 14, fontWeight: '700' },
 
   // Totals
-  totalsBox:    { borderRadius: 14, borderWidth: 1, padding: 14 },
-  totalRow:     { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
-  totalLabel:   { fontSize: 13 },
-  totalValue:   { fontSize: 13, fontWeight: '600' },
+  totalsBox: { borderRadius: 14, borderWidth: 1, padding: 14 },
+  totalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
+  totalLabel: { fontSize: 13 },
+  totalValue: { fontSize: 13, fontWeight: '600' },
   totalDivider: { height: 1, marginVertical: 8 },
-  grandRow:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  grandLabel:   { fontSize: 16, fontWeight: '800' },
-  grandValue:   { fontSize: 20, fontWeight: '900' },
+  grandRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  grandLabel: { fontSize: 16, fontWeight: '800' },
+  grandValue: { fontSize: 20, fontWeight: '900' },
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

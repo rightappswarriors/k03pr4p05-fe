@@ -14,6 +14,7 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
+  Image,
   ActivityIndicator,
 } from 'react-native';
 import { Search, Package, X } from 'lucide-react-native';
@@ -27,6 +28,9 @@ async function searchCatalog(
   try {
     setLoading(true);
     const items = await InventoryService.getOrgItems(q, 50);
+    if (__DEV__) {
+      console.log('Catalog search results:', items);
+    }
     return items.map((item) => ({
       id: item.id.toString(),
       name: item.name,
@@ -34,7 +38,7 @@ async function searchCatalog(
       itemCode: item.itemCode,
       brand: item.brandDetails?.name,
       category: item.category?.name,
-      image: item.media?.[0]?.url,
+      image: item.image,
       sellingPrice: item.sellingPrice, // Default price since Item doesn't have price at org level
       stock: item.stock,
       costLines: item.costLines || [],
@@ -127,11 +131,11 @@ export function CatalogSearchModal({
               ...(isMobile
                 ? {}
                 : {
-                    shadowColor: '#000',
-                    shadowOpacity: 0.2,
-                    shadowRadius: 20,
-                    elevation: 10,
-                  }),
+                  shadowColor: '#000',
+                  shadowOpacity: 0.2,
+                  shadowRadius: 20,
+                  elevation: 10,
+                }),
             },
           ]}
         >
@@ -249,14 +253,26 @@ export function CatalogSearchModal({
                   }}
                   activeOpacity={0.75}
                 >
-                  <View
-                    style={[
-                      csm.icon,
-                      { backgroundColor: colors.primary + '18' },
-                    ]}
-                  >
-                    <Package size={16} color={colors.primary} strokeWidth={2} />
-                  </View>
+                  {item.image ? (
+                    <Image
+                      source={{ uri: item.image }}
+                      style={csm.itemImage}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View
+                      style={[
+                        csm.icon,
+                        { backgroundColor: colors.primary + '18' },
+                      ]}
+                    >
+                      <Package
+                        size={16}
+                        color={colors.primary}
+                        strokeWidth={2}
+                      />
+                    </View>
+                  )}
                   <View style={{ flex: 1 }}>
                     <Text style={[csm.itemName, { color: colors.text }]}>
                       {item.name}
@@ -294,6 +310,11 @@ const csm = StyleSheet.create({
     alignSelf: 'center',
     marginTop: 12,
     marginBottom: 4,
+  },
+  itemImage: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
   },
   header: {
     flexDirection: 'row',

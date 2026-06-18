@@ -77,6 +77,7 @@ export default function SplashScreen() {
           source={{
             uri: 'https://images.pexels.com/photos/30403369/pexels-photo-30403369.jpeg?auto=compress&cs=tinysrgb&w=200&h=200&fit=crop',
           }}
+          defaultSource={require('@/assets/images/placeholder.png')}
           style={styles.logo}
         />
         <Text style={[styles.title, { color: colors.text }]}>Kompra POS</Text>

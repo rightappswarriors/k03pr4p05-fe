@@ -178,6 +178,7 @@ export default function LoginScreenDefault() {
           <Image
             source={require('@/assets/images/logo_transparent.png')}
             style={[styles.poweredlogo, { backgroundColor: colors.card }]}
+            defaultSource={require('@/assets/images/placeholder.png')}
           />
         </View>
       </View>

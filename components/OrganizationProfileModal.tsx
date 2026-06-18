@@ -419,7 +419,8 @@ export default function OrganizationProfileModal({
                                         ]}
                                     >
                                         {profileImgDisplay ? (
-                                            <Image source={{ uri: profileImgDisplay }} style={styles.avatarImage} />
+                                            <Image source={{ uri: profileImgDisplay }} style={styles.avatarImage}
+                                                defaultSource={require('@/assets/images/placeholder.png')} />
                                         ) : (
                                             <View style={[styles.avatarPlaceholder, { backgroundColor: colors.cardBackground }]}>
                                                 <Camera size={20} color={colors.textSecondary} />
