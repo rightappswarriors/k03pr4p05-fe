@@ -53,6 +53,7 @@ export default function AddInventoryItemModal({
   const { colors } = useTheme();
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [tooltipVisible, setTooltipVisible] = useState<string | null>(null);
+  const [overrideQtyConfirmed, setOverrideQtyConfirmed] = useState(false);
   const [categoryPickerVisible, setCategoryPickerVisible] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [selectedCategoryName, setSelectedCategoryName] = useState('');
@@ -79,9 +80,19 @@ export default function AddInventoryItemModal({
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  // ─── Add this derived value near your other helpers ───────────────────────
+
+  const totalUnitQty = units.reduce((sum, u) => {
+    const qty = parseFloat(u.quantity) || 0;
+    const factor = parseFloat(u.conversionFactor) || 1;
+    // Normalize to base units for comparison
+    return sum + (qty * factor);
+  }, 0);
+
+  const baseQtyNum = parseFloat(baseQty) || 0;
+  const unitQtyExceedsBase = baseQtyNum > 0 && totalUnitQty > baseQtyNum;
 
   // ─── Prefill on edit ────────────────────────────────────────────────────────
-
   useEffect(() => {
     if (!visible) {
       resetForm();
@@ -179,7 +190,6 @@ export default function AddInventoryItemModal({
     } else if (selectedItem && qty > maxStock) {
       nextErrors.baseQty = `Opening quantity cannot exceed ${maxStock}.`;
     }
-
     units.forEach((unit, idx) => {
       const label = `Unit ${idx + 1}`;
       const unitPrice = unit.price.trim() ? Number(unit.price) : price;
@@ -191,7 +201,14 @@ export default function AddInventoryItemModal({
       if (!Number.isFinite(unitQty) || unitQty < 0) nextErrors[`unit.${unit.id}.quantity`] = `${label} quantity cannot be negative.`;
       if (!Number.isFinite(conversionFactor) || conversionFactor <= 0) nextErrors[`unit.${unit.id}.conversionFactor`] = `${label} conversion factor must be greater than zero.`;
       if (!Number.isFinite(reorderPoint) || reorderPoint < 0) nextErrors[`unit.${unit.id}.reorderPoint`] = `${label} reorder point cannot be negative.`;
+
     });
+
+    if (unitQtyExceedsBase && !overrideQtyConfirmed) {
+      nextErrors['unitQtyOverflow'] =
+        `Total unit quantity (${totalUnitQty}) exceeds opening quantity (${baseQtyNum}). ` +
+        `Confirm below to override.`;
+    }
 
     setFieldErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
@@ -218,6 +235,9 @@ export default function AddInventoryItemModal({
 
   const updateUnit = (id: string, field: keyof UnitLine, value: string | boolean) => {
     clearFieldError(`unit.${id}.${field}`);
+    if (field === 'quantity' || field === 'conversionFactor') {
+      setOverrideQtyConfirmed(false); // ← add this
+    }
     setUnits((prev) => prev.map((u) => (u.id === id ? { ...u, [field]: value } : u)));
   };
 
@@ -415,7 +435,7 @@ export default function AddInventoryItemModal({
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                     <Text style={[s.infoCardLabel, { color: colors.textSecondary }]}>Selling Price:</Text>
                     <Text style={[s.infoCardValue, { color: colors.text }]}>
-                      ₱{parseFloat(selectedItem.sellingPrice || '0').toFixed(2)}
+                      {`₱${parseFloat(selectedItem.sellingPrice || '0').toFixed(2)}`}
                     </Text>
                   </View>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
@@ -506,6 +526,7 @@ export default function AddInventoryItemModal({
                       const maxStock = selectedItem?.stock || 0;
                       setBaseQty(num <= maxStock ? text : maxStock.toString());
                       clearFieldError('baseQty');
+                      setOverrideQtyConfirmed(false);
                     }}
                     keyboardType="number-pad"
                   />
@@ -713,7 +734,58 @@ export default function AddInventoryItemModal({
                   />
                 </View>
               ))}
-
+              {/* ── Unit quantity overflow warning ── */}
+              {unitQtyExceedsBase && (
+                <View style={[s.warnCard, {
+                  backgroundColor: overrideQtyConfirmed
+                    ? colors.warning + '15'
+                    : colors.error + '15',
+                  borderColor: overrideQtyConfirmed
+                    ? colors.warning
+                    : colors.error,
+                }]}>
+                  <Text style={{
+                    fontSize: 13,
+                    fontWeight: '700',
+                    color: overrideQtyConfirmed ? colors.warning : colors.error,
+                    marginBottom: 4,
+                  }}>
+                    {overrideQtyConfirmed ? '⚠ Override Active' : '⚠ Quantity Mismatch'}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: colors.text, lineHeight: 17, marginBottom: 10 }}>
+                    {`Total unit quantity `}
+                    <Text style={{ fontWeight: '700' }}>{`(${totalUnitQty})`}</Text>
+                    {` exceeds the opening quantity `}
+                    <Text style={{ fontWeight: '700' }}>{`(${baseQtyNum})`}</Text>
+                    {`. This may cause stock tracking issues.\n\nThis usually happens when unit conversion factors don't match the base quantity.`}
+                  </Text>
+                  {!overrideQtyConfirmed ? (
+                    <TouchableOpacity
+                      style={[s.overrideBtn, { borderColor: colors.error, backgroundColor: colors.error + '18' }]}
+                      onPress={() => {
+                        setOverrideQtyConfirmed(true);
+                        // Clear the overflow field error so they can save
+                        clearFieldError('unitQtyOverflow');
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: colors.error }}>
+                        I understand — proceed anyway
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      onPress={() => setOverrideQtyConfirmed(false)}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    >
+                      <Text style={{ fontSize: 11, color: colors.textSecondary }}>
+                        Cancel override
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+              {fieldError('unitQtyOverflow')}
               {/* ── Price preview ── */}
               {basePrice && units[0]?.price && (
                 <View style={[s.preview, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -722,7 +794,7 @@ export default function AddInventoryItemModal({
                     <View key={u.id} style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
                       <Text style={{ fontSize: 13, color: colors.text }}>{u.unitLabel || u.unitName || 'Unit'}</Text>
                       <Text style={{ fontSize: 13, fontWeight: '700', color: colors.accent }}>
-                        ₱{parseFloat(u.price || '0').toLocaleString()}
+                        {`₱${parseFloat(u.price || '0').toLocaleString()}`}
                       </Text>
                     </View>
                   ))}
@@ -762,10 +834,31 @@ export default function AddInventoryItemModal({
       <CatalogSearchModal
         visible={catalogOpen}
         onClose={() => setCatalogOpen(false)}
-        onSelect={(item) => {
+        onSelect={async (item) => {
           setSelectedItem(item);
           clearFieldError('item');
           if (!basePrice) setBasePrice('');
+
+          // Fetch real remaining stock for add mode
+          try {
+            const dist = await InventoryService.getItemStockDistribution(Number(item.id));
+            if (dist) {
+              if (__DEV__) console.log('Stock distribution for selected item:', dist);
+              setSelectedItem({
+                ...item,
+                remainingStock: dist.warehouseStock,
+                maxAllocatable: dist.warehouseStock,
+                stock: dist.totalStock,
+              });
+            }
+          } catch (err) {
+            if (__DEV__) console.warn('[AddInventory] Could not fetch stock distribution:', err);
+            setSelectedItem({
+              ...item,
+              remainingStock: item.stock ?? 0,
+              maxAllocatable: item.stock ?? 0,
+            });
+          }
         }}
         colors={colors}
       />
@@ -823,6 +916,19 @@ const s = StyleSheet.create({
     letterSpacing: 0.8,
     marginBottom: 6,
     marginTop: 14,
+  },
+  warnCard: {
+    borderWidth: 1.5,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+  },
+  overrideBtn: {
+    borderWidth: 1.5,
+    borderRadius: 8,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    alignSelf: 'flex-start',
   },
   input: {
     borderWidth: 1,
