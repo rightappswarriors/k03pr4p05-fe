@@ -1,12 +1,14 @@
 // screens/HRScreen.tsx
 // Full ERP HR Module — search, department filter, status filter,
 // employee detail modal, add employee modal, edit status
+// v2: table view toggle, profile photo, responsive grid (4/3/2/1 cols), AsyncStorage
 
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
   FlatList,
+  Image,
   Modal,
   ScrollView,
   StyleSheet,
@@ -15,10 +17,13 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   CheckCircle2,
   ChevronDown,
   Filter,
+  LayoutGrid,
+  List,
   Plus,
   Search,
   Users,
@@ -33,9 +38,19 @@ import {
   useMasterFile,
 } from '@/contexts/MasterFileContext';
 
+// ─── AsyncStorage Keys ────────────────────────────────────────────────────────
+
+const STORAGE_KEYS = {
+  VIEW_MODE: 'hr_view_mode',
+  DEPT_FILTER: 'hr_dept_filter',
+  STATUS_FILTER: 'hr_status_filter',
+  FILTER_OPEN: 'hr_filter_open',
+} as const;
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type EmployeeStatus = 'Active' | 'On Leave' | 'Contract';
+type ViewMode = 'card' | 'table';
 
 interface Employee {
   id: string;
@@ -46,11 +61,11 @@ interface Employee {
   salary: number;
   hireDate: string;
   email: string;
-  position?: string; // RBAC position
+  position?: string;
+  profilePhoto?: string;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-// DEPT_COLORS, DEPARTMENTS, ROLE_OPTIONS are now live from MasterFileContext
 
 const STATUS_STYLES: Record<EmployeeStatus, { bg: string; text: string }> = {
   Active: { bg: 'rgba(16,185,129,0.14)', text: '#10B981' },
@@ -59,6 +74,8 @@ const STATUS_STYLES: Record<EmployeeStatus, { bg: string; text: string }> = {
 };
 
 const ALL_STATUSES: EmployeeStatus[] = ['Active', 'On Leave', 'Contract'];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function getInitials(name: string) {
   return name
@@ -75,7 +92,7 @@ function formatPeso(n: number) {
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-PH', {
-    month: 'long',
+    month: 'short',
     day: 'numeric',
     year: 'numeric',
   });
@@ -90,6 +107,66 @@ function yearsOfService(hireDate: string) {
   if (years === 0) return `${months}mo`;
   if (months === 0) return `${years}yr`;
   return `${years}yr ${months}mo`;
+}
+
+// Responsive column count based on the *content area* width (sidebar already excluded)
+function getCardColumns(contentWidth: number): number {
+  if (contentWidth >= 900) return 4;
+  if (contentWidth >= 680) return 3;
+  if (contentWidth >= 460) return 2;
+  return 1;
+}
+
+// ─── Avatar Component ─────────────────────────────────────────────────────────
+
+function Avatar({
+  name,
+  profilePhoto,
+  size,
+  color,
+}: {
+  name: string;
+  profilePhoto?: string;
+  size: number;
+  color: string;
+}) {
+  const [imgError, setImgError] = useState(false);
+  const showImage = profilePhoto && !imgError;
+
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: showImage ? 'transparent' : color,
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+        flexShrink: 0,
+      }}
+    >
+      {showImage ? (
+        <Image
+          source={{ uri: profilePhoto }}
+          style={{ width: size, height: size, borderRadius: size / 2 }}
+          onError={() => setImgError(true)}
+          resizeMode="cover"
+        />
+      ) : (
+        <Text
+          style={{
+            fontSize: size * 0.34,
+            fontWeight: '900',
+            color: '#fff',
+            lineHeight: size * 0.36,
+          }}
+        >
+          {getInitials(name)}
+        </Text>
+      )}
+    </View>
+  );
 }
 
 // ─── Employee Detail Modal ────────────────────────────────────────────────────
@@ -144,11 +221,14 @@ function EmployeeDetailModal({
           overflow: 'hidden',
           backgroundColor: colors.background,
         }}>
-          {/* Header — dept color */}
+          {/* Header */}
           <View style={[edm.header, { backgroundColor: deptColor }]}>
-            <View style={edm.avatarLarge}>
-              <Text style={edm.avatarText}>{getInitials(employee.name)}</Text>
-            </View>
+            <Avatar
+              name={employee.name}
+              profilePhoto={employee.profilePhoto}
+              size={56}
+              color="rgba(255,255,255,0.25)"
+            />
             <View style={{ flex: 1 }}>
               <Text style={edm.headerName}>{employee.name}</Text>
               <Text style={edm.headerRole}>{employee.role || 'No role assigned'}</Text>
@@ -167,26 +247,18 @@ function EmployeeDetailModal({
           >
             {/* Status badge */}
             <View style={[edm.statusRow, { backgroundColor: statusStyle.bg }]}>
-              <View
-                style={[edm.statusDot, { backgroundColor: statusStyle.text }]}
-              />
+              <View style={[edm.statusDot, { backgroundColor: statusStyle.text }]} />
               <Text style={[edm.statusText, { color: statusStyle.text }]}>
                 {employee.status}
               </Text>
             </View>
 
             {/* Info section */}
-            <View
-              style={[
-                edm.section,
-                { backgroundColor: colors.card, borderColor: colors.border },
-              ]}
-            >
+            <View style={[edm.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <Text style={[edm.sectionTitle, { color: colors.textSecondary }]}>
                 EMPLOYEE INFORMATION
               </Text>
               {[
-                //              ['Employee ID', employee.id],
                 ['Email', employee.email],
                 ['Department', employee.department],
                 ['Role', employee.role],
@@ -196,82 +268,38 @@ function EmployeeDetailModal({
               ].map(([label, value], i, arr) => (
                 <View
                   key={label}
-                  style={[
-                    edm.row,
-                    {
-                      borderBottomColor: colors.border,
-                      borderBottomWidth: i < arr.length - 1 ? 1 : 0,
-                    },
-                  ]}
+                  style={[edm.row, {
+                    borderBottomColor: colors.border,
+                    borderBottomWidth: i < arr.length - 1 ? 1 : 0,
+                  }]}
                 >
-                  <Text style={[edm.rowLabel, { color: colors.textSecondary }]}>
-                    {label}
-                  </Text>
-                  <Text style={[edm.rowValue, { color: colors.text }]}>
-                    {value}
-                  </Text>
+                  <Text style={[edm.rowLabel, { color: colors.textSecondary }]}>{label}</Text>
+                  <Text style={[edm.rowValue, { color: colors.text }]}>{value}</Text>
                 </View>
               ))}
             </View>
 
             {/* Salary */}
-            <View
-              style={[
-                edm.section,
-                {
-                  backgroundColor: colors.card,
-                  borderColor: colors.border,
-                  marginTop: 12,
-                },
-              ]}
-            >
-              <Text style={[edm.sectionTitle, { color: colors.textSecondary }]}>
-                COMPENSATION
-              </Text>
-              <View
-                style={[
-                  edm.row,
-                  { borderBottomColor: 'transparent', borderBottomWidth: 0 },
-                ]}
-              >
-                <Text style={[edm.rowLabel, { color: colors.textSecondary }]}>
-                  Monthly Salary
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 22,
-                    fontWeight: '900',
-                    color: colors.accent,
-                  }}
-                >
+            <View style={[edm.section, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 12 }]}>
+              <Text style={[edm.sectionTitle, { color: colors.textSecondary }]}>COMPENSATION</Text>
+              <View style={[edm.row, { borderBottomColor: 'transparent', borderBottomWidth: 0 }]}>
+                <Text style={[edm.rowLabel, { color: colors.textSecondary }]}>Monthly Salary</Text>
+                <Text style={{ fontSize: 22, fontWeight: '900', color: colors.accent }}>
                   {formatPeso(employee.salary)}
                 </Text>
               </View>
             </View>
 
             {/* Position update */}
-            <View
-              style={[
-                edm.section,
-                {
-                  backgroundColor: colors.card,
-                  borderColor: colors.border,
-                  marginTop: 12,
-                },
-              ]}
-            >
-              <Text style={[edm.sectionTitle, { color: colors.textSecondary }]}>
-                POSITION ASSIGNMENT
-              </Text>
+            <View style={[edm.section, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 12 }]}>
+              <Text style={[edm.sectionTitle, { color: colors.textSecondary }]}>POSITION ASSIGNMENT</Text>
               <SearchableDropdown
                 label="Assign Position"
                 value={employee.position || 'No position'}
                 options={positions.map(p => ({ label: p.label }))}
                 onSelect={(pos) => {
                   const posItem = positions.find(p => p.label === pos);
-                  if (posItem) {
-                    onUpdatePosition(employee.id, posItem.id);
-                  }
+                  if (posItem) onUpdatePosition(employee.id, posItem.id);
                 }}
                 colors={colors}
                 placeholder="Select position…"
@@ -279,19 +307,8 @@ function EmployeeDetailModal({
             </View>
 
             {/* Status update */}
-            <View
-              style={[
-                edm.section,
-                {
-                  backgroundColor: colors.card,
-                  borderColor: colors.border,
-                  marginTop: 12,
-                },
-              ]}
-            >
-              <Text style={[edm.sectionTitle, { color: colors.textSecondary }]}>
-                UPDATE STATUS
-              </Text>
+            <View style={[edm.section, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 12 }]}>
+              <Text style={[edm.sectionTitle, { color: colors.textSecondary }]}>UPDATE STATUS</Text>
               <View style={{ flexDirection: 'row', gap: 8, padding: 12 }}>
                 {ALL_STATUSES.map((s) => {
                   const ss = STATUS_STYLES[s];
@@ -299,27 +316,10 @@ function EmployeeDetailModal({
                   return (
                     <TouchableOpacity
                       key={s}
-                      style={[
-                        edm.statusBtn,
-                        {
-                          backgroundColor: isActive ? ss.text : ss.bg,
-                          borderColor: ss.text,
-                          flex: 1,
-                        },
-                      ]}
-                      onPress={() => {
-                        onUpdateStatus(employee.id, s);
-                        onClose();
-                      }}
+                      style={[edm.statusBtn, { backgroundColor: isActive ? ss.text : ss.bg, borderColor: ss.text, flex: 1 }]}
+                      onPress={() => { onUpdateStatus(employee.id, s); onClose(); }}
                     >
-                      <Text
-                        style={{
-                          fontSize: 12,
-                          fontWeight: '700',
-                          color: isActive ? '#fff' : ss.text,
-                          textAlign: 'center',
-                        }}
-                      >
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: isActive ? '#fff' : ss.text, textAlign: 'center' }}>
                         {s}
                       </Text>
                     </TouchableOpacity>
@@ -343,76 +343,38 @@ const edm = StyleSheet.create({
     alignItems: 'center',
     gap: 16,
   },
-  avatarLarge: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: { fontSize: 20, fontWeight: '900', color: '#fff' },
   headerName: { fontSize: 18, fontWeight: '700', color: '#fff' },
   headerRole: { fontSize: 13, color: 'rgba(255,255,255,0.8)', marginTop: 1 },
   headerDept: { fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 2 },
   closeBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 32, height: 32, borderRadius: 16,
     backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center',
   },
   statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 16,
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    borderRadius: 10, padding: 12, marginBottom: 16,
   },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
   statusText: { fontSize: 13, fontWeight: '700' },
   section: { borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
   sectionTitle: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 1,
-    padding: 12,
-    paddingBottom: 4,
+    fontSize: 10, fontWeight: '700', letterSpacing: 1,
+    padding: 12, paddingBottom: 4,
   },
   row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 11,
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', paddingHorizontal: 12, paddingVertical: 11,
   },
   rowLabel: { fontSize: 13, fontWeight: '500' },
-  rowValue: {
-    fontSize: 13,
-    fontWeight: '600',
-    textAlign: 'right',
-    flex: 1,
-    marginLeft: 16,
-  },
-  statusBtn: {
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    alignItems: 'center',
-  },
+  rowValue: { fontSize: 13, fontWeight: '600', textAlign: 'right', flex: 1, marginLeft: 16 },
+  statusBtn: { paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, alignItems: 'center' },
 });
 
 // ─── Searchable Dropdown ──────────────────────────────────────────────────────
 
 function SearchableDropdown({
-  label,
-  value,
-  options,
-  onSelect,
-  colors,
-  placeholder,
+  label, value, options, onSelect, colors, placeholder,
 }: {
   label: string;
   value: string;
@@ -426,137 +388,42 @@ function SearchableDropdown({
 
   const filteredOpts = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return q
-      ? options.filter((o) => o.label.toLowerCase().includes(q))
-      : options;
+    return q ? options.filter((o) => o.label.toLowerCase().includes(q)) : options;
   }, [options, query]);
 
   const selectedColor = options.find((o) => o.label === value)?.color;
 
   return (
     <View style={{ marginBottom: 14 }}>
-      <Text
-        style={{
-          fontSize: 11,
-          fontWeight: '700',
-          color: colors.textSecondary,
-          marginBottom: 5,
-          textTransform: 'uppercase',
-          letterSpacing: 0.6,
-        }}
-      >
+      <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSecondary, marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.6 }}>
         {label}
       </Text>
       <TouchableOpacity
-        style={{
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          borderWidth: 1,
-          borderColor: colors.border,
-          borderRadius: 10,
-          paddingHorizontal: 12,
-          paddingVertical: 11,
-          backgroundColor: colors.background,
-        }}
-        onPress={() => {
-          setOpen(true);
-          setQuery('');
-        }}
+        style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, backgroundColor: colors.background }}
+        onPress={() => { setOpen(true); setQuery(''); }}
         activeOpacity={0.75}
       >
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 8,
-            flex: 1,
-          }}
-        >
-          {selectedColor && (
-            <View
-              style={{
-                width: 12,
-                height: 12,
-                borderRadius: 6,
-                backgroundColor: selectedColor,
-              }}
-            />
-          )}
-          <Text
-            style={{
-              fontSize: 14,
-              color: value ? colors.text : colors.textSecondary,
-              flex: 1,
-            }}
-            numberOfLines={1}
-          >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+          {selectedColor && <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: selectedColor }} />}
+          <Text style={{ fontSize: 14, color: value ? colors.text : colors.textSecondary, flex: 1 }} numberOfLines={1}>
             {value || placeholder || 'Select…'}
           </Text>
         </View>
         <ChevronDown size={16} color={colors.textSecondary} strokeWidth={2} />
       </TouchableOpacity>
 
-      <Modal
-        visible={open}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setOpen(false)}
-      >
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <TouchableOpacity
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.45)',
-            justifyContent: 'center',
-            padding: 24,
-          }}
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 24 }}
           activeOpacity={1}
           onPress={() => setOpen(false)}
         >
           <TouchableOpacity activeOpacity={1} onPress={() => { }}>
-            <View
-              style={{
-                backgroundColor: colors.surface,
-                borderRadius: 16,
-                overflow: 'hidden',
-                maxHeight: 460,
-              }}
-            >
-              <View
-                style={{
-                  padding: 16,
-                  borderBottomWidth: 1,
-                  borderBottomColor: colors.border,
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 15,
-                    fontWeight: '700',
-                    color: colors.text,
-                    marginBottom: 10,
-                  }}
-                >
-                  {label}
-                </Text>
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 6,
-                    backgroundColor: colors.background,
-                    borderRadius: 10,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    paddingHorizontal: 10,
-                    paddingVertical: 8,
-                  }}
-                >
-                  <Search
-                    size={13}
-                    color={colors.textSecondary}
-                    strokeWidth={2}
-                  />
+            <View style={{ backgroundColor: colors.surface, borderRadius: 16, overflow: 'hidden', maxHeight: 460 }}>
+              <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 10 }}>{label}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.background, borderRadius: 10, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 10, paddingVertical: 8 }}>
+                  <Search size={13} color={colors.textSecondary} strokeWidth={2} />
                   <TextInput
                     style={{ flex: 1, fontSize: 13, color: colors.text }}
                     placeholder={`Search ${label.toLowerCase()}…`}
@@ -568,11 +435,7 @@ function SearchableDropdown({
                   />
                   {query.length > 0 && (
                     <TouchableOpacity onPress={() => setQuery('')}>
-                      <X
-                        size={13}
-                        color={colors.textSecondary}
-                        strokeWidth={2}
-                      />
+                      <X size={13} color={colors.textSecondary} strokeWidth={2} />
                     </TouchableOpacity>
                   )}
                 </View>
@@ -583,70 +446,24 @@ function SearchableDropdown({
                 keyboardShouldPersistTaps="handled"
                 ListEmptyComponent={
                   <View style={{ padding: 24, alignItems: 'center' }}>
-                    <Text style={{ fontSize: 13, color: colors.textSecondary }}>
-                      No results for "{query}"
-                    </Text>
+                    <Text style={{ fontSize: 13, color: colors.textSecondary }}>No results for "{query}"</Text>
                   </View>
                 }
                 renderItem={({ item }) => {
                   const isActive = item.label === value;
                   return (
                     <TouchableOpacity
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        paddingHorizontal: 16,
-                        paddingVertical: 13,
-                        borderBottomWidth: 1,
-                        borderBottomColor: colors.border,
-                        backgroundColor: isActive
-                          ? colors.primary + '12'
-                          : 'transparent',
-                      }}
-                      onPress={() => {
-                        onSelect(item.label);
-                        setOpen(false);
-                      }}
+                      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: isActive ? colors.primary + '12' : 'transparent' }}
+                      onPress={() => { onSelect(item.label); setOpen(false); }}
                       activeOpacity={0.75}
                     >
-                      <View
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          gap: 10,
-                          flex: 1,
-                        }}
-                      >
-                        {item.color && (
-                          <View
-                            style={{
-                              width: 14,
-                              height: 14,
-                              borderRadius: 7,
-                              backgroundColor: item.color,
-                              flexShrink: 0,
-                            }}
-                          />
-                        )}
-                        <Text
-                          style={{
-                            fontSize: 14,
-                            color: isActive ? colors.primary : colors.text,
-                            fontWeight: isActive ? '600' : '400',
-                            flex: 1,
-                          }}
-                        >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                        {item.color && <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: item.color, flexShrink: 0 }} />}
+                        <Text style={{ fontSize: 14, color: isActive ? colors.primary : colors.text, fontWeight: isActive ? '600' : '400', flex: 1 }}>
                           {item.label}
                         </Text>
                       </View>
-                      {isActive && (
-                        <CheckCircle2
-                          size={16}
-                          color={colors.primary}
-                          strokeWidth={2}
-                        />
-                      )}
+                      {isActive && <CheckCircle2 size={16} color={colors.primary} strokeWidth={2} />}
                     </TouchableOpacity>
                   );
                 }}
@@ -662,13 +479,7 @@ function SearchableDropdown({
 // ─── Add Employee Modal ───────────────────────────────────────────────────────
 
 function AddEmployeeModal({
-  visible,
-  onClose,
-  onAdd,
-  colors,
-  deptObjects,
-  roleOptions,
-  positions,
+  visible, onClose, onAdd, colors, deptObjects, roleOptions, positions,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -689,49 +500,16 @@ function AddEmployeeModal({
   const [loading, setLoading] = useState(false);
 
   const handleAdd = async () => {
-    // Name
-    if (!name.trim() || name.trim().length < 2) {
-      setError('Full name must be at least 2 characters.');
-      return;
-    }
-    if (!/^[a-zA-ZÀ-ÿ\s.\'\-]+$/.test(name.trim())) {
-      setError('Full name can only contain letters, spaces, and punctuation.');
-      return;
-    }
-
-
-    // Department is optional for now
-
-    // Position is optional for now
-
-    // Email
-    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())) {
-      setError('A valid email address is required.');
-      return;
-    }
-
-    // Password
-    if (!password.trim() || password.trim().length < 6) {
-      setError('Password must be at least 6 characters long.');
-      return;
-    }
-
-    // Salary
+    if (!name.trim() || name.trim().length < 2) { setError('Full name must be at least 2 characters.'); return; }
+    if (!/^[a-zA-ZÀ-ÿ\s.\'\-]+$/.test(name.trim())) { setError('Full name can only contain letters, spaces, and punctuation.'); return; }
+    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())) { setError('A valid email address is required.'); return; }
+    if (!password.trim() || password.trim().length < 6) { setError('Password must be at least 6 characters long.'); return; }
     const salaryNum = parseFloat(salary);
-    if (!salary.trim() || isNaN(salaryNum) || salaryNum <= 0) {
-      setError('Enter a valid monthly salary greater than zero.');
-      return;
-    }
-    if (salaryNum > 9999999) {
-      setError('Salary amount seems too high. Please check.');
-      return;
-    }
+    if (!salary.trim() || isNaN(salaryNum) || salaryNum <= 0) { setError('Enter a valid monthly salary greater than zero.'); return; }
+    if (salaryNum > 9999999) { setError('Salary amount seems too high. Please check.'); return; }
 
-    // Create employee object
     const departmentIdRaw = deptObjects.find((d) => d.label === department)?.id;
-    const departmentId = departmentIdRaw
-      ? Number(departmentIdRaw)
-      : undefined;
+    const departmentId = departmentIdRaw ? Number(departmentIdRaw) : undefined;
     const positionId = positions.find((p) => p.label === position)?.id;
 
     setLoading(true);
@@ -748,197 +526,68 @@ function AddEmployeeModal({
         id: String(createdUser.id),
         name: createdUser.fullname,
         department: department.trim() || 'Unassigned',
-        status: status,
+        status,
         salary: salaryNum,
         position: position.trim() || undefined,
         hireDate: createdUser.createdAt || new Date().toISOString(),
         email: createdUser.email,
-        ...(position.trim() && { position: position.trim() }),
+        profilePhoto: createdUser.profilePhoto,
       };
 
-      // Add to local state via callback
       onAdd(newEmployee);
     } catch (err: any) {
-      setError(
-        err?.message || 'Failed to create employee. Please try again.',
-      );
+      setError(err?.message || 'Failed to create employee. Please try again.');
       return;
     } finally {
       setLoading(false);
     }
 
-    // Reset form
-    setName('');
-    setDepartment('');
-    setPosition('');
-    setEmail('');
-    setPassword('');
-    setSalary('');
-    setStatus('Active');
-    setError('');
+    setName(''); setDepartment(''); setPosition('');
+    setEmail(''); setPassword(''); setSalary('');
+    setStatus('Active'); setError('');
     onClose();
   };
 
   const s = StyleSheet.create({
-    overlay: {
-      flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.5)',
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: 24,
-    },
-    sheet: {
-      backgroundColor: colors.surface,
-      borderRadius: 20,                // ← all corners
-      width: '100%',
-      maxWidth: 520,                   // ← fixed max width
-      maxHeight: '93%',
-    },
-    handle: {
-      display: 'none',                 // ← hide drag handle
-    },
-    header: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingHorizontal: 20,
-      paddingVertical: 14,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
+    overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+    sheet: { backgroundColor: colors.surface, borderRadius: 20, width: '100%', maxWidth: 520, maxHeight: '93%' },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border },
     title: { fontSize: 16, fontWeight: '800', color: colors.text },
-    label: {
-      fontSize: 11,
-      fontWeight: '700',
-      color: colors.textSecondary,
-      letterSpacing: 0.8,
-      marginBottom: 6,
-      marginTop: 14,
-    },
-    input: {
-      backgroundColor: colors.background,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 10,
-      paddingHorizontal: 14,
-      paddingVertical: 11,
-      fontSize: 14,
-      color: colors.text,
-    },
-    deptRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-    deptPill: {
-      paddingHorizontal: 11,
-      paddingVertical: 7,
-      borderRadius: 20,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
+    label: { fontSize: 11, fontWeight: '700', color: colors.textSecondary, letterSpacing: 0.8, marginBottom: 6, marginTop: 14 },
+    input: { backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, color: colors.text },
     statRow: { flexDirection: 'row', gap: 8 },
-    statBtn: {
-      flex: 1,
-      paddingVertical: 10,
-      borderRadius: 10,
-      borderWidth: 1.5,
-      alignItems: 'center',
-    },
-    addBtn: {
-      backgroundColor: colors.primary,
-      borderRadius: 12,
-      paddingVertical: 15,
-      alignItems: 'center',
-      marginTop: 20,
-    },
+    statBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, alignItems: 'center' },
+    addBtn: { backgroundColor: colors.primary, borderRadius: 12, paddingVertical: 15, alignItems: 'center', marginTop: 20 },
     addTxt: { fontSize: 15, fontWeight: '700', color: '#fff' },
     errTxt: { fontSize: 12, color: colors.error, marginTop: 6 },
   });
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-    >
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={s.overlay}>
-        <TouchableOpacity
-          style={StyleSheet.absoluteFillObject}   // ← works for centered modals
-          activeOpacity={1}
-          onPress={onClose}
-        />
+        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
         <View style={s.sheet}>
-          <View style={s.handle} />
           <View style={s.header}>
             <Text style={s.title}>Add Employee</Text>
             <TouchableOpacity onPress={onClose}>
               <X size={20} color={colors.textSecondary} strokeWidth={2} />
             </TouchableOpacity>
           </View>
-          <ScrollView
-            contentContainerStyle={{ padding: 20 }}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
+          <ScrollView contentContainerStyle={{ padding: 20 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             <Text style={s.label}>FULL NAME *</Text>
-            <TextInput
-              style={s.input}
-              placeholder="e.g. Maria Santos"
-              placeholderTextColor={colors.textSecondary}
-              value={name}
-              onChangeText={setName}
-              autoCorrect={false}
-            />
+            <TextInput style={s.input} placeholder="e.g. Maria Santos" placeholderTextColor={colors.textSecondary} value={name} onChangeText={setName} autoCorrect={false} />
 
             <Text style={s.label}>EMAIL</Text>
-            <TextInput
-              style={s.input}
-              placeholder="e.g. m.santos@rightapps.ph"
-              placeholderTextColor={colors.textSecondary}
-              value={email}
-              onChangeText={(v) => setEmail(v.trim())}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
+            <TextInput style={s.input} placeholder="e.g. m.santos@company.ph" placeholderTextColor={colors.textSecondary} value={email} onChangeText={(v) => setEmail(v.trim())} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
+
             <Text style={s.label}>PASSWORD *</Text>
-            <TextInput
-              style={s.input}
-              placeholder="Enter a password"
-              placeholderTextColor={colors.textSecondary}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              autoCorrect={false}
-              autoCapitalize="none"
-            />
+            <TextInput style={s.input} placeholder="Enter a password" placeholderTextColor={colors.textSecondary} value={password} onChangeText={setPassword} secureTextEntry autoCorrect={false} autoCapitalize="none" />
 
-
-            <SearchableDropdown
-              label="Department"
-              value={department}
-              options={deptObjects}
-              onSelect={setDepartment}
-              colors={colors}
-              placeholder="Select department…"
-            />
-
-            <SearchableDropdown
-              label="Position"
-              value={position}
-              options={positions.map((p) => ({ label: p.label }))}
-              onSelect={setPosition}
-              colors={colors}
-              placeholder="Select position…"
-            />
+            <SearchableDropdown label="Department" value={department} options={deptObjects} onSelect={setDepartment} colors={colors} placeholder="Select department…" />
+            <SearchableDropdown label="Position" value={position} options={positions.map((p) => ({ label: p.label }))} onSelect={setPosition} colors={colors} placeholder="Select position…" />
 
             <Text style={s.label}>MONTHLY SALARY ₱ *</Text>
-            <TextInput
-              style={s.input}
-              placeholder="e.g. 25000"
-              placeholderTextColor={colors.textSecondary}
-              value={salary}
-              onChangeText={(v) => setSalary(v.replace(/[^0-9.]/g, ''))}
-              keyboardType="decimal-pad"
-            />
+            <TextInput style={s.input} placeholder="e.g. 25000" placeholderTextColor={colors.textSecondary} value={salary} onChangeText={(v) => setSalary(v.replace(/[^0-9.]/g, ''))} keyboardType="decimal-pad" />
 
             <Text style={s.label}>EMPLOYMENT STATUS</Text>
             <View style={s.statRow}>
@@ -946,26 +595,8 @@ function AddEmployeeModal({
                 const ss = STATUS_STYLES[st];
                 const isActive = status === st;
                 return (
-                  <TouchableOpacity
-                    key={st}
-                    style={[
-                      s.statBtn,
-                      {
-                        backgroundColor: isActive ? ss.text : ss.bg,
-                        borderColor: ss.text,
-                      },
-                    ]}
-                    onPress={() => setStatus(st)}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        fontWeight: '700',
-                        color: isActive ? '#fff' : ss.text,
-                      }}
-                    >
-                      {st}
-                    </Text>
+                  <TouchableOpacity key={st} style={[s.statBtn, { backgroundColor: isActive ? ss.text : ss.bg, borderColor: ss.text }]} onPress={() => setStatus(st)}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: isActive ? '#fff' : ss.text }}>{st}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -973,15 +604,8 @@ function AddEmployeeModal({
 
             {error ? <Text style={s.errTxt}>{error}</Text> : null}
 
-            <TouchableOpacity
-              style={[s.addBtn, loading && { opacity: 0.7 }]}
-              onPress={handleAdd}
-              activeOpacity={0.85}
-              disabled={loading}
-            >
-              <Text style={s.addTxt}>
-                {loading ? 'Creating employee…' : 'Add Employee'}
-              </Text>
+            <TouchableOpacity style={[s.addBtn, loading && { opacity: 0.7 }]} onPress={handleAdd} activeOpacity={0.85} disabled={loading}>
+              <Text style={s.addTxt}>{loading ? 'Creating employee…' : 'Add Employee'}</Text>
             </TouchableOpacity>
             <View style={{ height: 8 }} />
           </ScrollView>
@@ -994,101 +618,74 @@ function AddEmployeeModal({
 // ─── Employee Card ────────────────────────────────────────────────────────────
 
 function EmployeeCard({
-  item,
-  isTablet,
-  isDesktop,
-  onPress,
-  deptMap,
-  colors,
+  item, numColumns, onPress, deptMap, colors,
 }: {
   item: Employee;
-  isTablet: boolean;
-  isDesktop: boolean;
+  numColumns: number;
   onPress: () => void;
   deptMap: Record<string, string>;
   colors: any;
 }) {
   const deptColor = deptMap[item.department] ?? colors.primary;
   const statusStyle = STATUS_STYLES[item.status];
+  // More info when we have space
+  const showExtra = numColumns <= 2;
 
   return (
     <TouchableOpacity
-      style={[
-        ecard.card,
-        { backgroundColor: colors.card, borderColor: colors.border },
-        isTablet && { flex: 1 },
-      ]}
+      style={[ecard.card, { backgroundColor: colors.card, borderColor: colors.border, flex: 1 }]}
       onPress={onPress}
       activeOpacity={0.82}
     >
-      <View style={[ecard.avatar, { backgroundColor: deptColor }]}>
-        <Text style={ecard.avatarText}>{getInitials(item.name)}</Text>
-      </View>
-      <View style={ecard.info}>
+      {/* Dept color accent strip */}
+      <View style={[ecard.strip, { backgroundColor: deptColor }]} />
+
+      <View style={ecard.body}>
+        {/* Top row: avatar + name + status */}
         <View style={ecard.topRow}>
-          <Text style={[ecard.name, { color: colors.text }]} numberOfLines={1}>
-            {item.name}
-          </Text>
-          {isDesktop && (
-            <Text
-              style={{
-                fontSize: 11,
-                color: colors.textSecondary,
-                fontFamily: 'monospace',
-              }}
-            >
-              {item.id}
+          <Avatar name={item.name} profilePhoto={item.profilePhoto} size={42} color={deptColor} />
+          <View style={{ flex: 1, marginLeft: 10, minWidth: 0 }}>
+            <Text style={[ecard.name, { color: colors.text }]} numberOfLines={1}>{item.name}</Text>
+            <Text style={[ecard.role, { color: colors.textSecondary }]} numberOfLines={1}>
+              {item.role || 'No role'}
             </Text>
-          )}
+          </View>
+          <View style={[ecard.statusBadge, { backgroundColor: statusStyle.bg }]}>
+            <View style={[ecard.statusDot, { backgroundColor: statusStyle.text }]} />
+            <Text style={[ecard.statusText, { color: statusStyle.text }]}>{item.status}</Text>
+          </View>
         </View>
-        <Text
-          style={[ecard.role, { color: colors.textSecondary }]}
-          numberOfLines={1}
-        >
-          {item.role}
-        </Text>
-        {isDesktop && (
-          <Text
-            style={{
-              fontSize: 11,
-              color: colors.textSecondary,
-              marginBottom: 6,
-            }}
-          >
-            {item.email}
-          </Text>
-        )}
+
+        {/* Dept + position tags */}
         <View style={ecard.tagsRow}>
-          <View style={[ecard.deptBadge, { backgroundColor: deptColor }]}>
-            <Text style={ecard.deptText}>{item.department}</Text>
+          <View style={[ecard.deptBadge, { backgroundColor: deptColor + '22', borderColor: deptColor + '55' }]}>
+            <View style={[ecard.tagDot, { backgroundColor: deptColor }]} />
+            <Text style={[ecard.deptText, { color: deptColor }]} numberOfLines={1}>{item.department}</Text>
           </View>
-          <View
-            style={[ecard.statusBadge, { backgroundColor: colors.primary + '20' }]}
-          >
-            <Text style={[ecard.statusText, { color: colors.primary }]}>
-              {item.role || 'No position'}
-            </Text>
-          </View>
-          <View
-            style={[ecard.statusBadge, { backgroundColor: statusStyle.bg }]}
-          >
-            <Text style={[ecard.statusText, { color: statusStyle.text }]}>
-              {item.status}
-            </Text>
-          </View>
-          {isTablet && (
-            <View
-              style={[
-                ecard.statusBadge,
-                { backgroundColor: colors.background },
-              ]}
-            >
-              <Text style={[ecard.statusText, { color: colors.textSecondary }]}>
-                {formatPeso(item.salary)}/mo
-              </Text>
+          {item.position && (
+            <View style={[ecard.deptBadge, { backgroundColor: colors.primary + '18', borderColor: colors.primary + '40' }]}>
+              <Text style={[ecard.deptText, { color: colors.primary }]} numberOfLines={1}>{item.position}</Text>
             </View>
           )}
         </View>
+
+        {/* Extra info for wider layouts */}
+        {showExtra && (
+          <View style={[ecard.extraRow, { borderTopColor: colors.border }]}>
+            <View style={ecard.extraItem}>
+              <Text style={[ecard.extraLabel, { color: colors.textSecondary }]}>Salary</Text>
+              <Text style={[ecard.extraValue, { color: colors.text }]}>{formatPeso(item.salary)}</Text>
+            </View>
+            <View style={ecard.extraItem}>
+              <Text style={[ecard.extraLabel, { color: colors.textSecondary }]}>Tenure</Text>
+              <Text style={[ecard.extraValue, { color: colors.text }]}>{yearsOfService(item.hireDate)}</Text>
+            </View>
+            <View style={ecard.extraItem}>
+              <Text style={[ecard.extraLabel, { color: colors.textSecondary }]}>Email</Text>
+              <Text style={[ecard.extraValue, { color: colors.text }]} numberOfLines={1}>{item.email}</Text>
+            </View>
+          </View>
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -1096,48 +693,227 @@ function EmployeeCard({
 
 const ecard = StyleSheet.create({
   card: {
-    borderRadius: 12,
-    padding: 14,
+    borderRadius: 14,
     borderWidth: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
+    overflow: 'hidden',
     marginBottom: 0,
   },
-  avatar: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-    flexShrink: 0,
-  },
-  avatarText: { fontSize: 15, fontWeight: '900', color: '#fff' },
-  info: { flex: 1, minWidth: 0 },
-  topRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 2,
-  },
-  name: { fontSize: 15, fontWeight: '700', flex: 1, marginRight: 8 },
-  role: { fontSize: 13, marginBottom: 6 },
+  strip: { height: 4, width: '100%' },
+  body: { padding: 14 },
+  topRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  name: { fontSize: 14, fontWeight: '700' },
+  role: { fontSize: 12, marginTop: 1 },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20, flexShrink: 0 },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  statusText: { fontSize: 10, fontWeight: '700' },
   tagsRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
-  deptBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
-  deptText: { fontSize: 11, fontWeight: '700', color: '#fff' },
-  statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
-  statusText: { fontSize: 11, fontWeight: '600' },
+  deptBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20, borderWidth: 1, maxWidth: '60%' },
+  tagDot: { width: 6, height: 6, borderRadius: 3, flexShrink: 0 },
+  deptText: { fontSize: 11, fontWeight: '600' },
+  extraRow: { flexDirection: 'row', marginTop: 12, paddingTop: 12, borderTopWidth: 1 },
+  extraItem: { flex: 1 },
+  extraLabel: { fontSize: 10, fontWeight: '600', letterSpacing: 0.4, marginBottom: 2 },
+  extraValue: { fontSize: 12, fontWeight: '600' },
+});
+
+
+// ─── Table View ───────────────────────────────────────────────────────────────
+
+function TableView({
+  data,
+  onRowPress,
+  deptMap,
+  colors,
+}: {
+  data: Employee[];
+  onRowPress: (emp: Employee) => void;
+  deptMap: Record<string, string>;
+  colors: any;
+}) {
+  const [sortKey, setSortKey] = useState<string>('name');
+  const [sortAsc, setSortAsc] = useState(true);
+
+  const sorted = useMemo(() => {
+    return [...data].sort((a, b) => {
+      let av: any, bv: any;
+      switch (sortKey) {
+        case 'name': av = a.name; bv = b.name; break;
+        case 'department': av = a.department; bv = b.department; break;
+        case 'role': av = a.role ?? ''; bv = b.role ?? ''; break;
+        case 'status': av = a.status; bv = b.status; break;
+        case 'salary': av = a.salary; bv = b.salary; break;
+        case 'hireDate': av = a.hireDate; bv = b.hireDate; break;
+        default: av = a.name; bv = b.name;
+      }
+      if (typeof av === 'number') return sortAsc ? av - bv : bv - av;
+      return sortAsc
+        ? String(av).localeCompare(String(bv))
+        : String(bv).localeCompare(String(av));
+    });
+  }, [data, sortKey, sortAsc]);
+
+  const handleSort = (key: string) => {
+    if (sortKey === key) setSortAsc((v) => !v);
+    else { setSortKey(key); setSortAsc(true); }
+  };
+
+  const SortIcon = ({ col }: { col: string }) => {
+    if (sortKey !== col) return <Text style={{ fontSize: 10, color: colors.textSecondary, marginLeft: 3 }}>↕</Text>;
+    return <Text style={{ fontSize: 10, color: colors.primary, marginLeft: 3 }}>{sortAsc ? '↑' : '↓'}</Text>;
+  };
+
+  const TABLE_COL_DEFS = [
+    { key: 'name', label: 'Employee', flex: 2.2 },
+    { key: 'department', label: 'Department', flex: 1.2 },
+    { key: 'role', label: 'Role', flex: 1.2 },
+    { key: 'status', label: 'Status', flex: 0.9 },
+    { key: 'salary', label: 'Salary', flex: 1, align: 'right' as const },
+    { key: 'hireDate', label: 'Hire Date', flex: 1 },
+  ];
+
+  const renderRow = ({ item, index }: { item: Employee; index: number }) => {
+    const deptColor = deptMap[item.department] ?? colors.primary;
+    const statusStyle = STATUS_STYLES[item.status];
+    const isEven = index % 2 === 0;
+    return (
+      <TouchableOpacity
+        style={[tv.row, { backgroundColor: isEven ? colors.background : colors.card + 'aa', borderBottomColor: colors.border }]}
+        onPress={() => onRowPress(item)}
+        activeOpacity={0.75}
+      >
+        <View style={[tv.cell, { flex: 2.2, flexDirection: 'row', alignItems: 'center', gap: 10 }]}>
+          <Avatar name={item.name} profilePhoto={item.profilePhoto} size={34} color={deptColor} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={[tv.cellText, { color: colors.text, fontWeight: '600' }]} numberOfLines={1}>{item.name}</Text>
+            <Text style={{ fontSize: 11, color: colors.textSecondary }} numberOfLines={1}>{item.email}</Text>
+          </View>
+        </View>
+        <View style={[tv.cell, { flex: 1.2 }]}>
+          <View style={[tv.deptTag, { backgroundColor: deptColor + '20', borderColor: deptColor + '50' }]}>
+            <View style={[tv.deptDot, { backgroundColor: deptColor }]} />
+            <Text style={[tv.tagText, { color: deptColor }]} numberOfLines={1}>{item.department}</Text>
+          </View>
+        </View>
+        <View style={[tv.cell, { flex: 1.2 }]}>
+          <Text style={[tv.cellText, { color: colors.text }]} numberOfLines={1}>{item.role || '—'}</Text>
+          {item.position && <Text style={{ fontSize: 11, color: colors.textSecondary }} numberOfLines={1}>{item.position}</Text>}
+        </View>
+        <View style={[tv.cell, { flex: 0.9 }]}>
+          <View style={[tv.statusPill, { backgroundColor: statusStyle.bg }]}>
+            <View style={[tv.statusDot, { backgroundColor: statusStyle.text }]} />
+            <Text style={[tv.tagText, { color: statusStyle.text }]}>{item.status}</Text>
+          </View>
+        </View>
+        <View style={[tv.cell, { flex: 1, alignItems: 'flex-end' }]}>
+          <Text style={[tv.cellText, { color: colors.text, fontWeight: '700' }]}>{formatPeso(item.salary)}</Text>
+          <Text style={{ fontSize: 10, color: colors.textSecondary }}>/mo</Text>
+        </View>
+        <View style={[tv.cell, { flex: 1 }]}>
+          <Text style={[tv.cellText, { color: colors.text }]}>{formatDate(item.hireDate)}</Text>
+          <Text style={{ fontSize: 11, color: colors.textSecondary }}>{yearsOfService(item.hireDate)}</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  return (
+    // No horizontal ScrollView — flex layout fills the full parent width naturally
+    <View style={{ flex: 1, width: '100%' }}>
+      <View style={[tv.headerRow, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+        {TABLE_COL_DEFS.map((col) => (
+          <TouchableOpacity
+            key={col.key}
+            style={[tv.headerCell, { flex: col.flex }]}
+            onPress={() => handleSort(col.key)}
+            activeOpacity={0.7}
+          >
+            <Text style={[tv.headerText, { color: colors.textSecondary, textAlign: col.align ?? 'left' }]}>
+              {col.label}
+            </Text>
+            <SortIcon col={col.key} />
+          </TouchableOpacity>
+        ))}
+      </View>
+      <FlatList
+        data={sorted}
+        keyExtractor={(item) => item.id}
+        scrollEnabled={false}
+        renderItem={renderRow}
+        ListEmptyComponent={
+          <View style={{ padding: 48, alignItems: 'center' }}>
+            <Users size={36} color={colors.border} strokeWidth={1} />
+            <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 10 }}>No employees found</Text>
+          </View>
+        }
+      />
+    </View>
+  );
+}
+
+const tv = StyleSheet.create({
+  headerRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 2,
+    paddingHorizontal: 16,
+  },
+  headerCell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 6,
+  },
+  headerText: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  row: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    minHeight: 58,
+  },
+  cell: {
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+  },
+  cellText: { fontSize: 13 },
+  deptTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 20,
+    borderWidth: 1,
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+  },
+  deptDot: { width: 6, height: 6, borderRadius: 3, flexShrink: 0 },
+  tagText: { fontSize: 11, fontWeight: '600' },
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 20,
+    alignSelf: 'flex-start',
+  },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
 });
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function HRScreen() {
   const { colors } = useTheme();
-  const { width } = Dimensions.get('window');
-  const isTablet = width >= 768;
-  const isDesktop = width >= 1024;
 
-  // ── MasterFile context — live data ─────────────────────────────────────────
+  // Measure the *actual* content area width (excludes sidebar on web/desktop)
+  const [contentWidth, setContentWidth] = useState(Dimensions.get('window').width);
+
+  // ── MasterFile context ─────────────────────────────────────────────────────
   const deptObjects = useDepartments();
   const ROLE_OPTIONS = useRoleLabels();
   const mf = useMasterFile();
@@ -1147,15 +923,73 @@ export default function HRScreen() {
     deptObjects.map((d) => [d.label, d.color ?? colors.primary]),
   ) as Record<string, string>;
 
-  // Responsive columns: 1 mobile, 2 tablet, 3 desktop
-  const numColumns = isDesktop ? 3 : isTablet ? 2 : 1;
+  const numColumns = getCardColumns(contentWidth);
 
+  // ── State — loaded from AsyncStorage ──────────────────────────────────────
+  const [viewMode, setViewMode] = useState<ViewMode>('card');
+  const [deptFilter, setDeptFilter] = useState('All');
+  const [statusFilter, setStatusFilter] = useState<EmployeeStatus | 'All'>('All');
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [stateRestored, setStateRestored] = useState(false);
+
+  // ── AsyncStorage: restore persisted state on mount ─────────────────────────
+  useEffect(() => {
+    const restore = async () => {
+      try {
+        const [vm, df, sf, fo] = await Promise.all([
+          AsyncStorage.getItem(STORAGE_KEYS.VIEW_MODE),
+          AsyncStorage.getItem(STORAGE_KEYS.DEPT_FILTER),
+          AsyncStorage.getItem(STORAGE_KEYS.STATUS_FILTER),
+          AsyncStorage.getItem(STORAGE_KEYS.FILTER_OPEN),
+        ]);
+        if (vm === 'card' || vm === 'table') setViewMode(vm);
+        if (df) setDeptFilter(df);
+        if (sf) setStatusFilter(sf as EmployeeStatus | 'All');
+        if (fo) setFilterOpen(fo === 'true');
+      } catch (e) {
+        // silently ignore storage read errors
+      } finally {
+        setStateRestored(true);
+      }
+    };
+    restore();
+  }, []);
+
+  // ── AsyncStorage: persist whenever state changes ──────────────────────────
+  const saveState = useCallback(
+    async (
+      vm: ViewMode,
+      df: string,
+      sf: EmployeeStatus | 'All',
+      fo: boolean,
+    ) => {
+      try {
+        await AsyncStorage.multiSet([
+          [STORAGE_KEYS.VIEW_MODE, vm],
+          [STORAGE_KEYS.DEPT_FILTER, df],
+          [STORAGE_KEYS.STATUS_FILTER, sf],
+          [STORAGE_KEYS.FILTER_OPEN, String(fo)],
+        ]);
+      } catch (_) { }
+    },
+    [],
+  );
+
+  const setViewModeP = (v: ViewMode) => { setViewMode(v); saveState(v, deptFilter, statusFilter, filterOpen); };
+  const setDeptFilterP = (v: string) => { setDeptFilter(v); saveState(viewMode, v, statusFilter, filterOpen); };
+  const setStatusFilterP = (v: EmployeeStatus | 'All') => { setStatusFilter(v); saveState(viewMode, deptFilter, v, filterOpen); };
+  const setFilterOpenP = (v: boolean) => { setFilterOpen(v); saveState(viewMode, deptFilter, statusFilter, v); };
+
+  // ── Employee data ──────────────────────────────────────────────────────────
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [search, setSearch] = useState('');
   const [loadingEmployees, setLoadingEmployees] = useState(true);
+  const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null);
+  const [detailVisible, setDetailVisible] = useState(false);
+  const [addVisible, setAddVisible] = useState(false);
 
-  React.useEffect(() => {
-    const loadEmployees = async () => {
+  useEffect(() => {
+    const load = async () => {
       setLoadingEmployees(true);
       try {
         const staff = await HrService.getAllStaffs();
@@ -1166,10 +1000,11 @@ export default function HRScreen() {
               name: u.fullname || u.name || 'Unknown',
               role: u.role || 'Staff',
               department: u.department?.label || 'General',
-              status: 'Active',
+              status: 'Active' as EmployeeStatus,
               salary: Number(u.salary || 0),
               hireDate: u.createdAt || new Date().toISOString(),
               email: u.email || 'n/a',
+              profilePhoto: u.profilePhoto,
             })),
           );
         }
@@ -1179,34 +1014,19 @@ export default function HRScreen() {
         setLoadingEmployees(false);
       }
     };
-
-    loadEmployees();
+    load();
   }, []);
-  const [deptFilter, setDeptFilter] = useState('All');
-  const [statusFilter, setStatusFilter] = useState<EmployeeStatus | 'All'>(
-    'All',
-  );
-  const [filterOpen, setFilterOpen] = useState(false);
-  const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null);
-  const [detailVisible, setDetailVisible] = useState(false);
-  const [addVisible, setAddVisible] = useState(false);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return employees.filter((emp) => {
-      const matchSearch =
-        !q ||
-        emp.name.toLowerCase().includes(q) ||
-        emp.role?.toLowerCase().includes(q) ||
-        emp.department.toLowerCase().includes(q) ||
-        emp.email.toLowerCase().includes(q);
+      const matchSearch = !q || emp.name.toLowerCase().includes(q) || emp.role?.toLowerCase().includes(q) || emp.department.toLowerCase().includes(q) || emp.email.toLowerCase().includes(q);
       const matchDept = deptFilter === 'All' || emp.department === deptFilter;
       const matchStatus = statusFilter === 'All' || emp.status === statusFilter;
       return matchSearch && matchDept && matchStatus;
     });
   }, [employees, search, deptFilter, statusFilter]);
 
-  // Live stats from filtered data
   const activeCount = filtered.filter((e) => e.status === 'Active').length;
   const onLeaveCount = filtered.filter((e) => e.status === 'On Leave').length;
   const totalSalary = filtered.reduce((s, e) => s + e.salary, 0);
@@ -1214,16 +1034,12 @@ export default function HRScreen() {
 
   const handleUpdatePosition = (id: string, positionId: string) => {
     setEmployees((prev) =>
-      prev.map((e) => (e.id === id ? { ...e, position: positions.find(p => p.id === positionId)?.label || 'No position' } : e)),
+      prev.map((e) => e.id === id ? { ...e, position: positions.find(p => p.id === positionId)?.label || 'No position' } : e),
     );
-    // TODO: call API to update user position
   };
 
   const handleUpdateStatus = (id: string, status: EmployeeStatus) => {
-    setEmployees((prev) =>
-      prev.map((e) => (e.id === id ? { ...e, status } : e)),
-    );
-    // TODO: call API to update employee status
+    setEmployees((prev) => prev.map((e) => e.id === id ? { ...e, status } : e));
   };
 
   const handleAddEmployee = (emp: Employee) => {
@@ -1232,132 +1048,46 @@ export default function HRScreen() {
 
   const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    header: { padding: 16, paddingBottom: 0 },
-    metaRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
-    metaCard: {
-      flex: 1,
-      backgroundColor: colors.card,
-      borderRadius: 10,
-      padding: isTablet ? 14 : 11,
-      alignItems: 'center',
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    metaValue: {
-      fontSize: isDesktop ? 22 : 18,
-      fontWeight: '800',
-      color: colors.text,
-    },
-    metaLabel: {
-      fontSize: 10,
-      color: colors.textSecondary,
-      marginTop: 2,
-      textAlign: 'center',
-    },
-    toolbar: {
-      flexDirection: 'row',
-      gap: 8,
-      paddingHorizontal: 16,
-      paddingBottom: 10,
-      alignItems: 'center',
-    },
-    searchBox: {
-      flex: 1,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      backgroundColor: colors.card,
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: colors.border,
-      paddingHorizontal: 10,
-      paddingVertical: 8,
-    },
+    header: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12 },
+    metaRow: { flexDirection: 'row', gap: 8, marginBottom: 0 },
+    metaCard: { flex: 1, backgroundColor: colors.card, borderRadius: 10, padding: 10, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
+    metaValue: { fontSize: 18, fontWeight: '800', color: colors.text },
+    metaLabel: { fontSize: 10, color: colors.textSecondary, marginTop: 2, textAlign: 'center' },
+    toolbar: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingBottom: 10, alignItems: 'center' },
+    searchBox: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.card, borderRadius: 10, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 10, paddingVertical: 8 },
     searchInput: { flex: 1, fontSize: 13, color: colors.text },
-    iconBtn: {
-      width: 38,
-      height: 38,
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: colors.border,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: colors.card,
-    },
-    addBtn: {
-      width: 38,
-      height: 38,
-      borderRadius: 10,
-      backgroundColor: colors.primary,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    filterPanel: {
-      marginHorizontal: 16,
-      backgroundColor: colors.card,
-      borderRadius: 12,
-      padding: 12,
-      marginBottom: 8,
-      borderWidth: 1,
-      borderColor: colors.border,
-      gap: 12,
-    },
-    filterLabel: {
-      fontSize: 10,
-      fontWeight: '700',
-      color: colors.textSecondary,
-      letterSpacing: 0.8,
-      marginBottom: 6,
-    },
+    iconBtn: { width: 38, height: 38, borderRadius: 10, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.card },
+    addBtn: { width: 38, height: 38, borderRadius: 10, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+    filterPanel: { marginHorizontal: 16, backgroundColor: colors.card, borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: colors.border, gap: 12 },
+    filterLabel: { fontSize: 10, fontWeight: '700', color: colors.textSecondary, letterSpacing: 0.8, marginBottom: 6 },
     pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-    pill: {
-      paddingHorizontal: 12,
-      paddingVertical: 7,
-      borderRadius: 20,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    pillActive: {
-      borderColor: colors.primary,
-      backgroundColor: colors.primary,
-    },
+    pill: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1, borderColor: colors.border },
+    pillActive: { borderColor: colors.primary, backgroundColor: colors.primary },
     pillText: { fontSize: 12, fontWeight: '600', color: colors.text },
     pillTextAct: { color: '#fff' },
     listContent: { padding: 16, paddingTop: 0, gap: 10, paddingBottom: 40 },
-    resultCount: {
-      fontSize: 11,
-      color: colors.textSecondary,
-      paddingHorizontal: 16,
-      paddingBottom: 6,
-    },
-    emptyWrap: { flex: 1, alignItems: 'center', paddingTop: 60 },
-    emptyText: { fontSize: 14, color: colors.textSecondary, marginTop: 12 },
-    salaryCard: {
-      marginHorizontal: 16,
-      marginBottom: 8,
-      backgroundColor: colors.primary,
-      borderRadius: 12,
-      padding: 14,
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-    },
+    resultCount: { fontSize: 11, color: colors.textSecondary, paddingHorizontal: 16, paddingBottom: 6 },
+    salaryCard: { marginHorizontal: 16, marginBottom: 10, backgroundColor: colors.primary, borderRadius: 12, padding: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    viewToggle: { flexDirection: 'row', borderRadius: 10, borderWidth: 1, borderColor: colors.border, overflow: 'hidden', backgroundColor: colors.card },
+    viewToggleBtn: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
+    viewToggleBtnActive: { backgroundColor: colors.primary },
   });
 
-  if (loadingEmployees) {
+  if (!stateRestored || loadingEmployees) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={{ marginTop: 12, color: colors.textSecondary }}>
-          Loading staff data...
-        </Text>
+        <Text style={{ marginTop: 12, color: colors.textSecondary }}>Loading staff data…</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      {/* Meta cards — update live with filters */}
+    <View
+      style={styles.container}
+      onLayout={(e) => setContentWidth(e.nativeEvent.layout.width)}
+    >
+      {/* Meta summary cards */}
       <View style={styles.header}>
         <View style={styles.metaRow}>
           <View style={styles.metaCard}>
@@ -1365,15 +1095,11 @@ export default function HRScreen() {
             <Text style={styles.metaLabel}>Total</Text>
           </View>
           <View style={styles.metaCard}>
-            <Text style={[styles.metaValue, { color: colors.success }]}>
-              {activeCount}
-            </Text>
+            <Text style={[styles.metaValue, { color: '#10B981' }]}>{activeCount}</Text>
             <Text style={styles.metaLabel}>Active</Text>
           </View>
           <View style={styles.metaCard}>
-            <Text style={[styles.metaValue, { color: '#F59E0B' }]}>
-              {onLeaveCount}
-            </Text>
+            <Text style={[styles.metaValue, { color: '#F59E0B' }]}>{onLeaveCount}</Text>
             <Text style={styles.metaLabel}>On Leave</Text>
           </View>
           <View style={styles.metaCard}>
@@ -1383,34 +1109,18 @@ export default function HRScreen() {
         </View>
       </View>
 
-      {/* Monthly payroll summary card */}
+      {/* Monthly payroll banner */}
       {filtered.length > 0 && (
         <View style={styles.salaryCard}>
           <View>
-            <Text
-              style={{
-                fontSize: 11,
-                color: 'rgba(255,255,255,0.6)',
-                fontWeight: '600',
-                letterSpacing: 0.5,
-              }}
-            >
-              {deptFilter === 'All'
-                ? 'TOTAL MONTHLY PAYROLL'
-                : `${deptFilter.toUpperCase()} PAYROLL`}
+            <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.6)', fontWeight: '700', letterSpacing: 0.8 }}>
+              {deptFilter === 'All' ? 'TOTAL MONTHLY PAYROLL' : `${deptFilter.toUpperCase()} PAYROLL`}
             </Text>
-            <Text
-              style={{
-                fontSize: 20,
-                fontWeight: '900',
-                color: '#fff',
-                marginTop: 2,
-              }}
-            >
+            <Text style={{ fontSize: 20, fontWeight: '900', color: '#fff', marginTop: 2 }}>
               {formatPeso(totalSalary)}
             </Text>
           </View>
-          <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>
+          <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>
             {filtered.length} employee{filtered.length !== 1 ? 's' : ''}
           </Text>
         </View>
@@ -1434,26 +1144,31 @@ export default function HRScreen() {
             </TouchableOpacity>
           )}
         </View>
+
+        {/* View mode toggle */}
+        <View style={styles.viewToggle}>
+          <TouchableOpacity
+            style={[styles.viewToggleBtn, viewMode === 'card' && styles.viewToggleBtnActive]}
+            onPress={() => setViewModeP('card')}
+          >
+            <LayoutGrid size={16} color={viewMode === 'card' ? '#fff' : colors.textSecondary} strokeWidth={2} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.viewToggleBtn, viewMode === 'table' && styles.viewToggleBtnActive]}
+            onPress={() => setViewModeP('table')}
+          >
+            <List size={16} color={viewMode === 'table' ? '#fff' : colors.textSecondary} strokeWidth={2} />
+          </TouchableOpacity>
+        </View>
+
         <TouchableOpacity
-          style={[
-            styles.iconBtn,
-            filterOpen && {
-              backgroundColor: colors.primary,
-              borderColor: colors.primary,
-            },
-          ]}
-          onPress={() => setFilterOpen((v) => !v)}
+          style={[styles.iconBtn, filterOpen && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+          onPress={() => setFilterOpenP(!filterOpen)}
         >
-          <Filter
-            size={16}
-            color={filterOpen ? '#fff' : colors.textSecondary}
-            strokeWidth={2}
-          />
+          <Filter size={16} color={filterOpen ? '#fff' : colors.textSecondary} strokeWidth={2} />
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.addBtn}
-          onPress={() => setAddVisible(true)}
-        >
+
+        <TouchableOpacity style={styles.addBtn} onPress={() => setAddVisible(true)}>
           <Plus size={18} color="#fff" strokeWidth={2.5} />
         </TouchableOpacity>
       </View>
@@ -1467,26 +1182,10 @@ export default function HRScreen() {
               {DEPARTMENTS.map((dept) => (
                 <TouchableOpacity
                   key={dept}
-                  style={[
-                    styles.pill,
-                    deptFilter === dept && styles.pillActive,
-                    dept !== 'All' &&
-                    deptFilter !== dept && {
-                      borderColor: deptMap[dept] ?? colors.border,
-                    },
-                  ]}
-                  onPress={() => setDeptFilter(dept)}
+                  style={[styles.pill, deptFilter === dept && styles.pillActive, dept !== 'All' && deptFilter !== dept && { borderColor: deptMap[dept] ?? colors.border }]}
+                  onPress={() => setDeptFilterP(dept)}
                 >
-                  <Text
-                    style={[
-                      styles.pillText,
-                      deptFilter === dept && styles.pillTextAct,
-                      dept !== 'All' &&
-                      deptFilter !== dept && {
-                        color: deptMap[dept] ?? colors.text,
-                      },
-                    ]}
-                  >
+                  <Text style={[styles.pillText, deptFilter === dept && styles.pillTextAct, dept !== 'All' && deptFilter !== dept && { color: deptMap[dept] ?? colors.text }]}>
                     {dept}
                   </Text>
                 </TouchableOpacity>
@@ -1496,27 +1195,15 @@ export default function HRScreen() {
           <View>
             <Text style={styles.filterLabel}>STATUS</Text>
             <View style={styles.pillRow}>
-              {(['All', ...ALL_STATUSES] as (EmployeeStatus | 'All')[]).map(
-                (s) => (
-                  <TouchableOpacity
-                    key={s}
-                    style={[
-                      styles.pill,
-                      statusFilter === s && styles.pillActive,
-                    ]}
-                    onPress={() => setStatusFilter(s)}
-                  >
-                    <Text
-                      style={[
-                        styles.pillText,
-                        statusFilter === s && styles.pillTextAct,
-                      ]}
-                    >
-                      {s}
-                    </Text>
-                  </TouchableOpacity>
-                ),
-              )}
+              {(['All', ...ALL_STATUSES] as (EmployeeStatus | 'All')[]).map((s) => (
+                <TouchableOpacity
+                  key={s}
+                  style={[styles.pill, statusFilter === s && styles.pillActive]}
+                  onPress={() => setStatusFilterP(s)}
+                >
+                  <Text style={[styles.pillText, statusFilter === s && styles.pillTextAct]}>{s}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
           </View>
         </View>
@@ -1530,38 +1217,43 @@ export default function HRScreen() {
         {statusFilter !== 'All' ? ` · ${statusFilter}` : ''}
       </Text>
 
-      {/* Employee list — responsive columns */}
-      <FlatList
-        data={filtered}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={[
-          styles.listContent,
-          filtered.length === 0 && { flex: 1 },
-        ]}
-        showsVerticalScrollIndicator={false}
-        numColumns={numColumns}
-        key={String(numColumns)}
-        columnWrapperStyle={numColumns > 1 ? { gap: 10 } : undefined}
-        ListEmptyComponent={
-          <View style={styles.emptyWrap}>
-            <Users size={48} color={colors.border} strokeWidth={1} />
-            <Text style={styles.emptyText}>No employees found</Text>
-          </View>
-        }
-        renderItem={({ item }) => (
-          <EmployeeCard
-            item={item}
-            isTablet={isTablet}
-            isDesktop={isDesktop}
+      {/* Content: card grid or table */}
+      {viewMode === 'table' ? (
+        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1 }}>
+          <TableView
+            data={filtered}
+            onRowPress={(emp) => { setSelectedEmp(emp); setDetailVisible(true); }}
             deptMap={deptMap}
             colors={colors}
-            onPress={() => {
-              setSelectedEmp(item);
-              setDetailVisible(true);
-            }}
           />
-        )}
-      />
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={[styles.listContent, filtered.length === 0 && { flex: 1 }]}
+          showsVerticalScrollIndicator={false}
+          numColumns={numColumns}
+          key={String(numColumns)} // force re-render on column change
+          columnWrapperStyle={numColumns > 1 ? { gap: 10 } : undefined}
+          ListEmptyComponent={
+            <View style={{ flex: 1, alignItems: 'center', paddingTop: 60 }}>
+              <Users size={48} color={colors.border} strokeWidth={1} />
+              <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 12 }}>No employees found</Text>
+            </View>
+          }
+          renderItem={({ item }) => (
+            <EmployeeCard
+              item={item}
+              numColumns={numColumns}
+              deptMap={deptMap}
+              colors={colors}
+              onPress={() => { setSelectedEmp(item); setDetailVisible(true); }}
+            />
+          )}
+        />
+      )}
 
       {/* Modals */}
       <EmployeeDetailModal
