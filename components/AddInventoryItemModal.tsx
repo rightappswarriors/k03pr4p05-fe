@@ -770,13 +770,14 @@ export default function AddInventoryItemModal({
                       activeOpacity={0.8}
                     >
                       <Text style={{ fontSize: 12, fontWeight: '700', color: colors.error }}>
-                        I understand — proceed anyway
+                        I understand - proceed anyway
                       </Text>
                     </TouchableOpacity>
                   ) : (
                     <TouchableOpacity
                       onPress={() => setOverrideQtyConfirmed(false)}
                       hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                      style={[s.overrideBtn, { borderColor: colors.error, backgroundColor: colors.warning + '18' }]}
                     >
                       <Text style={{ fontSize: 11, color: colors.textSecondary }}>
                         Cancel override
@@ -813,7 +814,7 @@ export default function AddInventoryItemModal({
                 <TouchableOpacity
                   style={[s.saveBtn, { backgroundColor: colors.primary, opacity: saving ? 0.7 : 1 }]}
                   onPress={handleSave}
-                  disabled={saving || success}
+                  disabled={saving || success || !overrideQtyConfirmed}
                   activeOpacity={0.85}
                 >
                   <Text style={s.saveTxt}>

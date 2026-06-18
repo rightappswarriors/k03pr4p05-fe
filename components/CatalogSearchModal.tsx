@@ -96,7 +96,7 @@ export function CatalogSearchModal({
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
+      animationType="fade"
       onRequestClose={onClose}
     >
       <View
