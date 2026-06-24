@@ -722,7 +722,7 @@ export default function BranchOverviewScreen() {
             Welcome back, {user?.email}
           </Text>
         </View>
-        <TouchableOpacity style={s.logoutButton} onPress={logout}>
+        <TouchableOpacity style={s.logoutButton} onPress={() => logout(undefined)}>
           <LogOut size={18} color="white" strokeWidth={2} />
         </TouchableOpacity>
       </View>

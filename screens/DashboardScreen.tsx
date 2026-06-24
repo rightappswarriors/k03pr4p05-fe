@@ -838,7 +838,9 @@ export default function DashboardScreen() {
   const { user } = useAuth();
   const socket = useWebSocket();
   const dashboardRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  if (!user?.orgId) return null;
+
+  // Guard: don't render anything if user has no orgId (safe to check here as it's just a reference, not an early return)
+  // The guard rendering is handled in the JSX return below
 
   const GET_NOTIFICATIONS = gql`
     query {
@@ -852,7 +854,7 @@ export default function DashboardScreen() {
   `;
 
   const loadDashboardData = useCallback(async () => {
-    if (!user?.orgId) return;
+    
     setIsLoadingDashboardData(true);
 
     const { startDate, endDate } = getDateRange(datePreset, customStartDate, customEndDate);
@@ -1013,7 +1015,7 @@ export default function DashboardScreen() {
     } finally {
       setIsLoadingDashboardData(false);
     }
-  }, [datePreset, customStartDate, customEndDate, user?.orgId]);
+  }, [datePreset, customStartDate, customEndDate]);
 
   useEffect(() => { loadDashboardData(); }, [loadDashboardData]);
 
@@ -1024,7 +1026,7 @@ export default function DashboardScreen() {
       try {
         const message = JSON.parse(String(event.data ?? '{}'));
         if (!refreshEvents.has(message.type)) return;
-        if (message.orgId && Number(message.orgId) !== Number(user.orgId)) return;
+        if (message.orgId && Number(message.orgId) !== Number(user?.orgId)) return;
         if (dashboardRefreshTimer.current) clearTimeout(dashboardRefreshTimer.current);
         dashboardRefreshTimer.current = setTimeout(() => { void loadDashboardData(); }, 350);
       } catch { /* ignore non-JSON */ }
@@ -1034,7 +1036,7 @@ export default function DashboardScreen() {
       socket.removeEventListener('message', handleMessage);
       if (dashboardRefreshTimer.current) clearTimeout(dashboardRefreshTimer.current);
     };
-  }, [socket, loadDashboardData, user.orgId]);
+  }, [socket, loadDashboardData, user?.orgId]);
 
   // ── chartData: fully dynamic ───────────────────────────────────────────────
   const chartData = useMemo(() => {
