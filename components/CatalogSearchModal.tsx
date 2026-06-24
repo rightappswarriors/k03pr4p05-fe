@@ -258,6 +258,7 @@ export function CatalogSearchModal({
                       source={{ uri: item.image }}
                       style={csm.itemImage}
                       resizeMode="cover"
+                      defaultSource={require('@/assets/images/placeholder.png')}
                     />
                   ) : (
                     <View

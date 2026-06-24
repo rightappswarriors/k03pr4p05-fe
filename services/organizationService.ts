@@ -17,12 +17,14 @@ export class OrganizationService {
     const response = await graphQLRequest<{ organizations: any[] }>(QUERY);
     return response.organizations;
   }
+
   static async getOrganization(id: number): Promise<any | null> {
     const QUERY = gql`
       query GetOrganization($id: Int!) {
         organization(id: $id) {
           id
           name
+          roles
           bio
           email
           contactNumber
@@ -46,26 +48,26 @@ export class OrganizationService {
     return response.organization;
   }
 
-
-  static async createOrganization(name: string): Promise<any> {
+  static async createOrganization(name: string, roles: string[] = ['SELLER']): Promise<any> {
     if (!name || !name.trim()) {
       throw new Error('Organization name is required');
     }
 
     try {
-      console.log(`[Frontend] Creating organization: ${name}`)
+      console.log(`[Frontend] Creating organization: ${name} roles: ${roles}`)
 
       const MUTATION = gql`
-        mutation CreateOrganization($name: String!) {
-          createOrganization(name: $name) {
+        mutation CreateOrganization($name: String!, $roles: [OrgRole!]) {
+          createOrganization(name: $name, roles: $roles) {
             id
             name
+            roles
             createdAt
           }
         }
       `;
 
-      const response = await graphQLRequest<{ createOrganization: any }>(MUTATION, { name });
+      const response = await graphQLRequest<{ createOrganization: any }>(MUTATION, { name, roles });
 
       if (!response?.createOrganization) {
         throw new Error('No organization returned from server');

@@ -52,17 +52,23 @@ export default function SplashScreen() {
         return;
       }
 
-      // For STAFF/CASHIER — check outlet assignment first
-      if (user.role === 'STAFF' || user.role === 'CASHIER') {
+      // For CASHIER — check outlet assignment first
+      if (user.role === 'CASHIER') {
         AuthService.getMyOutletAssignment().then((assignment) => {
           if (assignment?.role === 'CASHIER') {
             // Assigned to an outlet as cashier → POS
             router.replace('/(tabs)');
           } else {
-            // Not assigned or non-cashier role → employee area
+            // Not assigned → employee area
             router.replace('/(employee)');
           }
         });
+        return;
+      }
+
+      // For STAFF — straight to ERP (time-in required via HRScreen)
+      if (user.role === 'STAFF') {
+        router.replace('/(erp)');
         return;
       }
 

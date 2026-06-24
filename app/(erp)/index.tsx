@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import ERPLayout from '@/components/erp/ERPLayout';
-import HRScreen from '@/screens/HRScreen';
 import { MasterFileProvider } from '@/contexts/MasterFileContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { HrService } from '@/services';
 import { ActivityIndicator, View } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
+import { router } from 'expo-router';
 
 export default function LayoutScreen() {
   const { user, isLoading: authLoading } = useAuth();
@@ -13,7 +13,6 @@ export default function LayoutScreen() {
   const [loading, setLoading] = useState(true);
   const { colors } = useTheme();
 
-  // Check if user has timed in today
   useEffect(() => {
     const checkTimeIn = async () => {
       if (!user?.id) {
@@ -23,12 +22,10 @@ export default function LayoutScreen() {
 
       try {
         setLoading(true);
-        // Call backend mutation to check if user has timed in today
         const timeInStatus = await HrService.checkUserTimeInStatus(user.id);
         setHasTimeIn(timeInStatus?.hasTimeIn || false);
       } catch (error) {
         console.error('Error checking time-in status:', error);
-        // Default to false if check fails
         setHasTimeIn(false);
       } finally {
         setLoading(false);
@@ -38,7 +35,23 @@ export default function LayoutScreen() {
     checkTimeIn();
   }, [user?.id]);
 
-  // Loading state
+  // ── FIX: redirect inside useEffect, never during render ──────────────────
+  // Calling router.replace() inline in JSX fires during React's render phase,
+  // which causes "cannot update a component while rendering a different component"
+  // warnings and unpredictable navigation behavior.
+  useEffect(() => {
+    if (authLoading || loading) return; // wait until both checks are done
+
+    const isOwner = user?.role === 'OWNER';
+    const isManager = user?.role === 'MANAGER'; // managers skip time-in gate too
+    const canSkipTimeIn = isOwner || isManager;
+
+    if (!canSkipTimeIn && !hasTimeIn  && !__DEV__) {
+      router.replace('/(employee)');
+    }
+  }, [authLoading, loading, user?.role, hasTimeIn]);
+
+  // Show spinner while auth or time-in check is in flight
   if (authLoading || loading) {
     return (
       <View
@@ -54,13 +67,20 @@ export default function LayoutScreen() {
     );
   }
 
-  // Access control: if NOT owner AND has NOT timed in, show HR screen.
-  // HRScreen also uses master file hooks, so it must be inside MasterFileProvider.
+  // At this point: loading is done and redirect (if needed) has been dispatched.
+  // Only OWNER/MANAGER or timed-in STAFF reach here.
   const isOwner = user?.role === 'OWNER';
+  const isManager = user?.role === 'MANAGER';
+  const canSkipTimeIn = isOwner || isManager;
+
+  if (!canSkipTimeIn && !hasTimeIn  && !__DEV__) {
+    // Render nothing while the redirect from useEffect is animating
+    return null;
+  }
 
   return (
     <MasterFileProvider>
-      {!isOwner && !hasTimeIn ? <HRScreen /> : <ERPLayout />}
+      <ERPLayout />
     </MasterFileProvider>
   );
 }

@@ -111,10 +111,27 @@ export class AuthService {
             fullname
             isVerified
             orgId
+            position {
+              name
+              description
+              id
+              permissions {
+                canView
+                canCreate
+                canEdit
+                canDelete
+                page {
+                  label
+                  key
+                  access
+                }
+              }
+            }
             org {
               id
               name
               profileImg
+              roles
               subscription {
                 id
                 plan
@@ -136,7 +153,9 @@ export class AuthService {
       })) as LoginResponse;
 
       const { user, token, refresh_token } = response.login;
-
+      if (__DEV__) {
+        console.log("User permissions", user)
+      }
       await this.storeTokens(token, refresh_token);
       await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
       return user;
@@ -284,8 +303,8 @@ export class AuthService {
     return response.resendOTP;
   }
 
-  static async createOrganization(name: string): Promise<any> {
-    return OrganizationService.createOrganization(name);
+  static async createOrganization(name: string, roles: string[] = ['SELLER']): Promise<any> {
+    return OrganizationService.createOrganization(name, roles);
   }
 
   static async createSubscription(orgId: number, plan: 'BASIC' | 'GOLD'): Promise<any> {

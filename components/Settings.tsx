@@ -38,6 +38,7 @@ import { router } from 'expo-router';
 import { AuthService } from '@/services/authService';
 import UserProfileModal from '@/components/UserProfileModal';
 import OrganizationProfileModal from '@/components/OrganizationProfileModal';
+import RoleSwitcher from './RoleSwitcher';
 
 export default function SettingsScreen({
   outletId,
@@ -109,7 +110,11 @@ export default function SettingsScreen({
       Alert.alert('Error', 'Failed to update biometric settings');
     }
   };
-
+  const canViewSeller = user?.position?.permissions?.some(
+    permission =>
+      permission.page?.access === 'SELLER' &&
+      permission.canView
+  );
   const handleLogout = async () => {
     if (Platform.OS === 'web') {
       const confirmed = window.confirm('Are you sure you want to logout?');
@@ -222,7 +227,9 @@ export default function SettingsScreen({
               </Text>
               <View style={[styles.roleBadge, { backgroundColor: colors.background }]}>
                 <Text style={[styles.roleText, { color: colors.textSecondary }]}>
-                  {user?.role === 'OWNER' ? 'Owner' : 'Cashier'}
+                  {user?.role === 'OWNER'
+                    ? 'Owner'
+                    : user?.position?.name ?? 'Cashier'}
                 </Text>
               </View>
             </View>
@@ -337,7 +344,17 @@ export default function SettingsScreen({
             </View>
           </View>
         )}
-
+        {/* Role Switcher — only for SUPPLIER and SELLER */}
+        {user?.org?.roles?.includes('SUPPLIER') && user?.org?.roles?.includes('SELLER') && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
+              Role Switcher
+            </Text>
+            <View style={[styles.settingsGroup, { backgroundColor: colors.card }]}>
+              <RoleSwitcher />
+            </View>
+          </View>
+        )}
         {/* POS Terminal — only if assigned as CASHIER, hidden if already in /(tabs) */}
         {!assignmentLoading && assignment?.role === 'CASHIER' && !isInTabs && (
           <View style={styles.section}>
@@ -356,7 +373,7 @@ export default function SettingsScreen({
         )}
 
         {/* ERP — only for OWNER and MANAGER, hidden if already in /(erp) */}
-        {(user?.role === 'OWNER' || user?.role === 'MANAGER') &&
+        {(user?.role === 'OWNER' || user?.role === 'MANAGER' || canViewSeller) &&
           segments[0] !== '(erp)' && (
             <View style={styles.section}>
               <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>

@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
+import { ActiveRoleProvider } from '@/contexts/ActiveRoleContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 
 // Keep onboarding context to avoid extra changes for existing onboarding data usage
@@ -76,24 +77,27 @@ export default function RootLayout() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <OnboardingContext.Provider
-          value={{
-            hasOnboarded,
-            setHasOnboarded,
-            isLoggedIn,
-            setIsLoggedIn,
-          }}
-        >
-          <ProtectedRoute>
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="(public)" />
-              <Stack.Screen name="login" />
-              <Stack.Screen name="onboarding" />
-              <Stack.Screen name="index" />
-              <Stack.Screen name="+not-found" />
-            </Stack>
-          </ProtectedRoute>
-        </OnboardingContext.Provider>
+        <ActiveRoleProvider>
+          <OnboardingContext.Provider
+            value={{
+              hasOnboarded,
+              setHasOnboarded,
+              isLoggedIn,
+              setIsLoggedIn,
+            }}
+          >
+            <ProtectedRoute>
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="(supplier)" />
+                <Stack.Screen name="(public)" />
+                <Stack.Screen name="login" />
+                <Stack.Screen name="onboarding" />
+                <Stack.Screen name="index" />
+                <Stack.Screen name="+not-found" />
+              </Stack>
+            </ProtectedRoute>
+          </OnboardingContext.Provider>
+        </ActiveRoleProvider>
       </AuthProvider>
     </ThemeProvider>
   );

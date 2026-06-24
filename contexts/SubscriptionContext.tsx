@@ -1,6 +1,7 @@
 // contexts/SubscriptionContext.tsx
 
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 
 export type SubscriptionPlan = 'basic' | 'gold';
 
@@ -95,12 +96,36 @@ const SubscriptionContext = createContext<SubscriptionContextType | undefined>(
   undefined,
 );
 
+// ─── Helper: map org subscription tier string → SubscriptionPlan ─────────────
+// Adjust the string values to match whatever your API returns in
+// user.org.subscription.tier (e.g. 'GOLD', 'gold', 'premium', etc.)
+function resolvePlan(user: any): SubscriptionPlan {
+  const tier = user?.org?.subscription?.tier;
+  if (!tier) return 'basic';
+  return tier.toLowerCase() === 'gold' ? 'gold' : 'basic';
+}
+
 export function SubscriptionProvider({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const [plan, setPlan] = useState<SubscriptionPlan>('basic');
+  // ── FIX: seed plan from the authenticated user's org subscription ───────────
+  // Previously this was hardcoded to 'basic', which meant every fresh session
+  // (including STAFF logins) started locked regardless of the org's real tier.
+  // Now we read user.org.subscription.tier on mount and whenever user changes.
+  const { user } = useAuth();
+  const [plan, setPlanState] = useState<SubscriptionPlan>(() => resolvePlan(user));
+
+  useEffect(() => {
+    // Re-sync if user loads async (common — AuthContext fetches profile after mount)
+    const resolved = resolvePlan(user);
+    setPlanState(resolved);
+  }, [user?.org?.subscription?.tier]);
+
+  // DEV FAB override — keeps setPlan working for the plan toggle button
+  const setPlan = (p: SubscriptionPlan) => setPlanState(p);
+
   const limits = PLAN_LIMITS[plan];
 
   const canAddBranch = (currentCount: number) =>

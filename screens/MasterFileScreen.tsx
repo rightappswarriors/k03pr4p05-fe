@@ -496,346 +496,346 @@ function ContactFormModal({
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-  <KeyboardAvoidingView
-    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    style={{
-      flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.45)',
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: 24,
-    }}
-  >
-    {/* Backdrop tap-to-close */}
-    <TouchableOpacity
-      style={StyleSheet.absoluteFillObject}
-      activeOpacity={1}
-      onPress={onClose}
-    />
-
-    {/* ── Card container ── */}
-    <View
-      style={{
-        width: '100%',
-        maxWidth: 560,
-        maxHeight: '90%',
-        borderRadius: 20,
-        overflow: 'hidden',
-        backgroundColor: colors.background,
-      }}
-    >
-      {/* Header — now INSIDE the card */}
-      <View
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{
-          flexDirection: 'row',
-          justifyContent: 'space-between',
+          flex: 1,
+          backgroundColor: 'rgba(0,0,0,0.45)',
+          justifyContent: 'center',
           alignItems: 'center',
-          paddingTop: 20,          // flat 20, no iOS inset needed
-          paddingBottom: 16,
-          paddingHorizontal: 20,
-          backgroundColor: ACCENT,
+          padding: 24,
         }}
       >
+        {/* Backdrop tap-to-close */}
         <TouchableOpacity
+          style={StyleSheet.absoluteFillObject}
+          activeOpacity={1}
           onPress={onClose}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        />
+
+        {/* ── Card container ── */}
+        <View
+          style={{
+            width: '100%',
+            maxWidth: 560,
+            maxHeight: '90%',
+            borderRadius: 20,
+            overflow: 'hidden',
+            backgroundColor: colors.background,
+          }}
         >
-          <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 15 }}>
-            Cancel
-          </Text>
-        </TouchableOpacity>
-        <Text style={{ color: '#fff', fontSize: 16, fontWeight: '800' }}>
-          {existing ? 'Edit Contact' : 'Add Contact'}
-        </Text>
-        <AtSign size={20} color="rgba(255,255,255,0.75)" strokeWidth={2} />
-      </View>
-
-      {/* ScrollView — also INSIDE the card */}
-      <ScrollView
-        contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-          {/* ── Scope ── */}
-          <FL
-            t="SCOPE"
-            hint="Global = all branches · Branch-specific = one branch only"
-          />
-          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 20 }}>
-            {(['global', 'branch'] as const).map((opt) => (
-              <TouchableOpacity
-                key={opt}
-                onPress={() => {
-                  setScope(opt);
-                  if (opt === 'global') setBranch(null);
-                }}
-                style={{
-                  flex: 1,
-                  paddingVertical: 11,
-                  borderRadius: 10,
-                  borderWidth: 1.5,
-                  alignItems: 'center',
-                  borderColor: scope === opt ? ACCENT : colors.border,
-                  backgroundColor:
-                    scope === opt ? ACCENT + '18' : colors.surface,
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 13,
-                    fontWeight: '700',
-                    color: scope === opt ? ACCENT : colors.textSecondary,
-                  }}
-                >
-                  {opt === 'global' ? '🌐  Global' : '🏢  Branch-specific'}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* ── Branch picker ── */}
-          {scope === 'branch' && (
-            <View style={{ marginBottom: 20 }}>
-              <FL t="BRANCH" req />
-              <TouchableOpacity
-                onPress={() => setBranchOpen(true)}
-                style={[
-                  inputStyle,
-                  {
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 10,
-                    borderColor: branch ? ACCENT : colors.error + '80',
-                  },
-                ]}
-              >
-                <View
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 4,
-                    flexShrink: 0,
-                    backgroundColor: branch?.isActive
-                      ? '#10B981'
-                      : colors.border,
-                  }}
-                />
-                <Text
-                  style={{
-                    flex: 1,
-                    fontSize: 14,
-                    color: branch ? colors.text : colors.textSecondary,
-                  }}
-                  numberOfLines={1}
-                >
-                  {branch ? branch.name : 'Tap to select a branch…'}
-                </Text>
-                {branch ? (
-                  <TouchableOpacity
-                    onPress={() => setBranch(null)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <X size={14} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                ) : (
-                  <ChevronRight size={14} color={colors.textSecondary} />
-                )}
-              </TouchableOpacity>
-              {branch && (
-                <Text
-                  style={{
-                    fontSize: 11,
-                    color: colors.textSecondary,
-                    marginTop: 4,
-                  }}
-                >
-                  {branch.address}
-                </Text>
-              )}
-            </View>
-          )}
-
-          {/* ── Divider ── */}
-          <View
-            style={{
-              height: 1,
-              backgroundColor: colors.border,
-              marginBottom: 20,
-            }}
-          />
-
-          {/* ── Label ── */}
-          <View style={{ marginBottom: 16 }}>
-            <FL
-              t="LABEL"
-              req
-              hint='Short display name, e.g. "Main Supplier – Cebu"'
-            />
-            <TextInput
-              style={inputStyle}
-              placeholder="e.g. Main Supplier Cebu"
-              placeholderTextColor={colors.textSecondary}
-              value={label}
-              onChangeText={setLabel}
-              returnKeyType="next"
-            />
-          </View>
-
-          {/* ── Full name ── */}
-          <View style={{ marginBottom: 16 }}>
-            <FL t="FULL NAME" />
-            <TextInput
-              style={inputStyle}
-              placeholder="e.g. Juan dela Cruz"
-              placeholderTextColor={colors.textSecondary}
-              value={fullName}
-              onChangeText={setFullName}
-              returnKeyType="next"
-            />
-          </View>
-
-          {/* ── Email ── */}
-          <View style={{ marginBottom: 16 }}>
-            <FL t="EMAIL ADDRESS" req />
-            <TextInput
-              style={inputStyle}
-              placeholder="supplier@example.com"
-              placeholderTextColor={colors.textSecondary}
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              returnKeyType="next"
-            />
-          </View>
-
-          {/* ── Phone ── */}
-          <View style={{ marginBottom: 16 }}>
-            <FL t="PHONE" />
-            <TextInput
-              style={inputStyle}
-              placeholder="+63 912 345 6789"
-              placeholderTextColor={colors.textSecondary}
-              value={phone}
-              onChangeText={setPhone}
-              keyboardType="phone-pad"
-              returnKeyType="next"
-            />
-          </View>
-
-          {/* ── Position & Department ── */}
-          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
-            <View style={{ flex: 1 }}>
-              <FL t="POSITION" />
-              <TextInput
-                style={inputStyle}
-                placeholder="e.g. Purchasing Mgr"
-                placeholderTextColor={colors.textSecondary}
-                value={position}
-                onChangeText={setPosition}
-                returnKeyType="next"
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <FL t="DEPARTMENT" />
-              <TextInput
-                style={inputStyle}
-                placeholder="e.g. Logistics"
-                placeholderTextColor={colors.textSecondary}
-                value={department}
-                onChangeText={setDepartment}
-                returnKeyType="next"
-              />
-            </View>
-          </View>
-
-          {/* ── Notes ── */}
-          <View style={{ marginBottom: 16 }}>
-            <FL t="NOTES" />
-            <TextInput
-              style={[
-                inputStyle,
-                { minHeight: 80, textAlignVertical: 'top', paddingTop: 12 },
-              ]}
-              placeholder="Any additional notes…"
-              placeholderTextColor={colors.textSecondary}
-              value={notes}
-              onChangeText={setNotes}
-              multiline
-            />
-          </View>
-
-          {/* ── isActive ── */}
+          {/* Header — now INSIDE the card */}
           <View
             style={{
               flexDirection: 'row',
-              alignItems: 'center',
               justifyContent: 'space-between',
-              backgroundColor: colors.surface,
-              borderRadius: 10,
-              borderWidth: 1,
-              borderColor: colors.border,
-              paddingHorizontal: 14,
-              paddingVertical: 12,
-              marginBottom: 16,
+              alignItems: 'center',
+              paddingTop: 20,          // flat 20, no iOS inset needed
+              paddingBottom: 16,
+              paddingHorizontal: 20,
+              backgroundColor: ACCENT,
             }}
           >
-            <View>
-              <Text
-                style={{ fontSize: 14, fontWeight: '600', color: colors.text }}
-              >
-                Active
+            <TouchableOpacity
+              onPress={onClose}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 15 }}>
+                Cancel
               </Text>
-              <Text
-                style={{
-                  fontSize: 12,
-                  color: colors.textSecondary,
-                  marginTop: 2,
-                }}
-              >
-                Inactive contacts won't appear in pickers
-              </Text>
-            </View>
-            <Switch
-              value={isActive}
-              onValueChange={setIsActive}
-              trackColor={{ false: colors.border, true: ACCENT + '80' }}
-              thumbColor={isActive ? ACCENT : colors.textSecondary}
-            />
+            </TouchableOpacity>
+            <Text style={{ color: '#fff', fontSize: 16, fontWeight: '800' }}>
+              {existing ? 'Edit Contact' : 'Add Contact'}
+            </Text>
+            <AtSign size={20} color="rgba(255,255,255,0.75)" strokeWidth={2} />
           </View>
 
-          {/* ── Error ── */}
-          {error ? (
+          {/* ScrollView — also INSIDE the card */}
+          <ScrollView
+            contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {/* ── Scope ── */}
+            <FL
+              t="SCOPE"
+              hint="Global = all branches · Branch-specific = one branch only"
+            />
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 20 }}>
+              {(['global', 'branch'] as const).map((opt) => (
+                <TouchableOpacity
+                  key={opt}
+                  onPress={() => {
+                    setScope(opt);
+                    if (opt === 'global') setBranch(null);
+                  }}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 11,
+                    borderRadius: 10,
+                    borderWidth: 1.5,
+                    alignItems: 'center',
+                    borderColor: scope === opt ? ACCENT : colors.border,
+                    backgroundColor:
+                      scope === opt ? ACCENT + '18' : colors.surface,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      fontWeight: '700',
+                      color: scope === opt ? ACCENT : colors.textSecondary,
+                    }}
+                  >
+                    {opt === 'global' ? '🌐  Global' : '🏢  Branch-specific'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* ── Branch picker ── */}
+            {scope === 'branch' && (
+              <View style={{ marginBottom: 20 }}>
+                <FL t="BRANCH" req />
+                <TouchableOpacity
+                  onPress={() => setBranchOpen(true)}
+                  style={[
+                    inputStyle,
+                    {
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 10,
+                      borderColor: branch ? ACCENT : colors.error + '80',
+                    },
+                  ]}
+                >
+                  <View
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      flexShrink: 0,
+                      backgroundColor: branch?.isActive
+                        ? '#10B981'
+                        : colors.border,
+                    }}
+                  />
+                  <Text
+                    style={{
+                      flex: 1,
+                      fontSize: 14,
+                      color: branch ? colors.text : colors.textSecondary,
+                    }}
+                    numberOfLines={1}
+                  >
+                    {branch ? branch.name : 'Tap to select a branch…'}
+                  </Text>
+                  {branch ? (
+                    <TouchableOpacity
+                      onPress={() => setBranch(null)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <X size={14} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  ) : (
+                    <ChevronRight size={14} color={colors.textSecondary} />
+                  )}
+                </TouchableOpacity>
+                {branch && (
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      color: colors.textSecondary,
+                      marginTop: 4,
+                    }}
+                  >
+                    {branch.address}
+                  </Text>
+                )}
+              </View>
+            )}
+
+            {/* ── Divider ── */}
             <View
               style={{
-                backgroundColor: '#EF444415',
-                borderWidth: 1,
-                borderColor: '#EF4444',
+                height: 1,
+                backgroundColor: colors.border,
+                marginBottom: 20,
+              }}
+            />
+
+            {/* ── Label ── */}
+            <View style={{ marginBottom: 16 }}>
+              <FL
+                t="LABEL"
+                req
+                hint='Short display name, e.g. "Main Supplier – Cebu"'
+              />
+              <TextInput
+                style={inputStyle}
+                placeholder="e.g. Main Supplier Cebu"
+                placeholderTextColor={colors.textSecondary}
+                value={label}
+                onChangeText={setLabel}
+                returnKeyType="next"
+              />
+            </View>
+
+            {/* ── Full name ── */}
+            <View style={{ marginBottom: 16 }}>
+              <FL t="FULL NAME" />
+              <TextInput
+                style={inputStyle}
+                placeholder="e.g. Juan dela Cruz"
+                placeholderTextColor={colors.textSecondary}
+                value={fullName}
+                onChangeText={setFullName}
+                returnKeyType="next"
+              />
+            </View>
+
+            {/* ── Email ── */}
+            <View style={{ marginBottom: 16 }}>
+              <FL t="EMAIL ADDRESS" req />
+              <TextInput
+                style={inputStyle}
+                placeholder="supplier@example.com"
+                placeholderTextColor={colors.textSecondary}
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                returnKeyType="next"
+              />
+            </View>
+
+            {/* ── Phone ── */}
+            <View style={{ marginBottom: 16 }}>
+              <FL t="PHONE" />
+              <TextInput
+                style={inputStyle}
+                placeholder="+63 912 345 6789"
+                placeholderTextColor={colors.textSecondary}
+                value={phone}
+                onChangeText={setPhone}
+                keyboardType="phone-pad"
+                returnKeyType="next"
+              />
+            </View>
+
+            {/* ── Position & Department ── */}
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
+              <View style={{ flex: 1 }}>
+                <FL t="POSITION" />
+                <TextInput
+                  style={inputStyle}
+                  placeholder="e.g. Purchasing Mgr"
+                  placeholderTextColor={colors.textSecondary}
+                  value={position}
+                  onChangeText={setPosition}
+                  returnKeyType="next"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <FL t="DEPARTMENT" />
+                <TextInput
+                  style={inputStyle}
+                  placeholder="e.g. Logistics"
+                  placeholderTextColor={colors.textSecondary}
+                  value={department}
+                  onChangeText={setDepartment}
+                  returnKeyType="next"
+                />
+              </View>
+            </View>
+
+            {/* ── Notes ── */}
+            <View style={{ marginBottom: 16 }}>
+              <FL t="NOTES" />
+              <TextInput
+                style={[
+                  inputStyle,
+                  { minHeight: 80, textAlignVertical: 'top', paddingTop: 12 },
+                ]}
+                placeholder="Any additional notes…"
+                placeholderTextColor={colors.textSecondary}
+                value={notes}
+                onChangeText={setNotes}
+                multiline
+              />
+            </View>
+
+            {/* ── isActive ── */}
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                backgroundColor: colors.surface,
                 borderRadius: 10,
-                padding: 12,
-                marginBottom: 12,
+                borderWidth: 1,
+                borderColor: colors.border,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                marginBottom: 16,
               }}
             >
-              <Text style={{ fontSize: 13, color: '#EF4444' }}>{error}</Text>
+              <View>
+                <Text
+                  style={{ fontSize: 14, fontWeight: '600', color: colors.text }}
+                >
+                  Active
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color: colors.textSecondary,
+                    marginTop: 2,
+                  }}
+                >
+                  Inactive contacts won't appear in pickers
+                </Text>
+              </View>
+              <Switch
+                value={isActive}
+                onValueChange={setIsActive}
+                trackColor={{ false: colors.border, true: ACCENT + '80' }}
+                thumbColor={isActive ? ACCENT : colors.textSecondary}
+              />
             </View>
-          ) : null}
 
-          {/* ── Save ── */}
-          <TouchableOpacity
-            style={{
-              backgroundColor: ACCENT,
-              borderRadius: 12,
-              paddingVertical: 15,
-              alignItems: 'center',
-            }}
-            onPress={handleSave}
-            activeOpacity={0.85}
-          >
-            <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>
-              {existing ? 'Save Changes' : 'Add Contact'}
-            </Text>
-          </TouchableOpacity>
-        </ScrollView>
+            {/* ── Error ── */}
+            {error ? (
+              <View
+                style={{
+                  backgroundColor: '#EF444415',
+                  borderWidth: 1,
+                  borderColor: '#EF4444',
+                  borderRadius: 10,
+                  padding: 12,
+                  marginBottom: 12,
+                }}
+              >
+                <Text style={{ fontSize: 13, color: '#EF4444' }}>{error}</Text>
+              </View>
+            ) : null}
+
+            {/* ── Save ── */}
+            <TouchableOpacity
+              style={{
+                backgroundColor: ACCENT,
+                borderRadius: 12,
+                paddingVertical: 15,
+                alignItems: 'center',
+              }}
+              onPress={handleSave}
+              activeOpacity={0.85}
+            >
+              <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>
+                {existing ? 'Save Changes' : 'Add Contact'}
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
         </View>
 
         <BranchSelectorModal
@@ -908,6 +908,10 @@ function ItemModal({
           label: p.label,
         }));
         setPages(normalized);
+
+        // ── DEBUG: log what existing looks like ──────────────────────────────
+        console.log('[PositionModal] existing:', JSON.stringify(existing, null, 2));
+
         const ep = (existing as any)?.permissions?.reduce(
           (acc: any, perm: any) => ({
             ...acc,
@@ -920,32 +924,59 @@ function ItemModal({
           }),
           {},
         );
-        const sel = ep && Object.keys(ep).length > 0 ? 'Custom' : template;
+
+        // ── DEBUG: log what ep (existing permissions map) resolves to ────────
+        console.log('[PositionModal] ep (existing permissions keyed by pageId):', JSON.stringify(ep, null, 2));
+        console.log('[PositionModal] normalized page IDs:', normalized.map(p => p.id));
+
+        const hasExistingPerms = ep && Object.keys(ep).length > 0;
+        // ── BUG WAS HERE: `template` from outer scope could be stale ─────────
+        // Previously used `template` state which may not have updated yet.
+        // Now explicitly compute sel from ep only.
+        const sel = hasExistingPerms ? 'Custom' : 'Staff';
+
+        // ── DEBUG: log sel and whether ep keys match page IDs ────────────────
+        console.log('[PositionModal] sel:', sel, '| hasExistingPerms:', hasExistingPerms);
+        if (ep) {
+          const epKeys = Object.keys(ep);
+          const pageIds = normalized.map(p => p.id);
+          const matched = epKeys.filter(k => pageIds.includes(k));
+          const unmatched = epKeys.filter(k => !pageIds.includes(k));
+          console.log('[PositionModal] ep keys matched to pages:', matched);
+          console.log('[PositionModal] ep keys NOT matched (wrong id type?):', unmatched);
+        }
+
         setTemplate(sel as any);
-        setPermissions(
-          Object.fromEntries(
-            normalized.map((p): [string, PermissionRow] => [
-              p.id,
-              ep?.[p.id] ??
-              (sel === 'Custom'
-                ? {
-                  canView: true,
-                  canCreate: false,
-                  canEdit: false,
-                  canDelete: false,
-                }
-                : PERMISSION_TEMPLATES[sel as PermissionTemplateKey]),
-            ]),
-          ),
+
+        const builtPermissions = Object.fromEntries(
+          normalized.map((p): [string, PermissionRow] => {
+            const fromExisting = ep?.[p.id];
+            const fallback =
+              sel === 'Custom'
+                ? { canView: true, canCreate: false, canEdit: false, canDelete: false }
+                : PERMISSION_TEMPLATES[sel as PermissionTemplateKey];
+            const resolved = fromExisting ?? fallback;
+
+            // ── DEBUG: log per-page resolution ───────────────────────────────
+            console.log(`[PositionModal] page "${p.label}" (id=${p.id}):`,
+              fromExisting
+                ? `from existing → ${JSON.stringify(fromExisting)}`
+                : `fallback → ${JSON.stringify(fallback)}`
+            );
+
+            return [p.id, resolved];
+          }),
         );
-      } catch {
-        console.warn('Failed to load permission pages');
+
+        console.log('[PositionModal] final permissions state:', JSON.stringify(builtPermissions, null, 2));
+        setPermissions(builtPermissions);
+
+      } catch (e) {
+        console.warn('Failed to load permission pages', e);
       }
     };
     run();
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [visible, meta.key, existing]);
 
   const handleSave = () => {
@@ -1755,37 +1786,37 @@ function TableDetailScreen({
   }, [items, search]);
 
   const handleSave = async (item: MasterItem, extra?: Record<string, any>) => {
-    const config = TABLE_CONFIG.find((t) => t.key === meta.key);
-    try {
-      if (config) {
-        if (editingItem) {
-          await config.service.update?.(
-            Number(editingItem.id),
+  const config = TABLE_CONFIG.find((t) => t.key === meta.key);
+  try {
+    if (config) {
+      if (editingItem) {
+        // Positions use string CUIDs — skip config.service.update for them
+        if (meta.key === 'positions') {
+          await PositionService.update(
+            editingItem.id,  // string CUID, not Number()
             item.label,
-            extra,
+            extra?.description,
           );
-          if (meta.key === 'positions' && extra?.permissions)
-            await PositionService.setPermissions(
-              editingItem.id,
-              extra.permissions,
-            );
+          if (extra?.permissions)
+            await PositionService.setPermissions(editingItem.id, extra.permissions);
         } else {
-          const created = await config.service.create?.(item.label, extra);
-          if (meta.key === 'positions' && created?.id && extra?.permissions)
-            await PositionService.setPermissions(
-              String(created.id),
-              extra.permissions,
-            );
+          // All other tables use numeric IDs — Number() is correct here
+          await config.service.update?.(Number(editingItem.id), item.label, extra);
         }
-        await reloadItems();
       } else {
-        if (editingItem) mf.updateItem(meta.key as TableKey, item);
-        else mf.addItem(meta.key as TableKey, item);
+        const created = await config.service.create?.(item.label, extra);
+        if (meta.key === 'positions' && created?.id && extra?.permissions)
+          await PositionService.setPermissions(String(created.id), extra.permissions);
       }
-    } catch (e) {
-      console.error(`Failed to save ${meta.label}:`, e);
+      await reloadItems();
+    } else {
+      if (editingItem) mf.updateItem(meta.key as TableKey, item);
+      else mf.addItem(meta.key as TableKey, item);
     }
-  };
+  } catch (e) {
+    console.error(`Failed to save ${meta.label}:`, e);
+  }
+};
 
   const isLoading = loadingItems || searching;
 

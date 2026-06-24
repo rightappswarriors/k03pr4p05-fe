@@ -80,7 +80,8 @@ export interface OrganizationInfo {
   id: string;
   name: string;
   subscription?: Subscription | null;
-  profileImg?: string
+  profileImg?: string;
+  roles?: string[];
 }
 
 export interface User {
@@ -88,7 +89,6 @@ export interface User {
   email: string;
   fullname?: string;
   name: string;
-  
   role: 'OWNER' | 'CASHIER' | 'STAFF' | 'MANAGER' | 'ADMIN';
   isVerified?: boolean;
   orgId: number;
@@ -97,9 +97,31 @@ export interface User {
   assignedStoreId?: string;
   createdAt: string;
   profilePhoto?: string;
+  position?: Position | null;
 }
+export interface Position {
+  id: string;
+  name: string;
+  description?: string;
+  permissions?: PositionPermission[];
+}
+export interface PositionPermission {
+  pageId: string;
+  canView: boolean;
+  canCreate: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+  page: Page;
 
-
+}
+export interface Page {
+  id: string;
+  key: string;
+  label: string;
+  access?: 'SELLER' | 'SUPPLIER' | 'POSTERMINAL';
+  sortOrder?: number;
+  parentKey?: string;
+}
 export type EWalletMethod = "PH_GCASH" | "PH_PAYMAYA";
 // You can also refine your PaymentMethod to include E-Wallet details
 export type PaymentMethod = 'cash' | 'e-wallet' | 'card';

@@ -15,6 +15,7 @@ import { OnboardingContext } from './_layout';
 import { useAuth } from '@/contexts/AuthContext';
 
 import { Eye, EyeOff } from 'lucide-react-native';
+import { RoleToggle } from '@/components/RoleToggle';
 interface OnboardingScreenProps {
   initialStep?: 'register' | 'verify' | 'organization' | 'subscription';
 }
@@ -105,6 +106,12 @@ export default function OnboardingScreen({
   const [otpCode, setOtpCode] = useState('');
   const [orgName, setOrgName] = useState('');
   const [plan, setPlan] = useState<'BASIC' | 'GOLD'>('BASIC');
+  const [orgRoles, setOrgRoles] = useState<string[]>(['SELLER']);
+  const toggleOrgRole = (role: string) => {
+    setOrgRoles(prev =>
+      prev.includes(role) ? (prev.length > 1 ? prev.filter(r => r !== role) : prev) : [...prev, role]
+    );
+  };
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [organizationId, setOrganizationId] = useState<number | null>(null);
@@ -141,7 +148,7 @@ export default function OnboardingScreen({
       } else if (!user.org?.subscription?.id) {
         setStep(4);
       } else {
-        router.replace('/(erp)/erp');
+        router.replace('/(erp)');
       }
     }
   }, [user, initialStep, params.step, router]);
@@ -152,9 +159,9 @@ export default function OnboardingScreen({
         await onboarding.setHasOnboarded(true);
         await onboarding.setIsLoggedIn(true);
       }
-      router.replace('/(erp)/erp');
+      router.replace('/(erp)');
     } catch {
-      router.replace('/(erp)/erp');
+      router.replace('/(erp)');
     }
   };
 
@@ -222,7 +229,7 @@ export default function OnboardingScreen({
     setLoading(true);
     setError('');
     try {
-      const org = await AuthService.createOrganization(orgName);
+      const org = await AuthService.createOrganization(orgName, orgRoles);
       setOrganizationId(org.id);
       setStep(4);
     } catch (err) {
@@ -604,6 +611,28 @@ export default function OnboardingScreen({
                 style={inputStyle}
                 placeholderTextColor={colors.textSecondary}
               />
+            </View>
+
+            
+            <View>
+              <Text style={labelStyle}>Organization Type</Text>
+              <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 8 }}>
+                Select at least one. You can change this later.
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <RoleToggle
+                  label="Seller"
+                  subtitle="I sell to customers"
+                  selected={orgRoles.includes('SELLER')}
+                  onPress={() => toggleOrgRole('SELLER')}
+                />
+                <RoleToggle
+                  label="Supplier"
+                  subtitle="I supply to stores"
+                  selected={orgRoles.includes('SUPPLIER')}
+                  onPress={() => toggleOrgRole('SUPPLIER')}
+                />
+              </View>
             </View>
 
             <TouchableOpacity
