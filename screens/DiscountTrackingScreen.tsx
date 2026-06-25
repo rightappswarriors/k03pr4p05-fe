@@ -416,8 +416,8 @@ export default function DiscountTrackingScreen() {
         dateTo: dateTo ? new Date(dateTo).toISOString() : undefined,
       });
       setRows(data);
-    } catch (error) {
-      console.error('Failed to load discount audits:', error);
+    } catch (error: any) {
+      if (__DEV__) console.error('Failed to load discount audits:', error);
       Alert.alert('Unable to load discounts', 'Please check the filters and try again.');
     } finally {
       setLoading(false);
@@ -564,59 +564,59 @@ export default function DiscountTrackingScreen() {
           styles.complianceCardInner,
           { borderColor: limitReached ? colors.error + '60' : colors.border },
         ]}>
-        {/* Card top row */}
-        <View style={styles.complianceCardHeader}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.complianceCustomer} numberOfLines={1}>{week.customerId}</Text>
-            <Text style={styles.complianceWeek}>Week of {week.week}</Text>
-          </View>
-          <View style={[
-            styles.complianceBadge,
-            { backgroundColor: limitReached ? colors.error + '15' : colors.success + '15' }
-          ]}>
-            <Text style={[styles.complianceBadgeText, { color: limitReached ? colors.error : colors.success }]}>
-              {limitReached ? 'Limit reached' : 'Within limit'}
-            </Text>
-          </View>
-        </View>
-
-        {/* Purchase progress */}
-        <View style={styles.progressBlock}>
-          <View style={styles.progressLabelRow}>
-            <Text style={[styles.progressLabel, { color: colors.textSecondary }]}>Purchase</Text>
-            <Text style={[styles.progressValue, { color: colors.text }]}>
-              {money(week.eligibleTotal)} / {money(BNPC_WEEKLY_PURCHASE_LIMIT)}
-            </Text>
-          </View>
-          <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
+          {/* Card top row */}
+          <View style={styles.complianceCardHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.complianceCustomer} numberOfLines={1}>{week.customerId}</Text>
+              <Text style={styles.complianceWeek}>Week of {week.week}</Text>
+            </View>
             <View style={[
-              styles.progressFill,
-              {
-                width: `${purchasePct}%` as any,
-                backgroundColor: purchaseReached ? colors.error : colors.primary,
-              }
-            ]} />
+              styles.complianceBadge,
+              { backgroundColor: limitReached ? colors.error + '15' : colors.success + '15' }
+            ]}>
+              <Text style={[styles.complianceBadgeText, { color: limitReached ? colors.error : colors.success }]}>
+                {limitReached ? 'Limit reached' : 'Within limit'}
+              </Text>
+            </View>
           </View>
-        </View>
 
-        {/* Discount progress */}
-        <View style={styles.progressBlock}>
-          <View style={styles.progressLabelRow}>
-            <Text style={[styles.progressLabel, { color: colors.textSecondary }]}>Discount</Text>
-            <Text style={[styles.progressValue, { color: colors.text }]}>
-              {money(week.discountTotal)} / {money(BNPC_WEEKLY_DISCOUNT_CAP)}
-            </Text>
+          {/* Purchase progress */}
+          <View style={styles.progressBlock}>
+            <View style={styles.progressLabelRow}>
+              <Text style={[styles.progressLabel, { color: colors.textSecondary }]}>Purchase</Text>
+              <Text style={[styles.progressValue, { color: colors.text }]}>
+                {money(week.eligibleTotal)} / {money(BNPC_WEEKLY_PURCHASE_LIMIT)}
+              </Text>
+            </View>
+            <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
+              <View style={[
+                styles.progressFill,
+                {
+                  width: `${purchasePct}%` as any,
+                  backgroundColor: purchaseReached ? colors.error : colors.primary,
+                }
+              ]} />
+            </View>
           </View>
-          <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
-            <View style={[
-              styles.progressFill,
-              {
-                width: `${discountPct}%` as any,
-                backgroundColor: capReached ? colors.error : colors.primary,
-              }
-            ]} />
+
+          {/* Discount progress */}
+          <View style={styles.progressBlock}>
+            <View style={styles.progressLabelRow}>
+              <Text style={[styles.progressLabel, { color: colors.textSecondary }]}>Discount</Text>
+              <Text style={[styles.progressValue, { color: colors.text }]}>
+                {money(week.discountTotal)} / {money(BNPC_WEEKLY_DISCOUNT_CAP)}
+              </Text>
+            </View>
+            <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
+              <View style={[
+                styles.progressFill,
+                {
+                  width: `${discountPct}%` as any,
+                  backgroundColor: capReached ? colors.error : colors.primary,
+                }
+              ]} />
+            </View>
           </View>
-        </View>
         </View>
       </View>
     );

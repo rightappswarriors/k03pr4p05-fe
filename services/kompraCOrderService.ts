@@ -248,7 +248,7 @@ export class KompraCOrderService {
     take?: number;
     skip?: number;
   }): Promise<KompraCOrder[]> {
-    console.log(`${LOG_PREFIX} getKompraCOrdersForManagement — filters:`, JSON.stringify(filters));
+    if (__DEV__) console.log(`${LOG_PREFIX} getKompraCOrdersForManagement — filters:`, JSON.stringify(filters));
 
     const QUERY = gql`
       ${KompraCOrderService.MANAGEMENT_ORDER_FIELDS}
@@ -283,10 +283,10 @@ export class KompraCOrderService {
       });
 
       const orders = response.getKompraCOrdersForManagement ?? [];
-      console.log(`${LOG_PREFIX} getKompraCOrdersForManagement — received ${orders.length} orders`);
+      if (__DEV__) console.log(`${LOG_PREFIX} getKompraCOrdersForManagement — received ${orders.length} orders`);
       return orders;
     } catch (error) {
-      console.error(`${LOG_PREFIX} getKompraCOrdersForManagement — ERROR:`, error);
+      if (__DEV__) console.error(`${LOG_PREFIX} getKompraCOrdersForManagement — ERROR:`, error);
       throw error;
     }
   }
@@ -294,7 +294,7 @@ export class KompraCOrderService {
   // ─── Mutations ──────────────────────────────────────────────────────────────
 
   static async confirmKompraOrder(orderId: number): Promise<KompraCOrder> {
-    console.log(`${LOG_PREFIX} confirmKompraOrder — orderId:`, orderId);
+    if (__DEV__) console.log(`${LOG_PREFIX} confirmKompraOrder — orderId:`, orderId);
 
     const MUTATION = gql`
       ${KompraCOrderService.MANAGEMENT_ORDER_FIELDS}
@@ -312,24 +312,24 @@ export class KompraCOrderService {
       );
 
       if (!response.confirmKompraOrder) {
-        console.error(`${LOG_PREFIX} confirmKompraOrder — mutation returned null/undefined for orderId:`, orderId);
+        if (__DEV__) console.error(`${LOG_PREFIX} confirmKompraOrder — mutation returned null/undefined for orderId:`, orderId);
         throw new Error('confirmKompraOrder mutation returned no data. Check server resolver.');
       }
 
-      console.log(
+      if (__DEV__) console.log(
         `${LOG_PREFIX} confirmKompraOrder — success. New status:`,
         response.confirmKompraOrder.status,
         '| txNum:', response.confirmKompraOrder.transactionNumber,
       );
       return response.confirmKompraOrder;
     } catch (error) {
-      console.error(`${LOG_PREFIX} confirmKompraOrder — ERROR for orderId ${orderId}:`, error);
+      if (__DEV__) console.error(`${LOG_PREFIX} confirmKompraOrder — ERROR for orderId ${orderId}:`, error);
       throw error;
     }
   }
 
   static async markKompraOrderPacked(orderId: number): Promise<KompraCOrder> {
-    console.log(`${LOG_PREFIX} markKompraOrderPacked — orderId:`, orderId);
+    if (__DEV__) console.log(`${LOG_PREFIX} markKompraOrderPacked — orderId:`, orderId);
 
     const MUTATION = gql`
       ${KompraCOrderService.MANAGEMENT_ORDER_FIELDS}
@@ -351,14 +351,14 @@ export class KompraCOrderService {
       }
 
       const order = response.markKompraOrderPacked;
-      console.log(
+      if (__DEV__) console.log(
         `${LOG_PREFIX} markKompraOrderPacked — success.`,
         '| New status:', order.status,
         '| packedAt:', order.packedAt ?? 'MISSING — check server sets packedAt',
       );
 
       if (!order.packedAt) {
-        console.warn(
+        if (__DEV__) console.warn(
           `${LOG_PREFIX} markKompraOrderPacked — WARNING: packedAt is MISSING from response.`,
           'Check your resolver sets packedAt on the DB update.',
         );
@@ -366,7 +366,7 @@ export class KompraCOrderService {
 
       return order;
     } catch (error) {
-      console.error(`${LOG_PREFIX} markKompraOrderPacked — ERROR for orderId ${orderId}:`, error);
+      if (__DEV__) console.error(`${LOG_PREFIX} markKompraOrderPacked — ERROR for orderId ${orderId}:`, error);
       throw error;
     }
   }
@@ -376,7 +376,7 @@ export class KompraCOrderService {
     riderName: string,
     riderPhone?: string,
   ): Promise<KompraCOrder> {
-    console.log(`${LOG_PREFIX} assignKompraOrderRider — orderId:`, orderId, '| riderName:', riderName, '| riderPhone:', riderPhone);
+    if (__DEV__) console.log(`${LOG_PREFIX} assignKompraOrderRider — orderId:`, orderId, '| riderName:', riderName, '| riderPhone:', riderPhone);
 
     const MUTATION = gql`
       ${KompraCOrderService.MANAGEMENT_ORDER_FIELDS}
@@ -405,12 +405,12 @@ export class KompraCOrderService {
       });
 
       if (!response.assignKompraOrderRider) {
-        console.error(`${LOG_PREFIX} assignKompraOrderRider — mutation returned null/undefined for orderId:`, orderId);
+        if (__DEV__) console.error(`${LOG_PREFIX} assignKompraOrderRider — mutation returned null/undefined for orderId:`, orderId);
         throw new Error('assignKompraOrderRider mutation returned no data. Check server resolver.');
       }
 
       const order = response.assignKompraOrderRider;
-      console.log(
+      if (__DEV__) console.log(
         `${LOG_PREFIX} assignKompraOrderRider — success.`,
         '| New status:', order.status,
         '| riderName:', order.riderName,
@@ -429,7 +429,7 @@ export class KompraCOrderService {
   }
 
   static async markKompraOrderDelivered(orderId: number): Promise<KompraCOrder> {
-    console.log(`${LOG_PREFIX} markKompraOrderDelivered — orderId:`, orderId);
+    if (__DEV__) console.log(`${LOG_PREFIX} markKompraOrderDelivered — orderId:`, orderId);
 
     const MUTATION = gql`
       ${KompraCOrderService.MANAGEMENT_ORDER_FIELDS}
@@ -446,12 +446,12 @@ export class KompraCOrderService {
       }>(MUTATION, { orderId });
 
       if (!response.markKompraOrderDelivered) {
-        console.error(`${LOG_PREFIX} markKompraOrderDelivered — mutation returned null/undefined for orderId:`, orderId);
+        if (__DEV__) console.error(`${LOG_PREFIX} markKompraOrderDelivered — mutation returned null/undefined for orderId:`, orderId);
         throw new Error('markKompraOrderDelivered mutation returned no data. Check server resolver.');
       }
 
       const order = response.markKompraOrderDelivered;
-      console.log(
+      if (__DEV__) console.log(
         `${LOG_PREFIX} markKompraOrderDelivered — success.`,
         '| New status:', order.status,
         '| deliveredAt:', order.deliveredAt ?? 'MISSING',
@@ -478,7 +478,7 @@ export class KompraCOrderService {
     actorId: number,
     reason?: string,
   ): Promise<KompraCOrder> {
-    console.log(
+    if (__DEV__) console.log(
       `${LOG_PREFIX} cancelKompraOrder — orderId:`, orderId,
       '| actorType:', actorType,
       '| actorId:', actorId,
@@ -516,12 +516,12 @@ export class KompraCOrderService {
       );
 
       if (!response.cancelKompraOrder) {
-        console.error(`${LOG_PREFIX} cancelKompraOrder — mutation returned null/undefined for orderId:`, orderId);
+        if (__DEV__) console.error(`${LOG_PREFIX} cancelKompraOrder — mutation returned null/undefined for orderId:`, orderId);
         throw new Error('cancelKompraOrder mutation returned no data. Check server resolver.');
       }
 
       const order = response.cancelKompraOrder;
-      console.log(
+      if (__DEV__) console.log(
         `${LOG_PREFIX} cancelKompraOrder — success.`,
         '| New status:', order.status,
         '| cancelledAt:', order.cancelledAt ?? 'MISSING',
@@ -545,7 +545,7 @@ export class KompraCOrderService {
     startDate?: string;
     endDate?: string;
   }): Promise<KompraCOrderSummary[]> {
-    console.log(`${LOG_PREFIX} getKompraCOrderSummaries — filters:`, JSON.stringify(filters));
+    if (__DEV__) console.log(`${LOG_PREFIX} getKompraCOrderSummaries — filters:`, JSON.stringify(filters));
 
     const QUERY = gql`
       query GetKompraCOrderSummaries(
@@ -575,7 +575,7 @@ export class KompraCOrderService {
       });
 
       const summaries = response.getKompraCOrdersSummary ?? [];
-      console.log(`${LOG_PREFIX} getKompraCOrderSummaries — received ${summaries.length} summaries`);
+      if (__DEV__) console.log(`${LOG_PREFIX} getKompraCOrderSummaries — received ${summaries.length} summaries`);
       return summaries;
     } catch (error: any) {
       if (__DEV__) {

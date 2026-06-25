@@ -901,7 +901,7 @@ function EditItemModal({
         onClose();
       }
     } catch (err: any) {
-      console.error('Failed to update item:', err);
+      if (__DEV__) console.error('Failed to update item:', err);
       setError(err.message || 'Failed to update item. Please try again.');
     } finally {
       setIsLoading(false);
@@ -2692,7 +2692,7 @@ function AddItemModal({
       resetForm();
       onClose();
     } catch (err: any) {
-      console.error('Failed to create item:', err);
+      if (__DEV__) console.error('Failed to create item:', err);
       setError(err.message || 'Failed to create item. Please try again.');
     } finally {
       setIsLoading(false);
@@ -3336,7 +3336,7 @@ export default function InventoryScreen() {
           ),
         );
       } catch (error) {
-        console.warn('Unable to load inventory items', error);
+        if (__DEV__)console.warn('Unable to load inventory items', error);
       } finally {
         setLoadingItems(false);
       }

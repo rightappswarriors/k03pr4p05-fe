@@ -205,7 +205,7 @@ function BranchSelectorModal({
     try {
       setBranches(await AdminService.getBranchesMinimal(q));
     } catch (e) {
-      console.error('Failed to load branches', e);
+      if (__DEV__) console.error('Failed to load branches', e);
     } finally {
       setLoading(false);
     }
@@ -910,7 +910,7 @@ function ItemModal({
         setPages(normalized);
 
         // ── DEBUG: log what existing looks like ──────────────────────────────
-        console.log('[PositionModal] existing:', JSON.stringify(existing, null, 2));
+        if (__DEV__) console.log('[PositionModal] existing:', JSON.stringify(existing, null, 2));
 
         const ep = (existing as any)?.permissions?.reduce(
           (acc: any, perm: any) => ({
@@ -926,8 +926,8 @@ function ItemModal({
         );
 
         // ── DEBUG: log what ep (existing permissions map) resolves to ────────
-        console.log('[PositionModal] ep (existing permissions keyed by pageId):', JSON.stringify(ep, null, 2));
-        console.log('[PositionModal] normalized page IDs:', normalized.map(p => p.id));
+        if (__DEV__) console.log('[PositionModal] ep (existing permissions keyed by pageId):', JSON.stringify(ep, null, 2));
+        if (__DEV__) console.log('[PositionModal] normalized page IDs:', normalized.map(p => p.id));
 
         const hasExistingPerms = ep && Object.keys(ep).length > 0;
         // ── BUG WAS HERE: `template` from outer scope could be stale ─────────
@@ -936,14 +936,14 @@ function ItemModal({
         const sel = hasExistingPerms ? 'Custom' : 'Staff';
 
         // ── DEBUG: log sel and whether ep keys match page IDs ────────────────
-        console.log('[PositionModal] sel:', sel, '| hasExistingPerms:', hasExistingPerms);
+        if (__DEV__) console.log('[PositionModal] sel:', sel, '| hasExistingPerms:', hasExistingPerms);
         if (ep) {
           const epKeys = Object.keys(ep);
           const pageIds = normalized.map(p => p.id);
           const matched = epKeys.filter(k => pageIds.includes(k));
           const unmatched = epKeys.filter(k => !pageIds.includes(k));
-          console.log('[PositionModal] ep keys matched to pages:', matched);
-          console.log('[PositionModal] ep keys NOT matched (wrong id type?):', unmatched);
+          if (__DEV__) console.log('[PositionModal] ep keys matched to pages:', matched);
+          if (__DEV__) console.log('[PositionModal] ep keys NOT matched (wrong id type?):', unmatched);
         }
 
         setTemplate(sel as any);
@@ -958,7 +958,7 @@ function ItemModal({
             const resolved = fromExisting ?? fallback;
 
             // ── DEBUG: log per-page resolution ───────────────────────────────
-            console.log(`[PositionModal] page "${p.label}" (id=${p.id}):`,
+            if (__DEV__) console.log(`[PositionModal] page "${p.label}" (id=${p.id}):`,
               fromExisting
                 ? `from existing → ${JSON.stringify(fromExisting)}`
                 : `fallback → ${JSON.stringify(fallback)}`
@@ -968,11 +968,11 @@ function ItemModal({
           }),
         );
 
-        console.log('[PositionModal] final permissions state:', JSON.stringify(builtPermissions, null, 2));
+        if (__DEV__) console.log('[PositionModal] final permissions state:', JSON.stringify(builtPermissions, null, 2));
         setPermissions(builtPermissions);
 
       } catch (e) {
-        console.warn('Failed to load permission pages', e);
+        if (__DEV__) console.warn('Failed to load permission pages', e);
       }
     };
     run();
@@ -1751,7 +1751,7 @@ function TableDetailScreen({
           setServiceItems(raw.map(config.toItem));
         } else setServiceItems(contextItems);
       } catch (e) {
-        console.error(`Failed to load ${meta.label}:`, e);
+        if (__DEV__) console.error(`Failed to load ${meta.label}:`, e);
         setServiceItems(contextItems);
       } finally {
         setLoadingItems(false);
@@ -1786,37 +1786,37 @@ function TableDetailScreen({
   }, [items, search]);
 
   const handleSave = async (item: MasterItem, extra?: Record<string, any>) => {
-  const config = TABLE_CONFIG.find((t) => t.key === meta.key);
-  try {
-    if (config) {
-      if (editingItem) {
-        // Positions use string CUIDs — skip config.service.update for them
-        if (meta.key === 'positions') {
-          await PositionService.update(
-            editingItem.id,  // string CUID, not Number()
-            item.label,
-            extra?.description,
-          );
-          if (extra?.permissions)
-            await PositionService.setPermissions(editingItem.id, extra.permissions);
+    const config = TABLE_CONFIG.find((t) => t.key === meta.key);
+    try {
+      if (config) {
+        if (editingItem) {
+          // Positions use string CUIDs — skip config.service.update for them
+          if (meta.key === 'positions') {
+            await PositionService.update(
+              editingItem.id,  // string CUID, not Number()
+              item.label,
+              extra?.description,
+            );
+            if (extra?.permissions)
+              await PositionService.setPermissions(editingItem.id, extra.permissions);
+          } else {
+            // All other tables use numeric IDs — Number() is correct here
+            await config.service.update?.(Number(editingItem.id), item.label, extra);
+          }
         } else {
-          // All other tables use numeric IDs — Number() is correct here
-          await config.service.update?.(Number(editingItem.id), item.label, extra);
+          const created = await config.service.create?.(item.label, extra);
+          if (meta.key === 'positions' && created?.id && extra?.permissions)
+            await PositionService.setPermissions(String(created.id), extra.permissions);
         }
+        await reloadItems();
       } else {
-        const created = await config.service.create?.(item.label, extra);
-        if (meta.key === 'positions' && created?.id && extra?.permissions)
-          await PositionService.setPermissions(String(created.id), extra.permissions);
+        if (editingItem) mf.updateItem(meta.key as TableKey, item);
+        else mf.addItem(meta.key as TableKey, item);
       }
-      await reloadItems();
-    } else {
-      if (editingItem) mf.updateItem(meta.key as TableKey, item);
-      else mf.addItem(meta.key as TableKey, item);
+    } catch (e) {
+      if (__DEV__) console.error(`Failed to save ${meta.label}:`, e);
     }
-  } catch (e) {
-    console.error(`Failed to save ${meta.label}:`, e);
-  }
-};
+  };
 
   const isLoading = loadingItems || searching;
 
@@ -2183,7 +2183,7 @@ function TableDetailScreen({
                 await reloadItems();
               } else mf.deleteItem(meta.key as TableKey, id);
             } catch (e) {
-              console.error(`Failed to delete ${meta.label}:`, e);
+              if (__DEV__) console.error(`Failed to delete ${meta.label}:`, e);
             }
           }
           setDeleteTarget(null);

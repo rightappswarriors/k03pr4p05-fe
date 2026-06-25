@@ -612,14 +612,14 @@ export default function DashboardScreen() {
           setDatePreset(saved as DatePreset);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const handlePeriodSelect = (p: DatePreset) => {
     if (p === 'Custom Range') { setShowCustomPicker(true); return; }
     setIsLoadingDashboardData(true);
     setDatePreset(p);
-    AsyncStorage.setItem(DATE_PERIOD_KEY, p).catch(() => {});
+    AsyncStorage.setItem(DATE_PERIOD_KEY, p).catch(() => { });
   };
 
   const handleCustomApply = (start: Date, end: Date) => {
@@ -627,7 +627,7 @@ export default function DashboardScreen() {
     setCustomStartDate(start);
     setCustomEndDate(end);
     setDatePreset('Custom Range');
-    AsyncStorage.setItem(DATE_PERIOD_KEY, 'Custom Range').catch(() => {});
+    AsyncStorage.setItem(DATE_PERIOD_KEY, 'Custom Range').catch(() => { });
   };
 
   const customLabel =
@@ -745,12 +745,12 @@ export default function DashboardScreen() {
   useEffect(() => {
     AsyncStorage.getItem(VIEW_MODE_KEY)
       .then((saved) => { if (saved === 'table' || saved === 'card') setViewMode(saved as ViewMode); })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const handleViewModeChange = useCallback((mode: ViewMode) => {
     setViewMode(mode);
-    AsyncStorage.setItem(VIEW_MODE_KEY, mode).catch(() => {});
+    AsyncStorage.setItem(VIEW_MODE_KEY, mode).catch(() => { });
   }, []);
 
   // ── Build sales trend from raw transactions ───────────────────────────────
@@ -854,7 +854,7 @@ export default function DashboardScreen() {
   `;
 
   const loadDashboardData = useCallback(async () => {
-    
+
     setIsLoadingDashboardData(true);
 
     const { startDate, endDate } = getDateRange(datePreset, customStartDate, customEndDate);
@@ -1143,7 +1143,10 @@ export default function DashboardScreen() {
   const handleDelete = (row: GISRow) => setDeleteTarget(row);
   const confirmDelete = async () => {
     if (!deleteTarget) return;
-    try { await FinanceService.deleteGISRow(Number(deleteTarget.id)); } catch (e) { console.error('Delete failed', e); }
+    try { await FinanceService.deleteGISRow(Number(deleteTarget.id)); } catch (e: any) {
+      if (__DEV__) console.error('Delete failed', e);
+      throw new Error(e)
+    }
     setGisRows((prev) => {
       const nextRows = prev.filter((r) => r.id !== deleteTarget.id);
       setFinanceData((prevFinance) => {
@@ -1172,7 +1175,7 @@ export default function DashboardScreen() {
       setExportSuccess(true);
       setTimeout(() => setExportSuccess(false), 2000);
     } catch (error) {
-      console.error('[EXPORT ERROR]', error);
+      if (__DEV__) console.error('[EXPORT ERROR]', error);
       setExportSuccess(true);
       setTimeout(() => setExportSuccess(false), 2000);
     }
@@ -1223,7 +1226,10 @@ export default function DashboardScreen() {
       });
       setSubmitSuccess(true);
       setTimeout(() => closeModal(), 1400);
-    } catch (error) { console.error('Failed to add GIS row', error); }
+    } catch (error: any) {
+      if (__DEV__) console.error('Failed to add GIS row', error);
+      throw new Error(error)
+    }
   };
 
   // ── Item Net Summary modal ─────────────────────────────────────────────────
@@ -1238,8 +1244,8 @@ export default function DashboardScreen() {
   };
   const handleItemNetSubmit = async () => {
     if (!itemNetForm.vatType || !itemNetForm.accountTitleId || !itemNetForm.centerId || !itemNetForm.subCenterId || (!itemNetForm.costInputAmount && itemNetForm.costLines.length === 0)) {
-      console.warn('Cannot submit item net summary: missing required fields');
-      return;
+      if (__DEV__) console.warn('Cannot submit item net summary: missing required fields');
+      throw new Error('Cannot submit item net summary: missing required fields');
     }
     const opExPct = parseFloat(itemNetForm.opExPct) || 0;
     const finalSellingPrice = itemNetForm.selectedItem?.sellingPrice ? parseFloat(itemNetForm.selectedItem.sellingPrice) : parseFloat(itemNetForm.sellingPriceInput) || 0;
@@ -1280,7 +1286,10 @@ export default function DashboardScreen() {
       });
       setItemNetSubmitSuccess(true);
       setTimeout(() => closeItemNetModal(), 1400);
-    } catch (error) { console.error('Failed to add summary row', error); }
+    } catch (error: any) {
+      if (__DEV__) console.error('Failed to add summary row', error);
+      throw new Error('Failed to add summary row', error)
+    }
   };
 
   const handleCatalogItemSelect = (item: CatalogItem) => {
