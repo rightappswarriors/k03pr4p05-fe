@@ -40,19 +40,21 @@ export class SalesService {
         }
       }
     `;
-    
+
     try {
       const response = await graphQLRequest<{ getTransactionsByOrgId: any[] }>(
         QUERY,
         { startDate, endDate }
       );
-      console.log('Transactions by year response:', response);
+      if (__DEV__) console.log('Transactions by year response:', response);
       return response.getTransactionsByOrgId ?? [];
     } catch (error) {
-      console.error('Failed to get transactions by year:', error);
-      const message = formatGraphQLError(error);
-      console.error('Error message:', message);
-      return [];
+      if (__DEV__) {
+        if (__DEV__) {
+          const message = formatGraphQLError(error);
+          console.error('Failed to get transactions by yearError message:', message);
+        }
+      } return [];
     }
   }
 
@@ -124,11 +126,10 @@ export class SalesService {
       });
       return response.getTransactionsByOrgId;
     } catch (error) {
-      console.error('Failed to get transactions query getTransactionsByOrgId:', error);
-
-      const message = formatGraphQLError(error);
-      console.error('Failed to get transactions query getTransactionsByOrgId:', message);
-      return [];
+      if (__DEV__) {
+        const message = formatGraphQLError(error);
+        console.error('Failed to get transactions query getTransactionsByOrgId:', message);
+      } return [];
     }
 
   }

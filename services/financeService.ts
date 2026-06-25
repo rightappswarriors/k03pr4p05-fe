@@ -15,7 +15,7 @@ export class FinanceService {
     const response = await graphQLRequest<{ getAllAccountTitles: any[] }>(QUERY, {});
     return response.getAllAccountTitles;
   }
-  
+
   static async createAccountTitle(orgId: number, name: string, code: string): Promise<any> {
     const MUTATION = gql`
       mutation CreateAccountTitle($orgId: Int!, $name: String!, $code: String!) {
@@ -279,14 +279,16 @@ export class FinanceService {
     try {
       const response = await graphQLRequest<{ summaryRowExpenses: any[] }>(QUERY, { startDate, endDate });
       return response.summaryRowExpenses ?? [];
-    
+
     } catch (error) {
-      const errorMessge = formatGraphQLError(error)
-      console.error("Error fetching summary row expenses:", errorMessge);
+      if (__DEV__) {
+        const errorMessge = formatGraphQLError(error)
+        console.error("Error fetching summary row expenses:", errorMessge);
+      }
       return Promise.resolve([]);
     }
   }
-  
+
   static async getSummaryRows(startDate?: string, endDate?: string): Promise<any[]> {
     const QUERY = gql`
     query SummaryRows($startDate: String, $endDate: String) {
@@ -434,7 +436,7 @@ export class FinanceService {
     });
     return response.createSummaryRow;
   }
-  
+
   static async updateSummaryRow(
     id: number,
     accountTitleId?: number,

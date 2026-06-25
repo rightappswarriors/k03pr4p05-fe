@@ -43,7 +43,7 @@ export class PrinterService {
       const testReceiptContent = this.generateTestReceiptContent();
       return await this.sendPrintJob(testReceiptContent, true);
     } catch (error: any) {
-      console.error('Failed to print test receipt:', error);
+      if (__DEV__) console.error('Failed to print test receipt:', error);
       throw new Error(`Print test failed: ${error.message}`);
     }
   }
@@ -537,13 +537,13 @@ Thank you for testing!
         <div class="bold">EXTRA CHARGES</div>
         <table>
           ${extraCharges
-            .map((charge) => `
+        .map((charge) => `
               <tr>
                 <td>${charge.label}</td>
                 <td class="right">${this.money(charge.amount)}</td>
               </tr>
             `)
-            .join('')}
+        .join('')}
           <tr class="bold">
             <td>Extra Charges Total:</td>
             <td class="right">${this.money(salesOrder.extraChargesTotal)}</td>

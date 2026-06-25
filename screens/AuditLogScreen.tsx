@@ -250,7 +250,7 @@ export default function AuditLogScreen() {
         fullname: item.fullname || item.username || item.email || `User ${item.id}`,
       })));
     } catch (error) {
-      console.warn('Failed to load staff options for audit filters', error);
+      if (__DEV__) console.warn('Failed to load staff options for audit filters', error);
     }
   };
 
@@ -262,7 +262,7 @@ export default function AuditLogScreen() {
       setHasMore(auditLogs.length === pageSize);
       setPage(nextPage);
     } catch (error) {
-      console.warn('Failed to fetch audit logs', error);
+      if (__DEV__) console.warn('Failed to fetch audit logs', error);
     } finally {
       setLoading(false);
     }
@@ -369,7 +369,7 @@ export default function AuditLogScreen() {
 
       {/* ── Stats strip ── */}
       {logs.length > 0 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={isDesktop ? true: false}  style={{ flexGrow: 0}} contentContainerStyle={styles.statsStrip}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={isDesktop ? true : false} style={{ flexGrow: 0 }} contentContainerStyle={styles.statsStrip}>
           {(Object.entries(actionCounts) as [AuditLog['action'], number][]).map(([action, count]) => {
             const cfg = ACTION_CONFIG[action] ?? ACTION_CONFIG.VIEW;
             return (

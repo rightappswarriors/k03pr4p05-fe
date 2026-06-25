@@ -9,7 +9,7 @@ export function useErrorModal() {
         error: unknown,
         customTitle = "Error"
     ) => {
-        console.log('[showError] called with:', error, customTitle);
+        if (__DEV__) console.log('[showError] called with:', error, customTitle);
         setTitle(customTitle);
 
         if (error instanceof Error) {

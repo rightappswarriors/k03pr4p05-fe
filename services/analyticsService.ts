@@ -213,7 +213,7 @@ export class AnalyticsService {
       return res.getSalesAnalytics;
     } catch (error) {
       const errorString = error instanceof GraphQLError ? JSON.stringify(error, null, 2) : String(error);
-      console.log('AnalyticsService.getSalesAnalytics error:', errorString);
+      if (__DEV__) console.log('AnalyticsService.getSalesAnalytics error:', errorString);
       throw error;
     }
   }
@@ -275,7 +275,7 @@ export class AnalyticsService {
       return res.getBranchAnalytics;
     } catch (error) {
       const errorString = error instanceof GraphQLError ? JSON.stringify(error, null, 2) : String(error);
-      console.log('AnalyticsService.getBranchAnalytics error:', errorString);
+      if (__DEV__) console.log('AnalyticsService.getBranchAnalytics error:', errorString);
       throw error;
     }
   }
@@ -353,7 +353,7 @@ export class AnalyticsService {
       });
       return res.getItemAnalyticsPaginated;
     } catch (error) {
-      console.log('AnalyticsService.getItemAnalyticsPaginated error:', JSON.stringify(error));
+      if (__DEV__) console.log('AnalyticsService.getItemAnalyticsPaginated error:', JSON.stringify(error));
       throw error;
     }
   }
@@ -436,7 +436,7 @@ export class AnalyticsService {
       return res.getItemAnalytics;
     } catch (error) {
 
-      console.log('AnalyticsService.getItemAnalytics error:', JSON.stringify(error));
+      if (__DEV__) console.log('AnalyticsService.getItemAnalytics error:', JSON.stringify(error));
       throw error;
     }
   }

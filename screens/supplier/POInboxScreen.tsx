@@ -17,21 +17,21 @@ import {
 } from '@/services/supplierService'
 
 const STATUS_COLORS: Record<POStatus, string> = {
-  PENDING:    '#F59E0B',
-  ACCEPTED:   '#3B82F6',
-  REJECTED:   '#EF4444',
+  PENDING: '#F59E0B',
+  ACCEPTED: '#3B82F6',
+  REJECTED: '#EF4444',
   IN_TRANSIT: '#8B5CF6',
-  DELIVERED:  '#22C55E',
-  CANCELLED:  '#6B7280',
+  DELIVERED: '#22C55E',
+  CANCELLED: '#6B7280',
 }
 
 const STATUS_LABELS: Record<POStatus, string> = {
-  PENDING:    'Pending',
-  ACCEPTED:   'Accepted',
-  REJECTED:   'Rejected',
+  PENDING: 'Pending',
+  ACCEPTED: 'Accepted',
+  REJECTED: 'Rejected',
   IN_TRANSIT: 'In Transit',
-  DELIVERED:  'Delivered',
-  CANCELLED:  'Cancelled',
+  DELIVERED: 'Delivered',
+  CANCELLED: 'Cancelled',
 }
 
 const FILTER_OPTIONS: Array<POStatus | 'ALL'> = ['ALL', 'PENDING', 'ACCEPTED', 'IN_TRANSIT', 'DELIVERED']
@@ -99,13 +99,13 @@ function CardGrid({ orders, columns, onSelect }: { orders: PurchaseOrder[]; colu
 
 // ---- Table (tablet / desktop) ------------------------------------------
 const TABLE_COLUMNS = [
-  { key: 'po',     label: 'PO Number', flex: 1.3 },
-  { key: 'buyer',  label: 'Buyer',     flex: 1.6 },
-  { key: 'outlet', label: 'Outlet',    flex: 1.4 },
-  { key: 'items',  label: 'Items',     flex: 0.7, align: 'center' as const },
-  { key: 'total',  label: 'Total',     flex: 1,   align: 'right' as const },
-  { key: 'date',   label: 'Date',      flex: 1 },
-  { key: 'status', label: 'Status',    flex: 1 },
+  { key: 'po', label: 'PO Number', flex: 1.3 },
+  { key: 'buyer', label: 'Buyer', flex: 1.6 },
+  { key: 'outlet', label: 'Outlet', flex: 1.4 },
+  { key: 'items', label: 'Items', flex: 0.7, align: 'center' as const },
+  { key: 'total', label: 'Total', flex: 1, align: 'right' as const },
+  { key: 'date', label: 'Date', flex: 1 },
+  { key: 'status', label: 'Status', flex: 1 },
 ]
 
 function POTable({ orders, onSelect }: { orders: PurchaseOrder[]; onSelect: (id: string) => void }) {
@@ -246,7 +246,7 @@ export default function POInboxScreen({ onSelectPO }: POInboxScreenProps) {
           setViewMode(width >= BREAKPOINTS.tablet ? 'table' : 'cards')
         }
       } catch (e) {
-        console.error('Failed to load view mode preference', e)
+        if (__DEV__) console.error('Failed to load view mode preference', e)
       } finally {
         setViewModeLoaded(true)
       }
@@ -259,7 +259,7 @@ export default function POInboxScreen({ onSelectPO }: POInboxScreenProps) {
     try {
       await AsyncStorage.setItem(VIEW_MODE_KEY, mode)
     } catch (e) {
-      console.error('Failed to persist view mode preference', e)
+      if (__DEV__) console.error('Failed to persist view mode preference', e)
     }
   }, [])
 
@@ -269,7 +269,7 @@ export default function POInboxScreen({ onSelectPO }: POInboxScreenProps) {
       const data = await fetchPurchaseOrdersForSupplier(user.orgId)
       setOrders(data)
     } catch (e) {
-      console.error('purchaseOrdersForSupplier error', e)
+      if (__DEV__) console.error('purchaseOrdersForSupplier error', e)
     } finally {
       setLoading(false)
     }

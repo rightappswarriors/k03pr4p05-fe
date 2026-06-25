@@ -43,7 +43,6 @@ export class TransactionService {
     await StorageService.saveOrder(order);
     // Listen for order Creation, to refresh history ui => display automatically
     eventBus.emit('orderCreated', order);
-    //console.log('Save order');
     return order;
   }
 

@@ -41,7 +41,7 @@ export default function RootLayout() {
         setHasOnboardedState(onboarded === 'true');
         setIsLoggedInState(loggedIn === 'true');
       } catch (error) {
-        console.error('Failed to load storage items:', error);
+        if (__DEV__) console.error('Failed to load storage items:', error);
         setHasOnboardedState(false);
         setIsLoggedInState(false);
       } finally {
@@ -57,7 +57,7 @@ export default function RootLayout() {
       await AsyncStorage.setItem('hasOnboarded', value.toString());
       setHasOnboardedState(value);
     } catch (error) {
-      console.error('Failed to set hasOnboarded:', error);
+      if (__DEV__) console.error('Failed to set hasOnboarded:', error);
     }
   };
 
@@ -66,7 +66,7 @@ export default function RootLayout() {
       await AsyncStorage.setItem('isLoggedIn', value.toString());
       setIsLoggedInState(value);
     } catch (error) {
-      console.error('Failed to set isLoggedIn:', error);
+      if (__DEV__) console.error('Failed to set isLoggedIn:', error);
     }
   };
 

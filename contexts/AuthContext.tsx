@@ -145,7 +145,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         refreshToken: null,
       });
     } catch (error) {
-      console.error('Logout error:', error);
+      if (__DEV__) console.error('Logout error:', error);
     } finally {
       setLoading(false)
     }
@@ -165,7 +165,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAuthenticated: false,
       });
     } catch (error) {
-      console.error('Logout error:', error);
+      if (__DEV__) console.error('Logout error:', error);
     } finally {
       setLoading(false)
     }

@@ -126,7 +126,7 @@ function AttendanceActionModal({ visible, step, onConfirm, onClose, colors }: Ac
       setPhoto(result);
       setShowCamera(false);
     } catch (err) {
-      console.error('[AttendanceActionModal] capture failed:', err);
+      if (__DEV__) console.error('[AttendanceActionModal] capture failed:', err);
       Alert.alert('Error', 'Failed to capture photo. Please try again.');
     } finally {
       setCapturing(false);
@@ -148,7 +148,7 @@ function AttendanceActionModal({ visible, step, onConfirm, onClose, colors }: Ac
       setPhoto(null);
       setNote('');
     } catch (err) {
-      console.error('[AttendanceActionModal] confirm failed:', err);
+      if (__DEV__) console.error('[AttendanceActionModal] confirm failed:', err);
     } finally {
       setSubmitting(false);
     }
@@ -318,7 +318,7 @@ function UserDetailSheet({ entry, visible, onClose, colors, orgId }: UserDetailS
       setHasMore(histData.hasMore);
       setHistPage(1);
     } catch (err) {
-      console.error('[UserDetailSheet] loadData failed:', err);
+      if (__DEV__) console.error('[UserDetailSheet] loadData failed:', err);
     } finally {
       setLoading(false);
     }
@@ -333,7 +333,7 @@ function UserDetailSheet({ entry, visible, onClose, colors, orgId }: UserDetailS
       setHasMore(data.hasMore);
       setHistPage(next);
     } catch (err) {
-      console.error('[UserDetailSheet] loadMoreHistory failed:', err);
+      if (__DEV__) console.error('[UserDetailSheet] loadMoreHistory failed:', err);
     }
   };
 
@@ -470,7 +470,7 @@ export default function EmployeeAttendanceScreen() {
       setTodayRecord(rec);
       setPerf(perfData);
     } catch (err) {
-      console.error('[EmployeeScreen] loadStaffData failed:', err);
+      if (__DEV__) console.error('[EmployeeScreen] loadStaffData failed:', err);
     } finally {
       setLoadingToday(false);
     }

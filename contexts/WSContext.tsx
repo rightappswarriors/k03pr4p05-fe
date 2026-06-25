@@ -1,6 +1,6 @@
 
 
-
+// PROMPT: I don't wnat to use websocket, use graphql subscription
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { useAuth } from "./AuthContext";
 
@@ -17,7 +17,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         const ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
-            if (process.env.NODE_ENV === "development") console.log("WS connected");
+            if (__DEV__) console.log("WS connected");
 
             ws.send(
                 JSON.stringify({

@@ -1,6 +1,7 @@
 // services/dashboardService.ts
 import { gql } from 'graphql-request';
 import { graphQLRequest } from './apiClient';
+import { formatGraphQLError } from '@/utils/errorFormatter';
 
 export interface DashboardOrderTrendPoint {
   period: string;
@@ -105,8 +106,10 @@ export class DashboardService {
 
       return response.getDashboardOrderStats ?? zero;
     } catch (error) {
-      console.error('Failed to fetch dashboard order stats:', error);
-      return zero;
+      if (__DEV__) {
+        const errorMessage = formatGraphQLError(error)
+        console.error('Failed to fetch dashboard order stats:', errorMessage);
+      } return zero;
     }
   }
 }

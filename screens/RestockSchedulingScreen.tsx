@@ -350,7 +350,7 @@ interface Cycle {
   firedAt?: string;
   createdAt: string;
   cycleItems: CycleItem[];
-  supplierOrders: SupplierOrder[];  
+  supplierOrders: SupplierOrder[];
 }
 
 interface ScheduleItem {
@@ -820,7 +820,7 @@ function BranchPickerModal({
       const branchList = await AdminService.getBranchesMinimal(query);
       setBranches(branchList);
     } catch (e) {
-      console.error('Failed to load branches', e);
+      if (__DEV__) console.error('Failed to load branches', e);
       setBranches([]);
     } finally {
       setLoading(false);
@@ -942,7 +942,7 @@ function OutletPickerModal({
       );
       setOutlets(outletList);
     } catch (e) {
-      console.error('Failed to load outlets', e);
+      if (__DEV__) console.error('Failed to load outlets', e);
       setOutlets([]);
     } finally {
       setLoading(false);
@@ -1980,13 +1980,13 @@ function ScheduleFormModal({
       const datePayload = scheduleResult
         ? scheduleToPrismaInput(scheduleResult)
         : {
-            recurrence: editing!.recurrence,
-            startDate: editing!.startDate,
-            endDate: editing!.endDate,
-            timeOfDay: editing!.timeOfDay,
-            dayOfWeek: editing!.dayOfWeek,
-            dayOfMonth: editing!.dayOfMonth,
-          };
+          recurrence: editing!.recurrence,
+          startDate: editing!.startDate,
+          endDate: editing!.endDate,
+          timeOfDay: editing!.timeOfDay,
+          dayOfWeek: editing!.dayOfWeek,
+          dayOfMonth: editing!.dayOfMonth,
+        };
       await onSave({
         items: selectedItems,
         ...datePayload,
@@ -2778,12 +2778,12 @@ function CycleCalendarStrip({
                   {cycle.cycleItems.length === 0
                     ? 'No items'
                     : cycle.cycleItems
-                        .slice(0, 2)
-                        .map((ci) => ci.item.name)
-                        .join(', ') +
-                      (cycle.cycleItems.length > 2
-                        ? ` +${cycle.cycleItems.length - 2}`
-                        : '')}
+                      .slice(0, 2)
+                      .map((ci) => ci.item.name)
+                      .join(', ') +
+                    (cycle.cycleItems.length > 2
+                      ? ` +${cycle.cycleItems.length - 2}`
+                      : '')}
                 </Text>
 
                 {/* Fired badge */}
@@ -3369,7 +3369,7 @@ export default function RestockSchedulerScreen() {
         })),
       );
     } catch (e) {
-      console.error('Failed to load restock data', e);
+      if (__DEV__) console.error('Failed to load restock data', e);
     } finally {
       setLoading(false);
     }

@@ -44,7 +44,7 @@ export default function SupplierAnalyticsScreen() {
       const data = await fetchSupplierAnalytics(user.orgId)
       setAnalytics(data)
     } catch (e) {
-      console.error('fetchSupplierAnalytics error', e)
+      if (__DEV__) console.error('fetchSupplierAnalytics error', e)
     } finally {
       setLoading(false)
     }

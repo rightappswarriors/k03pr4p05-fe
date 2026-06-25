@@ -87,7 +87,7 @@ export default function CatalogScreen({ onAddItem, onEditItem }: CatalogScreenPr
       const data = await fetchOrCreateCatalog(user.orgId)
       setCatalog(data)
     } catch (e) {
-      console.error('supplierCatalog error', e)
+      if (__DEV__) console.error('supplierCatalog error', e)
     } finally {
       setLoading(false)
     }

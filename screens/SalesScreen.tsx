@@ -591,7 +591,7 @@ function CreateOrderModal({ visible, onClose, onCreated }: {
       if (lastReset && lastReset >= weekStart) {
         return { bnpcDiscountUsed: discountStatus.weeklyCapUsed ?? 0, bnpcEligibleAmountUsed: discountStatus.eligibleAmountUsed ?? 0, bnpcCapManuallyReached: discountStatus.capManuallyReached ?? false };
       }
-    } catch (err) { console.warn('Failed to parse discountStatus.lastResetDate', err); }
+    } catch (err) { if (__DEV__) console.warn('Failed to parse discountStatus.lastResetDate', err); }
     return { bnpcDiscountUsed: 0, bnpcEligibleAmountUsed: 0, bnpcCapManuallyReached: false };
   };
   const { bnpcDiscountUsed, bnpcEligibleAmountUsed, bnpcCapManuallyReached } = normalizeBnpcUsage();

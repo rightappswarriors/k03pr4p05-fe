@@ -134,7 +134,7 @@ export default function SettingsScreen({
       ]);
     }
   };
-  console.log('segments:', segments);
+  if (__DEV__) console.log('segments:', segments);
   const clearLocalData = async () => {
     try {
       const orders = await StorageService.getOfflineOrders();
@@ -149,7 +149,7 @@ export default function SettingsScreen({
         return;
       }
     } catch (error) {
-      console.error('Failed to check transaction status before clearing data:', error);
+      if (__DEV__) console.error('Failed to check transaction status before clearing data:', error);
     }
 
     Alert.alert(

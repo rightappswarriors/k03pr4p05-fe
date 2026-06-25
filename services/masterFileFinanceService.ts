@@ -40,9 +40,10 @@ export class MasterFileFinanceService {
             });
             return response.createAccountTitle;
         } catch (error) {
-            const message = formatGraphQLError(error);
-            console.error('createAccountTitle error:', message);
-            throw error; // Re-throw so UI can show error
+            if (__DEV__) {
+                const message = formatGraphQLError(error);
+                console.error('createAccountTitle error:', message);
+            } throw error; // Re-throw so UI can show error
         }
     }
 
@@ -64,9 +65,10 @@ export class MasterFileFinanceService {
             });
             return response.updateAccountTitle;
         } catch (error) {
-            const message = formatGraphQLError(error);
-            console.error('updateAccountTitle error:', message);
-            throw error;
+            if (__DEV__) {
+                const message = formatGraphQLError(error);
+                console.error('updateAccountTitle error:', message);
+            } throw error;
         }
     }
 
@@ -85,9 +87,10 @@ export class MasterFileFinanceService {
             });
             return response.deleteAccountTitle;
         } catch (error) {
-            const message = formatGraphQLError(error);
-            console.error('deleteAccountTitle error:', message);
-            throw error;
+            if (__DEV__) {
+                const message = formatGraphQLError(error);
+                console.error('deleteAccountTitle error:', message);
+            } throw error;
         }
     }
 }

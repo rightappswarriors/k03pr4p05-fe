@@ -585,7 +585,7 @@ export function ReceiptModal({
     };
   });
 
-  console.log('ReceiptModal totals:', {
+  if (__DEV__) console.log('ReceiptModal totals:', {
     total,
     subtotal,
     vatAmount,

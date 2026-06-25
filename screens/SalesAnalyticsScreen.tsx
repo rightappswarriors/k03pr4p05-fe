@@ -943,7 +943,7 @@ export default function SalesAnalyticsScreen() {
         const bRes = await graphQLRequest<{ getOrgBranches: RawBranch[] }>(BRANCHES_GQL, {});
         setRawBranches(bRes.getOrgBranches ?? []);
       } catch (e) {
-        console.warn('branch fetch error', e);
+        if (__DEV__) console.warn('branch fetch error', e);
         setRawBranches([]);
       } finally {
         setBranchLoading(false);
@@ -961,7 +961,7 @@ export default function SalesAnalyticsScreen() {
       const result = await AnalyticsService.getSalesAnalytics(preset, dateRange);
       setAnalytics(result);
     } catch (e) {
-      console.warn('analytics load error', e);
+      if (__DEV__) console.warn('analytics load error', e);
       setAnalytics(null);
     } finally {
       setHeroLoading(false);
@@ -986,7 +986,7 @@ export default function SalesAnalyticsScreen() {
           const result = await AnalyticsService.getItemAnalyticsPaginated(preset, { dateRange, take, page, search, section });
           setItemPaginated(result);
         } catch (e) {
-          console.warn('item paginated load error', e);
+          if (__DEV__) console.warn('item paginated load error', e);
         } finally {
           setItemPagLoading(false);
         }

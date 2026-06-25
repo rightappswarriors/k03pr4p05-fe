@@ -1011,7 +1011,7 @@ export default function DashboardScreen() {
         createdAt: row.createdAt,
       })));
     } catch (error) {
-      console.error('Dashboard load error:', error);
+      if (__DEV__) console.error('Dashboard load error:', error);
     } finally {
       setIsLoadingDashboardData(false);
     }

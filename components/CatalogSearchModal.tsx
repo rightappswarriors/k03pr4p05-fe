@@ -44,7 +44,7 @@ async function searchCatalog(
       costLines: item.costLines || [],
     }));
   } catch (error) {
-    console.error('Failed to search catalog:', error);
+    if (__DEV__) console.error('Failed to search catalog:', error);
     return [];
   } finally {
     setLoading(false);

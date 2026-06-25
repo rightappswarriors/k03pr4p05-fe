@@ -493,7 +493,7 @@ export default function FinanceScreen() {
   const [selectedMonth, setSelectedMonth] = useState<MonthDetail | null>(null);
   const [monthModalOpen, setMonthModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
-  const { isDesktop} = useResponsive();
+  const { isDesktop } = useResponsive();
   // Data state
   const [currentYearData, setCurrentYearData] = useState<MonthlyData[]>([]);
   const [previousYearData, setPreviousYearData] = useState<MonthlyData[]>([]);
@@ -561,7 +561,7 @@ export default function FinanceScreen() {
         );
         setPreviousYearData(prevMonthlyData);
       } catch (error) {
-        console.error('Failed to load finance data:', error);
+        if (__DEV__) console.error('Failed to load finance data:', error);
       } finally {
         setLoading(false);
       }

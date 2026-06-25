@@ -295,11 +295,11 @@ function FinancialCard({
 
   // Inline styles for the card component
   const cardStyles = {
-    finCard: { 
-      flex: 1, 
-      borderRadius: 14, 
-      padding: 20, 
-      borderWidth: 1 
+    finCard: {
+      flex: 1,
+      borderRadius: 14,
+      padding: 20,
+      borderWidth: 1
     },
     finCardLabel: {
       fontSize: 12,
@@ -314,9 +314,9 @@ function FinancialCard({
       letterSpacing: -1,
       marginBottom: 4,
     },
-    finCardSub: { 
-      fontSize: 13, 
-      fontWeight: '500' as const 
+    finCardSub: {
+      fontSize: 13,
+      fontWeight: '500' as const
     },
   };
 
@@ -349,10 +349,10 @@ function FinancialCard({
             color: isPrimary
               ? 'rgba(255,255,255,0.8)'
               : subtitle.includes('▲')
-              ? colors.success
-              : subtitle.includes('▼')
-              ? colors.error
-              : colors.textSecondary,
+                ? colors.success
+                : subtitle.includes('▼')
+                  ? colors.error
+                  : colors.textSecondary,
           },
         ]}
       >
@@ -817,7 +817,7 @@ export default function FinanceScreen() {
   const { colors, theme } = useTheme();
   const { width } = Dimensions.get('window');
   const isDesktop = width >= 1024;
-  
+
   const isTablet = width >= 768;
   const chartWidth = isTablet
     ? Math.min((width - 280) * 0.95, 580)
@@ -895,7 +895,7 @@ export default function FinanceScreen() {
         );
         setPreviousYearData(prevMonthlyData);
       } catch (error) {
-        console.error('Failed to load finance data:', error);
+        if (__DEV__) console.error('Failed to load finance data:', error);
       } finally {
         setLoading(false);
       }
@@ -1024,8 +1024,8 @@ export default function FinanceScreen() {
       width: isDesktop
         ? `${(100 - 4) / 3}%` // 3 columns on desktop
         : isTablet
-        ? `${(100 - 2) / 2}%` // 2 columns on tablet
-        : '100%', // Full width on mobile
+          ? `${(100 - 2) / 2}%` // 2 columns on tablet
+          : '100%', // Full width on mobile
     },
     monthLabel: {
       fontSize: 14,

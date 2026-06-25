@@ -100,7 +100,7 @@ export function CartSidebar({
   };
 
   const handlePrintReceipt = (receiptData: any) => {
-    console.log('Receipt Data:', JSON.stringify(receiptData, null, 2));
+    if (__DEV__) console.log('Receipt Data:', JSON.stringify(receiptData, null, 2));
     // Here you would typically send the receipt data to a printer or save it
     onClearCart();
     setReceiptModalVisible(false);

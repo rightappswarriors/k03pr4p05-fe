@@ -1,5 +1,6 @@
 import { gql } from 'graphql-request';
 import { graphQLRequest } from './apiClient';
+import { formatGraphQLError } from '@/utils/errorFormatter';
 export interface OrgItemCategory {
   id: number;
   orgId: number;
@@ -173,8 +174,10 @@ export class OrgCategoryService {
       const res = await graphQLRequest<{ createOrgItemCategory: OrgItemCategory }>(mutation, input);
       return res.createOrgItemCategory;
     } catch (error) {
-      console.error('createOrgCategory error:', error);
-      throw error;
+
+      const errorMessage = formatGraphQLError(error)
+      if (__DEV__) console.error('createOrgCategory error:', errorMessage);
+      throw errorMessage;
     }
   }
 
@@ -222,7 +225,7 @@ export class OrgCategoryService {
       const res = await graphQLRequest<{ updateOrgItemCategory: OrgItemCategory }>(mutation, { id, ...rest });
       return res.updateOrgItemCategory;
     } catch (error) {
-      console.error('updateOrgCategory error:', error);
+      if (__DEV__) console.error('updateOrgCategory error:', error);
       throw error; // ✅ rethrow
     }
   }
@@ -240,7 +243,7 @@ export class OrgCategoryService {
       const res = await graphQLRequest<{ deleteOrgItemCategory: OrgItemCategory }>(mutation, { id });
       return res.deleteOrgItemCategory;
     } catch (error) {
-      console.error('deleteOrgCategory error:', error);
+      if (__DEV__) console.error('deleteOrgCategory error:', error);
       throw error; // ✅ rethrow
     }
   }

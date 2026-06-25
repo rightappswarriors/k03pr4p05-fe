@@ -1,5 +1,6 @@
 import { gql } from 'graphql-request';
 import { graphQLRequest } from './apiClient';
+import { formatGraphQLError } from '@/utils/errorFormatter';
 
 export class OrganizationService {
   static async getOrganizations(): Promise<any[]> {
@@ -54,8 +55,9 @@ export class OrganizationService {
     }
 
     try {
-      console.log(`[Frontend] Creating organization: ${name} roles: ${roles}`)
-
+      if (__DEV__) {
+        console.log(`[Frontend] Creating organization: ${name} roles: ${roles}`)
+      }
       const MUTATION = gql`
         mutation CreateOrganization($name: String!, $roles: [OrgRole!]) {
           createOrganization(name: $name, roles: $roles) {
@@ -73,12 +75,14 @@ export class OrganizationService {
         throw new Error('No organization returned from server');
       }
 
-      console.log(`[Frontend] ✅ Organization created:`, response.createOrganization)
+      if (__DEV__) console.log(`[Frontend] ✅ Organization created:`, response.createOrganization)
       return response.createOrganization;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error(`[Frontend] ❌ Organization creation error:`, errorMessage);
-      throw new Error(errorMessage || 'Failed to create organization');
+
+      const errorMessage = formatGraphQLError(error)
+      if (__DEV__) {
+        console.error(`[Frontend] ❌ Organization creation error:`, errorMessage);
+      } throw new Error(errorMessage || 'Failed to create organization');
     }
   }
 

@@ -1,5 +1,6 @@
 import { gql } from 'graphql-request';
 import { graphQLRequest } from './apiClient';
+import { formatGraphQLError } from '@/utils/errorFormatter';
 
 export class SubscriptionService {
   static async getSubscription(orgId: number): Promise<any | null> {
@@ -21,8 +22,8 @@ export class SubscriptionService {
 
   static async createSubscription(orgId: number, plan: 'BASIC' | 'GOLD'): Promise<any> {
     try {
-      console.log(`[Frontend] Creating subscription for org ${orgId} with plan ${plan}...`)
-      
+      if (__DEV__) console.log(`[Frontend] Creating subscription for org ${orgId} with plan ${plan}...`)
+
       const MUTATION = gql`
         mutation CreateSubscription($orgId: Int!, $plan: SubscriptionPlan!) {
           createSubscription(orgId: $orgId, plan: $plan) {
@@ -38,16 +39,18 @@ export class SubscriptionService {
         orgId,
         plan,
       });
-      
+
       if (!response?.createSubscription) {
         throw new Error('No subscription returned from server')
       }
-      
-      console.log(`[Frontend] ✅ Subscription created:`, response.createSubscription)
+
+      if (__DEV__) console.log(`[Frontend] ✅ Subscription created:`, response.createSubscription)
       return response.createSubscription;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error)
-      console.error(`[Frontend] ❌ Subscription creation error:`, errorMessage)
+      const errorMessage = formatGraphQLError(error)
+      if (__DEV__) {
+        console.error(`[Frontend] ❌ Subscription creation error:`, errorMessage)
+      }
       throw new Error(errorMessage || 'Failed to create subscription')
     }
   }

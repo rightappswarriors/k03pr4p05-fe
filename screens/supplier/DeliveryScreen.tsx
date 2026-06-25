@@ -111,7 +111,7 @@ export default function DeliveryScreen() {
       const pos = await fetchPurchaseOrdersForDelivery(user.orgId)
       setDeliveries(pos.map(mapPOToDelivery).filter(Boolean) as DeliveryItem[])
     } catch (e) {
-      console.error('fetchPurchaseOrdersForDelivery error', e)
+      if (__DEV__) console.error('fetchPurchaseOrdersForDelivery error', e)
     } finally {
       setLoading(false)
     }

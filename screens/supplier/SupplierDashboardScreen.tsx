@@ -66,7 +66,7 @@ export default function SupplierDashboardScreen() {
       const data = await fetchSupplierDashboard(user.orgId)
       setStats(data)
     } catch (e) {
-      console.error('supplierDashboard error', e)
+      if (__DEV__) console.error('supplierDashboard error', e)
     } finally {
       setLoading(false)
     }

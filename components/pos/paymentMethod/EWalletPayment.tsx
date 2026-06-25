@@ -16,7 +16,7 @@ export default function EWalletPayment() {
     outlet
   } = usePOS()
   const { user } = useAuth();
-  
+
   const { hasSecondScreen } = useDisplay();
   const [selectedWallet, setSelectedWallet] = useState('PH_GCASH'); // Default
   const [useQR, setUseQR] = useState(true); // Toggle between QR and Phone Number
@@ -32,7 +32,7 @@ export default function EWalletPayment() {
     // Your backend would then call Xendit with your secret key.
     // Exposing Xendit secret keys in the frontend is a MAJOR security risk.
     // For this example, we'll simulate a delayed response.
-    console.log(`Requesting QR for ${channelCode}`);
+    if (__DEV__) console.log(`Requesting QR for ${channelCode}`);
     await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate network delay
     // Simulate a successful QR string response
     return `https://qr.xendit.co/qr_code/dynamic?qr_id=some_generated_id_for_${channelCode}`;
@@ -41,10 +41,10 @@ export default function EWalletPayment() {
   const handleGenerateQR = async () => {
     if (isLoading) return;
     setIsLoading(true);
-  
+
     try {
       const qrString = await getQrStringFromXendit(selectedWallet);
-  
+
       if (qrString) {
         if (hasSecondScreen) {
           // Send QR to customer screen
@@ -69,13 +69,13 @@ export default function EWalletPayment() {
         Alert.alert("Error", "Failed to generate QR code. Please try again.");
       }
     } catch (error) {
-      console.error("QR Generation Error:", error);
+      if (__DEV__) console.error("QR Generation Error:", error);
       Alert.alert("Error", "An error occurred during QR generation.");
     } finally {
       setIsLoading(false);
     }
   };
-  
+
 
   const handleProcessPhoneNumber = async () => {
     if (!phoneNumber.trim()) {
@@ -106,14 +106,14 @@ export default function EWalletPayment() {
   }
 
   return (
-    <View style={[styles.container, {backgroundColor: colors.background}]}>
-      <Text style={[styles.sectionTitle, {color: colors.text}]}>Select E-Wallet:</Text>
-      <View style={[styles.pickerContainer, { borderColor: colors.border}]}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <Text style={[styles.sectionTitle, { color: colors.text }]}>Select E-Wallet:</Text>
+      <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
         <TouchableOpacity
           style={styles.selectorButton}
           onPress={() => setModalVisible(true)}
         >
-          <Text style={[styles.selectorText,{color: colors.text}]}>
+          <Text style={[styles.selectorText, { color: colors.text }]}>
             {selectedWallet === "PH_GCASH" ? "GCash" : "PayMaya"}
           </Text>
         </TouchableOpacity>
@@ -124,35 +124,35 @@ export default function EWalletPayment() {
           onRequestClose={() => setModalVisible(false)}
         >
           <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, {backgroundColor: colors.card}]}>
-              <Text style={[styles.modalTitle, {color: colors.textSecondary}]}>Choose Wallet</Text>
+            <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+              <Text style={[styles.modalTitle, { color: colors.textSecondary }]}>Choose Wallet</Text>
 
               <TouchableOpacity
-              
-              style={[styles.option, {borderBottomColor: colors.border}]}
+
+                style={[styles.option, { borderBottomColor: colors.border }]}
                 onPress={() => {
                   setSelectedWallet("PH_GCASH");
                   setModalVisible(false);
                 }}
               >
-                <Text style={[styles.optionText, {color: colors.textSecondary}]}>GCash</Text>
+                <Text style={[styles.optionText, { color: colors.textSecondary }]}>GCash</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.option, {borderBottomColor: colors.border}]}
+                style={[styles.option, { borderBottomColor: colors.border }]}
                 onPress={() => {
                   setSelectedWallet("PH_PAYMAYA");
                   setModalVisible(false);
                 }}
               >
-                <Text style={[styles.optionText, {color: colors.textSecondary}]}>PayMaya</Text>
+                <Text style={[styles.optionText, { color: colors.textSecondary }]}>PayMaya</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.closeButton}
                 onPress={() => setModalVisible(false)}
               >
-                <Text style={[styles.closeText, {color: colors.error}]}>Cancel</Text>
+                <Text style={[styles.closeText, { color: colors.error }]}>Cancel</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -162,22 +162,22 @@ export default function EWalletPayment() {
 
       <View style={styles.qrToggleContainer}>
         <TouchableOpacity
-          style={[{backgroundColor: colors.card }, styles.toggleButton, useQR && styles.toggleButtonActive]}
+          style={[{ backgroundColor: colors.card }, styles.toggleButton, useQR && styles.toggleButtonActive]}
           onPress={() => setUseQR(true)}
         >
-          <Text style={[{color: colors.text}, styles.toggleButtonText, useQR && styles.toggleButtonTextActive]}>Pay via QR Code</Text>
+          <Text style={[{ color: colors.text }, styles.toggleButtonText, useQR && styles.toggleButtonTextActive]}>Pay via QR Code</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[{backgroundColor: colors.card } ,styles.toggleButton, !useQR && styles.toggleButtonActive]}
+          style={[{ backgroundColor: colors.card }, styles.toggleButton, !useQR && styles.toggleButtonActive]}
           onPress={() => setUseQR(false)}
         >
-          <Text style={[{color: colors.text},styles.toggleButtonText, !useQR && styles.toggleButtonTextActive]}>Enter Phone Number</Text>
+          <Text style={[{ color: colors.text }, styles.toggleButtonText, !useQR && styles.toggleButtonTextActive]}>Enter Phone Number</Text>
         </TouchableOpacity>
       </View>
 
       {useQR ? (
         <View style={styles.qrSection}>
-          <Text style={[styles.qrDescription, {color: colors.textSecondary}]}>
+          <Text style={[styles.qrDescription, { color: colors.textSecondary }]}>
             Tap "Generate QR" to create a dynamic QR code for the customer to scan.
           </Text>
           <TouchableOpacity

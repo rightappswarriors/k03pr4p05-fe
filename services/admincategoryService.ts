@@ -20,10 +20,10 @@ export class AdminCategoryService {
         pageSize: size,
         orderBy,
       });
-      console.log('raw res:', JSON.stringify(res)); 
+      if (__DEV__) console.log('raw res:', JSON.stringify(res));
       return res.getAllCategories;
     } catch (error) {
-      console.log('full error:', JSON.stringify(error));
+      if (__DEV__) console.log('full error:', JSON.stringify(error));
       throw error;
     }
   }
@@ -58,7 +58,7 @@ export class AdminCategoryService {
       const res = await graphQLRequest<{ createCategories: any[] }>(mutation, { categories });
       return res.createCategories;
     } catch (error) {
-      console.log(error)
+      if (__DEV__) console.log(error)
       return []
     }
   }

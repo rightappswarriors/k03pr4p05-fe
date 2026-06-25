@@ -98,7 +98,7 @@ export function MasterFileProvider({
         try {
           return await fn();
         } catch (e) {
-          console.warn('MasterFile load failed:', e);
+          if (__DEV__) console.warn('MasterFile load failed:', e);
           return fallback;
         }
       };

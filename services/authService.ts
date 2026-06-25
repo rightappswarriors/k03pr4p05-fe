@@ -11,6 +11,7 @@ import { DeviceService } from './deviceService';
 import { OrganizationService } from './organizationService';
 import { SubscriptionService } from './subscriptionService';
 import { gqlErrorMessage } from '@/utils/gqlErrorMessage';
+import { formatGraphQLError } from '@/utils/errorFormatter';
 interface AuthPayload {
   user: User;
   token: string;
@@ -162,7 +163,7 @@ export class AuthService {
     } catch (error: any) {
       // GraphQL errors come back in error.response.errors[]
       const graphqlMessage = gqlErrorMessage(error);
-      console.error('Login error:', graphqlMessage, '\n\nFull error object:', error);
+      if (__DEV__) console.error('Login error:', graphqlMessage, '\n\nFull error object:', error);
       throw new Error(graphqlMessage ?? (error instanceof Error ? error.message : String(error)));
 
     }
@@ -200,15 +201,11 @@ export class AuthService {
 
       return response.registerUser;
     } catch (error: any) {
-      console.log("❌ Register Error:", error);
+      if (__DEV__) {
 
-      // If using GraphQL (like graphql-request or Apollo)
-      if (error.response) {
-        console.log("📛 GraphQL Errors:", error.response.errors);
-      }
-
-      if (error.message) {
-        console.log("📩 Message:", error.message);
+        // If using GraphQL (like graphql-request or Apollo)
+        const errorMessage = formatGraphQLError(error)
+        console.error("📛 GraphQL Errors:", errorMessage);
       }
 
       throw error; // rethrow so UI can still handle it
@@ -237,7 +234,7 @@ export class AuthService {
   }
   static async verifyEmail(email: string, code: string): Promise<User> {
     try {
-      console.log(`[AuthService] Verifying email: ${email}`)
+      if (__DEV__) console.log(`[AuthService] Verifying email: ${email}`)
 
       const VERIFY_MUTATION = gql`
         mutation VerifyEmail($email: String!, $code: String!) {
@@ -278,10 +275,10 @@ export class AuthService {
       await this.storeTokens(token, refresh_token);
       await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
 
-      console.log(`[AuthService] ✅ Email verified successfully for:`, user.email)
+    if(__DEV__)  console.log(`[AuthService] ✅ Email verified successfully for:`, user.email)
       return user;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error)
+      const errorMessage = 
       console.error(`[AuthService] ❌ Email verification error:`, errorMessage)
       throw error
     }
@@ -433,8 +430,9 @@ export class AuthService {
 
       return await requestUser(newAccessToken);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      if (process.env.EXPO_PUBLIC_ENV === 'development') {
+     
+      if(__DEV__) {
+        const errorMessage = formatGraphQLError(error)
         console.warn('[AuthService] fetchCurrentUser error:', errorMessage);
       }
       return null;
@@ -640,7 +638,7 @@ export class AuthService {
 
       return await this.refreshAccessToken(refreshToken);
     } catch (error) {
-      if (process.env.EXPO_PUBLIC_ENV === 'development') {
+      if(__DEV__) {
         console.warn('[AuthService] silentRefresh failed:', error instanceof Error ? error.message : error);
       }
       return null; // refreshAccessToken already called removeUser() on failure

@@ -54,7 +54,7 @@ async function initAPIBaseUrl() {
     }
   }
 
-  console.log('✅ API_BASE_URL:', API_BASE_URL);
+  if (__DEV__) console.log('✅ API_BASE_URL:', API_BASE_URL);
   return API_BASE_URL;
 }
 

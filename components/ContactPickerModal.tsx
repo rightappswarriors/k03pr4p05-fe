@@ -19,8 +19,8 @@ import { ContactService, Contact } from '@/services/contactService';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Props {
-  visible:   boolean;
-  onClose:   () => void;
+  visible: boolean;
+  onClose: () => void;
   /**
    * Called when user confirms a choice.
    * email   = the chosen / typed email
@@ -40,12 +40,12 @@ interface Props {
 export default function ContactPickerModal({
   visible, onClose, onConfirm, defaultEmail = '', branchId, orgId, colors,
 }: Props) {
-  const [contacts,     setContacts]     = useState<Contact[]>([]);
-  const [loading,      setLoading]      = useState(false);
-  const [search,       setSearch]       = useState('');
-  const [manualEmail,  setManualEmail]  = useState('');
-  const [tab,          setTab]          = useState<'pick' | 'manual'>('pick');
-  const [selected,     setSelected]     = useState<Contact | null>(null);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState('');
+  const [manualEmail, setManualEmail] = useState('');
+  const [tab, setTab] = useState<'pick' | 'manual'>('pick');
+  const [selected, setSelected] = useState<Contact | null>(null);
 
   // ── Load on open ──
   useEffect(() => {
@@ -63,7 +63,7 @@ export default function ContactPickerModal({
       const data = await ContactService.getContacts(branchId ?? null, q || undefined);
       setContacts(data);
     } catch (e) {
-      console.error('Failed to load contacts', e);
+      if (__DEV__) console.error('Failed to load contacts', e);
       setContacts([]);
     } finally {
       setLoading(false);
@@ -80,7 +80,7 @@ export default function ContactPickerModal({
   // Split into global / branch groups
   const { globals, branch: branchContacts } = useMemo(() => ({
     globals: contacts.filter((c) => c.branchId === null),
-    branch:  contacts.filter((c) => c.branchId !== null),
+    branch: contacts.filter((c) => c.branchId !== null),
   }), [contacts]);
 
   const handleConfirmPick = () => {
@@ -97,7 +97,7 @@ export default function ContactPickerModal({
 
   const renderContact = ({ item }: { item: Contact }) => {
     const isSelected = selected?.id === item.id;
-    const isGlobal   = item.branchId === null;
+    const isGlobal = item.branchId === null;
     return (
       <TouchableOpacity
         onPress={() => setSelected(isSelected ? null : item)}

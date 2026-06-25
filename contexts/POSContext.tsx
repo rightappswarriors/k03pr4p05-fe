@@ -154,7 +154,7 @@ export const CartProvider = ({ children }: CartProviderProps) => {
 
         const outletData = response?.getOutletItems;
         if (!outletData) {
-          console.warn(
+          if (__DEV__) console.warn(
             'No outlet items returned; skipping POS inventory setup.',
           );
           setLoading(false);
@@ -228,7 +228,7 @@ export const CartProvider = ({ children }: CartProviderProps) => {
           })),
         );
 
-        console.log('ITEMS SET:', storedItems);
+        if (__DEV__) console.log('ITEMS SET:', storedItems);
         const derivedCategories: Category[] = [];
         const seenIds = new Set<string>();
 
@@ -253,7 +253,7 @@ export const CartProvider = ({ children }: CartProviderProps) => {
         setCategories(derivedCategories);
       } catch (error) {
         const formattedError = formatGraphQLError(error);
-        console.error('Error getting Outlet items:', formattedError);
+        if (__DEV__) console.error('Error getting Outlet items:', formattedError);
       } finally {
         setLoading(false);
       }

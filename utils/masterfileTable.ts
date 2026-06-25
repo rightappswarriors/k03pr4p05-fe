@@ -119,7 +119,7 @@ export const TABLE_CONFIG: TableConfig[] = [
       delete: (id) => VatTypeService.delete(Number(id)),
     },
     toItem: (raw) => {
-      console.log('vatType raw:', raw); // ✅ check what id and rate look like
+      if (__DEV__) console.log('vatType raw:', raw); // ✅ check what id and rate look like
       return {
         id: String(raw.id),
         label: `${raw.name} (${raw.rate != null ? (raw.rate * 100).toFixed(0) : '?'}%)`,

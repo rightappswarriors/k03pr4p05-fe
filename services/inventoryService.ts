@@ -144,7 +144,7 @@ export class InventoryService {
         categoryBreakdown: [],
       };
     } catch (error) {
-      console.error('Failed to fetch dashboard inventory stats:', error);
+      if (__DEV__) console.error('Failed to fetch dashboard inventory stats:', error);
       return { skuCount: 0, totalUnits: 0, categoryBreakdown: [] };
     }
   }
@@ -213,7 +213,7 @@ export class InventoryService {
         ...item,
       }));
     } catch (error) {
-      console.error('Failed to fetch organization items:', error);
+      if (__DEV__) console.error('Failed to fetch organization items:', error);
       return [];
     }
   }
@@ -265,7 +265,7 @@ export class InventoryService {
     stockDescription?: string;
     minQuantity: number;
   }): Promise<any> {
-    console.log('Creating item with data:', data.stockLabel, data.stockDescription);
+    if (__DEV__) console.log('Creating item with data:', data.stockLabel, data.stockDescription);
     const MUTATION = gql`
     mutation CreateItem($data: CreateItemInput!) {
       createItem(data: $data) {
@@ -308,7 +308,7 @@ export class InventoryService {
       return response.createItem;
     } catch (error) {
       const errorMessage = formatGraphQLError(error);
-      console.error('Failed to create item:', errorMessage);
+      if (__DEV__) console.error('Failed to create item:', errorMessage);
       throw errorMessage;
     }
   }
@@ -352,7 +352,7 @@ export class InventoryService {
 
       return response.updateItem;
     } catch (error) {
-      console.error('Failed to update item:', error);
+      if (__DEV__) console.error('Failed to update item:', error);
       throw error;
     }
   }
@@ -362,7 +362,7 @@ export class InventoryService {
       try {
         await MediaService.deleteMedia(imagePath);
       } catch (err) {
-        console.warn('deleteMedia failed, proceeding with item delete:', err);
+        if (__DEV__) console.warn('deleteMedia failed, proceeding with item delete:', err);
       }
     }
 
@@ -382,7 +382,7 @@ export class InventoryService {
       }) as any;
       return res.deleteItem;
     } catch (error) {
-      console.error('Failed to delete item:', error);
+      if (__DEV__) console.error('Failed to delete item:', error);
       throw error;
     }
   }
@@ -417,7 +417,7 @@ export class InventoryService {
 
       return response.updateInventoryItem;
     } catch (error) {
-      console.error('Failed to update inventory item:', error);
+      if (__DEV__) console.error('Failed to update inventory item:', error);
       throw error;
     }
   }
@@ -492,7 +492,7 @@ export class InventoryService {
 
       return response.addItemsToInventory;
     } catch (error) {
-      console.error('Failed to add items to outlet:', error);
+      if (__DEV__) console.error('Failed to add items to outlet:', error);
       throw error;
     }
   }
@@ -624,7 +624,7 @@ export class InventoryService {
 
       return response.addItemToInventoryWithUnits;
     } catch (error) {
-      console.error('Failed to add item to outlet with units:', error);
+      if (__DEV__) console.error('Failed to add item to outlet with units:', error);
       throw error;
     }
   }

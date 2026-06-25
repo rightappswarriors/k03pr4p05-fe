@@ -167,7 +167,7 @@ const loadMapComponents = () => {
       MapViewComponent = mapModule.default || mapModule.MapView;
       MapMarkerComponent = mapModule.Marker;
     } catch (e) {
-      console.warn('react-native-maps not available:', e);
+      if (__DEV__) console.warn('react-native-maps not available:', e);
     }
   }
   return { MapViewComponent, MapMarkerComponent };
@@ -1625,7 +1625,7 @@ function OutletCard({
   getStatusColor: (s: string) => string;
 }) {
   const statusColor = getStatusColor(outlet.status);
-  console.log('outlet.bannerImage:', outlet.name, outlet.bannerImage);
+  if (__DEV__) console.log('outlet.bannerImage:', outlet.name, outlet.bannerImage);
   return (
     <TouchableOpacity
       style={[ols.outletCard, { backgroundColor: colors.card }]}
@@ -1853,7 +1853,7 @@ export default function OutletListScreen() {
         { ...newOutlet, bannerImagePath: data.bannerImagePath },
       ]);
     } catch (error) {
-      console.error('Failed to create outlet:', error);
+      if (__DEV__) console.error('Failed to create outlet:', error);
       throw error;
     }
   };

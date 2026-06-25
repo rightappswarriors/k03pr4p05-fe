@@ -26,9 +26,10 @@ export class PromoTypeService {
       const res = await graphQLRequest<{ promoTypesByOrg: PromoTypeItem[] }>(GQL);
       return res.promoTypesByOrg ?? [];
     } catch (e) {
-      const message =formatGraphQLError(e)
-      console.error('PromoTypeService.getAll error:', message);
-      return [];
+      if (__DEV__) {
+        const message = formatGraphQLError(e)
+        console.error('PromoTypeService.getAll error:', message);
+      } return [];
     }
   }
 

@@ -13,21 +13,21 @@ const formatPHP = (amount: number) =>
   new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount)
 
 const STATUS_COLORS: Record<POStatus, string> = {
-  PENDING:    '#F59E0B',
-  ACCEPTED:   '#3B82F6',
-  REJECTED:   '#EF4444',
+  PENDING: '#F59E0B',
+  ACCEPTED: '#3B82F6',
+  REJECTED: '#EF4444',
   IN_TRANSIT: '#8B5CF6',
-  DELIVERED:  '#22C55E',
-  CANCELLED:  '#6B7280',
+  DELIVERED: '#22C55E',
+  CANCELLED: '#6B7280',
 }
 
 const STATUS_LABELS: Record<POStatus, string> = {
-  PENDING:    'Pending Review',
-  ACCEPTED:   'Accepted',
-  REJECTED:   'Rejected',
+  PENDING: 'Pending Review',
+  ACCEPTED: 'Accepted',
+  REJECTED: 'Rejected',
   IN_TRANSIT: 'In Transit',
-  DELIVERED:  'Delivered',
-  CANCELLED:  'Cancelled',
+  DELIVERED: 'Delivered',
+  CANCELLED: 'Cancelled',
 }
 
 function InfoRow({ label, value }: { label: string; value: string }) {
@@ -61,7 +61,7 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
     if (!poId) return
     fetchPurchaseOrder(poId)
       .then(data => setPo(data))
-      .catch(e => console.error('fetchPurchaseOrder error', e))
+      .catch(e => { if (__DEV__) console.error('fetchPurchaseOrder error', e) })
       .finally(() => setLoading(false))
   }, [poId])
 

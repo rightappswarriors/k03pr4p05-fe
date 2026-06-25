@@ -534,7 +534,7 @@ export function BudgetModule({
           })),
         );
       } catch (error) {
-        console.warn('Unable to load budgets', error);
+        if (__DEV__) console.warn('Unable to load budgets', error);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -583,7 +583,7 @@ export function BudgetModule({
       });
       setActiveYear(persisted.year);
     } catch (error) {
-      console.warn('Unable to save budget', error);
+      if (__DEV__) console.warn('Unable to save budget', error);
     }
   };
 
@@ -596,7 +596,7 @@ export function BudgetModule({
         setOpenBudgetId(null);
       }
     } catch (error) {
-      console.warn('Unable to delete budget', error);
+      if (__DEV__) console.warn('Unable to delete budget', error);
     }
   };
 

@@ -346,7 +346,7 @@ export class KompraCOrderService {
       }>(MUTATION, { orderId });
 
       if (!response.markKompraOrderPacked) {
-        console.error(`${LOG_PREFIX} markKompraOrderPacked — mutation returned null/undefined for orderId:`, orderId);
+        if (__DEV__) console.error(`${LOG_PREFIX} markKompraOrderPacked — mutation returned null/undefined for orderId:`, orderId);
         throw new Error('markKompraOrderPacked mutation returned no data. Check server resolver.');
       }
 

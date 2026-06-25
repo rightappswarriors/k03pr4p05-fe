@@ -118,9 +118,10 @@ export class StorageService {
       );
       await AsyncStorage.removeItem(SYNC_LOGS_KEY);
     } catch (error) {
-      const message = formatGraphQLError(error);
-      console.error('clearAllData error:', message);
-      return;
+      if (__DEV__) {
+        const message = formatGraphQLError(error);
+        console.error('clearAllData error:', message);
+      } return;
     }
   }
 }
