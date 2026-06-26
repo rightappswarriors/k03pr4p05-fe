@@ -215,7 +215,7 @@ export function DropdownField({
               backgroundColor: colors.surface,
               borderRadius: 14,
               overflow: 'hidden',
-              maxWidth: isMobile ? '100%' : 600, 
+              maxWidth: isMobile ? '100%' : 600,
               alignSelf: 'center',
               width: '100%',
               maxHeight: 380,
@@ -665,7 +665,7 @@ export default function BranchOverviewScreen() {
       });
       setBranches((prev) => [...prev, newBranch]);
     } catch (error) {
-      console.error('Failed to create branch:', error);
+      if (__DEV__) console.error('Failed to create branch:', error);
     }
   };
 

@@ -20,7 +20,7 @@ export class SyncService {
     }
     this.backgroundSyncStarted = true;
 
-    console.log('Background sync started');
+    if (__DEV__) console.log('Background sync started');
 
     setInterval(async () => {
       const pendingNow = await StorageService.getPendingOrders();

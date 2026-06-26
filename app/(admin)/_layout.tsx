@@ -1,7 +1,6 @@
 // screens/admin/AdminLayout.tsx
 // Super Admin panel — manages global ItemCategories and ItemGroups.
 // Responsive: sidebar on web/tablet, drawer on mobile.
-// Similar structure to ERPLayout.tsx.
 
 import React, { memo, useCallback, useRef, useState } from 'react';
 import {
@@ -18,33 +17,36 @@ import {
   View,
 } from 'react-native';
 import {
-  ChevronDown,
+  CreditCard,
   FolderOpen,
   LayoutDashboard,
   Layers,
   Menu,
   Settings,
   Shield,
-  X,
-  CreditCard,
+  Users,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import SubscriptionManagementScreen from '@/screens/admin/SubscriptionManagementScreen';
-
-
-// ─── Routes ───────────────────────────────────────────────────────────────────
-
-type AdminRoute = 'Dashboard' | 'GlobalCategories' | 'GlobalGroups' | 'Subscriptions' | 'Settings';
-
-const DRAWER_WIDTH = 240;
-
-// ─── Screen imports ───────────────────────────────────────────────────────────
-// Replace these with your actual admin screen components
-
 import AdminDashboardScreen from '@/screens/admin/AdminDashboardScreen';
 import GlobalCategoriesScreen from '@/screens/admin/GlobalCategoriesScreen';
+import UserManagementScreen from '@/screens/admin/users/UserManagementScreen';
+import SubscriptionManagementScreen from '@/screens/admin/SubscriptionManagementScreen';
+import SettingsScreen from '@/components/Settings';
+// ─── Routes ───────────────────────────────────────────────────────────────────
 
-// Placeholder screens for routes not yet built
+type AdminRoute =
+  | 'Dashboard'
+  | 'GlobalCategories'
+  | 'GlobalGroups'
+  | 'Subscriptions'
+  | 'Settings'
+  | 'UserManagement';
+
+const DRAWER_WIDTH = 250;   // ← matches ERP sidebar
+const SIDEBAR_WIDTH = 250;  // ← same value, persistent on tablet
+
+// ─── Placeholder ─────────────────────────────────────────────────────────────
+
 function PlaceholderScreen({ title }: { title: string }) {
   const { colors } = useTheme();
   return (
@@ -64,19 +66,21 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { key: 'Dashboard',       label: 'Dashboard',      icon: LayoutDashboard },
-  { key: 'GlobalCategories',label: 'Item Categories', icon: FolderOpen },
-  { key: 'GlobalGroups',    label: 'Item Groups',     icon: Layers },
-  { key: 'Subscriptions',   label: 'Subscriptions',   icon: CreditCard },   // ← add
-  { key: 'Settings',        label: 'Settings',        icon: Settings },
+  { key: 'Dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { key: 'GlobalCategories', label: 'Item Categories', icon: FolderOpen },
+  { key: 'UserManagement', label: 'User Management', icon: Users },
+  { key: 'GlobalGroups', label: 'Item Groups', icon: Layers },
+  { key: 'Subscriptions', label: 'Subscriptions', icon: CreditCard },
+  { key: 'Settings', label: 'Settings', icon: Settings },
 ];
-
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const makeStyles = (colors: any, isTablet: boolean) =>
   StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.background },
+
+    // Header
     header: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -102,18 +106,8 @@ const makeStyles = (colors: any, isTablet: boolean) =>
       borderColor: colors.border,
       marginRight: 12,
     },
-    headerLeft: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      flex: 1,
-      gap: 10,
-    },
-    headerTitle: {
-      fontSize: 16,
-      fontWeight: '700',
-      color: colors.text,
-      letterSpacing: -0.3,
-    },
+    headerLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 },
+    headerTitle: { fontSize: 16, fontWeight: '700', color: colors.text, letterSpacing: -0.3 },
     adminBadge: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -123,35 +117,34 @@ const makeStyles = (colors: any, isTablet: boolean) =>
       paddingVertical: 5,
       borderRadius: 20,
     },
-    adminBadgeTx: {
-      color: '#fff',
-      fontSize: 11,
-      fontWeight: '700',
-      letterSpacing: 0.5,
-    },
-    body: { flex: 1, flexDirection: isTablet ? 'row' : 'column' },
+    adminBadgeTx: { color: '#fff', fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
+
+    // Body
+    body: { flex: 1, flexDirection: isTablet ? 'row' : 'column', overflow: 'hidden' },
+
+    // ↓ KEY FIX: flexGrow:0 + flexShrink:0 keeps the sidebar from collapsing
     sidebar: {
-      width: DRAWER_WIDTH,
+      width: SIDEBAR_WIDTH,
+      flexGrow: 0,
+      flexShrink: 0,
       backgroundColor: colors.surface,
       borderRightWidth: 1,
       borderRightColor: colors.border,
       paddingTop: 8,
     },
-    content: { flex: 1 },
+
+    content: { flex: 1, overflow: 'hidden' },
+
+    // Drawer (mobile)
     drawerOverlay: {
       position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
+      top: 0, left: 0, right: 0, bottom: 0,
       backgroundColor: '#000',
       zIndex: 10,
     },
     drawer: {
       position: 'absolute',
-      top: 0,
-      left: 0,
-      bottom: 0,
+      top: 0, left: 0, bottom: 0,
       width: DRAWER_WIDTH,
       backgroundColor: colors.surface,
       zIndex: 20,
@@ -164,6 +157,8 @@ const makeStyles = (colors: any, isTablet: boolean) =>
       shadowRadius: 12,
       elevation: 12,
     },
+
+    // Sidebar internals
     drawerHeader: {
       paddingHorizontal: 20,
       paddingBottom: 16,
@@ -182,17 +177,22 @@ const makeStyles = (colors: any, isTablet: boolean) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
-    drawerLogo: {
-      fontSize: 16,
-      fontWeight: '800',
-      color: '#7C3AED',
-      letterSpacing: -0.5,
-    },
+    drawerLogo: { fontSize: 16, fontWeight: '800', color: '#7C3AED', letterSpacing: -0.5 },
     drawerSubtitle: {
       fontSize: 10,
       color: colors.textSecondary,
       marginTop: 1,
       letterSpacing: 0.5,
+      textTransform: 'uppercase',
+    },
+    sectionLabel: {
+      fontSize: 10,
+      fontWeight: '700',
+      letterSpacing: 1.2,
+      color: colors.textSecondary,
+      paddingHorizontal: 22,
+      paddingTop: 16,
+      paddingBottom: 4,
       textTransform: 'uppercase',
     },
     navItem: {
@@ -207,19 +207,9 @@ const makeStyles = (colors: any, isTablet: boolean) =>
     },
     navItemActive: { backgroundColor: '#7C3AED' },
     navLabel: { fontSize: 14, fontWeight: '600', letterSpacing: 0.1, flex: 1 },
-    sectionLabel: {
-      fontSize: 10,
-      fontWeight: '700',
-      letterSpacing: 1.2,
-      color: colors.textSecondary,
-      paddingHorizontal: 22,
-      paddingTop: 16,
-      paddingBottom: 4,
-      textTransform: 'uppercase',
-    },
   });
 
-// ─── Sidebar ──────────────────────────────────────────────────────────────────
+// ─── Sidebar content ──────────────────────────────────────────────────────────
 
 interface SidebarProps {
   activeRoute: AdminRoute;
@@ -236,7 +226,6 @@ const SidebarContent = memo(function SidebarContent({
 }: SidebarProps) {
   return (
     <>
-      {/* Logo */}
       <View style={styles.drawerHeader}>
         <View style={styles.drawerLogoIcon}>
           <Shield size={18} color="#fff" strokeWidth={2} />
@@ -247,8 +236,8 @@ const SidebarContent = memo(function SidebarContent({
         </View>
       </View>
 
-      {/* Nav */}
       <Text style={styles.sectionLabel}>Navigation</Text>
+
       {NAV_ITEMS.map((item) => {
         const isActive = activeRoute === item.key;
         const Icon = item.icon;
@@ -264,12 +253,7 @@ const SidebarContent = memo(function SidebarContent({
               color={isActive ? '#fff' : colors.textSecondary}
               strokeWidth={isActive ? 2.5 : 2}
             />
-            <Text
-              style={[
-                styles.navLabel,
-                { color: isActive ? '#fff' : colors.text },
-              ]}
-            >
+            <Text style={[styles.navLabel, { color: isActive ? '#fff' : colors.text }]}>
               {item.label}
             </Text>
           </TouchableOpacity>
@@ -285,9 +269,10 @@ function buildScreenMap(): Record<AdminRoute, React.ReactElement> {
   return {
     Dashboard: <AdminDashboardScreen />,
     GlobalCategories: <GlobalCategoriesScreen />,
+    UserManagement: <UserManagementScreen />,
     GlobalGroups: <PlaceholderScreen title="Item Groups" />,
-    Subscriptions:    <SubscriptionManagementScreen />,     
-    Settings: <PlaceholderScreen title="Settings" />,
+    Subscriptions: <SubscriptionManagementScreen />,
+    Settings: <SettingsScreen />,
   };
 }
 
@@ -303,28 +288,18 @@ export default function AdminLayout() {
 
   const drawerAnim = useRef(new Animated.Value(0)).current;
 
-  const styles = React.useMemo(
-    () => makeStyles(colors, isTablet),
-    [colors, isTablet],
-  );
-
+  const styles = React.useMemo(() => makeStyles(colors, isTablet), [colors, isTablet]);
   const SCREEN_MAP = React.useMemo(() => buildScreenMap(), []);
 
   const openDrawer = useCallback(() => {
     setDrawerOpen(true);
-    Animated.timing(drawerAnim, {
-      toValue: 1,
-      duration: 240,
-      useNativeDriver: true,
-    }).start();
+    Animated.timing(drawerAnim, { toValue: 1, duration: 240, useNativeDriver: true }).start();
   }, [drawerAnim]);
 
   const closeDrawer = useCallback(() => {
-    Animated.timing(drawerAnim, {
-      toValue: 0,
-      duration: 200,
-      useNativeDriver: true,
-    }).start(() => setDrawerOpen(false));
+    Animated.timing(drawerAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(
+      () => setDrawerOpen(false),
+    );
   }, [drawerAnim]);
 
   const navigate = useCallback(
@@ -346,7 +321,6 @@ export default function AdminLayout() {
 
   const activeNav = NAV_ITEMS.find((i) => i.key === activeRoute)!;
   const ActiveIcon = activeNav.icon;
-
   const sidebarProps: SidebarProps = { activeRoute, navigate, colors, styles };
 
   return (
@@ -359,11 +333,7 @@ export default function AdminLayout() {
       {/* Header */}
       <View style={styles.header}>
         {!isTablet && (
-          <TouchableOpacity
-            style={styles.hamburger}
-            onPress={openDrawer}
-            activeOpacity={0.7}
-          >
+          <TouchableOpacity style={styles.hamburger} onPress={openDrawer} activeOpacity={0.7}>
             <Menu size={20} color={colors.text} strokeWidth={2} />
           </TouchableOpacity>
         )}
@@ -378,12 +348,9 @@ export default function AdminLayout() {
       </View>
 
       <View style={styles.body}>
-        {/* Tablet persistent sidebar */}
+        {/* Tablet: persistent sidebar */}
         {isTablet && (
-          <ScrollView
-            style={styles.sidebar}
-            showsVerticalScrollIndicator={false}
-          >
+          <ScrollView style={styles.sidebar} showsVerticalScrollIndicator={false}>
             <SidebarContent {...sidebarProps} />
           </ScrollView>
         )}
@@ -391,7 +358,7 @@ export default function AdminLayout() {
         {/* Main content */}
         <View style={styles.content}>{SCREEN_MAP[activeRoute]}</View>
 
-        {/* Mobile drawer */}
+        {/* Mobile: animated drawer */}
         {!isTablet && drawerOpen && (
           <>
             <Animated.View
@@ -401,10 +368,7 @@ export default function AdminLayout() {
               <Pressable style={{ flex: 1 }} onPress={closeDrawer} />
             </Animated.View>
             <Animated.View
-              style={[
-                styles.drawer,
-                { transform: [{ translateX: drawerTranslate }] },
-              ]}
+              style={[styles.drawer, { transform: [{ translateX: drawerTranslate }] }]}
             >
               <ScrollView showsVerticalScrollIndicator={false}>
                 <SidebarContent {...sidebarProps} />

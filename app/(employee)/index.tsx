@@ -495,7 +495,7 @@ export default function EmployeeAttendanceScreen() {
       setOwnerTotal(data.total);
       setOwnerHasMore(data.hasMore);
     } catch (err) {
-      console.error('[EmployeeScreen] loadOwnerData failed:', err);
+      if (__DEV__) console.error('[EmployeeScreen] loadOwnerData failed:', err);
     } finally {
       setOwnerLoading(false);
       setOwnerLoadingMore(false);
@@ -540,7 +540,7 @@ export default function EmployeeAttendanceScreen() {
       setTodayRecord(updated!);
       setActiveModal(null);
     } catch (err: any) {
-      console.error('[EmployeeScreen] handleAction failed:', err);
+      if (__DEV__) console.error('[EmployeeScreen] handleAction failed:', err);
       Alert.alert('Error', err?.message || 'Something went wrong. Please try again.');
       throw err;
     }

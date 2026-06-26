@@ -1,3 +1,5 @@
+// @/components/ErrorModal.tsx
+
 import { useTheme } from "@/contexts/ThemeContext";
 import React from "react";
 import {

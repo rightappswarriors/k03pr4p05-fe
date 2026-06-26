@@ -25,7 +25,7 @@ export default function LayoutScreen() {
         const timeInStatus = await HrService.checkUserTimeInStatus(user.id);
         setHasTimeIn(timeInStatus?.hasTimeIn || false);
       } catch (error) {
-        console.error('Error checking time-in status:', error);
+        if (__DEV__) console.error('Error checking time-in status:', error);
         setHasTimeIn(false);
       } finally {
         setLoading(false);
@@ -46,7 +46,7 @@ export default function LayoutScreen() {
     const isManager = user?.role === 'MANAGER'; // managers skip time-in gate too
     const canSkipTimeIn = isOwner || isManager;
 
-    if (!canSkipTimeIn && !hasTimeIn  && !__DEV__) {
+    if (!canSkipTimeIn && !hasTimeIn && !__DEV__) {
       router.replace('/(employee)');
     }
   }, [authLoading, loading, user?.role, hasTimeIn]);
@@ -73,7 +73,7 @@ export default function LayoutScreen() {
   const isManager = user?.role === 'MANAGER';
   const canSkipTimeIn = isOwner || isManager;
 
-  if (!canSkipTimeIn && !hasTimeIn  && !__DEV__) {
+  if (!canSkipTimeIn && !hasTimeIn && !__DEV__) {
     // Render nothing while the redirect from useEffect is animating
     return null;
   }

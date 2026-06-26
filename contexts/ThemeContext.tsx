@@ -1,3 +1,4 @@
+// access by @/contexts/ThemeContext
 import React, {
   createContext,
   useCallback,

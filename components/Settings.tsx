@@ -317,14 +317,15 @@ export default function SettingsScreen({
               subtitle="1.0.0"
               showChevron={false}
             />
-            <SettingItem
-              style="warning"
-              onPress={clearLocalData}
-              icon={<Trash2 size={20} color="#6B7280" />}
-              title="Clear local data"
-              subtitle="Remove all offline orders and sync logs"
-              showChevron={false}
-            />
+            {user?.role === 'STAFF' &&
+              <SettingItem
+                style="warning"
+                onPress={clearLocalData}
+                icon={<Trash2 size={20} color="#6B7280" />}
+                title="Clear local data"
+                subtitle="Remove all offline orders and sync logs"
+                showChevron={false}
+              />}
           </View>
         </View>
 
@@ -371,9 +372,9 @@ export default function SettingsScreen({
             </View>
           </View>
         )}
-
-        {/* ERP — only for OWNER and MANAGER, hidden if already in /(erp) */}
-        {(user?.role === 'OWNER' || user?.role === 'MANAGER' || canViewSeller) &&
+        {/* ERP — only for OWNER and MANAGER, hidden if already in /(erp) and hidden for ADMIN */}
+        {(user?.role !== 'ADMIN') &&
+          (user?.role === 'OWNER' || user?.role === 'MANAGER' || canViewSeller) &&
           segments[0] !== '(erp)' && (
             <View style={styles.section}>
               <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
@@ -389,7 +390,6 @@ export default function SettingsScreen({
               </View>
             </View>
           )}
-
         {/* Support */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>

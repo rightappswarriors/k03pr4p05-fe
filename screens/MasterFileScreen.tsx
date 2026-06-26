@@ -39,6 +39,7 @@ import { TABLE_CONFIG } from '@/utils/masterfileTable';
 import { PositionService } from '@/services/positionService';
 import { AdminService } from '@/services/ManagerService';
 import { useResponsiveGrid } from '@/hooks/useResponsiveGrid';
+import { useAuth } from '@/contexts/AuthContext';
 
 // ─── Table meta ───────────────────────────────────────────────────────────────
 
@@ -393,7 +394,6 @@ function ContactFormModal({
   colors: any;
 }) {
   const ACCENT = '#0EA5E9';
-
   const [scope, setScope] = useState<'global' | 'branch'>('global');
   const [branch, setBranch] = useState<BranchOption | null>(null);
   const [label, setLabel] = useState('');
@@ -866,6 +866,8 @@ function ItemModal({
   meta: TableMeta;
   colors: any;
 }) {
+
+  const { user } = useAuth()
   const [label, setLabel] = useState('');
   const [color, setColor] = useState(DEPT_COLORS[0]);
   const [error, setError] = useState('');
@@ -896,11 +898,11 @@ function ItemModal({
   }, [visible, existing]);
 
   React.useEffect(() => {
-    if (!visible || meta.key !== 'positions') return;
+    if (!visible || meta.key !== 'positions' || !user?.org) return;
     let active = true;
     const run = async () => {
       try {
-        const rawPages = await PositionService.getPages();
+        const rawPages = await PositionService.getPages(user?.org?.roles ?? []);
         if (!active) return;
         const normalized: PageItem[] = rawPages.map((p: any) => ({
           id: String(p.id),

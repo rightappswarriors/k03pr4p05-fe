@@ -38,11 +38,11 @@ export class PositionService {
     }
   }
 
-  static async getPages() {
+  static async getPages(access: string[]) {
     try {
       const query = `
-        query GetPages {
-          pages {
+        query GetPages($access: [Access!]!) {
+          pages(access: $access) {
             id
             key
             label
@@ -51,7 +51,7 @@ export class PositionService {
         }
       `;
 
-      const response = await graphQLRequest(query, {});
+      const response = await graphQLRequest(query, { access });
       if (__DEV__) console.log('PositionService.getPages response:', response);
       return response.pages;
     } catch (error) {
@@ -98,7 +98,7 @@ export class PositionService {
           }
         }
       `;
- 
+
       const response = await graphQLRequest(mutation, {
         id,
         input: { name, description },

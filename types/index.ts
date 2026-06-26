@@ -75,13 +75,13 @@ export interface Subscription {
   id: string;
   plan: 'BASIC' | 'GOLD';
 }
-
+export type orgRoles = 'SELLER' | 'SUPPLIER'
 export interface OrganizationInfo {
   id: string;
   name: string;
   subscription?: Subscription | null;
   profileImg?: string;
-  roles?: string[];
+  roles: orgRoles[];
 }
 
 export interface User {
@@ -92,7 +92,7 @@ export interface User {
   role: 'OWNER' | 'CASHIER' | 'STAFF' | 'MANAGER' | 'ADMIN';
   isVerified?: boolean;
   orgId: number;
-  org?: OrganizationInfo | null;
+  org: OrganizationInfo | null;
   assignedOutletId?: string; // For cashiers
   assignedStoreId?: string;
   createdAt: string;
