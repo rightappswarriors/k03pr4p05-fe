@@ -43,7 +43,7 @@ export class PrinterService {
       const testReceiptContent = this.generateTestReceiptContent();
       return await this.sendPrintJob(testReceiptContent, true);
     } catch (error: any) {
-      console.error('Failed to print test receipt:', error);
+      if (__DEV__) console.error('Failed to print test receipt:', error);
       throw new Error(`Print test failed: ${error.message}`);
     }
   }
@@ -99,36 +99,104 @@ export class PrinterService {
         }
 
         return new Promise<boolean>((resolve, reject) => {
+          let completed = false;
+          let closedCheckInterval: ReturnType<typeof setInterval> | null = null;
+
+          const cleanup = () => {
+            try {
+              targetWindow.removeEventListener('afterprint', afterPrintHandler);
+              targetWindow.removeEventListener('beforeunload', beforeUnloadHandler);
+            } catch {
+              // ignore cleanup errors
+            }
+            if (closedCheckInterval) {
+              clearInterval(closedCheckInterval);
+              closedCheckInterval = null;
+            }
+            try {
+              if (!targetWindow.closed) {
+                targetWindow.close();
+              }
+            } catch {
+              // ignore close errors
+            }
+          };
+
+          const afterPrintHandler = () => {
+            if (completed) return;
+            completed = true;
+            cleanup();
+            resolve(true);
+          };
+
+          const beforeUnloadHandler = () => {
+            if (!completed) {
+              completed = true;
+              cleanup();
+              reject(new Error('Receipt printing was cancelled.'));
+            }
+          };
+
           try {
-            // ✅ Use Blob URL instead of document.write() — works reliably on desktop
             const blob = new Blob([htmlContent], { type: 'text/html' });
             const blobUrl = URL.createObjectURL(blob);
 
+            const startClosedCheck = () => {
+              if (closedCheckInterval) return;
+              closedCheckInterval = setInterval(() => {
+                if (targetWindow.closed && !completed) {
+                  completed = true;
+                  cleanup();
+                  reject(new Error('Receipt printing was cancelled.'));
+                }
+              }, 250);
+            };
+
             targetWindow.location.href = blobUrl;
+            targetWindow.addEventListener('afterprint', afterPrintHandler);
+            targetWindow.addEventListener('beforeunload', beforeUnloadHandler);
+            startClosedCheck();
 
             targetWindow.onload = () => {
               try {
-                URL.revokeObjectURL(blobUrl); // clean up memory
+                URL.revokeObjectURL(blobUrl);
                 targetWindow.focus();
                 targetWindow.print();
-                resolve(true);
+                if (!completed) {
+                  completed = true;
+                  cleanup();
+                  resolve(true);
+                }
               } catch (err) {
-                reject(err);
+                if (!completed) {
+                  completed = true;
+                  cleanup();
+                  reject(err);
+                }
               }
             };
 
-            // Fallback if onload doesn't fire
             setTimeout(() => {
+              if (completed) return;
               try {
                 targetWindow.focus();
                 targetWindow.print();
-                resolve(true);
+                if (!completed) {
+                  completed = true;
+                  cleanup();
+                  resolve(true);
+                }
               } catch (err) {
-                reject(err);
+                if (!completed) {
+                  completed = true;
+                  cleanup();
+                  reject(err);
+                }
               }
             }, 1000);
-
           } catch (error) {
+            completed = true;
+            cleanup();
             reject(error);
           }
         });
@@ -393,7 +461,7 @@ Thank you for testing!
   }
 
   private static money(value?: number | null): string {
-    return `₱${Number(value ?? 0).toFixed(2)}`;
+    return `Php ${Number(value ?? 0).toFixed(2)}`;
   }
 
   private static salesOrderItemName(item: SalesOrder['items'][number]): string {
@@ -469,13 +537,13 @@ Thank you for testing!
         <div class="bold">EXTRA CHARGES</div>
         <table>
           ${extraCharges
-            .map((charge) => `
+        .map((charge) => `
               <tr>
                 <td>${charge.label}</td>
                 <td class="right">${this.money(charge.amount)}</td>
               </tr>
             `)
-            .join('')}
+        .join('')}
           <tr class="bold">
             <td>Extra Charges Total:</td>
             <td class="right">${this.money(salesOrder.extraChargesTotal)}</td>

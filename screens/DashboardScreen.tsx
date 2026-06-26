@@ -713,10 +713,10 @@ export default function DashboardScreen() {
   const chartCardPadding = 32;
   const chartWidth = useWideCharts
     ? Math.max(
-        220,
-        Math.min((dashboardContentWidth - chartRowGap) / 2, 560) -
-          chartCardPadding,
-      )
+      220,
+      Math.min((dashboardContentWidth - chartRowGap) / 2, 560) -
+      chartCardPadding,
+    )
     : Math.max(220, Math.min(dashboardContentWidth, 680) - chartCardPadding);
   const fullWidthChart = Math.max(
     240,
@@ -738,7 +738,7 @@ export default function DashboardScreen() {
           setDatePreset(saved as DatePreset);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const handlePeriodSelect = (p: DatePreset) => {
@@ -748,7 +748,7 @@ export default function DashboardScreen() {
     }
     setIsLoadingDashboardData(true);
     setDatePreset(p);
-    AsyncStorage.setItem(DATE_PERIOD_KEY, p).catch(() => {});
+    AsyncStorage.setItem(DATE_PERIOD_KEY, p).catch(() => { });
   };
 
   const handleCustomApply = (start: Date, end: Date) => {
@@ -756,7 +756,7 @@ export default function DashboardScreen() {
     setCustomStartDate(start);
     setCustomEndDate(end);
     setDatePreset('Custom Range');
-    AsyncStorage.setItem(DATE_PERIOD_KEY, 'Custom Range').catch(() => {});
+    AsyncStorage.setItem(DATE_PERIOD_KEY, 'Custom Range').catch(() => { });
   };
 
   const customLabel =
@@ -919,12 +919,12 @@ export default function DashboardScreen() {
         if (saved === 'table' || saved === 'card')
           setViewMode(saved as ViewMode);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const handleViewModeChange = useCallback((mode: ViewMode) => {
     setViewMode(mode);
-    AsyncStorage.setItem(VIEW_MODE_KEY, mode).catch(() => {});
+    AsyncStorage.setItem(VIEW_MODE_KEY, mode).catch(() => { });
   }, []);
 
   // ── buildSalesTrend: accepts windowMonths, anchors from today ─────────────
@@ -1355,9 +1355,9 @@ export default function DashboardScreen() {
           itemName: row.itemName,
           costLines: Array.isArray(row.costLines)
             ? row.costLines.map((line: any) => ({
-                label: String(line?.label ?? ''),
-                amount: Number(line?.amount ?? 0),
-              }))
+              label: String(line?.label ?? ''),
+              amount: Number(line?.amount ?? 0),
+            }))
             : [],
           opExPct: Number(row.opExPct ?? 0),
           baseCost: Number(row.baseCost ?? 0),
@@ -1485,21 +1485,21 @@ export default function DashboardScreen() {
     if (activeTab === 'expense') {
       const filtered = q
         ? gisRows.filter(
-            (r) =>
-              r.description.toLowerCase().includes(q) ||
-              r.group.toLowerCase().includes(q) ||
-              r.code.toLowerCase().includes(q) ||
-              r.main.toLowerCase().includes(q),
-          )
+          (r) =>
+            r.description.toLowerCase().includes(q) ||
+            r.group.toLowerCase().includes(q) ||
+            r.code.toLowerCase().includes(q) ||
+            r.main.toLowerCase().includes(q),
+        )
         : gisRows;
       return filtered.map((r) => ({ type: 'gis' as const, row: r }));
     }
     const filtered = q
       ? summaryRows.filter(
-          (r) =>
-            r.description.toLowerCase().includes(q) ||
-            r.itemCode.toLowerCase().includes(q),
-        )
+        (r) =>
+          r.description.toLowerCase().includes(q) ||
+          r.itemCode.toLowerCase().includes(q),
+      )
       : summaryRows;
     return filtered.map((r) => ({ type: 'summary' as const, row: r }));
   }, [activeTab, gisRows, summaryRows, searchQuery]);
@@ -2235,25 +2235,25 @@ export default function DashboardScreen() {
     exportSuccessText: { color: '#fff', fontWeight: '700', fontSize: 13 },
     newEntryBtn: isTablet
       ? {
-          flexDirection: 'row' as const,
-          alignItems: 'center' as const,
-          justifyContent: 'center' as const,
-          gap: 6,
-          marginTop: 16,
-          alignSelf: 'flex-end' as const,
-          paddingVertical: 10,
-          paddingHorizontal: 20,
-          borderRadius: 10,
-        }
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
+        gap: 6,
+        marginTop: 16,
+        alignSelf: 'flex-end' as const,
+        paddingVertical: 10,
+        paddingHorizontal: 20,
+        borderRadius: 10,
+      }
       : {
-          flexDirection: 'row' as const,
-          alignItems: 'center' as const,
-          justifyContent: 'center' as const,
-          gap: 8,
-          marginTop: 16,
-          paddingVertical: 14,
-          borderRadius: 12,
-        },
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
+        gap: 8,
+        marginTop: 16,
+        paddingVertical: 14,
+        borderRadius: 12,
+      },
     tableScrollWrapper: {
       flex: 1,
       minHeight: 300,
@@ -2510,480 +2510,480 @@ export default function DashboardScreen() {
           style={{ borderRadius: 8, alignSelf: 'center' }}
         />
       </ChartCard>
+      {__DEV__ && (<>
+        {/* TABS */}
+        <View
+          style={[
+            s.tabBar,
+            { backgroundColor: colors.surface, borderBottomColor: colors.border },
+          ]}
+        >
+          {limits.canAccessExpenseSummary ? (
+            <TouchableOpacity
+              style={[
+                s.tab,
+                activeTab === 'expense' && {
+                  borderBottomColor: colors.primary,
+                  borderBottomWidth: 2.5,
+                },
+              ]}
+              onPress={() => handleTabChange('expense')}
+              activeOpacity={0.8}
+            >
+              <FileText
+                size={15}
+                color={
+                  activeTab === 'expense' ? colors.primary : colors.textSecondary
+                }
+                strokeWidth={activeTab === 'expense' ? 2.5 : 2}
+              />
+              <Text
+                style={[
+                  s.tabLabel,
+                  {
+                    color:
+                      activeTab === 'expense'
+                        ? colors.primary
+                        : colors.textSecondary,
+                    fontWeight: activeTab === 'expense' ? '700' : '500',
+                  },
+                ]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
+                Expense Summary
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[s.tab, { opacity: 0.5 }]}
+              activeOpacity={0.7}
+            >
+              <Lock size={13} color={colors.textSecondary} strokeWidth={2} />
+              <Text
+                style={[
+                  s.tabLabel,
+                  { color: colors.textSecondary, fontWeight: '500' },
+                ]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
+                Expense Summary
+              </Text>
+              <Lock
+                size={10}
+                color={colors.textSecondary}
+                strokeWidth={2}
+                style={{ marginLeft: 2 }}
+              />
+            </TouchableOpacity>
+          )}
 
-      {/* TABS */}
-      <View
-        style={[
-          s.tabBar,
-          { backgroundColor: colors.surface, borderBottomColor: colors.border },
-        ]}
-      >
-        {limits.canAccessExpenseSummary ? (
           <TouchableOpacity
             style={[
               s.tab,
-              activeTab === 'expense' && {
+              activeTab === 'itemnet' && {
                 borderBottomColor: colors.primary,
                 borderBottomWidth: 2.5,
               },
             ]}
-            onPress={() => handleTabChange('expense')}
+            onPress={() => handleTabChange('itemnet')}
             activeOpacity={0.8}
           >
-            <FileText
+            <BarChart2
               size={15}
               color={
-                activeTab === 'expense' ? colors.primary : colors.textSecondary
+                activeTab === 'itemnet' ? colors.primary : colors.textSecondary
               }
-              strokeWidth={activeTab === 'expense' ? 2.5 : 2}
+              strokeWidth={activeTab === 'itemnet' ? 2.5 : 2}
             />
             <Text
               style={[
                 s.tabLabel,
                 {
                   color:
-                    activeTab === 'expense'
+                    activeTab === 'itemnet'
                       ? colors.primary
                       : colors.textSecondary,
-                  fontWeight: activeTab === 'expense' ? '700' : '500',
+                  fontWeight: activeTab === 'itemnet' ? '700' : '500',
                 },
               ]}
               numberOfLines={1}
               adjustsFontSizeToFit
             >
-              Expense Summary
+              Item Net Summary
             </Text>
           </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={[s.tab, { opacity: 0.5 }]}
-            activeOpacity={0.7}
-          >
-            <Lock size={13} color={colors.textSecondary} strokeWidth={2} />
-            <Text
-              style={[
-                s.tabLabel,
-                { color: colors.textSecondary, fontWeight: '500' },
-              ]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-            >
-              Expense Summary
-            </Text>
-            <Lock
-              size={10}
-              color={colors.textSecondary}
-              strokeWidth={2}
-              style={{ marginLeft: 2 }}
-            />
-          </TouchableOpacity>
-        )}
+        </View>
 
-        <TouchableOpacity
-          style={[
-            s.tab,
-            activeTab === 'itemnet' && {
-              borderBottomColor: colors.primary,
-              borderBottomWidth: 2.5,
-            },
-          ]}
-          onPress={() => handleTabChange('itemnet')}
-          activeOpacity={0.8}
-        >
-          <BarChart2
-            size={15}
-            color={
-              activeTab === 'itemnet' ? colors.primary : colors.textSecondary
-            }
-            strokeWidth={activeTab === 'itemnet' ? 2.5 : 2}
-          />
-          <Text
-            style={[
-              s.tabLabel,
-              {
-                color:
-                  activeTab === 'itemnet'
-                    ? colors.primary
-                    : colors.textSecondary,
-                fontWeight: activeTab === 'itemnet' ? '700' : '500',
-              },
-            ]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-          >
-            Item Net Summary
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* TABLE / CARD AREA */}
-      <View style={styles.tableScrollWrapper}>
-        {/* TOOLBAR */}
-        <View style={styles.toolbarFull}>
-          <View style={styles.searchBox}>
-            <Search size={13} color={colors.textSecondary} strokeWidth={2} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder={
-                activeTab === 'expense' ? 'Search entries…' : 'Search items…'
-              }
-              placeholderTextColor={colors.textSecondary}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              returnKeyType="search"
-              autoCorrect={false}
+        {/* TABLE / CARD AREA */}
+        <View style={styles.tableScrollWrapper}>
+          {/* TOOLBAR */}
+          <View style={styles.toolbarFull}>
+            <View style={styles.searchBox}>
+              <Search size={13} color={colors.textSecondary} strokeWidth={2} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder={
+                  activeTab === 'expense' ? 'Search entries…' : 'Search items…'
+                }
+                placeholderTextColor={colors.textSecondary}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                returnKeyType="search"
+                autoCorrect={false}
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery('')}>
+                  <X size={13} color={colors.textSecondary} strokeWidth={2} />
+                </TouchableOpacity>
+              )}
+            </View>
+            <ViewToggle
+              viewMode={viewMode}
+              onChange={handleViewModeChange}
+              colors={colors}
             />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <X size={13} color={colors.textSecondary} strokeWidth={2} />
+
+            {limits.canExport ? (
+              <TouchableOpacity
+                style={[
+                  styles.iconBtn,
+                  {
+                    borderColor: exportSuccess ? colors.success : colors.border,
+                    backgroundColor: exportSuccess
+                      ? colors.success + '20'
+                      : undefined,
+                  },
+                ]}
+                onPress={handleExport}
+                activeOpacity={0.8}
+              >
+                <Download
+                  size={15}
+                  color={exportSuccess ? colors.success : colors.textSecondary}
+                  strokeWidth={2}
+                />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[
+                  styles.iconBtn,
+                  { borderColor: colors.border, opacity: 0.45 },
+                ]}
+                activeOpacity={0.7}
+              >
+                <Lock size={15} color={colors.textSecondary} strokeWidth={2} />
               </TouchableOpacity>
             )}
           </View>
-          <ViewToggle
-            viewMode={viewMode}
-            onChange={handleViewModeChange}
-            colors={colors}
-          />
 
-          {limits.canExport ? (
-            <TouchableOpacity
-              style={[
-                styles.iconBtn,
-                {
-                  borderColor: exportSuccess ? colors.success : colors.border,
-                  backgroundColor: exportSuccess
-                    ? colors.success + '20'
-                    : undefined,
-                },
-              ]}
-              onPress={handleExport}
-              activeOpacity={0.8}
-            >
-              <Download
-                size={15}
-                color={exportSuccess ? colors.success : colors.textSecondary}
-                strokeWidth={2}
-              />
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={[
-                styles.iconBtn,
-                { borderColor: colors.border, opacity: 0.45 },
-              ]}
-              activeOpacity={0.7}
-            >
-              <Lock size={15} color={colors.textSecondary} strokeWidth={2} />
-            </TouchableOpacity>
-          )}
-        </View>
+          {/* result count */}
+          <View
+            style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 4 }}
+          >
+            <Text style={{ fontSize: 11, color: colors.textSecondary }}>
+              {activeDataset.length}{' '}
+              {activeTab === 'expense' ? 'entries' : 'items'}
+              {searchQuery ? ` matching "${searchQuery}"` : ''}
+            </Text>
+          </View>
 
-        {/* result count */}
-        <View
-          style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 4 }}
-        >
-          <Text style={{ fontSize: 11, color: colors.textSecondary }}>
-            {activeDataset.length}{' '}
-            {activeTab === 'expense' ? 'entries' : 'items'}
-            {searchQuery ? ` matching "${searchQuery}"` : ''}
-          </Text>
-        </View>
-
-        {/* Table / Card content */}
-        <View style={styles.tableInner}>
-          {isLoadingDashboardData ? (
-            viewMode === 'table' ? (
-              [0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
-                <SkeletonTableRow key={i} colors={colors} />
-              ))
+          {/* Table / Card content */}
+          <View style={styles.tableInner}>
+            {isLoadingDashboardData ? (
+              viewMode === 'table' ? (
+                [0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+                  <SkeletonTableRow key={i} colors={colors} />
+                ))
+              ) : (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {[0, 1, 2, 3].map((i) => (
+                    <SkeletonFinancialCard
+                      key={i}
+                      colors={colors}
+                      cardWidth={cardWidth}
+                    />
+                  ))}
+                </View>
+              )
+            ) : viewMode === 'table' ? (
+              activeTab === 'expense' ? (
+                <View style={{ width: '100%' }}>
+                  <GISTable
+                    rows={pagedGISRows}
+                    colors={colors}
+                    onDeleteRow={handleDelete}
+                  />
+                </View>
+              ) : (
+                <View style={{ width: '100%' }}>
+                  <SummaryTable rows={pagedSummaryRows} colors={colors} />
+                </View>
+              )
             ) : (
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                {[0, 1, 2, 3].map((i) => (
-                  <SkeletonFinancialCard
-                    key={i}
+                {pagedData.map((item) => (
+                  <FinancialCard
+                    key={item.type === 'gis' ? item.row.id : item.row.id}
+                    data={item}
                     colors={colors}
                     cardWidth={cardWidth}
+                    onPress={handleCardPress}
+                    onDelete={
+                      item.type === 'gis'
+                        ? () => handleDelete(item.row as GISRow)
+                        : undefined
+                    }
                   />
                 ))}
               </View>
-            )
-          ) : viewMode === 'table' ? (
-            activeTab === 'expense' ? (
-              <View style={{ width: '100%' }}>
-                <GISTable
-                  rows={pagedGISRows}
-                  colors={colors}
-                  onDeleteRow={handleDelete}
-                />
-              </View>
-            ) : (
-              <View style={{ width: '100%' }}>
-                <SummaryTable rows={pagedSummaryRows} colors={colors} />
-              </View>
-            )
-          ) : (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-              {pagedData.map((item) => (
-                <FinancialCard
-                  key={item.type === 'gis' ? item.row.id : item.row.id}
-                  data={item}
-                  colors={colors}
-                  cardWidth={cardWidth}
-                  onPress={handleCardPress}
-                  onDelete={
-                    item.type === 'gis'
-                      ? () => handleDelete(item.row as GISRow)
-                      : undefined
-                  }
-                />
-              ))}
-            </View>
-          )}
+            )}
+          </View>
+
+          <PaginationControls
+            page={currentPage}
+            totalPages={totalPages}
+            totalItems={activeDataset.length}
+            onPrev={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            onNext={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            colors={colors}
+          />
         </View>
 
-        <PaginationControls
-          page={currentPage}
-          totalPages={totalPages}
-          totalItems={activeDataset.length}
-          onPrev={() => setCurrentPage((p) => Math.max(1, p - 1))}
-          onNext={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+        {/* NEW ENTRY BUTTON */}
+        <TouchableOpacity
+          style={[styles.newEntryBtn, { backgroundColor: colors.primary }]}
+          onPress={activeTab === 'expense' ? openModal : openItemNetModal}
+          activeOpacity={0.88}
+        >
+          <FileText size={isTablet ? 14 : 16} color="#fff" strokeWidth={2} />
+          <Text style={[s.newEntryBtnText, isTablet && { fontSize: 13 }]}>
+            {activeTab === 'expense'
+              ? 'New Expense Entry'
+              : 'New Item Net Summary'}
+          </Text>
+        </TouchableOpacity>
+
+        {/* EXPORT SUCCESS TOAST */}
+        {exportSuccess && (
+          <View style={styles.exportSuccess} pointerEvents="none">
+            <Text style={styles.exportSuccessText}>✓ Exported to CSV</Text>
+          </View>
+        )}
+
+        {/* DETAIL MODAL */}
+        <FinancialDetailModal
+          visible={detailModalVisible}
+          data={selectedCard}
+          onClose={() => setDetailModalVisible(false)}
           colors={colors}
         />
-      </View>
 
-      {/* NEW ENTRY BUTTON */}
-      <TouchableOpacity
-        style={[styles.newEntryBtn, { backgroundColor: colors.primary }]}
-        onPress={activeTab === 'expense' ? openModal : openItemNetModal}
-        activeOpacity={0.88}
-      >
-        <FileText size={isTablet ? 14 : 16} color="#fff" strokeWidth={2} />
-        <Text style={[s.newEntryBtnText, isTablet && { fontSize: 13 }]}>
-          {activeTab === 'expense'
-            ? 'New Expense Entry'
-            : 'New Item Net Summary'}
-        </Text>
-      </TouchableOpacity>
+        {/* DELETE CONFIRM */}
+        <DeleteConfirmModal
+          visible={!!deleteTarget}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={confirmDelete}
+          colors={colors}
+          description={deleteTarget?.description ?? ''}
+        />
 
-      {/* EXPORT SUCCESS TOAST */}
-      {exportSuccess && (
-        <View style={styles.exportSuccess} pointerEvents="none">
-          <Text style={styles.exportSuccessText}>✓ Exported to CSV</Text>
-        </View>
-      )}
+        {/* CUSTOM DATE RANGE PICKER */}
+        <DateRangePickerModal
+          visible={showCustomPicker}
+          onClose={() => setShowCustomPicker(false)}
+          onApply={handleCustomApply}
+          initialStart={customStartDate ?? undefined}
+          initialEnd={customEndDate ?? undefined}
+        />
 
-      {/* DETAIL MODAL */}
-      <FinancialDetailModal
-        visible={detailModalVisible}
-        data={selectedCard}
-        onClose={() => setDetailModalVisible(false)}
-        colors={colors}
-      />
-
-      {/* DELETE CONFIRM */}
-      <DeleteConfirmModal
-        visible={!!deleteTarget}
-        onCancel={() => setDeleteTarget(null)}
-        onConfirm={confirmDelete}
-        colors={colors}
-        description={deleteTarget?.description ?? ''}
-      />
-
-      {/* CUSTOM DATE RANGE PICKER */}
-      <DateRangePickerModal
-        visible={showCustomPicker}
-        onClose={() => setShowCustomPicker(false)}
-        onApply={handleCustomApply}
-        initialStart={customStartDate ?? undefined}
-        initialEnd={customEndDate ?? undefined}
-      />
-
-      {/* EXPENSE ENTRY MODAL */}
-      <Modal
-        visible={modalVisible}
-        transparent
-        animationType="none"
-        statusBarTranslucent
-        onRequestClose={closeModal}
-      >
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        {/* EXPENSE ENTRY MODAL */}
+        <Modal
+          visible={modalVisible}
+          transparent
+          animationType="none"
+          statusBarTranslucent
+          onRequestClose={closeModal}
         >
-          <View style={s.modalBackdrop}>
-            <TouchableOpacity
-              style={{ flex: 1 }}
-              activeOpacity={1}
-              onPress={closeModal}
-            />
-            <Animated.View
-              style={[
-                s.modalSheet,
-                isTablet && s.modalSheetTablet,
-                { backgroundColor: colors.surface },
-                {
-                  opacity: modalOpacity,
-                  transform: [{ translateY: modalTranslate }],
-                },
-              ]}
-            >
-              <View
-                style={[s.modalHandle, { backgroundColor: colors.border }]}
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
+            <View style={s.modalBackdrop}>
+              <TouchableOpacity
+                style={{ flex: 1 }}
+                activeOpacity={1}
+                onPress={closeModal}
               />
-              <View
-                style={[s.modalHeader, { borderBottomColor: colors.border }]}
+              <Animated.View
+                style={[
+                  s.modalSheet,
+                  isTablet && s.modalSheetTablet,
+                  { backgroundColor: colors.surface },
+                  {
+                    opacity: modalOpacity,
+                    transform: [{ translateY: modalTranslate }],
+                  },
+                ]}
               >
-                <Text style={[s.modalTitle, { color: colors.text }]}>
-                  New Expense Entry
-                </Text>
-                <TouchableOpacity
-                  onPress={closeModal}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                <View
+                  style={[s.modalHandle, { backgroundColor: colors.border }]}
+                />
+                <View
+                  style={[s.modalHeader, { borderBottomColor: colors.border }]}
                 >
-                  <X size={20} color={colors.textSecondary} strokeWidth={2} />
-                </TouchableOpacity>
-              </View>
-
-              {submitSuccess ? (
-                <View style={s.successState}>
-                  <CheckCircle2
-                    size={52}
-                    color={colors.success}
-                    strokeWidth={1.5}
-                  />
-                  <Text style={[s.successText, { color: colors.text }]}>
-                    Entry Added Successfully
+                  <Text style={[s.modalTitle, { color: colors.text }]}>
+                    New Expense Entry
                   </Text>
-                  <Text style={[s.successSub, { color: colors.textSecondary }]}>
-                    The entry has been posted to the Expense Summary.
-                  </Text>
+                  <TouchableOpacity
+                    onPress={closeModal}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  >
+                    <X size={20} color={colors.textSecondary} strokeWidth={2} />
+                  </TouchableOpacity>
                 </View>
-              ) : (
-                <ScrollView
-                  style={{ flex: 1 }}
-                  contentContainerStyle={s.modalBody}
-                  showsVerticalScrollIndicator={showWebScrollIndicator}
-                  keyboardShouldPersistTaps="handled"
-                >
-                  <Text style={[s.fieldLabel, { color: colors.textSecondary }]}>
-                    OR / Invoice No.
-                  </Text>
-                  <TextInput
-                    style={[
-                      s.input,
-                      {
-                        color: colors.text,
-                        backgroundColor: colors.background,
-                        borderColor: colors.border,
-                      },
-                    ]}
-                    placeholder="e.g. OR-2026-00123"
-                    placeholderTextColor={colors.textSecondary}
-                    value={form.orInvoice}
-                    onChangeText={(v) =>
-                      setForm((f) => ({ ...f, orInvoice: v }))
-                    }
-                  />
 
-                  <View
-                    style={{
-                      flexDirection: isTablet ? 'row' : 'column',
-                      gap: 12,
-                    }}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <DropdownField
-                        label="Center / Dept"
-                        value={form.centerDept}
-                        options={centers}
-                        onSelect={(v) =>
-                          setForm((f) => ({ ...f, centerDept: String(v.id) }))
-                        }
-                        colors={colors}
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <DropdownField
-                        label="Sub Center"
-                        value={form.subCenter}
-                        options={subCenters}
-                        onSelect={(v) =>
-                          setForm((f) => ({ ...f, subCenter: String(v.id) }))
-                        }
-                        colors={colors}
-                      />
-                    </View>
+                {submitSuccess ? (
+                  <View style={s.successState}>
+                    <CheckCircle2
+                      size={52}
+                      color={colors.success}
+                      strokeWidth={1.5}
+                    />
+                    <Text style={[s.successText, { color: colors.text }]}>
+                      Entry Added Successfully
+                    </Text>
+                    <Text style={[s.successSub, { color: colors.textSecondary }]}>
+                      The entry has been posted to the Expense Summary.
+                    </Text>
                   </View>
-
-                  <DropdownField
-                    label="VAT Type"
-                    value={form.vatType}
-                    options={vatTypes}
-                    onSelect={(v) =>
-                      setForm((f) => ({ ...f, vatType: String(v.id) }))
-                    }
-                    colors={colors}
-                  />
-
-                  <View
-                    style={{
-                      flexDirection: isTablet ? 'row' : 'column',
-                      gap: 12,
-                    }}
+                ) : (
+                  <ScrollView
+                    style={{ flex: 1 }}
+                    contentContainerStyle={s.modalBody}
+                    showsVerticalScrollIndicator={showWebScrollIndicator}
+                    keyboardShouldPersistTaps="handled"
                   >
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={[s.fieldLabel, { color: colors.textSecondary }]}
-                      >
-                        Debit (₱)
-                      </Text>
-                      <TextInput
-                        style={[
-                          s.input,
-                          {
-                            color: colors.text,
-                            backgroundColor: colors.background,
-                            borderColor: colors.border,
-                          },
-                        ]}
-                        placeholder="0.00"
-                        placeholderTextColor={colors.textSecondary}
-                        value={form.debit}
-                        onChangeText={(v) =>
-                          setForm((f) => ({ ...f, debit: v }))
-                        }
-                        keyboardType="decimal-pad"
-                      />
+                    <Text style={[s.fieldLabel, { color: colors.textSecondary }]}>
+                      OR / Invoice No.
+                    </Text>
+                    <TextInput
+                      style={[
+                        s.input,
+                        {
+                          color: colors.text,
+                          backgroundColor: colors.background,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                      placeholder="e.g. OR-2026-00123"
+                      placeholderTextColor={colors.textSecondary}
+                      value={form.orInvoice}
+                      onChangeText={(v) =>
+                        setForm((f) => ({ ...f, orInvoice: v }))
+                      }
+                    />
+
+                    <View
+                      style={{
+                        flexDirection: isTablet ? 'row' : 'column',
+                        gap: 12,
+                      }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <DropdownField
+                          label="Center / Dept"
+                          value={form.centerDept}
+                          options={centers}
+                          onSelect={(v) =>
+                            setForm((f) => ({ ...f, centerDept: String(v.id) }))
+                          }
+                          colors={colors}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <DropdownField
+                          label="Sub Center"
+                          value={form.subCenter}
+                          options={subCenters}
+                          onSelect={(v) =>
+                            setForm((f) => ({ ...f, subCenter: String(v.id) }))
+                          }
+                          colors={colors}
+                        />
+                      </View>
                     </View>
 
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={[s.fieldLabel, { color: colors.textSecondary }]}
-                      >
-                        Credit (₱)
-                      </Text>
-                      <TextInput
-                        style={[
-                          s.input,
-                          {
-                            color: colors.text,
-                            backgroundColor: colors.background,
-                            borderColor: colors.border,
-                          },
-                        ]}
-                        placeholder="0.00"
-                        placeholderTextColor={colors.textSecondary}
-                        value={form.credit}
-                        onChangeText={(v) =>
-                          setForm((f) => ({ ...f, credit: v }))
-                        }
-                        keyboardType="decimal-pad"
-                      />
-                    </View>
-                  </View>
+                    <DropdownField
+                      label="VAT Type"
+                      value={form.vatType}
+                      options={vatTypes}
+                      onSelect={(v) =>
+                        setForm((f) => ({ ...f, vatType: String(v.id) }))
+                      }
+                      colors={colors}
+                    />
 
-                  {form.debit || form.credit
-                    ? (() => {
+                    <View
+                      style={{
+                        flexDirection: isTablet ? 'row' : 'column',
+                        gap: 12,
+                      }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={[s.fieldLabel, { color: colors.textSecondary }]}
+                        >
+                          Debit (₱)
+                        </Text>
+                        <TextInput
+                          style={[
+                            s.input,
+                            {
+                              color: colors.text,
+                              backgroundColor: colors.background,
+                              borderColor: colors.border,
+                            },
+                          ]}
+                          placeholder="0.00"
+                          placeholderTextColor={colors.textSecondary}
+                          value={form.debit}
+                          onChangeText={(v) =>
+                            setForm((f) => ({ ...f, debit: v }))
+                          }
+                          keyboardType="decimal-pad"
+                        />
+                      </View>
+
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={[s.fieldLabel, { color: colors.textSecondary }]}
+                        >
+                          Credit (₱)
+                        </Text>
+                        <TextInput
+                          style={[
+                            s.input,
+                            {
+                              color: colors.text,
+                              backgroundColor: colors.background,
+                              borderColor: colors.border,
+                            },
+                          ]}
+                          placeholder="0.00"
+                          placeholderTextColor={colors.textSecondary}
+                          value={form.credit}
+                          onChangeText={(v) =>
+                            setForm((f) => ({ ...f, credit: v }))
+                          }
+                          keyboardType="decimal-pad"
+                        />
+                      </View>
+                    </View>
+
+                    {form.debit || form.credit
+                      ? (() => {
                         const debitAmount = parseFloat(form.debit) || 0;
                         const creditAmount = parseFloat(form.credit) || 0;
                         const totalAmount = creditAmount - debitAmount;
@@ -3061,669 +3061,32 @@ export default function DashboardScreen() {
                           </View>
                         );
                       })()
-                    : null}
+                      : null}
 
-                  <Text style={[s.fieldLabel, { color: colors.textSecondary }]}>
-                    Notes
-                  </Text>
-                  <TextInput
-                    style={[
-                      s.input,
-                      s.textarea,
-                      {
-                        color: colors.text,
-                        backgroundColor: colors.background,
-                        borderColor: colors.border,
-                      },
-                    ]}
-                    placeholder="Optional description…"
-                    placeholderTextColor={colors.textSecondary}
-                    value={form.notes}
-                    onChangeText={(v) => setForm((f) => ({ ...f, notes: v }))}
-                    multiline
-                    numberOfLines={3}
-                    textAlignVertical="top"
-                  />
-
-                  <Text style={[s.fieldLabel, { color: colors.textSecondary }]}>
-                    Requested by Staff
-                  </Text>
-                  <TextInput
-                    style={[
-                      s.input,
-                      {
-                        color: colors.text,
-                        backgroundColor: colors.background,
-                        borderColor: colors.border,
-                      },
-                    ]}
-                    placeholder="Staff name"
-                    placeholderTextColor={colors.textSecondary}
-                    value={form.requestedBy}
-                    onChangeText={(v) =>
-                      setForm((f) => ({ ...f, requestedBy: v }))
-                    }
-                  />
-
-                  <DropdownField
-                    label="Account Title"
-                    value={form.accountTitle}
-                    options={accountTitles}
-                    onSelect={(v) =>
-                      setForm((f) => ({ ...f, accountTitle: String(v.id) }))
-                    }
-                    colors={colors}
-                    placeholder="Select account title…"
-                  />
-
-                  <TouchableOpacity
-                    style={[
-                      s.submitBtn,
-                      {
-                        backgroundColor: colors.primary,
-                        opacity:
-                          !(form.debit || form.credit) || !form.accountTitle
-                            ? 0.5
-                            : 1,
-                      },
-                    ]}
-                    onPress={handleSubmit}
-                    disabled={
-                      !(form.debit || form.credit) || !form.accountTitle
-                    }
-                    activeOpacity={0.85}
-                  >
-                    <Text style={s.submitBtnText}>Add Entry</Text>
-                  </TouchableOpacity>
-                  <View style={{ height: 20 }} />
-                </ScrollView>
-              )}
-            </Animated.View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {/* ITEM NET SUMMARY MODAL */}
-      <Modal
-        visible={itemNetModalVisible}
-        transparent
-        animationType="none"
-        statusBarTranslucent
-        onRequestClose={closeItemNetModal}
-      >
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-          <View style={s.modalBackdrop}>
-            <TouchableOpacity
-              style={{ flex: 1 }}
-              activeOpacity={1}
-              onPress={closeItemNetModal}
-            />
-            <Animated.View
-              style={[
-                s.modalSheet,
-                isTablet && s.modalSheetTablet,
-                { backgroundColor: colors.surface },
-                {
-                  opacity: itemNetModalOpacity,
-                  transform: [{ translateY: itemNetModalTranslate }],
-                },
-              ]}
-            >
-              <View
-                style={[s.modalHandle, { backgroundColor: colors.border }]}
-              />
-              <View
-                style={[s.modalHeader, { borderBottomColor: colors.border }]}
-              >
-                <Text style={[s.modalTitle, { color: colors.text }]}>
-                  New Item Net Summary
-                </Text>
-                <TouchableOpacity
-                  onPress={closeItemNetModal}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                >
-                  <X size={20} color={colors.textSecondary} strokeWidth={2} />
-                </TouchableOpacity>
-              </View>
-
-              {itemNetSubmitSuccess ? (
-                <View style={s.successState}>
-                  <CheckCircle2
-                    size={52}
-                    color={colors.success}
-                    strokeWidth={1.5}
-                  />
-                  <Text style={[s.successText, { color: colors.text }]}>
-                    Item Summary Added
-                  </Text>
-                  <Text style={[s.successSub, { color: colors.textSecondary }]}>
-                    The entry has been posted to the Item Net Summary.
-                  </Text>
-                </View>
-              ) : (
-                <ScrollView
-                  style={{ flex: 1 }}
-                  contentContainerStyle={s.modalBody}
-                  showsVerticalScrollIndicator={showWebScrollIndicator}
-                  keyboardShouldPersistTaps="handled"
-                >
-                  {/* Item Selection */}
-                  <Text style={[s.fieldLabel, { color: colors.textSecondary }]}>
-                    Select Item (Optional)
-                  </Text>
-                  <TouchableOpacity
-                    style={[
-                      ins.itemPickerBtn,
-                      {
-                        backgroundColor: colors.background,
-                        borderColor: itemNetForm.selectedItem
-                          ? colors.primary
-                          : colors.border,
-                      },
-                    ]}
-                    onPress={() => setShowCatalogSearch(true)}
-                    activeOpacity={0.8}
-                  >
-                    {itemNetForm.selectedItem ? (
-                      <View
-                        style={{
-                          flex: 1,
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          gap: 10,
-                        }}
-                      >
-                        <View
-                          style={[
-                            ins.itemIconWrap,
-                            { backgroundColor: colors.primary + '18' },
-                          ]}
-                        >
-                          <Package
-                            size={16}
-                            color={colors.primary}
-                            strokeWidth={2}
-                          />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text
-                            style={{
-                              fontSize: 14,
-                              fontWeight: '600',
-                              color: colors.text,
-                            }}
-                            numberOfLines={1}
-                          >
-                            {itemNetForm.selectedItem.name}
-                          </Text>
-                          {itemNetForm.selectedItem.category && (
-                            <Text
-                              style={{
-                                fontSize: 11,
-                                color: colors.textSecondary,
-                                marginTop: 1,
-                              }}
-                            >
-                              {itemNetForm.selectedItem.category}
-                              {itemNetForm.selectedItem.barcode
-                                ? ` · ${itemNetForm.selectedItem.barcode}`
-                                : ''}
-                            </Text>
-                          )}
-                        </View>
-                        <TouchableOpacity
-                          onPress={() =>
-                            setItemNetForm((f) => ({
-                              ...f,
-                              selectedItem: null,
-                              itemName: '',
-                            }))
-                          }
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                          <X
-                            size={14}
-                            color={colors.textSecondary}
-                            strokeWidth={2}
-                          />
-                        </TouchableOpacity>
-                      </View>
-                    ) : (
-                      <View
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          gap: 8,
-                        }}
-                      >
-                        <Search
-                          size={14}
-                          color={colors.textSecondary}
-                          strokeWidth={2}
-                        />
-                        <Text
-                          style={{ fontSize: 13, color: colors.textSecondary }}
-                        >
-                          Search item catalog…
-                        </Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
-
-                  <Text
-                    style={[
-                      s.fieldLabel,
-                      { color: colors.textSecondary, marginTop: 4 },
-                    ]}
-                  >
-                    Item Name{' '}
-                    {itemNetForm.selectedItem
-                      ? '(from catalog)'
-                      : '(manual if not in catalog)'}
-                  </Text>
-                  <TextInput
-                    style={[
-                      s.input,
-                      {
-                        color: colors.text,
-                        backgroundColor: itemNetForm.selectedItem
-                          ? colors.border + '40'
-                          : colors.background,
-                        borderColor: colors.border,
-                      },
-                    ]}
-                    placeholder="e.g. Premium Coffee Blend"
-                    placeholderTextColor={colors.textSecondary}
-                    value={
-                      itemNetForm.selectedItem
-                        ? itemNetForm.selectedItem.name
-                        : itemNetForm.itemName
-                    }
-                    onChangeText={(v) => {
-                      if (!itemNetForm.selectedItem) {
-                        setItemNetForm((f) => ({ ...f, itemName: v }));
-                      }
-                    }}
-                    editable={!itemNetForm.selectedItem}
-                  />
-
-                  <Text
-                    style={[
-                      s.fieldLabel,
-                      { color: colors.textSecondary, marginTop: 4 },
-                    ]}
-                  >
-                    Item Code{' '}
-                    {itemNetForm.selectedItem?.itemCode
-                      ? '(from catalog)'
-                      : '(manual if empty, leave empty to auto-generate)'}
-                  </Text>
-                  <TextInput
-                    style={[
-                      s.input,
-                      {
-                        color: colors.text,
-                        backgroundColor: itemNetForm.selectedItem
-                          ? colors.border + '40'
-                          : colors.background,
-                        borderColor: colors.border,
-                      },
-                    ]}
-                    placeholder="E.g. COFF-PRM-001"
-                    placeholderTextColor={colors.textSecondary}
-                    value={
-                      itemNetForm.selectedItem
-                        ? itemNetForm.selectedItem.itemCode
-                        : itemNetForm.itemCode
-                    }
-                    autoCapitalize="characters"
-                    onChangeText={(v) => {
-                      if (!itemNetForm.selectedItem) {
-                        setItemNetForm((f) => ({ ...f, itemCode: v }));
-                      }
-                    }}
-                    editable={
-                      !itemNetForm.selectedItem || itemNetForm.itemCode === ''
-                    }
-                  />
-
-                  <View
-                    style={{
-                      flexDirection: isTablet ? 'row' : 'column',
-                      gap: 12,
-                    }}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <DropdownField
-                        label="Center / Dept"
-                        value={itemNetForm.centerId}
-                        options={centers}
-                        onSelect={(v) =>
-                          setItemNetForm((f) => ({
-                            ...f,
-                            centerId: String(v.id),
-                          }))
-                        }
-                        colors={colors}
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <DropdownField
-                        label="Sub Center"
-                        value={itemNetForm.subCenterId}
-                        options={subCenters}
-                        onSelect={(v) =>
-                          setItemNetForm((f) => ({
-                            ...f,
-                            subCenterId: String(v.id),
-                          }))
-                        }
-                        colors={colors}
-                      />
-                    </View>
-                  </View>
-
-                  <DropdownField
-                    label="Account Title"
-                    value={itemNetForm.accountTitleId}
-                    options={accountTitles}
-                    onSelect={(v) =>
-                      setItemNetForm((f) => ({
-                        ...f,
-                        accountTitleId: String(v.id),
-                      }))
-                    }
-                    colors={colors}
-                    placeholder="Select account title…"
-                  />
-
-                  <DropdownField
-                    label="VAT Type"
-                    value={itemNetForm.vatType}
-                    options={vatTypes}
-                    onSelect={(v) =>
-                      setItemNetForm((f) => ({ ...f, vatType: String(v.id) }))
-                    }
-                    colors={colors}
-                  />
-
-                  <Text style={[s.fieldLabel, { color: colors.textSecondary }]}>
-                    Cost (₱)
-                  </Text>
-                  <TextInput
-                    style={[
-                      s.input,
-                      {
-                        color: colors.text,
-                        backgroundColor: colors.background,
-                        borderColor: colors.border,
-                      },
-                    ]}
-                    placeholder="0.00"
-                    placeholderTextColor={colors.textSecondary}
-                    value={itemNetForm.costInputAmount}
-                    onChangeText={(v) =>
-                      setItemNetForm((f) => ({ ...f, costInputAmount: v }))
-                    }
-                    keyboardType="decimal-pad"
-                  />
-
-                  {/* Cost Lines */}
-                  <View style={{ gap: 8, marginTop: 12 }}>
-                    {itemNetForm.costLines.length > 0 && (
-                      <View style={{ gap: 6 }}>
-                        {itemNetForm.costLines.map((line) => (
-                          <View
-                            key={line.id}
-                            style={{
-                              flexDirection: 'row',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              paddingVertical: 6,
-                              borderBottomWidth: 1,
-                              borderBottomColor: colors.border,
-                            }}
-                          >
-                            <Text style={{ color: colors.text, flex: 1 }}>
-                              {line.label}
-                            </Text>
-                            <Text style={{ color: colors.textSecondary }}>
-                              {formatPeso(line.amount)}
-                            </Text>
-                          </View>
-                        ))}
-                      </View>
-                    )}
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
-                      <TextInput
-                        style={[
-                          s.input,
-                          {
-                            flex: 1,
-                            color: colors.text,
-                            backgroundColor: colors.background,
-                            borderColor: colors.border,
-                          },
-                        ]}
-                        placeholder="Line label"
-                        placeholderTextColor={colors.textSecondary}
-                        value={itemNetForm.newCostLineLabel}
-                        onChangeText={(v) =>
-                          setItemNetForm((f) => ({ ...f, newCostLineLabel: v }))
-                        }
-                      />
-                      <TextInput
-                        style={[
-                          s.input,
-                          {
-                            flex: 1,
-                            color: colors.text,
-                            backgroundColor: colors.background,
-                            borderColor: colors.border,
-                          },
-                        ]}
-                        placeholder="Amount"
-                        placeholderTextColor={colors.textSecondary}
-                        value={itemNetForm.newCostLineAmount}
-                        onChangeText={(v) =>
-                          setItemNetForm((f) => ({
-                            ...f,
-                            newCostLineAmount: v,
-                          }))
-                        }
-                        keyboardType="decimal-pad"
-                      />
-                      <TouchableOpacity
-                        style={{
-                          flex: 0.8,
-                          backgroundColor: colors.primary,
-                          justifyContent: 'center',
-                          alignItems: 'center',
-                          borderRadius: 8,
-                          paddingVertical: 14,
-                        }}
-                        onPress={() => {
-                          const amount = parseFloat(
-                            itemNetForm.newCostLineAmount,
-                          );
-                          if (
-                            !itemNetForm.newCostLineLabel.trim() ||
-                            Number.isNaN(amount)
-                          ) {
-                            return;
-                          }
-                          setItemNetForm((f) => ({
-                            ...f,
-                            costLines: [
-                              ...f.costLines,
-                              {
-                                id: `costline-${Date.now()}-${f.costLines.length}`,
-                                label: f.newCostLineLabel.trim(),
-                                amount,
-                              },
-                            ],
-                            newCostLineLabel: '',
-                            newCostLineAmount: '',
-                          }));
-                        }}
-                      >
-                        <Text style={{ color: '#fff', fontWeight: '700' }}>
-                          Add
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-
-                  {/* VAT Calculation Preview */}
-                  {(itemNetForm.costInputAmount ||
-                    itemNetForm.sellingPriceInput) &&
-                  itemNetForm.vatType ? (
-                    <View
+                    <Text style={[s.fieldLabel, { color: colors.textSecondary }]}>
+                      Notes
+                    </Text>
+                    <TextInput
                       style={[
-                        s.vatPreview,
+                        s.input,
+                        s.textarea,
                         {
+                          color: colors.text,
                           backgroundColor: colors.background,
                           borderColor: colors.border,
-                          marginTop: 10,
                         },
                       ]}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 10,
-                          fontWeight: '700',
-                          color: colors.textSecondary,
-                          letterSpacing: 1,
-                          marginBottom: 8,
-                          textTransform: 'uppercase',
-                        }}
-                      >
-                        ERP Preview
-                      </Text>
-                      <View style={s.vatRow}>
-                        <Text
-                          style={[s.vatLabel, { color: colors.textSecondary }]}
-                        >
-                          Base Cost
-                        </Text>
-                        <Text style={[s.vatValue, { color: colors.text }]}>
-                          {formatPeso(itemNetPreview.baseCost)}
-                        </Text>
-                      </View>
-                      <View style={s.vatRow}>
-                        <Text
-                          style={[s.vatLabel, { color: colors.textSecondary }]}
-                        >
-                          VAT Input
-                        </Text>
-                        <Text style={[s.vatValue, { color: colors.accent }]}>
-                          {formatPeso(itemNetPreview.vatInput)}
-                        </Text>
-                      </View>
-                      <View style={s.vatRow}>
-                        <Text
-                          style={[s.vatLabel, { color: colors.textSecondary }]}
-                        >
-                          Selling Price
-                        </Text>
-                        <Text style={[s.vatValue, { color: colors.text }]}>
-                          {formatPeso(itemNetPreview.sellingPrice)}
-                        </Text>
-                      </View>
-                      <View style={s.vatRow}>
-                        <Text
-                          style={[s.vatLabel, { color: colors.textSecondary }]}
-                        >
-                          VAT Output
-                        </Text>
-                        <Text style={[s.vatValue, { color: colors.accent }]}>
-                          {formatPeso(itemNetPreview.vatOutput)}
-                        </Text>
-                      </View>
-                      <View
-                        style={[
-                          s.vatRow,
-                          {
-                            paddingTop: 8,
-                            borderTopWidth: 1,
-                            borderTopColor: colors.border,
-                            marginTop: 8,
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={[s.vatLabel, { color: colors.textSecondary }]}
-                        >
-                          OpEx Amount
-                        </Text>
-                        <Text style={[s.vatValue, { color: colors.text }]}>
-                          {formatPeso(itemNetPreview.opExAmount)}
-                        </Text>
-                      </View>
-                      <View style={s.vatRow}>
-                        <Text
-                          style={[s.vatLabel, { color: colors.textSecondary }]}
-                        >
-                          Gross Profit
-                        </Text>
-                        <Text
-                          style={[
-                            s.vatValue,
-                            {
-                              color:
-                                itemNetPreview.grossProfit >= 0
-                                  ? colors.success
-                                  : colors.error,
-                            },
-                          ]}
-                        >
-                          {formatPeso(itemNetPreview.grossProfit)}
-                        </Text>
-                      </View>
-                      <View style={s.vatRow}>
-                        <Text
-                          style={[s.vatLabel, { color: colors.textSecondary }]}
-                        >
-                          Net Profit
-                        </Text>
-                        <Text
-                          style={[
-                            s.vatValue,
-                            {
-                              color:
-                                itemNetPreview.netProfit >= 0
-                                  ? colors.success
-                                  : colors.error,
-                              fontWeight: '700',
-                            },
-                          ]}
-                        >
-                          {formatPeso(itemNetPreview.netProfit)}
-                        </Text>
-                      </View>
-                      {itemNetPreview.warning ? (
-                        <Text
-                          style={{
-                            color: colors.error,
-                            marginTop: 10,
-                            fontSize: 12,
-                          }}
-                        >
-                          {itemNetPreview.warning}
-                        </Text>
-                      ) : null}
-                    </View>
-                  ) : null}
+                      placeholder="Optional description…"
+                      placeholderTextColor={colors.textSecondary}
+                      value={form.notes}
+                      onChangeText={(v) => setForm((f) => ({ ...f, notes: v }))}
+                      multiline
+                      numberOfLines={3}
+                      textAlignVertical="top"
+                    />
 
-                  {/* OpEx & Selling Price */}
-                  <View style={{ gap: 12, marginTop: 10 }}>
-                    <Text
-                      style={[s.fieldLabel, { color: colors.textSecondary }]}
-                    >
-                      OpEx %
+                    <Text style={[s.fieldLabel, { color: colors.textSecondary }]}>
+                      Requested by Staff
                     </Text>
                     <TextInput
                       style={[
@@ -3734,19 +3097,232 @@ export default function DashboardScreen() {
                           borderColor: colors.border,
                         },
                       ]}
-                      placeholder="e.g. 0.30 for 30%"
+                      placeholder="Staff name"
                       placeholderTextColor={colors.textSecondary}
-                      value={itemNetForm.opExPct}
+                      value={form.requestedBy}
                       onChangeText={(v) =>
-                        setItemNetForm((f) => ({ ...f, opExPct: v }))
+                        setForm((f) => ({ ...f, requestedBy: v }))
                       }
-                      keyboardType="decimal-pad"
                     />
 
-                    <Text
-                      style={[s.fieldLabel, { color: colors.textSecondary }]}
+                    <DropdownField
+                      label="Account Title"
+                      value={form.accountTitle}
+                      options={accountTitles}
+                      onSelect={(v) =>
+                        setForm((f) => ({ ...f, accountTitle: String(v.id) }))
+                      }
+                      colors={colors}
+                      placeholder="Select account title…"
+                    />
+
+                    <TouchableOpacity
+                      style={[
+                        s.submitBtn,
+                        {
+                          backgroundColor: colors.primary,
+                          opacity:
+                            !(form.debit || form.credit) || !form.accountTitle
+                              ? 0.5
+                              : 1,
+                        },
+                      ]}
+                      onPress={handleSubmit}
+                      disabled={
+                        !(form.debit || form.credit) || !form.accountTitle
+                      }
+                      activeOpacity={0.85}
                     >
-                      Selling Price
+                      <Text style={s.submitBtnText}>Add Entry</Text>
+                    </TouchableOpacity>
+                    <View style={{ height: 20 }} />
+                  </ScrollView>
+                )}
+              </Animated.View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+
+        {/* ITEM NET SUMMARY MODAL */}
+        <Modal
+          visible={itemNetModalVisible}
+          transparent
+          animationType="none"
+          statusBarTranslucent
+          onRequestClose={closeItemNetModal}
+        >
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
+            <View style={s.modalBackdrop}>
+              <TouchableOpacity
+                style={{ flex: 1 }}
+                activeOpacity={1}
+                onPress={closeItemNetModal}
+              />
+              <Animated.View
+                style={[
+                  s.modalSheet,
+                  isTablet && s.modalSheetTablet,
+                  { backgroundColor: colors.surface },
+                  {
+                    opacity: itemNetModalOpacity,
+                    transform: [{ translateY: itemNetModalTranslate }],
+                  },
+                ]}
+              >
+                <View
+                  style={[s.modalHandle, { backgroundColor: colors.border }]}
+                />
+                <View
+                  style={[s.modalHeader, { borderBottomColor: colors.border }]}
+                >
+                  <Text style={[s.modalTitle, { color: colors.text }]}>
+                    New Item Net Summary
+                  </Text>
+                  <TouchableOpacity
+                    onPress={closeItemNetModal}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  >
+                    <X size={20} color={colors.textSecondary} strokeWidth={2} />
+                  </TouchableOpacity>
+                </View>
+
+                {itemNetSubmitSuccess ? (
+                  <View style={s.successState}>
+                    <CheckCircle2
+                      size={52}
+                      color={colors.success}
+                      strokeWidth={1.5}
+                    />
+                    <Text style={[s.successText, { color: colors.text }]}>
+                      Item Summary Added
+                    </Text>
+                    <Text style={[s.successSub, { color: colors.textSecondary }]}>
+                      The entry has been posted to the Item Net Summary.
+                    </Text>
+                  </View>
+                ) : (
+                  <ScrollView
+                    style={{ flex: 1 }}
+                    contentContainerStyle={s.modalBody}
+                    showsVerticalScrollIndicator={showWebScrollIndicator}
+                    keyboardShouldPersistTaps="handled"
+                  >
+                    {/* Item Selection */}
+                    <Text style={[s.fieldLabel, { color: colors.textSecondary }]}>
+                      Select Item (Optional)
+                    </Text>
+                    <TouchableOpacity
+                      style={[
+                        ins.itemPickerBtn,
+                        {
+                          backgroundColor: colors.background,
+                          borderColor: itemNetForm.selectedItem
+                            ? colors.primary
+                            : colors.border,
+                        },
+                      ]}
+                      onPress={() => setShowCatalogSearch(true)}
+                      activeOpacity={0.8}
+                    >
+                      {itemNetForm.selectedItem ? (
+                        <View
+                          style={{
+                            flex: 1,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 10,
+                          }}
+                        >
+                          <View
+                            style={[
+                              ins.itemIconWrap,
+                              { backgroundColor: colors.primary + '18' },
+                            ]}
+                          >
+                            <Package
+                              size={16}
+                              color={colors.primary}
+                              strokeWidth={2}
+                            />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text
+                              style={{
+                                fontSize: 14,
+                                fontWeight: '600',
+                                color: colors.text,
+                              }}
+                              numberOfLines={1}
+                            >
+                              {itemNetForm.selectedItem.name}
+                            </Text>
+                            {itemNetForm.selectedItem.category && (
+                              <Text
+                                style={{
+                                  fontSize: 11,
+                                  color: colors.textSecondary,
+                                  marginTop: 1,
+                                }}
+                              >
+                                {itemNetForm.selectedItem.category}
+                                {itemNetForm.selectedItem.barcode
+                                  ? ` · ${itemNetForm.selectedItem.barcode}`
+                                  : ''}
+                              </Text>
+                            )}
+                          </View>
+                          <TouchableOpacity
+                            onPress={() =>
+                              setItemNetForm((f) => ({
+                                ...f,
+                                selectedItem: null,
+                                itemName: '',
+                              }))
+                            }
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <X
+                              size={14}
+                              color={colors.textSecondary}
+                              strokeWidth={2}
+                            />
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        <View
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 8,
+                          }}
+                        >
+                          <Search
+                            size={14}
+                            color={colors.textSecondary}
+                            strokeWidth={2}
+                          />
+                          <Text
+                            style={{ fontSize: 13, color: colors.textSecondary }}
+                          >
+                            Search item catalog…
+                          </Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+
+                    <Text
+                      style={[
+                        s.fieldLabel,
+                        { color: colors.textSecondary, marginTop: 4 },
+                      ]}
+                    >
+                      Item Name{' '}
+                      {itemNetForm.selectedItem
+                        ? '(from catalog)'
+                        : '(manual if not in catalog)'}
                     </Text>
                     <TextInput
                       style={[
@@ -3756,143 +3332,567 @@ export default function DashboardScreen() {
                           backgroundColor: itemNetForm.selectedItem
                             ? colors.border + '40'
                             : colors.background,
-                          borderColor: itemNetForm.selectedItem
-                            ? colors.primary
-                            : colors.border,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                      placeholder="e.g. Premium Coffee Blend"
+                      placeholderTextColor={colors.textSecondary}
+                      value={
+                        itemNetForm.selectedItem
+                          ? itemNetForm.selectedItem.name
+                          : itemNetForm.itemName
+                      }
+                      onChangeText={(v) => {
+                        if (!itemNetForm.selectedItem) {
+                          setItemNetForm((f) => ({ ...f, itemName: v }));
+                        }
+                      }}
+                      editable={!itemNetForm.selectedItem}
+                    />
+
+                    <Text
+                      style={[
+                        s.fieldLabel,
+                        { color: colors.textSecondary, marginTop: 4 },
+                      ]}
+                    >
+                      Item Code{' '}
+                      {itemNetForm.selectedItem?.itemCode
+                        ? '(from catalog)'
+                        : '(manual if empty, leave empty to auto-generate)'}
+                    </Text>
+                    <TextInput
+                      style={[
+                        s.input,
+                        {
+                          color: colors.text,
+                          backgroundColor: itemNetForm.selectedItem
+                            ? colors.border + '40'
+                            : colors.background,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                      placeholder="E.g. COFF-PRM-001"
+                      placeholderTextColor={colors.textSecondary}
+                      value={
+                        itemNetForm.selectedItem
+                          ? itemNetForm.selectedItem.itemCode
+                          : itemNetForm.itemCode
+                      }
+                      autoCapitalize="characters"
+                      onChangeText={(v) => {
+                        if (!itemNetForm.selectedItem) {
+                          setItemNetForm((f) => ({ ...f, itemCode: v }));
+                        }
+                      }}
+                      editable={
+                        !itemNetForm.selectedItem || itemNetForm.itemCode === ''
+                      }
+                    />
+
+                    <View
+                      style={{
+                        flexDirection: isTablet ? 'row' : 'column',
+                        gap: 12,
+                      }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <DropdownField
+                          label="Center / Dept"
+                          value={itemNetForm.centerId}
+                          options={centers}
+                          onSelect={(v) =>
+                            setItemNetForm((f) => ({
+                              ...f,
+                              centerId: String(v.id),
+                            }))
+                          }
+                          colors={colors}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <DropdownField
+                          label="Sub Center"
+                          value={itemNetForm.subCenterId}
+                          options={subCenters}
+                          onSelect={(v) =>
+                            setItemNetForm((f) => ({
+                              ...f,
+                              subCenterId: String(v.id),
+                            }))
+                          }
+                          colors={colors}
+                        />
+                      </View>
+                    </View>
+
+                    <DropdownField
+                      label="Account Title"
+                      value={itemNetForm.accountTitleId}
+                      options={accountTitles}
+                      onSelect={(v) =>
+                        setItemNetForm((f) => ({
+                          ...f,
+                          accountTitleId: String(v.id),
+                        }))
+                      }
+                      colors={colors}
+                      placeholder="Select account title…"
+                    />
+
+                    <DropdownField
+                      label="VAT Type"
+                      value={itemNetForm.vatType}
+                      options={vatTypes}
+                      onSelect={(v) =>
+                        setItemNetForm((f) => ({ ...f, vatType: String(v.id) }))
+                      }
+                      colors={colors}
+                    />
+
+                    <Text style={[s.fieldLabel, { color: colors.textSecondary }]}>
+                      Cost (₱)
+                    </Text>
+                    <TextInput
+                      style={[
+                        s.input,
+                        {
+                          color: colors.text,
+                          backgroundColor: colors.background,
+                          borderColor: colors.border,
                         },
                       ]}
                       placeholder="0.00"
                       placeholderTextColor={colors.textSecondary}
-                      value={
-                        itemNetForm.selectedItem?.sellingPrice
-                          ? itemNetForm.selectedItem.sellingPrice
-                          : itemNetForm.sellingPriceInput
+                      value={itemNetForm.costInputAmount}
+                      onChangeText={(v) =>
+                        setItemNetForm((f) => ({ ...f, costInputAmount: v }))
                       }
-                      onChangeText={(v) => {
-                        if (!itemNetForm.selectedItem) {
-                          setItemNetForm((f) => ({
-                            ...f,
-                            sellingPriceInput: v,
-                          }));
-                        }
-                      }}
-                      editable={!itemNetForm.selectedItem}
                       keyboardType="decimal-pad"
                     />
-                  </View>
 
-                  {/* Description */}
-                  <Text style={[s.fieldLabel, { color: colors.textSecondary }]}>
-                    Description
-                  </Text>
-                  <TextInput
-                    style={[
-                      s.input,
-                      s.textarea,
-                      {
-                        color: colors.text,
-                        backgroundColor: colors.background,
-                        borderColor: colors.border,
-                      },
-                    ]}
-                    placeholder="Optional description…"
-                    placeholderTextColor={colors.textSecondary}
-                    value={itemNetForm.description}
-                    onChangeText={(v) =>
-                      setItemNetForm((f) => ({ ...f, description: v }))
-                    }
-                    multiline
-                    numberOfLines={3}
-                    textAlignVertical="top"
-                  />
+                    {/* Cost Lines */}
+                    <View style={{ gap: 8, marginTop: 12 }}>
+                      {itemNetForm.costLines.length > 0 && (
+                        <View style={{ gap: 6 }}>
+                          {itemNetForm.costLines.map((line) => (
+                            <View
+                              key={line.id}
+                              style={{
+                                flexDirection: 'row',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                paddingVertical: 6,
+                                borderBottomWidth: 1,
+                                borderBottomColor: colors.border,
+                              }}
+                            >
+                              <Text style={{ color: colors.text, flex: 1 }}>
+                                {line.label}
+                              </Text>
+                              <Text style={{ color: colors.textSecondary }}>
+                                {formatPeso(line.amount)}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <TextInput
+                          style={[
+                            s.input,
+                            {
+                              flex: 1,
+                              color: colors.text,
+                              backgroundColor: colors.background,
+                              borderColor: colors.border,
+                            },
+                          ]}
+                          placeholder="Line label"
+                          placeholderTextColor={colors.textSecondary}
+                          value={itemNetForm.newCostLineLabel}
+                          onChangeText={(v) =>
+                            setItemNetForm((f) => ({ ...f, newCostLineLabel: v }))
+                          }
+                        />
+                        <TextInput
+                          style={[
+                            s.input,
+                            {
+                              flex: 1,
+                              color: colors.text,
+                              backgroundColor: colors.background,
+                              borderColor: colors.border,
+                            },
+                          ]}
+                          placeholder="Amount"
+                          placeholderTextColor={colors.textSecondary}
+                          value={itemNetForm.newCostLineAmount}
+                          onChangeText={(v) =>
+                            setItemNetForm((f) => ({
+                              ...f,
+                              newCostLineAmount: v,
+                            }))
+                          }
+                          keyboardType="decimal-pad"
+                        />
+                        <TouchableOpacity
+                          style={{
+                            flex: 0.8,
+                            backgroundColor: colors.primary,
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            borderRadius: 8,
+                            paddingVertical: 14,
+                          }}
+                          onPress={() => {
+                            const amount = parseFloat(
+                              itemNetForm.newCostLineAmount,
+                            );
+                            if (
+                              !itemNetForm.newCostLineLabel.trim() ||
+                              Number.isNaN(amount)
+                            ) {
+                              return;
+                            }
+                            setItemNetForm((f) => ({
+                              ...f,
+                              costLines: [
+                                ...f.costLines,
+                                {
+                                  id: `costline-${Date.now()}-${f.costLines.length}`,
+                                  label: f.newCostLineLabel.trim(),
+                                  amount,
+                                },
+                              ],
+                              newCostLineLabel: '',
+                              newCostLineAmount: '',
+                            }));
+                          }}
+                        >
+                          <Text style={{ color: '#fff', fontWeight: '700' }}>
+                            Add
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
 
-                  <TouchableOpacity
-                    style={[
-                      s.submitBtn,
-                      {
-                        backgroundColor: colors.primary,
-                        opacity:
-                          (!itemNetForm.costInputAmount &&
-                            itemNetForm.costLines.length === 0) ||
-                          !itemNetForm.vatType ||
-                          !itemNetForm.accountTitleId ||
-                          !itemNetForm.centerId ||
-                          !itemNetForm.subCenterId
-                            ? 0.5
-                            : 1,
-                      },
-                    ]}
-                    onPress={handleItemNetSubmit}
-                    disabled={
-                      (!itemNetForm.costInputAmount &&
-                        itemNetForm.costLines.length === 0) ||
-                      !itemNetForm.vatType ||
-                      !itemNetForm.accountTitleId ||
-                      !itemNetForm.centerId ||
-                      !itemNetForm.subCenterId
-                    }
-                    activeOpacity={0.85}
-                  >
-                    <Text style={s.submitBtnText}>Add Item Summary</Text>
-                  </TouchableOpacity>
-                  <View style={{ height: 20 }} />
-                </ScrollView>
-              )}
-            </Animated.View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+                    {/* VAT Calculation Preview */}
+                    {(itemNetForm.costInputAmount ||
+                      itemNetForm.sellingPriceInput) &&
+                      itemNetForm.vatType ? (
+                      <View
+                        style={[
+                          s.vatPreview,
+                          {
+                            backgroundColor: colors.background,
+                            borderColor: colors.border,
+                            marginTop: 10,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            fontWeight: '700',
+                            color: colors.textSecondary,
+                            letterSpacing: 1,
+                            marginBottom: 8,
+                            textTransform: 'uppercase',
+                          }}
+                        >
+                          ERP Preview
+                        </Text>
+                        <View style={s.vatRow}>
+                          <Text
+                            style={[s.vatLabel, { color: colors.textSecondary }]}
+                          >
+                            Base Cost
+                          </Text>
+                          <Text style={[s.vatValue, { color: colors.text }]}>
+                            {formatPeso(itemNetPreview.baseCost)}
+                          </Text>
+                        </View>
+                        <View style={s.vatRow}>
+                          <Text
+                            style={[s.vatLabel, { color: colors.textSecondary }]}
+                          >
+                            VAT Input
+                          </Text>
+                          <Text style={[s.vatValue, { color: colors.accent }]}>
+                            {formatPeso(itemNetPreview.vatInput)}
+                          </Text>
+                        </View>
+                        <View style={s.vatRow}>
+                          <Text
+                            style={[s.vatLabel, { color: colors.textSecondary }]}
+                          >
+                            Selling Price
+                          </Text>
+                          <Text style={[s.vatValue, { color: colors.text }]}>
+                            {formatPeso(itemNetPreview.sellingPrice)}
+                          </Text>
+                        </View>
+                        <View style={s.vatRow}>
+                          <Text
+                            style={[s.vatLabel, { color: colors.textSecondary }]}
+                          >
+                            VAT Output
+                          </Text>
+                          <Text style={[s.vatValue, { color: colors.accent }]}>
+                            {formatPeso(itemNetPreview.vatOutput)}
+                          </Text>
+                        </View>
+                        <View
+                          style={[
+                            s.vatRow,
+                            {
+                              paddingTop: 8,
+                              borderTopWidth: 1,
+                              borderTopColor: colors.border,
+                              marginTop: 8,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[s.vatLabel, { color: colors.textSecondary }]}
+                          >
+                            OpEx Amount
+                          </Text>
+                          <Text style={[s.vatValue, { color: colors.text }]}>
+                            {formatPeso(itemNetPreview.opExAmount)}
+                          </Text>
+                        </View>
+                        <View style={s.vatRow}>
+                          <Text
+                            style={[s.vatLabel, { color: colors.textSecondary }]}
+                          >
+                            Gross Profit
+                          </Text>
+                          <Text
+                            style={[
+                              s.vatValue,
+                              {
+                                color:
+                                  itemNetPreview.grossProfit >= 0
+                                    ? colors.success
+                                    : colors.error,
+                              },
+                            ]}
+                          >
+                            {formatPeso(itemNetPreview.grossProfit)}
+                          </Text>
+                        </View>
+                        <View style={s.vatRow}>
+                          <Text
+                            style={[s.vatLabel, { color: colors.textSecondary }]}
+                          >
+                            Net Profit
+                          </Text>
+                          <Text
+                            style={[
+                              s.vatValue,
+                              {
+                                color:
+                                  itemNetPreview.netProfit >= 0
+                                    ? colors.success
+                                    : colors.error,
+                                fontWeight: '700',
+                              },
+                            ]}
+                          >
+                            {formatPeso(itemNetPreview.netProfit)}
+                          </Text>
+                        </View>
+                        {itemNetPreview.warning ? (
+                          <Text
+                            style={{
+                              color: colors.error,
+                              marginTop: 10,
+                              fontSize: 12,
+                            }}
+                          >
+                            {itemNetPreview.warning}
+                          </Text>
+                        ) : null}
+                      </View>
+                    ) : null}
 
-      {/* CATALOG SEARCH MODAL */}
-      <CatalogSearchModal
-        visible={showCatalogSearch}
-        onClose={() => setShowCatalogSearch(false)}
-        onSelect={handleCatalogItemSelect}
-        colors={colors}
-      />
+                    {/* OpEx & Selling Price */}
+                    <View style={{ gap: 12, marginTop: 10 }}>
+                      <Text
+                        style={[s.fieldLabel, { color: colors.textSecondary }]}
+                      >
+                        OpEx %
+                      </Text>
+                      <TextInput
+                        style={[
+                          s.input,
+                          {
+                            color: colors.text,
+                            backgroundColor: colors.background,
+                            borderColor: colors.border,
+                          },
+                        ]}
+                        placeholder="e.g. 0.30 for 30%"
+                        placeholderTextColor={colors.textSecondary}
+                        value={itemNetForm.opExPct}
+                        onChangeText={(v) =>
+                          setItemNetForm((f) => ({ ...f, opExPct: v }))
+                        }
+                        keyboardType="decimal-pad"
+                      />
 
-      <Modal
-        visible={!!metricModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setMetricModal(null)}
-      >
-        <TouchableOpacity
-          style={dcm.backdrop}
-          activeOpacity={1}
-          onPress={() => setMetricModal(null)}
+                      <Text
+                        style={[s.fieldLabel, { color: colors.textSecondary }]}
+                      >
+                        Selling Price
+                      </Text>
+                      <TextInput
+                        style={[
+                          s.input,
+                          {
+                            color: colors.text,
+                            backgroundColor: itemNetForm.selectedItem
+                              ? colors.border + '40'
+                              : colors.background,
+                            borderColor: itemNetForm.selectedItem
+                              ? colors.primary
+                              : colors.border,
+                          },
+                        ]}
+                        placeholder="0.00"
+                        placeholderTextColor={colors.textSecondary}
+                        value={
+                          itemNetForm.selectedItem?.sellingPrice
+                            ? itemNetForm.selectedItem.sellingPrice
+                            : itemNetForm.sellingPriceInput
+                        }
+                        onChangeText={(v) => {
+                          if (!itemNetForm.selectedItem) {
+                            setItemNetForm((f) => ({
+                              ...f,
+                              sellingPriceInput: v,
+                            }));
+                          }
+                        }}
+                        editable={!itemNetForm.selectedItem}
+                        keyboardType="decimal-pad"
+                      />
+                    </View>
+
+                    {/* Description */}
+                    <Text style={[s.fieldLabel, { color: colors.textSecondary }]}>
+                      Description
+                    </Text>
+                    <TextInput
+                      style={[
+                        s.input,
+                        s.textarea,
+                        {
+                          color: colors.text,
+                          backgroundColor: colors.background,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                      placeholder="Optional description…"
+                      placeholderTextColor={colors.textSecondary}
+                      value={itemNetForm.description}
+                      onChangeText={(v) =>
+                        setItemNetForm((f) => ({ ...f, description: v }))
+                      }
+                      multiline
+                      numberOfLines={3}
+                      textAlignVertical="top"
+                    />
+
+                    <TouchableOpacity
+                      style={[
+                        s.submitBtn,
+                        {
+                          backgroundColor: colors.primary,
+                          opacity:
+                            (!itemNetForm.costInputAmount &&
+                              itemNetForm.costLines.length === 0) ||
+                              !itemNetForm.vatType ||
+                              !itemNetForm.accountTitleId ||
+                              !itemNetForm.centerId ||
+                              !itemNetForm.subCenterId
+                              ? 0.5
+                              : 1,
+                        },
+                      ]}
+                      onPress={handleItemNetSubmit}
+                      disabled={
+                        (!itemNetForm.costInputAmount &&
+                          itemNetForm.costLines.length === 0) ||
+                        !itemNetForm.vatType ||
+                        !itemNetForm.accountTitleId ||
+                        !itemNetForm.centerId ||
+                        !itemNetForm.subCenterId
+                      }
+                      activeOpacity={0.85}
+                    >
+                      <Text style={s.submitBtnText}>Add Item Summary</Text>
+                    </TouchableOpacity>
+                    <View style={{ height: 20 }} />
+                  </ScrollView>
+                )}
+              </Animated.View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+
+        {/* CATALOG SEARCH MODAL */}
+        <CatalogSearchModal
+          visible={showCatalogSearch}
+          onClose={() => setShowCatalogSearch(false)}
+          onSelect={handleCatalogItemSelect}
+          colors={colors}
+        />
+
+        <Modal
+          visible={!!metricModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setMetricModal(null)}
         >
-          <View
-            style={[
-              dcm.card,
-              {
-                backgroundColor: colors.surface,
-                alignItems: 'stretch',
-                minWidth: 280,
-              },
-            ]}
+          <TouchableOpacity
+            style={dcm.backdrop}
+            activeOpacity={1}
+            onPress={() => setMetricModal(null)}
           >
-            <Text style={[dcm.title, { color: colors.text }]}>
-              {metricModal?.title}
-            </Text>
-            {metricModal ? renderBreakdownRows(metricModal.rows) : null}
-            <TouchableOpacity
+            <View
               style={[
-                dcm.btn,
+                dcm.card,
                 {
-                  marginTop: 18,
-                  backgroundColor: colors.primary,
-                  borderColor: colors.primary,
+                  backgroundColor: colors.surface,
+                  alignItems: 'stretch',
+                  minWidth: 280,
                 },
               ]}
-              onPress={() => setMetricModal(null)}
             >
-              <Text style={[dcm.btnText, { color: '#fff' }]}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
-
+              <Text style={[dcm.title, { color: colors.text }]}>
+                {metricModal?.title}
+              </Text>
+              {metricModal ? renderBreakdownRows(metricModal.rows) : null}
+              <TouchableOpacity
+                style={[
+                  dcm.btn,
+                  {
+                    marginTop: 18,
+                    backgroundColor: colors.primary,
+                    borderColor: colors.primary,
+                  },
+                ]}
+                onPress={() => setMetricModal(null)}
+              >
+                <Text style={[dcm.btnText, { color: '#fff' }]}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal></>)
+      }
       {/* NOTIFICATIONS MODAL */}
       <Modal visible={showNotifications} transparent animationType="fade">
         <TouchableOpacity

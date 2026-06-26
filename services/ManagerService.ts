@@ -5,6 +5,7 @@ import { getGraphQLClient } from '@/utils/constants';
 import { gql } from 'graphql-request';
 import { AuthService } from './authService';
 import { OutletPromoInput } from '@/types';
+import { formatGraphQLError } from '@/utils/errorFormatter';
 function mapTransaction(raw: any): AdminTransaction {
   return {
     id: String(raw.id),
@@ -118,7 +119,7 @@ export class AdminService {
       const res = (await client.request(GET_OWNEDBRANCHES, {}, {
         Authorization: `Bearer ${accessToken}`
       })) as any
-      console.log("Success getting branches:\n", res.getOwnedBranches)
+      if (__DEV__) console.log("Success getting branches:\n", res.getOwnedBranches)
       branches = res.getOwnedBranches.map((b: any) => {
         return {
           id: b.id,
@@ -133,7 +134,11 @@ export class AdminService {
       }) ?? []
       return branches
     } catch (error) {
-      console.error("Failed to get branches:", error)
+
+      if (__DEV__) {
+        const errorMessage = formatGraphQLError(error)
+        console.error("Failed to get branches:", errorMessage)
+      }
       return []
     }
 
@@ -174,7 +179,10 @@ export class AdminService {
         }
       }
     } catch (error) {
-      console.error("Failed to get branch Revenue:", error)
+      if (__DEV__) {
+        const errorMessage = formatGraphQLError(error)
+        console.error("Failed to get branch Revenue:", errorMessage)
+      }
       // ✅ return empty result on failure instead of falling through to mock data
       return {
         branchId,
@@ -209,7 +217,7 @@ export class AdminService {
       const res = (await client.request(GET_BRANCHOUTLETS, { branchId }, {
         Authorization: `Bearer ${accessToken}`
       })) as any
-      console.log("Success getting outlets:\n", res.getOutletsByBranchIDD)
+      if (__DEV__) console.log("Success getting outlets:\n", res.getOutletsByBranchIDD)
       return res.getOutletsByBranchIDD.map((o: any) => {
         return {
           id: o.id,
@@ -217,6 +225,8 @@ export class AdminService {
           status: o.status === null ? "open" : o.status,
           outletType: o.outletType,
           address: o.address,
+
+          bannerImage: o.bannerImage ?? null,
           createdAt: o.createdAt,
           assignedCashierIds: o.staff.map((s: any) => s.id) ?? [],
           currentCashiers: o.staff.filter((s: any) => s.isPresent === true).map((s: any) => {
@@ -261,7 +271,7 @@ export class AdminService {
       const totalRevenue = transactions.reduce(
         (sum: number, txn: any) => sum + txn.total, 0
       )
-      console.log("Success getting outlet Revenue:", totalRevenue)
+      if (__DEV__) console.log("Success getting outlet Revenue:", totalRevenue)
       return {
         outletId,
         totalRevenue,
@@ -272,7 +282,11 @@ export class AdminService {
         }
       }
     } catch (error) {
-      console.error("Failed to get outlet Revenue:", error)
+
+      if (__DEV__) {
+        const errorMessage = formatGraphQLError(error)
+        console.error("Failed to get outlet Revenue:", errorMessage)
+      }
       return {
         outletId,
         totalRevenue: 0,
@@ -360,13 +374,13 @@ export class AdminService {
   }
 
   static async getRecentTransactions(
-  outletId: string,
-  limit: number = 50,
-  offset: number = 0,
-  startDate?: Date,
-  endDate?: Date,
-): Promise<AdminTransaction[]> {
-  const QUERY = gql`
+    outletId: string,
+    limit: number = 50,
+    offset: number = 0,
+    startDate?: Date,
+    endDate?: Date,
+  ): Promise<AdminTransaction[]> {
+    const QUERY = gql`
     query GetOutletTransactions(
       $outletId: ID!,
       $limit: Int,
@@ -385,20 +399,20 @@ export class AdminService {
       }
     }
   `;
-  try {
-    const { accessToken } = await AuthService.getTokens();
-    const client = await getGraphQLClient();
-    const res = await client.request(
-      QUERY,
-      { outletId: parseInt(outletId), limit, offset, startDate, endDate },
-      { Authorization: `Bearer ${accessToken}` },
-    ) as any;
-    return (res.getOutletTransactions ?? []).map(mapTransaction);
-  } catch (error) {
-    console.error('Failed to get transactions query getRecentTransactions:', error);
-    return [];
+    try {
+      const { accessToken } = await AuthService.getTokens();
+      const client = await getGraphQLClient();
+      const res = await client.request(
+        QUERY,
+        { outletId: parseInt(outletId), limit, offset, startDate, endDate },
+        { Authorization: `Bearer ${accessToken}` },
+      ) as any;
+      return (res.getOutletTransactions ?? []).map(mapTransaction);
+    } catch (error) {
+      console.error('Failed to get transactions query getRecentTransactions:', error);
+      return [];
+    }
   }
-}
   static async getTransactionById(id: string): Promise<AdminTransaction | null> {
     const QUERY = gql`
     query GetTransactionById($id: Int!) {
@@ -446,7 +460,7 @@ export class AdminService {
       const res = (await client.request(GETBRANCH_ID, { getBranchByIdId: branchId }, {
         Authorization: `Bearer ${accessToken}`
       })) as any
-      console.log("Success getting branch by id:\n", res.getBranchById)
+      if (__DEV__) console.log("Success getting branch by id:\n", res.getBranchById)
       const branch = res.getBranchById
       return {
         id: branch.id,
@@ -458,7 +472,10 @@ export class AdminService {
         createdAt: branch.createdAt
       }
     } catch (error) {
-      console.error("Failed to get branch by id:", error)
+      if (__DEV__) {
+        const errorMessage = formatGraphQLError(error)
+        console.error("Failed to get branch by id:", errorMessage)
+      }
       return null
     }
   }
@@ -530,7 +547,10 @@ export class AdminService {
         vatTypeId: o.vatTypeId,
       };
     } catch (error) {
-      console.error('Failed to get outlet by id:', error);
+      if (__DEV__) {
+        const errorMessage = formatGraphQLError(error)
+        console.error('Failed to get outlet by id:', errorMessage);
+      }
       return null;
     }
   }
@@ -569,7 +589,7 @@ export class AdminService {
         Authorization: `Bearer ${accessToken}`
       }) as any;
 
-      console.log("Success creating branch:", res.createBranch);
+      if (__DEV__) console.log("Success creating branch:", res.createBranch);
       const branch = res.createBranch;
       return {
         id: branch.id,
@@ -581,7 +601,10 @@ export class AdminService {
         createdAt: branch.createdAt
       };
     } catch (error) {
-      console.error("Failed to create branch:", error);
+      if (__DEV__) {
+        const errorMessage = formatGraphQLError(error)
+        console.error("Failed to create branch:", errorMessage);
+      }
       throw error;
     }
   }
@@ -672,7 +695,7 @@ export class AdminService {
         Authorization: `Bearer ${accessToken}`
       }) as any;
 
-      console.log("Success creating outlet:", res.createOutlet);
+      if (__DEV__) console.log("Success creating outlet:", res.createOutlet);
       const outlet = res.createOutlet;
       return {
         id: outlet.id,
@@ -698,7 +721,10 @@ export class AdminService {
         })) ?? []
       };
     } catch (error) {
-      console.error("Failed to create outlet:", error);
+      if (__DEV__) {
+        const errorMessage = formatGraphQLError(error)
+        console.error("Failed to create outlet:", errorMessage);
+      }
       throw error;
     }
   }
@@ -745,7 +771,11 @@ export class AdminService {
         createdAt: branch.createdAt,
       };
     } catch (error) {
-      console.error('Failed to update branch:', error);
+
+      if (__DEV__) {
+        const errorMessage = formatGraphQLError(error)
+        console.error('Failed to update branch:', errorMessage);
+      }
       throw error;
     }
   }
@@ -882,7 +912,11 @@ export class AdminService {
         })) ?? [],
       };
     } catch (error) {
-      console.error('Failed to update outlet:', error);
+
+      if (__DEV__) {
+        const errorMessage = formatGraphQLError(error)
+        console.error('Failed to update outlet:', errorMessage);
+      }
       throw error;
     }
   }
@@ -944,9 +978,12 @@ export class AdminService {
         { Authorization: `Bearer ${accessToken}` }
       );
 
-      console.log(`Successfully assigned ${itemIds.length} items to outlet`);
+      if (__DEV__) console.log(`Successfully assigned ${itemIds.length} items to outlet`);
     } catch (error) {
-      console.error("Failed to assign items to outlet:", error);
+      if (__DEV__) {
+        const errorMessage = formatGraphQLError(error)
+        console.error("Failed to assign items to outlet:", errorMessage);
+      }
       throw error;
     }
   }
@@ -993,6 +1030,10 @@ export class AdminService {
             barcode
             categoryId
             sellingPrice
+            image
+            stock
+            stockLabel
+            remainingStock
             costLines {
               label
               amount
@@ -1026,7 +1067,10 @@ export class AdminService {
       }) as any;
       return res.getItemsByOutlet ?? [];
     } catch (error) {
-      console.error("Failed to get outlet items:", error);
+      if (__DEV__) {
+        const errorMessage = formatGraphQLError(error)
+        console.error("Failed to get outlet items:", errorMessage);
+      }
       return [];
     }
   }
@@ -1052,7 +1096,10 @@ export class AdminService {
       }) as any;
       return res.getOwnedBranches ?? [];
     } catch (error) {
-      console.error("Failed to get branches minimal:", error);
+      if (__DEV__) {
+        const errorMessage = formatGraphQLError(error)
+        console.error("Failed to get branches minimal:", errorMessage);
+      }
       return [];
     }
   }
@@ -1080,8 +1127,10 @@ export class AdminService {
       }) as any;
       return res.getOutletsByBranch ?? [];
     } catch (error) {
-      console.error("Failed to get outlets minimal:", error);
-      return [];
+      if (__DEV__) {
+        const errorMessage = formatGraphQLError(error)
+        console.error("Failed to get outlets minimal:", errorMessage);
+      } return [];
     }
   }
 }

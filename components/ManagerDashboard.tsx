@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { Shield, Smartphone, Activity, TriangleAlert as AlertTriangle } from 'lucide-react-native';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuth } from '@/contexts/AuthContext';
 //import { useWiFiAuth } from '@/hooks/useWiFiAuth';
 import { DeviceService } from '@/services/deviceService';
 import { StorageService } from '@/services/storageService';

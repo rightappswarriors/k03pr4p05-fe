@@ -19,7 +19,8 @@ export class SubCenterService {
             return response.subCenters;
         } catch (error) {
             const errorMessage = formatGraphQLError(error)
-            console.error(errorMessage);
+            if (__DEV__) console.error("SubCenterService ", errorMessage);
+            throw new Error(errorMessage)
         }
     }
     static async create(name: string) {

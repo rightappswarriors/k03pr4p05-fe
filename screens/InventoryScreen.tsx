@@ -7,17 +7,22 @@ import {
   FlatList,
   Image,
   Modal,
+  Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import {
   Camera,
   Filter,
   Image as ImageIcon,
+  LayoutGrid,
+  List,
   Minus,
   Package,
   Pencil,
@@ -26,6 +31,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '@/contexts/ThemeContext';
 import { AuthService } from '@/services/authService';
@@ -98,6 +104,7 @@ interface UpdateItemPayload {
 
 type StockFilter = 'All' | 'Low Stock' | 'In Stock';
 type CategoryFilter = 'All' | string;
+type ViewMode = 'card' | 'table';
 
 const CATEGORIES = [
   'All',
@@ -108,6 +115,49 @@ const CATEGORIES = [
   'Dairy',
   'Personal',
 ];
+
+// ─── Stock Health Helpers ─────────────────────────────────────────────────────
+
+type StockStatus = 'healthy' | 'low' | 'critical';
+
+function getStockStatus(stock: number, minStock: number): StockStatus {
+  if (stock <= minStock * 0.5) return 'critical';
+  if (stock <= minStock) return 'low';
+  return 'healthy';
+}
+
+function getStockPercent(stock: number, minStock: number): number {
+  return Math.min((stock / Math.max(minStock * 4, 1)) * 100, 100);
+}
+
+const STOCK_STATUS_CONFIG = {
+  healthy: { label: 'Healthy', color: '#059669', bg: '#D1FAE5', border: '#6EE7B7' },
+  low: { label: 'Low Stock', color: '#D97706', bg: '#FEF3C7', border: '#FCD34D' },
+  critical: { label: 'Critical', color: '#DC2626', bg: '#FEE2E2', border: '#FCA5A5' },
+};
+
+function StockBadge({ status, size = 'md' }: { status: StockStatus; size?: 'sm' | 'md' }) {
+  const cfg = STOCK_STATUS_CONFIG[status];
+  const ph = size === 'sm' ? 6 : 9;
+  const pv = size === 'sm' ? 2 : 4;
+  const fs = size === 'sm' ? 10 : 11;
+  return (
+    <View style={{ backgroundColor: cfg.bg, borderRadius: 99, paddingHorizontal: ph, paddingVertical: pv, alignSelf: 'flex-start', borderWidth: 1, borderColor: cfg.border }}>
+      <Text style={{ color: cfg.color, fontSize: fs, fontWeight: '700' }}>{cfg.label}</Text>
+    </View>
+  );
+}
+
+function StockBar({ stock, minStock, height = 3 }: { stock: number; minStock: number; height?: number }) {
+  const status = getStockStatus(stock, minStock);
+  const pct = getStockPercent(stock, minStock);
+  const color = STOCK_STATUS_CONFIG[status].color;
+  return (
+    <View style={{ height, borderRadius: height / 2, backgroundColor: '#E5E7EB', overflow: 'hidden' }}>
+      <View style={{ height: '100%', width: `${pct}%` as any, backgroundColor: color, borderRadius: height / 2 }} />
+    </View>
+  );
+}
 
 // ─── ImagePickerSection ───────────────────────────────────────────────────────
 
@@ -212,6 +262,8 @@ function ImagePickerSection({
             source={{ uri: imageUri }}
             style={s.previewThumb}
             resizeMode="cover"
+
+            defaultSource={require('@/assets/images/placeholder.png')}
           />
           <View style={{ flex: 1 }}>
             <Text
@@ -849,7 +901,7 @@ function EditItemModal({
         onClose();
       }
     } catch (err: any) {
-      console.error('Failed to update item:', err);
+      if (__DEV__) console.error('Failed to update item:', err);
       setError(err.message || 'Failed to update item. Please try again.');
     } finally {
       setIsLoading(false);
@@ -1528,695 +1580,313 @@ function ItemDetailModal({
   return (
     <Modal
       visible={visible}
+      transparent
       animationType="fade"
-      presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <View style={{ flex: 1, backgroundColor: colors.background }}>
-        {/* Header */}
-        <View style={[idm.header, { backgroundColor: colors.primary }]}>
-          {item.imageUrl ? (
-            <Image
-              source={{ uri: item.imageUrl }}
-              style={{
-                width: 52,
-                height: 52,
-                borderRadius: 10,
-                marginRight: 12,
-                borderWidth: 2,
-                borderColor: 'rgba(255,255,255,0.3)',
-              }}
-              resizeMode="cover"
-            />
-          ) : (
-            <View
-              style={{
-                width: 52,
-                height: 52,
-                borderRadius: 10,
-                marginRight: 12,
-                backgroundColor: 'rgba(255,255,255,0.15)',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderWidth: 2,
-                borderColor: 'rgba(255,255,255,0.2)',
-              }}
-            >
-              <Package
-                size={24}
-                color="rgba(255,255,255,0.7)"
-                strokeWidth={1.5}
-              />
-            </View>
-          )}
-          <View style={{ flex: 1 }}>
-            <Text style={idm.sku}>{item.sku}</Text>
-            <Text style={idm.name}>{item.name}</Text>
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 8,
-                marginTop: 4,
-              }}
-            >
-              <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>
-                {item.category}
-              </Text>
-              {item.vatExempt && (
+      {/* Dim overlay — tap outside to close */}
+      <TouchableOpacity
+        style={{
+          flex: 1,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          justifyContent: 'center',
+          alignItems: 'center',
+          paddingVertical: 40,
+        }}
+        activeOpacity={1}
+        onPress={onClose}
+      >
+        {/* Inner sheet — absorbs taps so they don't bubble to overlay */}
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={() => { }}
+          style={{             // ← move sizing here, to the TouchableOpacity itself
+            width: '90%',      // ← concrete percentage of the overlay
+            maxWidth: 640,
+          }}
+        >
+          <View style={{
+            backgroundColor: colors.surface,
+            borderRadius: 16,
+            width: '100%',     // ← now '100%' of the TouchableOpacity above, which has real width
+            maxHeight: 780,
+            overflow: 'hidden',
+          }}>
+            {/* Header */}
+            <View style={[idm.header, { backgroundColor: colors.primary }]}>
+              {item.imageUrl ? (
+                <Image
+                  source={{ uri: item.imageUrl }}
+                  style={{
+                    width: 52,
+                    height: 52,
+                    borderRadius: 10,
+                    marginRight: 12,
+                    borderWidth: 2,
+                    borderColor: 'rgba(255,255,255,0.3)',
+                  }}
+
+                  defaultSource={require('@/assets/images/placeholder.png')}
+                  resizeMode="cover"
+                />
+              ) : (
                 <View
                   style={{
-                    backgroundColor: 'rgba(255,255,255,0.2)',
-                    borderRadius: 4,
-                    paddingHorizontal: 6,
-                    paddingVertical: 2,
+                    width: 52,
+                    height: 52,
+                    borderRadius: 10,
+                    marginRight: 12,
+                    backgroundColor: 'rgba(255,255,255,0.15)',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderWidth: 2,
+                    borderColor: 'rgba(255,255,255,0.2)',
                   }}
                 >
-                  <Text
-                    style={{ fontSize: 10, color: '#fff', fontWeight: '700' }}
-                  >
-                    VAT EXEMPT
-                  </Text>
+                  <Package
+                    size={24}
+                    color="rgba(255,255,255,0.7)"
+                    strokeWidth={1.5}
+                  />
                 </View>
               )}
-            </View>
-          </View>
-          {/* Edit button */}
-          <TouchableOpacity
-            style={[
-              idm.closeBtn,
-              { marginRight: 8, backgroundColor: 'rgba(255,255,255,0.18)' },
-            ]}
-            onPress={() => {
-              onClose();
-              onEdit(item);
-            }}
-          >
-            <Pencil size={15} color="#fff" strokeWidth={2} />
-          </TouchableOpacity>
-          <TouchableOpacity style={idm.closeBtn} onPress={onClose}>
-            <X size={16} color="#fff" strokeWidth={2.5} />
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView
-          contentContainerStyle={{ padding: 16, paddingBottom: 40, width: isDesktop ? 900 : '100%', alignSelf: 'center' }}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Stock level */}
-          <View
-            style={[
-              idm.section,
-              { backgroundColor: colors.card, borderColor: colors.border },
-            ]}
-          >
-            <Text style={[idm.sectionTitle, { color: colors.textSecondary }]}>
-              STOCK LEVEL
-            </Text>
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                paddingHorizontal: 14,
-                paddingBottom: 8,
-              }}
-            >
-              <View>
-                <Text
-                  style={{
-                    fontSize: 36,
-                    fontWeight: '900',
-                    color: item.lowStock ? colors.error : colors.text,
-                  }}
-                >
-                  {item.stock}
-                </Text>
-                <Text style={{ fontSize: 12, color: colors.textSecondary }}>
-                  units on hand
-                </Text>
-              </View>
-              <View style={{ alignItems: 'flex-end' }}>
-                <Text style={{ fontSize: 13, color: colors.textSecondary }}>
-                  Minimum Reorder Level:{' '}
-                  <Text style={{ fontWeight: '700', color: colors.text }}>
-                    {item.minStock}
-                  </Text>
-                </Text>
-                {item.lowStock && (
-                  <View
-                    style={{
-                      backgroundColor: colors.error + '20',
-                      borderRadius: 6,
-                      paddingHorizontal: 8,
-                      paddingVertical: 3,
-                      marginTop: 4,
-                      borderWidth: 1,
-                      borderColor: colors.error,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 11,
-                        fontWeight: '700',
-                        color: colors.error,
-                      }}
-                    >
-                      ⚠ Reorder Now
-                    </Text>
-                  </View>
-                )}
-              </View>
-            </View>
-            <View
-              style={{
-                height: 6,
-                borderRadius: 3,
-                backgroundColor: colors.border,
-                marginHorizontal: 14,
-                marginBottom: 14,
-                overflow: 'hidden',
-              }}
-            >
-              <View
-                style={{
-                  height: '100%',
-                  width: `${ratio * 100}%`,
-                  backgroundColor: barColor,
-                  borderRadius: 3,
-                }}
-              />
-            </View>
-            {/* Quick adjust */}
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                paddingHorizontal: 14,
-                paddingBottom: 14,
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 12,
-                  color: colors.textSecondary,
-                  fontWeight: '600',
-                }}
-              >
-                Quick Adjust
-              </Text>
-              <View
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}
-              >
-                <TouchableOpacity
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 8,
-                    backgroundColor: colors.error + '20',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderWidth: 1,
-                    borderColor: colors.error,
-                  }}
-                  onPress={() => setQty((q) => Math.max(0, q - 1))}
-                >
-                  <Minus size={16} color={colors.error} strokeWidth={2.5} />
-                </TouchableOpacity>
-                <Text
-                  style={{
-                    fontSize: 18,
-                    fontWeight: '800',
-                    color: colors.text,
-                    minWidth: 32,
-                    textAlign: 'center',
-                  }}
-                >
-                  {qty}
-                </Text>
-                <TouchableOpacity
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 8,
-                    backgroundColor: colors.success + '20',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderWidth: 1,
-                    borderColor: colors.success,
-                  }}
-                  onPress={() => setQty((q) => q + 1)}
-                >
-                  <Plus size={16} color={colors.success} strokeWidth={2.5} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={{
-                    paddingHorizontal: 16,
-                    paddingVertical: 8,
-                    borderRadius: 8,
-                    backgroundColor: qty !== 0 ? colors.primary : colors.border,
-                  }}
-                  disabled={qty === 0}
-                  onPress={() => {
-                    if (qty !== 0) {
-                      onAdjustStock(item.id, qty);
-                      setQty(0);
-                      onClose();
-                    }
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      fontWeight: '700',
-                      color: qty !== 0 ? '#fff' : colors.textSecondary,
-                    }}
-                  >
-                    {qty > 0
-                      ? `+${qty} Add`
-                      : qty < 0
-                        ? `${qty} Remove`
-                        : 'Apply'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-          {/* Stock Distribution */}
-          <View
-            style={[
-              idm.section,
-              {
-                backgroundColor: colors.card,
-                borderColor: colors.border,
-                marginTop: 12,
-              },
-            ]}
-          >
-            <Text style={[idm.sectionTitle, { color: colors.textSecondary }]}>
-              STOCK DISTRIBUTION
-            </Text>
-
-            {distLoading ? (
-              <View style={{ padding: 20, alignItems: 'center' }}>
-                <ActivityIndicator size="small" color={colors.primary} />
-              </View>
-            ) : !distribution ? (
-              <Text
-                style={{
-                  padding: 12,
-                  fontSize: 12,
-                  color: colors.textSecondary,
-                }}
-              >
-                No distribution data
-              </Text>
-            ) : (
-              <>
-                {/* Summary row */}
-                <View style={{ flexDirection: 'row', padding: 12, gap: 8 }}>
-                  {[
-                    [
-                      'Total',
-                      `${distribution.totalStock} ${distribution.stockLabel}`,
-                      colors.text,
-                    ],
-                    [
-                      'Assigned',
-                      `${distribution.totalAssigned} ${distribution.stockLabel}`,
-                      colors.accent,
-                    ],
-                    [
-                      'Warehouse',
-                      `${distribution.warehouseStock} ${distribution.stockLabel}`,
-                      distribution.warehouseStock < 0
-                        ? colors.error
-                        : colors.success,
-                    ],
-                  ].map(([label, value, color]) => (
-                    <View
-                      key={label as string}
-                      style={{
-                        flex: 1,
-                        alignItems: 'center',
-                        backgroundColor: colors.background,
-                        borderRadius: 8,
-                        padding: 8,
-                        borderWidth: 1,
-                        borderColor: colors.border,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 15,
-                          fontWeight: '800',
-                          color: color as string,
-                        }}
-                      >
-                        {value}
-                      </Text>
-                      <Text
-                        style={{
-                          fontSize: 10,
-                          color: colors.textSecondary,
-                          marginTop: 2,
-                        }}
-                      >
-                        {label}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-
-                {/* Per-outlet rows */}
-                {distribution.outlets.length === 0 ? (
-                  <Text
-                    style={{
-                      padding: 12,
-                      fontSize: 12,
-                      color: colors.textSecondary,
-                    }}
-                  >
-                    Not assigned to any outlet yet
-                  </Text>
-                ) : (
-                  distribution.outlets.map((outlet: any) => (
-                    <View
-                      key={outlet.outletId}
-                      style={[
-                        idm.detailRow,
-                        {
-                          borderBottomColor: colors.border,
-                        },
-                      ]}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <Text
-                          style={{
-                            fontSize: 13,
-                            fontWeight: '600',
-                            color: colors.text,
-                          }}
-                        >
-                          {outlet.outletName}
-                        </Text>
-                        {outlet.reorderPoint > 0 && (
-                          <Text
-                            style={{
-                              fontSize: 11,
-                              color: colors.textSecondary,
-                              marginTop: 2,
-                            }}
-                          >
-                            Reorder at {outlet.reorderPoint} {outlet.baseUnit}
-                          </Text>
-                        )}
-                      </View>
-                      <View style={{ alignItems: 'flex-end', gap: 4 }}>
-                        <Text
-                          style={{
-                            fontSize: 14,
-                            fontWeight: '700',
-                            color: colors.text,
-                          }}
-                        >
-                          {outlet.quantity} {outlet.baseUnit}
-                        </Text>
-                        <View
-                          style={{
-                            paddingHorizontal: 8,
-                            paddingVertical: 2,
-                            borderRadius: 10,
-                            borderWidth: 1,
-                            borderColor:
-                              outlet.status === 'CRITICAL'
-                                ? colors.error
-                                : outlet.status === 'LOW'
-                                  ? '#F59E0B'
-                                  : colors.success,
-                            backgroundColor:
-                              outlet.status === 'CRITICAL'
-                                ? colors.error + '18'
-                                : outlet.status === 'LOW'
-                                  ? '#F59E0B18'
-                                  : colors.success + '18',
-                          }}
-                        >
-                          <Text
-                            style={{
-                              fontSize: 10,
-                              fontWeight: '700',
-                              color:
-                                outlet.status === 'CRITICAL'
-                                  ? colors.error
-                                  : outlet.status === 'LOW'
-                                    ? '#F59E0B'
-                                    : colors.success,
-                            }}
-                          >
-                            {outlet.status === 'CRITICAL'
-                              ? '● CRITICAL'
-                              : outlet.status === 'LOW'
-                                ? '⚠ LOW'
-                                : '✓ OK'}
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
-                  ))
-                )}
-
-                {/* stockDescription if set */}
-                {distribution.stockDescription && (
-                  <Text
-                    style={{
-                      fontSize: 12,
-                      color: colors.textSecondary,
-                      padding: 12,
-                      paddingTop: 4,
-                      fontStyle: 'italic',
-                    }}
-                  >
-                    {distribution.stockDescription}
-                  </Text>
-                )}
-              </>
-            )}
-          </View>
-          {/* Pricing */}
-          <View
-            style={[
-              idm.section,
-              {
-                backgroundColor: colors.card,
-                borderColor: colors.border,
-                marginTop: 12,
-              },
-            ]}
-          >
-            <Text style={[idm.sectionTitle, { color: colors.textSecondary }]}>
-              PRICING
-            </Text>
-            {(
-              [
-                ['Price A (Retail)', item.sellingPrice, colors.accent],
-                [
-                  'Price B (Wholesale)',
-                  item.priceB ?? item.sellingPrice * 0.9,
-                  colors.primary,
-                ],
-                [
-                  'Price C (Special)',
-                  item.priceC ?? item.sellingPrice * 0.85,
-                  colors.success,
-                ],
-              ] as [string, number, string][]
-            ).map(([label, val, color]) => (
-              <View
-                key={label}
-                style={[idm.detailRow, { borderBottomColor: colors.border }]}
-              >
-                <Text
-                  style={[idm.detailLabel, { color: colors.textSecondary }]}
-                >
-                  {label}
-                </Text>
-                <Text style={{ fontSize: 14, fontWeight: '700', color }}>
-                  ₱{val.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                </Text>
-              </View>
-            ))}
-            <View style={[idm.detailRow, { borderBottomColor: colors.border }]}>
-              <Text style={[idm.detailLabel, { color: colors.textSecondary }]}>
-                VAT
-              </Text>
-              <Text style={[idm.detailValue, { color: colors.text }]}>
-                {item.vatExempt ? 'VAT Exempt' : `VAT ${item?.vatType?.rate === 0 ? 'Exempt' : item?.vatType ? `Incl. (${item.vatType.rate}%)` : 'Incl. (12%)'}`}
-              </Text>
-            </View>
-          </View>
-
-          {/* Cost breakdown */}
-          {item.costLines && item.costLines.length > 0 && (
-            <View
-              style={[
-                idm.section,
-                {
-                  backgroundColor: colors.card,
-                  borderColor: colors.border,
-                  marginTop: 12,
-                },
-              ]}
-            >
-              <Text style={[idm.sectionTitle, { color: colors.textSecondary }]}>
-                COST BREAKDOWN
-              </Text>
-              {item.costLines.map((line) => (
+              <View style={{ flex: 1 }}>
+                <Text style={idm.sku}>{item.sku}</Text>
+                <Text style={idm.name}>{item.name}</Text>
                 <View
-                  key={line.id}
-                  style={[idm.detailRow, { borderBottomColor: colors.border }]}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
+                    marginTop: 4,
+                  }}
                 >
-                  <Text
-                    style={[idm.detailLabel, { color: colors.textSecondary }]}
-                  >
-                    {line.label || 'Cost'}
+                  <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>
+                    {item.category}
                   </Text>
-                  <Text style={[idm.detailValue, { color: colors.text }]}>
-                    ₱
-                    {line.amount.toLocaleString('en-PH', {
-                      minimumFractionDigits: 2,
-                    })}
-                  </Text>
+                  {item.vatExempt && (
+                    <View
+                      style={{
+                        backgroundColor: 'rgba(255,255,255,0.2)',
+                        borderRadius: 4,
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                      }}
+                    >
+                      <Text
+                        style={{ fontSize: 10, color: '#fff', fontWeight: '700' }}
+                      >
+                        VAT EXEMPT
+                      </Text>
+                    </View>
+                  )}
                 </View>
-              ))}
+              </View>
+              {/* Edit button */}
+              <TouchableOpacity
+                style={[
+                  idm.closeBtn,
+                  { marginRight: 8, backgroundColor: 'rgba(255,255,255,0.18)' },
+                ]}
+                onPress={() => {
+                  onClose();
+                  onEdit(item);
+                }}
+              >
+                <Pencil size={15} color="#fff" strokeWidth={2} />
+              </TouchableOpacity>
+              <TouchableOpacity style={idm.closeBtn} onPress={onClose}>
+                <X size={16} color="#fff" strokeWidth={2.5} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              contentContainerStyle={{
+                padding: 16,
+                paddingBottom: 40,
+              }}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* Stock level */}
               <View
                 style={[
-                  idm.detailRow,
-                  {
-                    borderBottomColor: colors.border,
-                    backgroundColor: colors.background,
-                  },
+                  idm.section,
+                  { backgroundColor: colors.card, borderColor: colors.border },
                 ]}
               >
-                <Text
+                <Text style={[idm.sectionTitle, { color: colors.textSecondary }]}>
+                  STOCK LEVEL
+                </Text>
+                <View
                   style={{
-                    fontSize: 13,
-                    fontWeight: '700',
-                    color: colors.text,
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    paddingHorizontal: 14,
+                    paddingBottom: 8,
                   }}
                 >
-                  Total Contribution Cost
-                </Text>
-                <Text
+                  <View>
+                    <Text
+                      style={{
+                        fontSize: 36,
+                        fontWeight: '900',
+                        color: item.lowStock ? colors.error : colors.text,
+                      }}
+                    >
+                      {item.stock}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: colors.textSecondary }}>
+                      units on hand
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={{ fontSize: 13, color: colors.textSecondary }}>
+                      Minimum Reorder Level:{' '}
+                      <Text style={{ fontWeight: '700', color: colors.text }}>
+                        {item.minStock}
+                      </Text>
+                    </Text>
+                    {item.lowStock && (
+                      <View
+                        style={{
+                          backgroundColor: colors.error + '20',
+                          borderRadius: 6,
+                          paddingHorizontal: 8,
+                          paddingVertical: 3,
+                          marginTop: 4,
+                          borderWidth: 1,
+                          borderColor: colors.error,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            fontWeight: '700',
+                            color: colors.error,
+                          }}
+                        >
+                          ⚠ Reorder Now
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+                <View
                   style={{
-                    fontSize: 14,
-                    fontWeight: '800',
-                    color: colors.primary,
+                    height: 6,
+                    borderRadius: 3,
+                    backgroundColor: colors.border,
+                    marginHorizontal: 14,
+                    marginBottom: 14,
+                    overflow: 'hidden',
                   }}
                 >
-                  ₱
-                  {totalCost.toLocaleString('en-PH', {
-                    minimumFractionDigits: 2,
-                  })}
-                </Text>
-              </View>
-              <View
-                style={[idm.detailRow, { borderBottomColor: 'transparent' }]}
-              >
-                <Text
-                  style={{
-                    fontSize: 13,
-                    fontWeight: '700',
-                    color: colors.text,
-                  }}
-                >
-                  Gross Profit
-                </Text>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text
+                  <View
                     style={{
-                      fontSize: 15,
-                      fontWeight: '800',
-                      color: profit >= 0 ? colors.success : colors.error,
+                      height: '100%',
+                      width: `${ratio * 100}%`,
+                      backgroundColor: barColor,
+                      borderRadius: 3,
                     }}
-                  >
-                    ₱
-                    {profit.toLocaleString('en-PH', {
-                      minimumFractionDigits: 2,
-                    })}
-                  </Text>
+                  />
+                </View>
+                {/* Quick adjust */}
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    paddingHorizontal: 14,
+                    paddingBottom: 14,
+                  }}
+                >
                   <Text
                     style={{
-                      fontSize: 11,
-                      color: profit >= 0 ? colors.success : colors.error,
+                      fontSize: 12,
+                      color: colors.textSecondary,
                       fontWeight: '600',
                     }}
                   >
-                    {margin.toFixed(1)}% margin
+                    Quick Adjust
                   </Text>
+                  <View
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}
+                  >
+                    <TouchableOpacity
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 8,
+                        backgroundColor: colors.error + '20',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderWidth: 1,
+                        borderColor: colors.error,
+                      }}
+                      onPress={() => setQty((q) => Math.max(0, q - 1))}
+                    >
+                      <Minus size={16} color={colors.error} strokeWidth={2.5} />
+                    </TouchableOpacity>
+                    <Text
+                      style={{
+                        fontSize: 18,
+                        fontWeight: '800',
+                        color: colors.text,
+                        minWidth: 32,
+                        textAlign: 'center',
+                      }}
+                    >
+                      {qty}
+                    </Text>
+                    <TouchableOpacity
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 8,
+                        backgroundColor: colors.success + '20',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderWidth: 1,
+                        borderColor: colors.success,
+                      }}
+                      onPress={() => setQty((q) => q + 1)}
+                    >
+                      <Plus size={16} color={colors.success} strokeWidth={2.5} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={{
+                        paddingHorizontal: 16,
+                        paddingVertical: 8,
+                        borderRadius: 8,
+                        backgroundColor: qty !== 0 ? colors.primary : colors.border,
+                      }}
+                      disabled={qty === 0}
+                      onPress={() => {
+                        if (qty !== 0) {
+                          onAdjustStock(item.id, qty);
+                          setQty(0);
+                          onClose();
+                        }
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          fontWeight: '700',
+                          color: qty !== 0 ? '#fff' : colors.textSecondary,
+                        }}
+                      >
+                        {qty > 0
+                          ? `+${qty} Add`
+                          : qty < 0
+                            ? `${qty} Remove`
+                            : 'Apply'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
-            </View>
-          )}
-
-          {/* OpEx */}
-          {item.opExPct !== undefined && (
-            <View
-              style={[
-                idm.section,
-                {
-                  backgroundColor: colors.card,
-                  borderColor: colors.border,
-                  marginTop: 12,
-                },
-              ]}
-            >
-              <Text style={[idm.sectionTitle, { color: colors.textSecondary }]}>
-                OPEX CONTRIBUTION
-              </Text>
-              <View
-                style={[idm.detailRow, { borderBottomColor: 'transparent' }]}
-              >
-                <Text
-                  style={[idm.detailLabel, { color: colors.textSecondary }]}
-                >
-                  Contribution %
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 16,
-                    fontWeight: '800',
-                    color: colors.accent,
-                  }}
-                >
-                  {(item.opExPct * 100).toFixed(0)}%
-                </Text>
-              </View>
-            </View>
-          )}
-          {/* ── Discount Eligibility ── */}
-          {(item.vatExempt || item.isBNPC || item.hasSeniorDiscountVATExempt) && (() => {
-            const effectiveVatRate = item.vatExempt
-              ? 0
-              : item.vatType?.rate != null
-                ? item.vatType.rate / 100
-                : item.vatRate ?? DEFAULT_VAT_RATE;
-            const vatExclusiveBase =
-              effectiveVatRate > 0
-                ? item.sellingPrice / (1 + effectiveVatRate)
-                : item.sellingPrice;
-            const seniorFinal = item.hasSeniorDiscountVATExempt
-              ? vatExclusiveBase * 0.8
-              : null;
-            const bnpcFinal = item.isBNPC ? item.sellingPrice * 0.95 : null;
-            const fmt = (v: number) =>
-              v.toLocaleString('en-PH', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              });
-
-            return (
+              {/* Stock Distribution */}
               <View
                 style={[
                   idm.section,
@@ -2228,163 +1898,578 @@ function ItemDetailModal({
                 ]}
               >
                 <Text style={[idm.sectionTitle, { color: colors.textSecondary }]}>
-                  DISCOUNT ELIGIBILITY
+                  STOCK DISTRIBUTION
                 </Text>
 
-                {/* Badges */}
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    flexWrap: 'wrap',
-                    gap: 6,
-                    paddingHorizontal: 12,
-                    paddingTop: 8,
-                    paddingBottom: 4,
-                  }}
-                >
-                  {item.vatExempt && (
-                    <View
-                      style={{
-                        backgroundColor: colors.accent + '18',
-                        borderRadius: 6,
-                        paddingHorizontal: 8,
-                        paddingVertical: 3,
-                        borderWidth: 1,
-                        borderColor: colors.accent + '60',
-                      }}
-                    >
-                      <Text
-                        style={{ fontSize: 11, fontWeight: '700', color: colors.accent }}
-                      >
-                        VAT EXEMPT
-                      </Text>
+                {distLoading ? (
+                  <View style={{ padding: 20, alignItems: 'center' }}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  </View>
+                ) : !distribution ? (
+                  <Text
+                    style={{
+                      padding: 12,
+                      fontSize: 12,
+                      color: colors.textSecondary,
+                    }}
+                  >
+                    No distribution data
+                  </Text>
+                ) : (
+                  <>
+                    {/* Summary row */}
+                    <View style={{ flexDirection: 'row', padding: 12, gap: 8 }}>
+                      {[
+                        [
+                          'Total',
+                          `${distribution.totalStock} ${distribution.stockLabel}`,
+                          colors.text,
+                        ],
+                        [
+                          'Assigned',
+                          `${distribution.totalAssigned} ${distribution.stockLabel}`,
+                          colors.accent,
+                        ],
+                        [
+                          'Warehouse',
+                          `${distribution.warehouseStock} ${distribution.stockLabel}`,
+                          distribution.warehouseStock < 0
+                            ? colors.error
+                            : colors.success,
+                        ],
+                      ].map(([label, value, color]) => (
+                        <View
+                          key={label as string}
+                          style={{
+                            flex: 1,
+                            alignItems: 'center',
+                            backgroundColor: colors.background,
+                            borderRadius: 8,
+                            padding: 8,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 15,
+                              fontWeight: '800',
+                              color: color as string,
+                            }}
+                          >
+                            {value}
+                          </Text>
+                          <Text
+                            style={{
+                              fontSize: 10,
+                              color: colors.textSecondary,
+                              marginTop: 2,
+                            }}
+                          >
+                            {label}
+                          </Text>
+                        </View>
+                      ))}
                     </View>
-                  )}
-                  {item.isBNPC && (
-                    <View
-                      style={{
-                        backgroundColor: '#FAEEDA',
-                        borderRadius: 6,
-                        paddingHorizontal: 8,
-                        paddingVertical: 3,
-                        borderWidth: 1,
-                        borderColor: '#EF9F27',
-                      }}
-                    >
-                      <Text
-                        style={{ fontSize: 11, fontWeight: '700', color: '#854F0B' }}
-                      >
-                        BNPC · 5% SC/PWD
-                      </Text>
-                    </View>
-                  )}
-                  {item.hasSeniorDiscountVATExempt && (
-                    <View
-                      style={{
-                        backgroundColor: '#E6F1FB',
-                        borderRadius: 6,
-                        paddingHorizontal: 8,
-                        paddingVertical: 3,
-                        borderWidth: 1,
-                        borderColor: '#85B7EB',
-                      }}
-                    >
-                      <Text
-                        style={{ fontSize: 11, fontWeight: '700', color: '#185FA5' }}
-                      >
-                        SENIOR/PWD · 20% VAT-EXEMPT
-                      </Text>
-                    </View>
-                  )}
-                </View>
 
-                {/* SC/PWD computed price */}
-                {seniorFinal != null && (
+                    {/* Per-outlet rows */}
+                    {distribution.outlets.length === 0 ? (
+                      <Text
+                        style={{
+                          padding: 12,
+                          fontSize: 12,
+                          color: colors.textSecondary,
+                        }}
+                      >
+                        Not assigned to any outlet yet
+                      </Text>
+                    ) : (
+                      distribution.outlets.map((outlet: any) => (
+                        <View
+                          key={outlet.outletId}
+                          style={[
+                            idm.detailRow,
+                            {
+                              borderBottomColor: colors.border,
+                            },
+                          ]}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <Text
+                              style={{
+                                fontSize: 13,
+                                fontWeight: '600',
+                                color: colors.text,
+                              }}
+                            >
+                              {outlet.outletName}
+                            </Text>
+                            {outlet.reorderPoint > 0 && (
+                              <Text
+                                style={{
+                                  fontSize: 11,
+                                  color: colors.textSecondary,
+                                  marginTop: 2,
+                                }}
+                              >
+                                Reorder at {outlet.reorderPoint} {outlet.baseUnit}
+                              </Text>
+                            )}
+                          </View>
+                          <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                            <Text
+                              style={{
+                                fontSize: 14,
+                                fontWeight: '700',
+                                color: colors.text,
+                              }}
+                            >
+                              {outlet.quantity} {outlet.baseUnit}
+                            </Text>
+                            <View
+                              style={{
+                                paddingHorizontal: 8,
+                                paddingVertical: 2,
+                                borderRadius: 10,
+                                borderWidth: 1,
+                                borderColor:
+                                  outlet.status === 'CRITICAL'
+                                    ? colors.error
+                                    : outlet.status === 'LOW'
+                                      ? '#F59E0B'
+                                      : colors.success,
+                                backgroundColor:
+                                  outlet.status === 'CRITICAL'
+                                    ? colors.error + '18'
+                                    : outlet.status === 'LOW'
+                                      ? '#F59E0B18'
+                                      : colors.success + '18',
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontSize: 10,
+                                  fontWeight: '700',
+                                  color:
+                                    outlet.status === 'CRITICAL'
+                                      ? colors.error
+                                      : outlet.status === 'LOW'
+                                        ? '#F59E0B'
+                                        : colors.success,
+                                }}
+                              >
+                                {outlet.status === 'CRITICAL'
+                                  ? '● CRITICAL'
+                                  : outlet.status === 'LOW'
+                                    ? '⚠ LOW'
+                                    : '✓ OK'}
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+                      ))
+                    )}
+
+                    {/* stockDescription if set */}
+                    {distribution.stockDescription && (
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          color: colors.textSecondary,
+                          padding: 12,
+                          paddingTop: 4,
+                          fontStyle: 'italic',
+                        }}
+                      >
+                        {distribution.stockDescription}
+                      </Text>
+                    )}
+                  </>
+                )}
+              </View>
+              {/* Pricing */}
+              <View
+                style={[
+                  idm.section,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.border,
+                    marginTop: 12,
+                  },
+                ]}
+              >
+                <Text style={[idm.sectionTitle, { color: colors.textSecondary }]}>
+                  PRICING
+                </Text>
+                {(
+                  [
+                    ['Price A (Retail)', item.sellingPrice, colors.accent],
+                    [
+                      'Price B (Wholesale)',
+                      item.priceB ?? item.sellingPrice * 0.9,
+                      colors.primary,
+                    ],
+                    [
+                      'Price C (Special)',
+                      item.priceC ?? item.sellingPrice * 0.85,
+                      colors.success,
+                    ],
+                  ] as [string, number, string][]
+                ).map(([label, val, color]) => (
                   <View
+                    key={label}
                     style={[idm.detailRow, { borderBottomColor: colors.border }]}
                   >
-                    <Text style={[idm.detailLabel, { color: colors.textSecondary }]}>
-                      SC/PWD price (VAT-excl. × 0.8)
+                    <Text
+                      style={[idm.detailLabel, { color: colors.textSecondary }]}
+                    >
+                      {label}
                     </Text>
-                    <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color }}>
+                      ₱{val.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                    </Text>
+                  </View>
+                ))}
+                <View style={[idm.detailRow, { borderBottomColor: colors.border }]}>
+                  <Text style={[idm.detailLabel, { color: colors.textSecondary }]}>
+                    VAT
+                  </Text>
+                  <Text style={[idm.detailValue, { color: colors.text }]}>
+                    {item.vatExempt ? 'VAT Exempt' : `VAT ${item?.vatType?.rate === 0 ? 'Exempt' : item?.vatType ? `Incl. (${item.vatType.rate}%)` : 'Incl. (12%)'}`}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Cost breakdown */}
+              {item.costLines && item.costLines.length > 0 && (
+                <View
+                  style={[
+                    idm.section,
+                    {
+                      backgroundColor: colors.card,
+                      borderColor: colors.border,
+                      marginTop: 12,
+                    },
+                  ]}
+                >
+                  <Text style={[idm.sectionTitle, { color: colors.textSecondary }]}>
+                    COST BREAKDOWN
+                  </Text>
+                  {item.costLines.map((line) => (
+                    <View
+                      key={line.id}
+                      style={[idm.detailRow, { borderBottomColor: colors.border }]}
+                    >
                       <Text
-                        style={{ fontSize: 14, fontWeight: '700', color: colors.success }}
+                        style={[idm.detailLabel, { color: colors.textSecondary }]}
                       >
-                        ₱{fmt(seniorFinal)}
+                        {line.label || 'Cost'}
                       </Text>
-                      <Text
-                        style={{ fontSize: 10, color: colors.textSecondary, marginTop: 1 }}
-                      >
-                        base ₱{fmt(vatExclusiveBase)} − 20%
+                      <Text style={[idm.detailValue, { color: colors.text }]}>
+                        ₱
+                        {line.amount.toLocaleString('en-PH', {
+                          minimumFractionDigits: 2,
+                        })}
                       </Text>
                     </View>
-                  </View>
-                )}
-
-                {/* BNPC computed price */}
-                {bnpcFinal != null && (
+                  ))}
                   <View
                     style={[
                       idm.detailRow,
-                      { borderBottomColor: 'transparent' },
+                      {
+                        borderBottomColor: colors.border,
+                        backgroundColor: colors.background,
+                      },
                     ]}
                   >
-                    <Text style={[idm.detailLabel, { color: colors.textSecondary }]}>
-                      BNPC SC/PWD price (× 0.95)
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        fontWeight: '700',
+                        color: colors.text,
+                      }}
+                    >
+                      Total Contribution Cost
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: 14,
+                        fontWeight: '800',
+                        color: colors.primary,
+                      }}
+                    >
+                      ₱
+                      {totalCost.toLocaleString('en-PH', {
+                        minimumFractionDigits: 2,
+                      })}
+                    </Text>
+                  </View>
+                  <View
+                    style={[idm.detailRow, { borderBottomColor: 'transparent' }]}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        fontWeight: '700',
+                        color: colors.text,
+                      }}
+                    >
+                      Gross Profit
                     </Text>
                     <View style={{ alignItems: 'flex-end' }}>
                       <Text
                         style={{
-                          fontSize: 14,
-                          fontWeight: '700',
-                          color: '#854F0B',
+                          fontSize: 15,
+                          fontWeight: '800',
+                          color: profit >= 0 ? colors.success : colors.error,
                         }}
                       >
-                        ₱{fmt(bnpcFinal)}
+                        ₱
+                        {profit.toLocaleString('en-PH', {
+                          minimumFractionDigits: 2,
+                        })}
                       </Text>
                       <Text
-                        style={{ fontSize: 10, color: colors.textSecondary, marginTop: 1 }}
+                        style={{
+                          fontSize: 11,
+                          color: profit >= 0 ? colors.success : colors.error,
+                          fontWeight: '600',
+                        }}
                       >
-                        ₱{fmt(item.sellingPrice)} − 5%
+                        {margin.toFixed(1)}% margin
                       </Text>
                     </View>
                   </View>
-                )}
-              </View>
-            );
-          })()}
-          
-          {/* Delete */}
-          <View
-            style={{
-              marginTop: 20,
-              padding: 16,
-              backgroundColor: colors.error + '10',
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: colors.error + '30',
-            }}
-          >
-            <TouchableOpacity
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-                paddingVertical: 12,
-              }}
-              onPress={() => onDelete(item)}
-            >
-              <Trash2 size={18} color={colors.error} strokeWidth={2} />
-              <Text
-                style={{ fontSize: 14, fontWeight: '700', color: colors.error }}
+                </View>
+              )}
+
+              {/* OpEx */}
+              {item.opExPct !== undefined && (
+                <View
+                  style={[
+                    idm.section,
+                    {
+                      backgroundColor: colors.card,
+                      borderColor: colors.border,
+                      marginTop: 12,
+                    },
+                  ]}
+                >
+                  <Text style={[idm.sectionTitle, { color: colors.textSecondary }]}>
+                    OPEX CONTRIBUTION
+                  </Text>
+                  <View
+                    style={[idm.detailRow, { borderBottomColor: 'transparent' }]}
+                  >
+                    <Text
+                      style={[idm.detailLabel, { color: colors.textSecondary }]}
+                    >
+                      Contribution %
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: 16,
+                        fontWeight: '800',
+                        color: colors.accent,
+                      }}
+                    >
+                      {(item.opExPct * 100).toFixed(0)}%
+                    </Text>
+                  </View>
+                </View>
+              )}
+              {/* ── Discount Eligibility ── */}
+              {(item.vatExempt || item.isBNPC || item.hasSeniorDiscountVATExempt) && (() => {
+                const effectiveVatRate = item.vatExempt
+                  ? 0
+                  : item.vatType?.rate != null
+                    ? item.vatType.rate / 100
+                    : item.vatRate ?? DEFAULT_VAT_RATE;
+                const vatExclusiveBase =
+                  effectiveVatRate > 0
+                    ? item.sellingPrice / (1 + effectiveVatRate)
+                    : item.sellingPrice;
+                const seniorFinal = item.hasSeniorDiscountVATExempt
+                  ? vatExclusiveBase * 0.8
+                  : null;
+                const bnpcFinal = item.isBNPC ? item.sellingPrice * 0.95 : null;
+                const fmt = (v: number) =>
+                  v.toLocaleString('en-PH', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  });
+
+                return (
+                  <View
+                    style={[
+                      idm.section,
+                      {
+                        backgroundColor: colors.card,
+                        borderColor: colors.border,
+                        marginTop: 12,
+                      },
+                    ]}
+                  >
+                    <Text style={[idm.sectionTitle, { color: colors.textSecondary }]}>
+                      DISCOUNT ELIGIBILITY
+                    </Text>
+
+                    {/* Badges */}
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        flexWrap: 'wrap',
+                        gap: 6,
+                        paddingHorizontal: 12,
+                        paddingTop: 8,
+                        paddingBottom: 4,
+                      }}
+                    >
+                      {item.vatExempt && (
+                        <View
+                          style={{
+                            backgroundColor: colors.accent + '18',
+                            borderRadius: 6,
+                            paddingHorizontal: 8,
+                            paddingVertical: 3,
+                            borderWidth: 1,
+                            borderColor: colors.accent + '60',
+                          }}
+                        >
+                          <Text
+                            style={{ fontSize: 11, fontWeight: '700', color: colors.accent }}
+                          >
+                            VAT EXEMPT
+                          </Text>
+                        </View>
+                      )}
+                      {item.isBNPC && (
+                        <View
+                          style={{
+                            backgroundColor: '#FAEEDA',
+                            borderRadius: 6,
+                            paddingHorizontal: 8,
+                            paddingVertical: 3,
+                            borderWidth: 1,
+                            borderColor: '#EF9F27',
+                          }}
+                        >
+                          <Text
+                            style={{ fontSize: 11, fontWeight: '700', color: '#854F0B' }}
+                          >
+                            BNPC · 5% SC/PWD
+                          </Text>
+                        </View>
+                      )}
+                      {item.hasSeniorDiscountVATExempt && (
+                        <View
+                          style={{
+                            backgroundColor: '#E6F1FB',
+                            borderRadius: 6,
+                            paddingHorizontal: 8,
+                            paddingVertical: 3,
+                            borderWidth: 1,
+                            borderColor: '#85B7EB',
+                          }}
+                        >
+                          <Text
+                            style={{ fontSize: 11, fontWeight: '700', color: '#185FA5' }}
+                          >
+                            SENIOR/PWD · 20% VAT-EXEMPT
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* SC/PWD computed price */}
+                    {seniorFinal != null && (
+                      <View
+                        style={[idm.detailRow, { borderBottomColor: colors.border }]}
+                      >
+                        <Text style={[idm.detailLabel, { color: colors.textSecondary }]}>
+                          SC/PWD price (VAT-excl. × 0.8)
+                        </Text>
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <Text
+                            style={{ fontSize: 14, fontWeight: '700', color: colors.success }}
+                          >
+                            ₱{fmt(seniorFinal)}
+                          </Text>
+                          <Text
+                            style={{ fontSize: 10, color: colors.textSecondary, marginTop: 1 }}
+                          >
+                            base ₱{fmt(vatExclusiveBase)} − 20%
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+
+                    {/* BNPC computed price */}
+                    {bnpcFinal != null && (
+                      <View
+                        style={[
+                          idm.detailRow,
+                          { borderBottomColor: 'transparent' },
+                        ]}
+                      >
+                        <Text style={[idm.detailLabel, { color: colors.textSecondary }]}>
+                          BNPC SC/PWD price (× 0.95)
+                        </Text>
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <Text
+                            style={{
+                              fontSize: 14,
+                              fontWeight: '700',
+                              color: '#854F0B',
+                            }}
+                          >
+                            ₱{fmt(bnpcFinal)}
+                          </Text>
+                          <Text
+                            style={{ fontSize: 10, color: colors.textSecondary, marginTop: 1 }}
+                          >
+                            ₱{fmt(item.sellingPrice)} − 5%
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+                  </View>
+                );
+              })()}
+
+              {/* Delete */}
+              <View
+                style={{
+                  marginTop: 20,
+                  padding: 16,
+                  backgroundColor: colors.error + '10',
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: colors.error + '30',
+                }}
               >
-                Delete Item
-              </Text>
-            </TouchableOpacity>
+                <TouchableOpacity
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    paddingVertical: 12,
+                  }}
+                  onPress={() => onDelete(item)}
+                >
+                  <Trash2 size={18} color={colors.error} strokeWidth={2} />
+                  <Text
+                    style={{ fontSize: 14, fontWeight: '700', color: colors.error }}
+                  >
+                    Delete Item
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
           </View>
-        </ScrollView>
-      </View>
+        </TouchableOpacity>
+      </TouchableOpacity>
     </Modal>
   );
 }
@@ -2607,7 +2692,7 @@ function AddItemModal({
       resetForm();
       onClose();
     } catch (err: any) {
-      console.error('Failed to create item:', err);
+      if (__DEV__) console.error('Failed to create item:', err);
       setError(err.message || 'Failed to create item. Please try again.');
     } finally {
       setIsLoading(false);
@@ -3191,12 +3276,25 @@ function AddItemModal({
 
 export default function InventoryScreen() {
   const { colors } = useTheme();
-  const { width } = Dimensions.get('window');
+  const { width } = useWindowDimensions();
   const isTablet = width >= 768;
+  const isDesktop = width >= 1024;
 
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [search, setSearch] = useState('');
   const [loadingItems, setLoadingItems] = useState(true);
+  const [viewMode, setViewMode] = useState<ViewMode>('card');
+
+  React.useEffect(() => {
+    AsyncStorage.getItem('inventory_view_mode').then((saved) => {
+      if (saved === 'card' || saved === 'table') setViewMode(saved);
+    });
+  }, []);
+
+  const handleSetViewMode = (mode: ViewMode) => {
+    setViewMode(mode);
+    AsyncStorage.setItem('inventory_view_mode', mode);
+  };
   Promise.all;
   React.useEffect(() => {
     (async () => {
@@ -3238,7 +3336,7 @@ export default function InventoryScreen() {
           ),
         );
       } catch (error) {
-        console.warn('Unable to load inventory items', error);
+        if (__DEV__)console.warn('Unable to load inventory items', error);
       } finally {
         setLoadingItems(false);
       }
@@ -3373,6 +3471,21 @@ export default function InventoryScreen() {
       alignItems: 'center',
       justifyContent: 'center',
     },
+    viewToggleRow: {
+      flexDirection: 'row',
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: 'hidden',
+    },
+    viewToggleBtn: {
+      width: 36,
+      height: 38,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.card,
+      borderColor: 'transparent',
+    },
     filterPanel: {
       marginHorizontal: 16,
       backgroundColor: colors.card,
@@ -3469,6 +3582,66 @@ export default function InventoryScreen() {
     },
   });
 
+  // ── Table view styles ──
+  const tableStyles = StyleSheet.create({
+    headerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingVertical: 9,
+      borderTopWidth: 1,
+      borderBottomWidth: 1,
+    },
+    headerTxt: { fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderBottomWidth: 1,
+    },
+    colImg: { width: 44, marginRight: 10 },
+    colName: { flex: 2, paddingRight: 8 },
+    colSku: { flex: 1.5, paddingRight: 8 },
+    colCat: { flex: 1.2, paddingRight: 8 },
+    colCost: { flex: 1, paddingRight: 8 },
+    colPrice: { flex: 1.1, paddingRight: 8 },
+    colStock: { flex: 1.4, paddingRight: 8 },
+    colStatus: { flex: 1, paddingRight: 8 },
+    colActions: { flex: 1.6, minWidth: 150 },
+    thumbImg: { width: 36, height: 36, borderRadius: 6 },
+    thumbPlaceholder: { width: 36, height: 36, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
+    actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, borderWidth: 1, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4 },
+  });
+
+  // ── Desktop card styles ──
+  const desktopCardStyles = StyleSheet.create({
+    card: {
+      flex: 1,
+      borderRadius: 12,
+      borderWidth: 1,
+      overflow: 'hidden',
+      minWidth: 0,
+    },
+    imageWrap: { width: '100%', aspectRatio: 16 / 9, overflow: 'hidden' },
+    image: { width: '100%', height: '100%' },
+    imagePlaceholder: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
+    badgeOverlay: { position: 'absolute', top: 8, right: 8 },
+    body: { padding: 12, flex: 1 },
+    footer: {
+      flexDirection: 'row',
+      borderTopWidth: 1,
+    },
+    footerBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 5,
+      paddingVertical: 9,
+    },
+  });
+
   if (loadingItems) {
     return (
       <View
@@ -3538,6 +3711,23 @@ export default function InventoryScreen() {
             </TouchableOpacity>
           )}
         </View>
+        {/* View mode toggle — only shown on tablet/desktop */}
+        {(isTablet || isDesktop) && (
+          <View style={styles.viewToggleRow}>
+            <TouchableOpacity
+              style={[styles.viewToggleBtn, viewMode === 'card' && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+              onPress={() => handleSetViewMode('card')}
+            >
+              <LayoutGrid size={15} color={viewMode === 'card' ? '#fff' : colors.textSecondary} strokeWidth={2} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.viewToggleBtn, viewMode === 'table' && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+              onPress={() => handleSetViewMode('table')}
+            >
+              <List size={15} color={viewMode === 'table' ? '#fff' : colors.textSecondary} strokeWidth={2} />
+            </TouchableOpacity>
+          </View>
+        )}
         <TouchableOpacity
           style={[
             styles.iconBtn,
@@ -3618,178 +3808,271 @@ export default function InventoryScreen() {
         {categoryFilter !== 'All' ? ` · ${categoryFilter}` : ''}
       </Text>
 
-      <FlatList
-        data={filtered}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={[
-          styles.listContent,
-          filtered.length === 0 && { flex: 1 },
-        ]}
-        showsVerticalScrollIndicator={false}
-        numColumns={isTablet ? 2 : 1}
-        key={isTablet ? 'tablet' : 'mobile'}
-        columnWrapperStyle={isTablet ? { gap: 10 } : undefined}
-        ListEmptyComponent={
-          <View style={{ flex: 1, alignItems: 'center', paddingTop: 60 }}>
-            <Package size={48} color={colors.border} strokeWidth={1} />
-            <Text
-              style={{
-                fontSize: 14,
-                color: colors.textSecondary,
-                marginTop: 12,
-              }}
-            >
-              No items found
-            </Text>
+      {/* ── TABLE VIEW (desktop only when toggled) ── */}
+      {isDesktop && viewMode === 'table' ? (
+        <View style={{ flex: 1 }}>
+          {/* Table header */}
+          <View style={[tableStyles.headerRow, { backgroundColor: colors.background, borderBottomColor: colors.border, borderTopColor: colors.border }]}>
+            <View style={tableStyles.colImg} />
+            <View style={tableStyles.colName}><Text style={[tableStyles.headerTxt, { color: colors.textSecondary }]}>ITEM NAME</Text></View>
+            <View style={tableStyles.colSku}><Text style={[tableStyles.headerTxt, { color: colors.textSecondary }]}>SKU</Text></View>
+            <View style={tableStyles.colCat}><Text style={[tableStyles.headerTxt, { color: colors.textSecondary }]}>CATEGORY</Text></View>
+            <View style={tableStyles.colCost}><Text style={[tableStyles.headerTxt, { color: colors.textSecondary }]}>COST</Text></View>
+            <View style={tableStyles.colPrice}><Text style={[tableStyles.headerTxt, { color: colors.textSecondary }]}>PRICE</Text></View>
+            <View style={tableStyles.colStock}><Text style={[tableStyles.headerTxt, { color: colors.textSecondary }]}>STOCK</Text></View>
+            <View style={tableStyles.colStatus}><Text style={[tableStyles.headerTxt, { color: colors.textSecondary }]}>STATUS</Text></View>
+            <View style={tableStyles.colActions}><Text style={[tableStyles.headerTxt, { color: colors.textSecondary, textAlign: 'right' }]}>ACTIONS</Text></View>
           </View>
-        }
-        renderItem={({ item }) => {
-          const maxStock = Math.max(item.stock, item.minStock * 4, 200);
-          const ratio = Math.min(item.stock / maxStock, 1);
-          const barColor = item.lowStock ? colors.error : colors.success;
-          const hasCosts = (item.costLines?.length ?? 0) > 0;
-          const totalCost = hasCosts
-            ? item.costLines!.reduce((s, l) => s + l.amount, 0)
-            : 0;
-
-          return (
-            <TouchableOpacity
-              style={[
-                styles.card,
-                item.lowStock && styles.cardLow,
-                isTablet && { flex: 1 },
-              ]}
-              onPress={() => {
-                setSelectedItem(item);
-                setDetailVisible(true);
-              }}
-              activeOpacity={0.82}
-            >
-              <View style={styles.cardInner}>
-                {item.imageUrl ? (
-                  <Image
-                    source={{ uri: item.imageUrl }}
-                    style={styles.thumbImg}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <View style={styles.thumb}>
-                    <Package
-                      size={24}
-                      color={colors.textSecondary}
-                      strokeWidth={1.5}
-                    />
+          <FlatList
+            data={filtered}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={{ paddingBottom: 40 }}
+            showsVerticalScrollIndicator={false}
+            ListEmptyComponent={
+              <View style={{ alignItems: 'center', paddingTop: 60 }}>
+                <Package size={48} color={colors.border} strokeWidth={1} />
+                <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 12 }}>No items found</Text>
+              </View>
+            }
+            renderItem={({ item, index }) => {
+              const status = getStockStatus(item.stock, item.minStock);
+              const hasCosts = (item.costLines?.length ?? 0) > 0;
+              const totalCost = hasCosts ? item.costLines!.reduce((s, l) => s + l.amount, 0) : 0;
+              const rowBg = index % 2 === 0 ? colors.card : (colors.background);
+              return (
+                <Pressable
+                  // @ts-ignore
+                  style={({ hovered }: any) => [
+                    tableStyles.row,
+                    { backgroundColor: hovered ? ('#F1F5F9') : rowBg, borderBottomColor: colors.border },
+                  ]}
+                  onPress={() => { setSelectedItem(item); setDetailVisible(true); }}
+                >
+                  {/* Image */}
+                  <View style={tableStyles.colImg}>
+                    {item.imageUrl ? (
+                      <Image source={{ uri: item.imageUrl }} style={tableStyles.thumbImg} resizeMode="cover"
+                        defaultSource={require('@/assets/images/placeholder.png')} />
+                    ) : (
+                      <View style={[tableStyles.thumbPlaceholder, { backgroundColor: colors.border }]}>
+                        <Package size={16} color={colors.textSecondary} strokeWidth={1.5} />
+                      </View>
+                    )}
                   </View>
-                )}
-                <View style={styles.cardBody}>
-                  <Text style={styles.productName} numberOfLines={1}>
-                    {item.name}
-                  </Text>
-                  <Text style={styles.skuText}>{item.sku}</Text>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      marginTop: 4,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 13,
-                        fontWeight: '700',
-                        color: colors.accent,
-                      }}
-                    >
-                      ₱{item.sellingPrice.toLocaleString()}
+                  {/* Name */}
+                  <View style={tableStyles.colName}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }} numberOfLines={1}>{item.name}</Text>
+                  </View>
+                  {/* SKU */}
+                  <View style={tableStyles.colSku}>
+                    <Text style={{ fontSize: 11, color: colors.textSecondary, fontFamily: Platform.select({ web: 'monospace', default: undefined }) }} numberOfLines={1}>{item.sku}</Text>
+                  </View>
+                  {/* Category */}
+                  <View style={tableStyles.colCat}>
+                    <Text style={{ fontSize: 12, color: colors.textSecondary }} numberOfLines={1}>{item.category}</Text>
+                  </View>
+                  {/* Cost */}
+                  <View style={tableStyles.colCost}>
+                    <Text style={{ fontSize: 12, color: colors.textSecondary }}>
+                      {hasCosts ? `₱${totalCost.toLocaleString()}` : '—'}
                     </Text>
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 4,
-                      }}
+                  </View>
+                  {/* Selling Price */}
+                  <View style={tableStyles.colPrice}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: colors.accent }}>₱{item.sellingPrice.toLocaleString()}</Text>
+                  </View>
+                  {/* Stock with progress bar */}
+                  <View style={[tableStyles.colStock, { gap: 3 }]}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: status === 'critical' ? '#DC2626' : status === 'low' ? '#D97706' : colors.text }}>
+                      {item.stock} {item.stockLabel ?? 'pcs'}
+                    </Text>
+                    <StockBar stock={item.stock} minStock={item.minStock} height={4} />
+                  </View>
+                  {/* Status */}
+                  <View style={tableStyles.colStatus}>
+                    <StockBadge status={status} size="sm" />
+                  </View>
+                  {/* Actions */}
+                  <View style={[tableStyles.colActions, { flexDirection: 'row', gap: 4, justifyContent: 'flex-end' }]}>
+                    <TouchableOpacity
+                      onPress={() => { setSelectedItem(item); setDetailVisible(true); }}
+                      style={[tableStyles.actionBtn, { borderColor: colors.primary, backgroundColor: colors.primary + '15' }]}
                     >
-                      <Text
-                        style={{
-                          fontSize: 14,
-                          fontWeight: '900',
-                          color: item.lowStock ? colors.error : colors.text,
-                        }}
-                      >
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: colors.primary }}>View</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => { setEditItem(item); setEditVisible(true); }}
+                      style={[tableStyles.actionBtn, { borderColor: colors.border }]}
+                    >
+                      <Pencil size={11} color={colors.textSecondary} strokeWidth={2} />
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textSecondary }}>Edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleDeleteItem(item)}
+                      style={[tableStyles.actionBtn, { borderColor: colors.error + '60' }]}
+                    >
+                      <Trash2 size={11} color={colors.error} strokeWidth={2} />
+                    </TouchableOpacity>
+                  </View>
+                </Pressable>
+              );
+            }}
+          />
+        </View>
+      ) : (
+        /* ── CARD VIEW ── */
+        <FlatList
+          data={filtered}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={[
+            styles.listContent,
+            isDesktop && { paddingHorizontal: 16, gap: 0 },
+            filtered.length === 0 && { flex: 1 },
+          ]}
+          showsVerticalScrollIndicator={false}
+          numColumns={isDesktop ? 3 : isTablet ? 2 : 1}
+          key={isDesktop ? 'desktop' : isTablet ? 'tablet' : 'mobile'}
+          columnWrapperStyle={isDesktop ? { gap: 12, marginBottom: 12 } : isTablet ? { gap: 10 } : undefined}
+          ListEmptyComponent={
+            <View style={{ flex: 1, alignItems: 'center', paddingTop: 60 }}>
+              <Package size={48} color={colors.border} strokeWidth={1} />
+              <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 12 }}>No items found</Text>
+            </View>
+          }
+          renderItem={({ item }) => {
+            const status = getStockStatus(item.stock, item.minStock);
+            const hasCosts = (item.costLines?.length ?? 0) > 0;
+            const totalCost = hasCosts ? item.costLines!.reduce((s, l) => s + l.amount, 0) : 0;
+
+            if (isDesktop) {
+              // ── Desktop card: vertical layout, equal-height, denser ──
+              return (
+                <Pressable
+                  // @ts-ignore
+                  style={({ hovered }: any) => [
+                    desktopCardStyles.card,
+                    {
+                      backgroundColor: colors.card,
+                      borderColor: status === 'critical' ? '#FCA5A5' : status === 'low' ? '#FCD34D' : colors.border,
+                      shadowColor: '#000',
+                      shadowOffset: { width: 0, height: hovered ? 4 : 2 },
+                      shadowOpacity: hovered ? 0.12 : 0.06,
+                      shadowRadius: hovered ? 10 : 4,
+                      elevation: hovered ? 6 : 2,
+                      transform: [{ translateY: hovered ? -2 : 0 }],
+                    },
+                  ]}
+                  onPress={() => { setSelectedItem(item); setDetailVisible(true); }}
+                >
+                  {/* Image */}
+                  <View style={desktopCardStyles.imageWrap}>
+                    {item.imageUrl ? (
+                      <Image source={{ uri: item.imageUrl }} style={desktopCardStyles.image} resizeMode="cover"
+                        defaultSource={require('@/assets/images/placeholder.png')} />
+                    ) : (
+                      <View style={[desktopCardStyles.imagePlaceholder, { backgroundColor: colors.border + '80' }]}>
+                        <Package size={28} color={colors.textSecondary} strokeWidth={1.5} />
+                      </View>
+                    )}
+                    {/* Status badge overlay */}
+                    <View style={desktopCardStyles.badgeOverlay}>
+                      <StockBadge status={status} size="sm" />
+                    </View>
+                  </View>
+                  {/* Body */}
+                  <View style={desktopCardStyles.body}>
+                    <Text style={{ fontSize: 13, fontWeight: '800', color: colors.text, lineHeight: 18 }} numberOfLines={2}>{item.name}</Text>
+                    <Text style={{ fontSize: 10, color: colors.textSecondary, fontFamily: Platform.select({ web: 'monospace', default: undefined }), marginTop: 2 }}>{item.sku}</Text>
+                    <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2 }}>{item.category}</Text>
+                    {/* Price row */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                      <Text style={{ fontSize: 15, fontWeight: '900', color: colors.accent }}>₱{item.sellingPrice.toLocaleString()}</Text>
+                      {hasCosts && <Text style={{ fontSize: 10, color: colors.textSecondary }}>Cost ₱{totalCost.toLocaleString()}</Text>}
+                    </View>
+                    {/* Stock row */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: status === 'critical' ? '#DC2626' : status === 'low' ? '#D97706' : colors.text }}>
+                        {item.stock} {item.stockLabel ?? 'pcs'}
+                      </Text>
+                      <Text style={{ fontSize: 10, color: colors.textSecondary }}>min {item.minStock}</Text>
+                    </View>
+                    {/* Stock bar */}
+                    <View style={{ marginTop: 6 }}>
+                      <StockBar stock={item.stock} minStock={item.minStock} height={4} />
+                    </View>
+                  </View>
+                  {/* Actions footer */}
+                  <View style={[desktopCardStyles.footer, { borderTopColor: colors.border }]}>
+                    <TouchableOpacity
+                      onPress={(e) => { e.stopPropagation?.(); setEditItem(item); setEditVisible(true); }}
+                      style={[desktopCardStyles.footerBtn, { borderRightWidth: 1, borderRightColor: colors.border }]}
+                    >
+                      <Pencil size={13} color={colors.textSecondary} strokeWidth={2} />
+                      <Text style={{ fontSize: 11, color: colors.textSecondary, fontWeight: '600' }}>Edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={(e) => { e.stopPropagation?.(); handleDeleteItem(item); }}
+                      style={desktopCardStyles.footerBtn}
+                    >
+                      <Trash2 size={13} color={colors.error} strokeWidth={2} />
+                      <Text style={{ fontSize: 11, color: colors.error, fontWeight: '600' }}>Delete</Text>
+                    </TouchableOpacity>
+                  </View>
+                </Pressable>
+              );
+            }
+
+            // ── Mobile / Tablet card: original horizontal layout ──
+            return (
+              <TouchableOpacity
+                style={[
+                  styles.card,
+                  item.lowStock && styles.cardLow,
+                  isTablet && { flex: 1 },
+                ]}
+                onPress={() => {
+                  setSelectedItem(item);
+                  setDetailVisible(true);
+                }}
+                activeOpacity={0.82}
+              >
+                <View style={styles.cardInner}>
+                  {item.imageUrl ? (
+                    <Image source={{ uri: item.imageUrl }} style={styles.thumbImg} resizeMode="cover"
+                      defaultSource={require('@/assets/images/placeholder.png')} />
+                  ) : (
+                    <View style={styles.thumb}>
+                      <Package size={24} color={colors.textSecondary} strokeWidth={1.5} />
+                    </View>
+                  )}
+                  <View style={styles.cardBody}>
+                    <Text style={styles.productName} numberOfLines={1}>{item.name}</Text>
+                    <Text style={styles.skuText}>{item.sku}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: colors.accent }}>
+                        ₱{item.sellingPrice.toLocaleString()}
+                      </Text>
+                      <Text style={{ fontSize: 14, fontWeight: '900', color: status === 'critical' ? '#DC2626' : status === 'low' ? '#D97706' : colors.text }}>
                         {item.stock} {item.stockLabel ?? 'pcs'}
                       </Text>
                     </View>
-                  </View>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      marginTop: 3,
-                    }}
-                  >
-                    <Text style={[styles.skuText, { fontSize: 11 }]}>
-                      {item.category}
-                    </Text>
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        gap: 4,
-                        alignItems: 'center',
-                      }}
-                    >
-                      {hasCosts && (
-                        <Text
-                          style={{ fontSize: 10, color: colors.textSecondary }}
-                        >
-                          Cost ₱{totalCost.toLocaleString()}
-                        </Text>
-                      )}
-                      <View
-                        style={{
-                          backgroundColor: item.lowStock
-                            ? colors.error + '20'
-                            : colors.success + '20',
-                          borderRadius: 20,
-                          paddingHorizontal: 7,
-                          paddingVertical: 2,
-                          borderWidth: 1,
-                          borderColor: item.lowStock
-                            ? colors.error
-                            : colors.success,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 10,
-                            fontWeight: '700',
-                            color: item.lowStock
-                              ? colors.error
-                              : colors.success,
-                          }}
-                        >
-                          {item.lowStock ? 'Low' : 'OK'}
-                        </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 3 }}>
+                      <Text style={[styles.skuText, { fontSize: 11 }]}>{item.category}</Text>
+                      <View style={{ flexDirection: 'row', gap: 4, alignItems: 'center' }}>
+                        {hasCosts && <Text style={{ fontSize: 10, color: colors.textSecondary }}>Cost ₱{totalCost.toLocaleString()}</Text>}
+                        <StockBadge status={status} size="sm" />
                       </View>
                     </View>
                   </View>
                 </View>
-              </View>
-              <View style={styles.stockBarWrap}>
-                <View
-                  style={{
-                    height: '100%',
-                    width: `${ratio * 100}%`,
-                    backgroundColor: barColor,
-                    borderRadius: 2,
-                  }}
-                />
-              </View>
-            </TouchableOpacity>
-          );
-        }}
-      />
+                <View style={[styles.stockBarWrap, { marginBottom: 8 }]}>
+                  <StockBar stock={item.stock} minStock={item.minStock} height={3} />
+                </View>
+              </TouchableOpacity>
+            );
+          }}
+        />
+      )}
 
       <ItemDetailModal
         item={selectedItem}
@@ -3819,7 +4102,3 @@ export default function InventoryScreen() {
     </View>
   );
 }
-
-
-
-

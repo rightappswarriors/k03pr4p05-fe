@@ -11,7 +11,7 @@ import { OrgCategoryService } from '@/services/orgCategoryService';
 import { PositionService } from '@/services/positionService';
 import { SubCenterService } from '@/services/subCenterService';
 import { VatTypeService } from '@/services/vatTypeService';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuth } from '@/contexts/AuthContext';
 import React, {
   createContext,
   useCallback,
@@ -98,7 +98,7 @@ export function MasterFileProvider({
         try {
           return await fn();
         } catch (e) {
-          console.warn('MasterFile load failed:', e);
+          if (__DEV__) console.warn('MasterFile load failed:', e);
           return fallback;
         }
       };

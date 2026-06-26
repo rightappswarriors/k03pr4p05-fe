@@ -11,6 +11,7 @@ import { DeviceService } from './deviceService';
 import { OrganizationService } from './organizationService';
 import { SubscriptionService } from './subscriptionService';
 import { gqlErrorMessage } from '@/utils/gqlErrorMessage';
+import { formatGraphQLError } from '@/utils/errorFormatter';
 interface AuthPayload {
   user: User;
   token: string;
@@ -21,6 +22,10 @@ const DEVICE_BINDING_KEY = 'device_binding';
 
 interface LoginResponse {
   login: AuthPayload;
+}
+
+interface RefreshResponse {
+  refreshToken: AuthPayload;
 }
 // Tokens
 export const AUTH_TOKEN_KEY =
@@ -66,18 +71,28 @@ export class AuthService {
    */
   static deviceBound: boolean = false;
   static async getTokens() {
-    // ✅ Corrected: Use the correct keys for each token.
     const accessToken = await secureStorage.getItemAsync(AUTH_TOKEN_KEY);
-
     const refreshToken = await secureStorage.getItemAsync(REFRESH_TOKEN_KEY);
     return { accessToken, refreshToken };
   }
+
   static async storeTokens(
     accessToken: string,
     refreshToken: string
   ): Promise<void> {
     await secureStorage.setItemAsync(AUTH_TOKEN_KEY, accessToken);
     await secureStorage.setItemAsync(REFRESH_TOKEN_KEY, refreshToken);
+  }
+
+  static async ensureAccessToken(): Promise<string | null> {
+    const { accessToken, refreshToken } = await this.getTokens();
+    if (accessToken && !this.isTokenExpiringSoon(accessToken)) return accessToken;
+    if (!refreshToken) return null;
+    if (this.isTokenExpiringSoon(refreshToken, 0)) {
+      await this.removeUser();
+      return null;
+    }
+    return await this.refreshAccessToken(refreshToken);
   }
   /**
    * Calls the login API, stores tokens, and returns the user.
@@ -97,9 +112,27 @@ export class AuthService {
             fullname
             isVerified
             orgId
+            position {
+              name
+              description
+              id
+              permissions {
+                canView
+                canCreate
+                canEdit
+                canDelete
+                page {
+                  label
+                  key
+                  access
+                }
+              }
+            }
             org {
               id
               name
+              profileImg
+              roles
               subscription {
                 id
                 plan
@@ -121,15 +154,16 @@ export class AuthService {
       })) as LoginResponse;
 
       const { user, token, refresh_token } = response.login;
-
-      await secureStorage.setItemAsync(AUTH_TOKEN_KEY, token);
-      await secureStorage.setItemAsync(REFRESH_TOKEN_KEY, refresh_token);
+      if (__DEV__) {
+        console.log("User permissions", user)
+      }
+      await this.storeTokens(token, refresh_token);
       await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
       return user;
     } catch (error: any) {
       // GraphQL errors come back in error.response.errors[]
       const graphqlMessage = gqlErrorMessage(error);
-      console.error('Login error:', graphqlMessage, '\n\nFull error object:', error);
+      if (__DEV__) console.error('Login error:', graphqlMessage, '\n\nFull error object:', error);
       throw new Error(graphqlMessage ?? (error instanceof Error ? error.message : String(error)));
 
     }
@@ -167,15 +201,11 @@ export class AuthService {
 
       return response.registerUser;
     } catch (error: any) {
-      console.log("❌ Register Error:", error);
+      if (__DEV__) {
 
-      // If using GraphQL (like graphql-request or Apollo)
-      if (error.response) {
-        console.log("📛 GraphQL Errors:", error.response.errors);
-      }
-
-      if (error.message) {
-        console.log("📩 Message:", error.message);
+        // If using GraphQL (like graphql-request or Apollo)
+        const errorMessage = formatGraphQLError(error)
+        console.error("📛 GraphQL Errors:", errorMessage);
       }
 
       throw error; // rethrow so UI can still handle it
@@ -204,7 +234,7 @@ export class AuthService {
   }
   static async verifyEmail(email: string, code: string): Promise<User> {
     try {
-      console.log(`[AuthService] Verifying email: ${email}`)
+      if (__DEV__) console.log(`[AuthService] Verifying email: ${email}`)
 
       const VERIFY_MUTATION = gql`
         mutation VerifyEmail($email: String!, $code: String!) {
@@ -242,14 +272,13 @@ export class AuthService {
 
       // Store tokens immediately after verification for onboarding flow
       // User will use these to create organization and subscription
-      await secureStorage.setItemAsync(AUTH_TOKEN_KEY, token);
-      await secureStorage.setItemAsync(REFRESH_TOKEN_KEY, refresh_token);
+      await this.storeTokens(token, refresh_token);
       await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
 
-      console.log(`[AuthService] ✅ Email verified successfully for:`, user.email)
+    if(__DEV__)  console.log(`[AuthService] ✅ Email verified successfully for:`, user.email)
       return user;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error)
+      const errorMessage = 
       console.error(`[AuthService] ❌ Email verification error:`, errorMessage)
       throw error
     }
@@ -271,8 +300,8 @@ export class AuthService {
     return response.resendOTP;
   }
 
-  static async createOrganization(name: string): Promise<any> {
-    return OrganizationService.createOrganization(name);
+  static async createOrganization(name: string, roles: string[] = ['SELLER']): Promise<any> {
+    return OrganizationService.createOrganization(name, roles);
   }
 
   static async createSubscription(orgId: number, plan: 'BASIC' | 'GOLD'): Promise<any> {
@@ -302,12 +331,12 @@ export class AuthService {
 
       const response = (await client.request(REFRESH_MUTATION, {
         refresh_token: refreshToken,
-      })) as any;
-      const { token } = response.refreshToken;
+      })) as RefreshResponse;
+      const { token, refresh_token: newRefreshToken } = response.refreshToken;
       await secureStorage.setItemAsync(AUTH_TOKEN_KEY, token);
+      await secureStorage.setItemAsync(REFRESH_TOKEN_KEY, newRefreshToken);
       return token;
     } catch (error) {
-      //console.error('GraphQL refresh error:', error);
       await this.removeUser();
       throw error;
     }
@@ -324,87 +353,101 @@ export class AuthService {
       const LOGOUT_MUTATION = gql`
       mutation Mutation($outletId: ID!) {
         StaffLogout(outletId: $outletId) 
-      }`
-      const { accessToken } = await this.getTokens()
-      const client = await getGraphQLClient()
+      }`;
+      const { accessToken } = await this.getTokens();
+      const client = await getGraphQLClient();
       try {
         await client.request(LOGOUT_MUTATION, { outletId }, {
-          Authorization: `Bearer ${accessToken}`
-        })
+          Authorization: `Bearer ${accessToken}`,
+        });
       } catch (error) {
         //console.error("Logout error in:", error)
       }
     }
-    await secureStorage.deleteItemAsync(AUTH_TOKEN_KEY);
-    // await AsyncStorage.removeItem(BIOMETRIC_ENABLED_KEY);
+
+    await this.removeUser();
   }
 
   //! Fetch user from backend
   static async fetchCurrentUser(): Promise<User | null> {
-    try {
-      // get token  data after login
-
-      const client = await getGraphQLClient();
-      const { accessToken } = await this.getTokens();
-      if (!accessToken) return null;
-      const ME_QUERY = gql`
-        query ME {
-          ME {
+    const ME_QUERY = gql`
+      query ME {
+        ME {
+          id
+          username
+          email
+          profilePhoto
+          fullname
+          role
+          isVerified
+          orgId
+          org {
             id
-            username
-            email
-            profilePhoto
-            fullname
-            role
-            isVerified
-            orgId
-            org {
+            name
+            subscription {
               id
-              name
-              subscription {
-                id
-                plan
-              }
+              plan
             }
           }
         }
-      `;
-      const response = (await client.request(
-        ME_QUERY,
-        {},
-        { Authorization: `Bearer ${accessToken}` }
-      )) as any;
+      }
+    `;
 
-      const user = response.ME;
-      if (user) {
-        await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
+    const requestUser = async (token: string): Promise<User | null> => {
+      try {
+        const client = await getGraphQLClient();
+        const response = (await client.request(
+          ME_QUERY,
+          {},
+          { Authorization: `Bearer ${token}` }
+        )) as any;
+
+        const user = response.ME;
+        if (user) {
+          await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
+        }
+        return user;
+      } catch (error) {
+        return null;
+      }
+    };
+
+    try {
+      const { accessToken, refreshToken } = await this.getTokens();
+      if (accessToken) {
+        const user = await requestUser(accessToken);
+        if (user) return user;
       }
 
-      return user;
+      if (!refreshToken) {
+        return null;
+      }
+
+      const newAccessToken = await this.refreshAccessToken(refreshToken);
+      if (!newAccessToken) {
+        return null;
+      }
+
+      return await requestUser(newAccessToken);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error)
-      if (process.env.EXPO_PUBLIC_ENV === 'development') {
-        console.warn('[AuthService] fetchCurrentUser error:', errorMessage)
+     
+      if(__DEV__) {
+        const errorMessage = formatGraphQLError(error)
+        console.warn('[AuthService] fetchCurrentUser error:', errorMessage);
       }
-      // Don't show alert during onboarding - silently return null for token refresh
       return null;
     }
   }
 
   static async getCurrentUser(): Promise<User | null> {
     try {
-      // get token  data after login
-      const token = await secureStorage.getItemAsync(AUTH_TOKEN_KEY);
-
-      if (!token) return null;
-
       // get user data after login
       const userData = await AsyncStorage.getItem(USER_DATA_KEY);
       if (!userData) return null;
 
       return JSON.parse(userData);
     } catch (error) {
-      //console.error('Error geting current user:', error);
+      //console.error('Error getting current user:', error);
       return null;
     }
   }
@@ -479,10 +522,34 @@ export class AuthService {
       wifiAuthorized?: boolean;
     }
     */
+  static async getStoredAuthState(): Promise<AuthState | null> {
+    const user = await this.getCurrentUser();
+    const accessToken = await this.ensureAccessToken();
+    const { refreshToken } = await this.getTokens();
+
+    if (user && accessToken) {
+      return {
+        user,
+        isLoading: false,
+        accessToken,
+        refreshToken,
+        isAuthenticated: true,
+      };
+    }
+
+    return null;
+  }
+
   static async initializeAuth(): Promise<AuthState> {
     try {
-      const user = await this.getCurrentUser();
+      const storedAuthState = await this.getStoredAuthState();
+      if (storedAuthState) {
+        return storedAuthState;
+      }
+
+      const user = await this.fetchCurrentUser();
       const { accessToken, refreshToken } = await this.getTokens();
+
       if (!user || !accessToken) {
         return {
           user: null,
@@ -492,15 +559,15 @@ export class AuthService {
           isAuthenticated: false,
         };
       }
+
       return {
         user,
         isLoading: false,
         accessToken,
         refreshToken,
-        isAuthenticated: !!accessToken && !!user,
+        isAuthenticated: true,
       };
     } catch (error) {
-      //console.error('Error initializing auth:', error);
       return {
         user: null,
         isLoading: false,
@@ -522,5 +589,94 @@ export class AuthService {
       return false;
     }
   }
+  /**
+ * Decodes a JWT and returns its expiry timestamp (in ms), or null if invalid.
+ */
+  static getTokenExpiry(token: string): number | null {
+    try {
+      const [, payloadB64] = token.split('.');
+      if (!payloadB64) return null;
+      const decoded = JSON.parse(atob(payloadB64));
+      return decoded.exp ? decoded.exp * 1000 : null;
+    } catch {
+      return null;
+    }
+  }
 
+  /**
+   * Returns true if the token is expired or expiring within the threshold.
+   * Defaults to 2 minutes — gives enough runway to refresh before a request fails.
+   */
+  static isTokenExpiringSoon(token: string, thresholdMs = 2 * 60 * 1000): boolean {
+    const expiry = this.getTokenExpiry(token);
+    if (!expiry) return true; // treat undecodable as already expired
+    return Date.now() >= expiry - thresholdMs;
+  }
+
+  /**
+   * Silently refreshes the access token if it is expired or expiring soon.
+   * Safe to call on every app foreground — no-ops if the token is still valid.
+   *
+   * Returns the valid access token, or null if refresh failed (user must log in again).
+   */
+  static async silentRefresh(): Promise<string | null> {
+    try {
+      const { accessToken, refreshToken } = await this.getTokens();
+
+      // Token is still valid — nothing to do
+      if (accessToken && !this.isTokenExpiringSoon(accessToken)) {
+        return accessToken;
+      }
+
+      if (!refreshToken) return null;
+
+      // Refresh token itself is expired — full re-login required
+      if (this.isTokenExpiringSoon(refreshToken, 0)) {
+        await this.removeUser();
+        return null;
+      }
+
+      return await this.refreshAccessToken(refreshToken);
+    } catch (error) {
+      if(__DEV__) {
+        console.warn('[AuthService] silentRefresh failed:', error instanceof Error ? error.message : error);
+      }
+      return null; // refreshAccessToken already called removeUser() on failure
+    }
+  }
+
+  /**
+   * Call this when the app returns to foreground (AppState → "active").
+   * Refreshes the token silently and returns a fresh AuthState for your context.
+   *
+   * Example usage in your AuthContext or root layout:
+   *
+   *   useEffect(() => {
+   *     const sub = AppState.addEventListener('change', async (next) => {
+   *       if (next === 'active') {
+   *         const updated = await AuthService.onAppForeground();
+   *         if (updated) dispatch({ type: 'RESTORE_AUTH', payload: updated });
+   *         else dispatch({ type: 'LOGOUT' });
+   *       }
+   *     });
+   *     return () => sub.remove();
+   *   }, []);
+   */
+  static async onAppForeground(): Promise<AuthState | null> {
+    const token = await this.silentRefresh();
+    if (!token) return null;
+
+    const user = await this.getCurrentUser();
+    if (!user) return null;
+
+    const { refreshToken } = await this.getTokens();
+    return {
+      user,
+      isLoading: false,
+      isAuthenticated: true,
+      accessToken: token,
+      refreshToken: refreshToken ?? null,
+    };
+  }
 }
+

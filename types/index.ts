@@ -75,11 +75,13 @@ export interface Subscription {
   id: string;
   plan: 'BASIC' | 'GOLD';
 }
-
+export type orgRoles = 'SELLER' | 'SUPPLIER'
 export interface OrganizationInfo {
   id: string;
   name: string;
   subscription?: Subscription | null;
+  profileImg?: string;
+  roles: orgRoles[];
 }
 
 export interface User {
@@ -89,15 +91,37 @@ export interface User {
   name: string;
   role: 'OWNER' | 'CASHIER' | 'STAFF' | 'MANAGER' | 'ADMIN';
   isVerified?: boolean;
-  orgId?: number;
-  org?: OrganizationInfo | null;
+  orgId: number;
+  org: OrganizationInfo | null;
   assignedOutletId?: string; // For cashiers
   assignedStoreId?: string;
   createdAt: string;
   profilePhoto?: string;
+  position?: Position | null;
 }
+export interface Position {
+  id: string;
+  name: string;
+  description?: string;
+  permissions?: PositionPermission[];
+}
+export interface PositionPermission {
+  pageId: string;
+  canView: boolean;
+  canCreate: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+  page: Page;
 
-
+}
+export interface Page {
+  id: string;
+  key: string;
+  label: string;
+  access?: 'SELLER' | 'SUPPLIER' | 'POSTERMINAL';
+  sortOrder?: number;
+  parentKey?: string;
+}
 export type EWalletMethod = "PH_GCASH" | "PH_PAYMAYA";
 // You can also refine your PaymentMethod to include E-Wallet details
 export type PaymentMethod = 'cash' | 'e-wallet' | 'card';
@@ -514,6 +538,8 @@ export interface CatalogItem {
   sellingPrice: string;
   costLines: CostLine[] | [];
   stock?: number;
+  remainingStock?: number;
+  maxAllocatable?: number;
 }
 
 

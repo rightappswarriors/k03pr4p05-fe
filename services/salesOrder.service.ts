@@ -57,6 +57,18 @@ export interface ScPwdCustomer {
   representativeIdNumber?: string;
 }
 
+export interface DiscountStatus {
+  customerId?: string | null;
+  oscaGovId?: string | null;
+  weeklyCapUsed: number;
+  eligibleAmountUsed: number;
+  capRemaining: number;
+  purchaseRemaining: number;
+  bnpcDiscountApplied: boolean;
+  capManuallyReached: boolean;
+  lastResetDate: string;
+}
+
 export interface ExtraCharge {
   id: string;
   label: string;
@@ -239,7 +251,7 @@ export interface InventoryItemForSales {
     isBNPC?: boolean;
     hasSeniorDiscountVATExempt?: boolean;
     vatRate?: number;
-    vatType? : {
+    vatType?: {
       id: number
       name: string;
       rate: number;
@@ -424,7 +436,7 @@ export class SalesOrderService {
       );
       return response.getSalesOrders ?? [];
     } catch (error) {
-      console.error("getSalesOrders error:", formatGraphQLError(error));
+      if (__DEV__) console.error("getSalesOrders error:", formatGraphQLError(error));
       return [];
     }
   }
@@ -442,7 +454,39 @@ export class SalesOrderService {
       const response = await graphQLRequest<{ getSalesOrder: SalesOrder | null }>(QUERY, { id });
       return response.getSalesOrder;
     } catch (error) {
-      console.error("getSalesOrder error:", formatGraphQLError(error));
+      if (__DEV__) console.error("getSalesOrder error:", formatGraphQLError(error));
+      return null;
+    }
+  }
+
+  static async getDiscountStatus(
+    customerId?: string | null,
+    oscaGovId?: string | null,
+  ): Promise<DiscountStatus | null> {
+    const QUERY = gql`
+      query GetBnpcDiscountStatus($customerId: String, $oscaGovId: String) {
+        bnpcDiscountStatus(customerId: $customerId, oscaGovId: $oscaGovId) {
+          customerId
+          oscaGovId
+          weeklyCapUsed
+          eligibleAmountUsed
+          capRemaining
+          purchaseRemaining
+          bnpcDiscountApplied
+          capManuallyReached
+          lastResetDate
+        }
+      }
+    `;
+    if (!customerId && !oscaGovId) return null;
+    try {
+      const response = await graphQLRequest<{ bnpcDiscountStatus: DiscountStatus | null }>(
+        QUERY,
+        { customerId, oscaGovId },
+      );
+      return response.bnpcDiscountStatus ?? null;
+    } catch (error) {
+      console.error('getDiscountStatus error:', formatGraphQLError(error));
       return null;
     }
   }
@@ -769,11 +813,17 @@ export class SalesOrderService {
         }
       }
     `;
-    const response = await graphQLRequest<{ updateSalesOrderStatus: SalesOrder }>(
-      MUTATION,
-      { salesOrderId, status }
-    );
-    return response.updateSalesOrderStatus;
+    try {
+      const response = await graphQLRequest<{ updateSalesOrderStatus: SalesOrder }>(
+        MUTATION,
+        { salesOrderId, status }
+      );
+      return response.updateSalesOrderStatus;
+    } catch (error) {
+      if (__DEV__) {
+        console.error("updateSalesOrderStatus error:", formatGraphQLError(error));
+      } throw error;
+    }
   }
 
   static async addExtraCharge(salesOrderId: string, label: string, amount: number): Promise<SalesOrder> {

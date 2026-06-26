@@ -7,6 +7,7 @@
 //   npx expo install expo-sharing expo-file-system expo-print
 //   npm install exceljs
 
+import { Platform } from 'react-native';
 import * as Sharing from 'expo-sharing';
 import * as Print from 'expo-print';
 import * as FileSystem from 'expo-file-system';
@@ -637,20 +638,37 @@ export async function exportERPExcel(cfg: ExportConfig): Promise<void> {
 
   // ── Write & share ──────────────────────────────────────────────────────────
   const buffer = await wb.xlsx.writeBuffer();
-  const b64 = buffer.toString('base64');
   const label = cfg.table === 'expense' ? 'ExpenseSummary' : 'ItemNetSummary';
   const safe = cfg.dateLabel.replace(/[^a-zA-Z0-9]/g, '_');
-  const path = `${cacheDirectory}KompraPOS_ERP_${label}_${safe}.xlsx`;
+  const fileName = `KompraPOS_ERP_${label}_${safe}.xlsx`;
 
-  await writeAsStringAsync(path, b64, { encoding: EncodingType.Base64 });
-  try {
-    await Sharing.shareAsync(path, {
-      mimeType:
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      dialogTitle: `KompraPOS ERP — ${label}`,
-      UTI: 'com.microsoft.excel.xlsx',
+  if (Platform.OS === 'web') {
+    // Web: Use Blob and download
+    const blob = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     });
-  } catch (_) {}
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', fileName);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } else {
+    // Native: Use FileSystem and Sharing
+    const b64 = buffer.toString('base64');
+    const path = `${cacheDirectory}${fileName}`;
+    await writeAsStringAsync(path, b64, { encoding: EncodingType.Base64 });
+    try {
+      await Sharing.shareAsync(path, {
+        mimeType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        dialogTitle: `KompraPOS ERP — ${label}`,
+        UTI: 'com.microsoft.excel.xlsx',
+      });
+    } catch (_) {}
+  }
 }
 
 // ─── PDF EXPORT ───────────────────────────────────────────────────────────────

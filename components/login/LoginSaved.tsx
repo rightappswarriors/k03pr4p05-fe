@@ -103,7 +103,7 @@ export default function LoginSaved({ user, onRemoveUser, isDesktop }: Props) {
   };
 
   return (
-    <SafeAreaView style={styles.screen} dataSet={{ authScreen: 'true' }}>
+    <SafeAreaView style={styles.screen}>
       <View style={styles.orbOne} />
       <View style={styles.orbTwo} />
       <View style={styles.shell}>

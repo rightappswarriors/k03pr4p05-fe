@@ -100,7 +100,7 @@ export function CartSidebar({
   };
 
   const handlePrintReceipt = (receiptData: any) => {
-    console.log('Receipt Data:', JSON.stringify(receiptData, null, 2));
+    if (__DEV__) console.log('Receipt Data:', JSON.stringify(receiptData, null, 2));
     // Here you would typically send the receipt data to a printer or save it
     onClearCart();
     setReceiptModalVisible(false);
@@ -132,10 +132,10 @@ export function CartSidebar({
             transform: isDesktop
               ? []
               : [
-                  {
-                    translateX: slideAnim,
-                  },
-                ],
+                {
+                  translateX: slideAnim,
+                },
+              ],
           },
         ]}
       >
@@ -156,7 +156,8 @@ export function CartSidebar({
           )}
           <View style={styles.headerCenter}>
             {outlet?.bannerImage ? (
-              <Image source={{ uri: outlet.bannerImage }} style={styles.logo} />
+              <Image source={{ uri: outlet.bannerImage }} style={styles.logo}
+                defaultSource={require('@/assets/images/placeholder.png')} />
             ) : (
               <Store size={8} color={colors.accent} style={styles.logo} />
             )}
@@ -199,6 +200,7 @@ export function CartSidebar({
                   <Image
                     source={{ uri: data.image }}
                     style={styles.itemImage}
+                    defaultSource={require('@/assets/images/placeholder.png')}
                   />
                 ) : (
                   <View
@@ -236,7 +238,7 @@ export function CartSidebar({
                   <View style={styles.quantityContainer}>
                     {/* Hide +/- for weight items — weight is fixed at time of add */}
                     {data.unitName &&
-                    WEIGHT_UNITS.includes(data.unitName.toLowerCase()) ? (
+                      WEIGHT_UNITS.includes(data.unitName.toLowerCase()) ? (
                       <Text
                         style={[styles.weightDisplay, { color: colors.text }]}
                       >

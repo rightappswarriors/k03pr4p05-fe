@@ -2,11 +2,16 @@
 import React, { useState } from 'react'
 import {
   Modal, View, Text, TouchableOpacity,
-  StyleSheet, Platform
+  StyleSheet, Platform, TextInput
 } from 'react-native'
-import DateTimePicker from '@react-native-community/datetimepicker'
 import { Calendar, X, ChevronRight } from 'lucide-react-native'
 import { formatShortDate } from '@/utils/dateHelpers'
+
+// Conditionally import DateTimePicker only on native
+let DateTimePicker: any = null
+if (Platform.OS !== 'web') {
+  DateTimePicker = require('@react-native-community/datetimepicker').default
+}
 
 interface Props {
   visible: boolean
@@ -16,6 +21,61 @@ interface Props {
   initialEnd?: Date
 }
 
+// Helper: Date → "YYYY-MM-DD" for <input type="date">
+function toInputValue(date: Date): string {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+// Helper: "YYYY-MM-DD" → Date
+function fromInputValue(value: string): Date {
+  const [y, m, d] = value.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+// Web-only date input rendered via dangerouslySetInnerHTML equivalent
+function WebDateInput({
+  value,
+  max,
+  onChange,
+  active,
+}: {
+  value: Date
+  max: Date
+  onChange: (date: Date) => void
+  active: boolean
+}) {
+  // React Native Web supports passing style as object to View,
+  // and we can render a raw <input> via a web-specific trick
+  if (Platform.OS !== 'web') return null
+
+  return (
+    <input
+      type="date"
+      value={toInputValue(value)}
+      max={toInputValue(max)}
+      onChange={(e) => {
+        if (e.target.value) onChange(fromInputValue(e.target.value))
+      }}
+      style={{
+        marginTop: 8,
+        padding: '10px 12px',
+        fontSize: 14,
+        borderRadius: 10,
+        border: active ? '1.5px solid #2563EB' : '1.5px solid #E5E7EB',
+        backgroundColor: active ? '#EFF6FF' : 'white',
+        width: '100%',
+        boxSizing: 'border-box',
+        color: '#1F2937',
+        outline: 'none',
+        cursor: 'pointer',
+      }}
+    />
+  )
+}
+
 export default function DateRangePickerModal({
   visible, onClose, onApply, initialStart, initialEnd
 }: Props) {
@@ -23,11 +83,11 @@ export default function DateRangePickerModal({
 
   const [startDate, setStartDate] = useState<Date>(initialStart ?? today)
   const [endDate, setEndDate] = useState<Date>(initialEnd ?? today)
+  // Only used on native (controls which picker is open)
   const [pickingFor, setPickingFor] = useState<'start' | 'end' | null>(null)
 
   const handleApply = () => {
     if (startDate > endDate) {
-      // swap if user picked end before start
       onApply(endDate, startDate)
     } else {
       onApply(startDate, endDate)
@@ -35,9 +95,9 @@ export default function DateRangePickerModal({
     onClose()
   }
 
-  const handleDateChange = (_: any, selected?: Date) => {
+  const handleNativeDateChange = (_: any, selected?: Date) => {
     if (!selected) return
-    if (Platform.OS === 'android') setPickingFor(null) // android closes itself
+    if (Platform.OS === 'android') setPickingFor(null)
 
     if (pickingFor === 'start') {
       const s = new Date(selected)
@@ -48,6 +108,18 @@ export default function DateRangePickerModal({
       e.setHours(23, 59, 59, 999)
       setEndDate(e)
     }
+  }
+
+  const handleWebStartChange = (date: Date) => {
+    const s = new Date(date)
+    s.setHours(0, 0, 0, 0)
+    setStartDate(s)
+  }
+
+  const handleWebEndChange = (date: Date) => {
+    const e = new Date(date)
+    e.setHours(23, 59, 59, 999)
+    setEndDate(e)
   }
 
   return (
@@ -66,38 +138,64 @@ export default function DateRangePickerModal({
             </TouchableOpacity>
           </View>
 
-          {/* Date Row */}
-          <View style={styles.dateRow}>
-            {/* Start Date */}
-            <TouchableOpacity
-              style={[styles.dateBox, pickingFor === 'start' && styles.dateBoxActive]}
-              onPress={() => setPickingFor(pickingFor === 'start' ? null : 'start')}
-            >
-              <Text style={styles.dateBoxLabel}>From</Text>
-              <Text style={styles.dateBoxValue}>{formatShortDate(startDate)}</Text>
-            </TouchableOpacity>
+          {Platform.OS === 'web' ? (
+            // ── Web: two always-visible date inputs ──
+            <View style={styles.dateRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.dateBoxLabel}>From</Text>
+                <WebDateInput
+                  value={startDate}
+                  max={today}
+                  onChange={handleWebStartChange}
+                  active={false}
+                />
+              </View>
 
-            <ChevronRight size={16} color="#9CA3AF" />
+              <ChevronRight size={16} color="#9CA3AF" style={{ marginTop: 20 }} />
 
-            {/* End Date */}
-            <TouchableOpacity
-              style={[styles.dateBox, pickingFor === 'end' && styles.dateBoxActive]}
-              onPress={() => setPickingFor(pickingFor === 'end' ? null : 'end')}
-            >
-              <Text style={styles.dateBoxLabel}>To</Text>
-              <Text style={styles.dateBoxValue}>{formatShortDate(endDate)}</Text>
-            </TouchableOpacity>
-          </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.dateBoxLabel}>To</Text>
+                <WebDateInput
+                  value={endDate}
+                  max={today}
+                  onChange={handleWebEndChange}
+                  active={false}
+                />
+              </View>
+            </View>
+          ) : (
+            // ── Native: tap-to-open boxes ──
+            <>
+              <View style={styles.dateRow}>
+                <TouchableOpacity
+                  style={[styles.dateBox, pickingFor === 'start' && styles.dateBoxActive]}
+                  onPress={() => setPickingFor(pickingFor === 'start' ? null : 'start')}
+                >
+                  <Text style={styles.dateBoxLabel}>From</Text>
+                  <Text style={styles.dateBoxValue}>{formatShortDate(startDate)}</Text>
+                </TouchableOpacity>
 
-          {/* Native Picker */}
-          {pickingFor !== null && (
-            <DateTimePicker
-              value={pickingFor === 'start' ? startDate : endDate}
-              mode="date"
-              display={Platform.OS === 'ios' ? 'inline' : 'default'}
-              maximumDate={today}
-              onChange={handleDateChange}
-            />
+                <ChevronRight size={16} color="#9CA3AF" />
+
+                <TouchableOpacity
+                  style={[styles.dateBox, pickingFor === 'end' && styles.dateBoxActive]}
+                  onPress={() => setPickingFor(pickingFor === 'end' ? null : 'end')}
+                >
+                  <Text style={styles.dateBoxLabel}>To</Text>
+                  <Text style={styles.dateBoxValue}>{formatShortDate(endDate)}</Text>
+                </TouchableOpacity>
+              </View>
+
+              {pickingFor !== null && DateTimePicker && (
+                <DateTimePicker
+                  value={pickingFor === 'start' ? startDate : endDate}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                  maximumDate={today}
+                  onChange={handleNativeDateChange}
+                />
+              )}
+            </>
           )}
 
           {/* Validation warning */}
@@ -133,6 +231,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderRadius: 16,
     padding: 20,
+    maxWidth: 400,
     width: '100%',
     gap: 16,
   },

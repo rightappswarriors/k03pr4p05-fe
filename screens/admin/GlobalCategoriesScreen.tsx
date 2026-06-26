@@ -429,7 +429,7 @@ export default function GlobalCategoriesScreen() {
         })),
       );
     } catch (err) {
-      console.error('Failed to load global categories:', err);
+      if (__DEV__) console.error('Failed to load global categories:', err);
     } finally {
       setLoading(false);
     }
@@ -481,7 +481,7 @@ export default function GlobalCategoriesScreen() {
       setModalVisible(false);
       setEditingItem(null);
     } catch (err) {
-      console.error('Failed to save category:', err);
+      if (__DEV__) console.error('Failed to save category:', err);
     } finally {
       setSaving(false);
     }
@@ -497,7 +497,7 @@ export default function GlobalCategoriesScreen() {
       await loadCategories();
       setDeleteTarget(null);
     } catch (err) {
-      console.error('Failed to delete category:', err);
+      if (__DEV__) console.error('Failed to delete category:', err);
     } finally {
       setDeleting(false);
     }

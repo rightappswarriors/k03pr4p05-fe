@@ -18,11 +18,11 @@ export class MasterFileFinanceService {
             return response.getAllAccountTitles;
         } catch (error) {
             const message = formatGraphQLError(error);
-            console.error('getAccountTitles error:', message);
+            if (__DEV__) console.error('getAccountTitles error:', message);
             return [];
         }
     }
-    
+
     static async createAccountTitle(label: string, code?: string) {
         const CREATE = gql`
             mutation CreateAccountTitle($label: String!, $code: String) {
@@ -40,12 +40,13 @@ export class MasterFileFinanceService {
             });
             return response.createAccountTitle;
         } catch (error) {
-            const message = formatGraphQLError(error);
-            console.error('createAccountTitle error:', message);
-            throw error; // Re-throw so UI can show error
+            if (__DEV__) {
+                const message = formatGraphQLError(error);
+                console.error('createAccountTitle error:', message);
+            } throw error; // Re-throw so UI can show error
         }
     }
-    
+
     static async updateAccountTitle(id: number, label: string, code?: string) {
         const UPDATE = gql`
             mutation UpdateAccountTitle($id: Int!, $label: String!, $code: String) {
@@ -64,12 +65,13 @@ export class MasterFileFinanceService {
             });
             return response.updateAccountTitle;
         } catch (error) {
-            const message = formatGraphQLError(error);
-            console.error('updateAccountTitle error:', message);
-            throw error;
+            if (__DEV__) {
+                const message = formatGraphQLError(error);
+                console.error('updateAccountTitle error:', message);
+            } throw error;
         }
     }
-    
+
     static async deleteAccountTitle(id: number) {
         const DELETE = gql`
             mutation DeleteAccountTitle($id: Int!) {
@@ -85,9 +87,10 @@ export class MasterFileFinanceService {
             });
             return response.deleteAccountTitle;
         } catch (error) {
-            const message = formatGraphQLError(error);
-            console.error('deleteAccountTitle error:', message);
-            throw error;
+            if (__DEV__) {
+                const message = formatGraphQLError(error);
+                console.error('deleteAccountTitle error:', message);
+            } throw error;
         }
     }
 }

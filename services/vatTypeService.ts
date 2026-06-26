@@ -25,7 +25,7 @@ export class VatTypeService {
       const res = await graphQLRequest<{ vatTypes: VatTypeItem[] }>(GQL);
       return res.vatTypes ?? [];
     } catch (error) {
-      console.error('VatTypeService.getAll error:', error);
+      if (__DEV__) console.error('VatTypeService.getAll error:', error);
       return [];
     }
   }
@@ -65,7 +65,7 @@ export class VatTypeService {
       const res = await graphQLRequest<{ updateVatType: VatTypeItem }>(mutation, { id, name, rate });
       return res.updateVatType;
     } catch (error) {
-      console.error("Error deleting VatItem: ", error)
+      if (__DEV__) console.error("Error deleting VatItem: ", error)
       return null
     }
   }
@@ -81,11 +81,11 @@ export class VatTypeService {
       }
     `;
     try {
-      
-    const res = await graphQLRequest<{ deleteVatType: VatTypeItem }>(mutation, { id });
-    return res.deleteVatType;
+
+      const res = await graphQLRequest<{ deleteVatType: VatTypeItem }>(mutation, { id });
+      return res.deleteVatType;
     } catch (error) {
-      console.error("Error deleting VatItem: ",error)
+      if (__DEV__) console.error("Error deleting VatItem: ", error)
       return null
     }
   }

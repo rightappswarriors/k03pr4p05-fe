@@ -1,38 +1,42 @@
 import { SubscriptionProvider } from '@/contexts/SubscriptionContext';
 import { WebSocketProvider } from '@/contexts/WSContext';
-import { useAuth } from '@/hooks/useAuth';
 import { router, Stack } from 'expo-router';
+import { useAuth } from '@/contexts/AuthContext';
 import React, { useEffect } from 'react';
 
 export default function AdminTabLayout() {
   const { isAuthenticated, isLoading, user } = useAuth();
+  const canViewSeller = user?.position?.permissions?.some(
+    p => p.page?.access === 'SELLER' && p.canView
+  );
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
       router.replace('/login');
-    } else if (
-      !isLoading &&
-      isAuthenticated &&
-      (user?.role === 'CASHIER' || user?.role === 'STAFF')
-    ) {
+      return;
+    }
+
+    if (!user) return;
+
+    const canAccessERP =
+      user.role === 'OWNER' ||
+      user.role === 'MANAGER' ||
+      user.role === 'STAFF' ||
+      canViewSeller;
+
+    if (!canAccessERP) {
       router.replace('/(tabs)');
-    } else if (
-      !isLoading &&
-      isAuthenticated &&
-      (user?.role === 'MANAGER' || user?.role === 'OWNER') &&
-      !user?.orgId
-    ) {
-      // User has admin/owner role but no organization - redirect to onboarding
+      return;
+    }
+
+    if (!user.orgId) {
       router.replace('/onboarding?step=organization');
-    } else if (
-      !isLoading &&
-      isAuthenticated &&
-      (user?.role === 'MANAGER' || user?.role === 'OWNER') &&
-      user?.orgId &&
-      !user?.org?.subscription?.id
-    ) {
-      // User has organization but no subscription - redirect to subscription step
+      return;
+    }
+
+    if (!user.org?.subscription?.id) {
       router.replace('/onboarding?step=subscription');
+      return;
     }
   }, [isAuthenticated, isLoading, user]);
   return (

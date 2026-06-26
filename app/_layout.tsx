@@ -6,6 +6,7 @@ import './global.css';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
+import { ActiveRoleProvider } from '@/contexts/ActiveRoleContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 
 // Keep onboarding context to avoid extra changes for existing onboarding data usage
@@ -41,7 +42,7 @@ export default function RootLayout() {
         setHasOnboardedState(onboarded === 'true');
         setIsLoggedInState(loggedIn === 'true');
       } catch (error) {
-        console.error('Failed to load storage items:', error);
+        if (__DEV__) console.error('Failed to load storage items:', error);
         setHasOnboardedState(false);
         setIsLoggedInState(false);
       } finally {
@@ -57,7 +58,7 @@ export default function RootLayout() {
       await AsyncStorage.setItem('hasOnboarded', value.toString());
       setHasOnboardedState(value);
     } catch (error) {
-      console.error('Failed to set hasOnboarded:', error);
+      if (__DEV__) console.error('Failed to set hasOnboarded:', error);
     }
   };
 
@@ -66,7 +67,7 @@ export default function RootLayout() {
       await AsyncStorage.setItem('isLoggedIn', value.toString());
       setIsLoggedInState(value);
     } catch (error) {
-      console.error('Failed to set isLoggedIn:', error);
+      if (__DEV__) console.error('Failed to set isLoggedIn:', error);
     }
   };
 
@@ -77,24 +78,27 @@ export default function RootLayout() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <OnboardingContext.Provider
-          value={{
-            hasOnboarded,
-            setHasOnboarded,
-            isLoggedIn,
-            setIsLoggedIn,
-          }}
-        >
-          <ProtectedRoute>
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="(public)" />
-              <Stack.Screen name="login" />
-              <Stack.Screen name="onboarding" />
-              <Stack.Screen name="index" />
-              <Stack.Screen name="+not-found" />
-            </Stack>
-          </ProtectedRoute>
-        </OnboardingContext.Provider>
+        <ActiveRoleProvider>
+          <OnboardingContext.Provider
+            value={{
+              hasOnboarded,
+              setHasOnboarded,
+              isLoggedIn,
+              setIsLoggedIn,
+            }}
+          >
+            <ProtectedRoute>
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="(supplier)" />
+                <Stack.Screen name="(public)" />
+                <Stack.Screen name="login" />
+                <Stack.Screen name="onboarding" />
+                <Stack.Screen name="index" />
+                <Stack.Screen name="+not-found" />
+              </Stack>
+            </ProtectedRoute>
+          </OnboardingContext.Provider>
+        </ActiveRoleProvider>
       </AuthProvider>
     </ThemeProvider>
   );

@@ -24,7 +24,7 @@ export function useAuth() {
       const state = await AuthService.initializeAuth();
       setAuthState(state);
     } catch (error) {
-      console.error('Auth initialization failed:', error);
+      if (__DEV__) console.error('Auth initialization failed:', error);
     } finally {
       setIsLoading(false);
     }
@@ -36,7 +36,7 @@ export function useAuth() {
       setAuthState(prev => ({ ...prev, user, isAuthenticated: true }));
       return user;
     } catch (error) {
-      console.error('Login failed:', error);
+      if (__DEV__) console.error('Login failed:', error);
       throw error;
     }
   };
@@ -54,7 +54,7 @@ export function useAuth() {
         wifiAuthorized: false,
       });
     } catch (error) {
-      console.error('Logout failed:', error);
+      if (__DEV__) console.error('Logout failed:', error);
     }
   };
 
@@ -66,7 +66,7 @@ export function useAuth() {
       }
       return success;
     } catch (error) {
-      console.error('Device binding failed:', error);
+      if (__DEV__) console.error('Device binding failed:', error);
       return false;
     }
   };

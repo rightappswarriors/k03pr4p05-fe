@@ -1,5 +1,6 @@
 import { gql } from "graphql-request"
 import { graphQLRequest } from "./apiClient";
+import { formatGraphQLError } from "@/utils/errorFormatter";
 
 export class CenterService {
     static async getAll() {
@@ -7,7 +8,9 @@ export class CenterService {
     }
 
     static async getCenters() {
-        const QUERY = gql`
+        try {
+
+            const QUERY = gql`
             query {
                 getCenters {
                     id
@@ -15,8 +18,15 @@ export class CenterService {
                 }
             }
         `;
-        const response = await graphQLRequest<{ getCenters: any }>(QUERY, {});
-        return response.getCenters;
+            const response = await graphQLRequest<{ getCenters: any }>(QUERY, {});
+            return response.getCenters;
+        } catch (error) {
+            const errorMessage = formatGraphQLError(error)
+
+            if (__DEV__) console.error("Center service", errorMessage)
+
+            throw new Error(errorMessage)
+        }
     }
 
     static async create(label: string) {

@@ -45,11 +45,6 @@ const CUSTOMER_OPTIONS: { value: CustomerType; label: string }[] = [
   { value: 'PWD', label: 'PWD' },
 ];
 
-const DISCOUNT_OPTIONS: { value: DiscountType; label: string }[] = [
-  { value: 'SENIOR_CITIZEN', label: 'SC/PWD 20% + VAT Exempt' },
-  { value: 'BNPC_SENIOR_CITIZEN', label: 'BNPC 5%' },
-  { value: 'NONE', label: 'No Discount' },
-];
 
 function defaultIdType(type: CustomerType) {
   return type === 'PWD' ? 'PWD-PDAO' : 'OSCA';
@@ -258,37 +253,6 @@ export const ScPwdCustomerForm = forwardRef<ScPwdCustomerFormRef, ScPwdCustomerF
               </>
             )}
 
-            {showDiscountSelector && (
-              <View style={styles.fields}>
-                <Text style={[styles.label, { color: colors.textSecondary }]}>
-                  Discount Type
-                </Text>
-                {DISCOUNT_OPTIONS.map((option) => {
-                  const value =
-                    option.value === 'SENIOR_CITIZEN' && customerType === 'PWD'
-                      ? 'PWD'
-                      : option.value === 'BNPC_SENIOR_CITIZEN' && customerType === 'PWD'
-                        ? 'BNPC_PWD'
-                        : option.value;
-                  const active = discountType === value;
-                  return (
-                    <TouchableOpacity
-                      key={option.value}
-                      style={[
-                        styles.option,
-                        { borderColor: colors.border, backgroundColor: colors.background },
-                        active && { borderColor: colors.primary, backgroundColor: colors.primary + '12' },
-                      ]}
-                      onPress={() => onDiscountTypeChange(value as DiscountType)}
-                    >
-                      <Text style={[styles.optionText, { color: active ? colors.primary : colors.text }]}>
-                        {option.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            )}
 
             {showPaxFields && (
               <View style={styles.fields}>

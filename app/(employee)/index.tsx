@@ -27,16 +27,16 @@ const STEPS: Array<{
   prompt: string;
   icon: string;
 }> = [
-  { key: 'timeIn',     label: 'Log In',          prompt: "What's your plan for today?",      icon: '🟢' },
-  { key: 'startBreak', label: 'Out for Lunch',    prompt: 'Any notes before your break?',     icon: '🍽️' },
-  { key: 'endBreak',   label: 'In from Lunch',    prompt: "What are you working on next?",    icon: '🔄' },
-  { key: 'timeOut',    label: 'Out from Work',    prompt: "How did your day go?",             icon: '🔴' },
-];
+    { key: 'timeIn', label: 'Log In', prompt: "What's your plan for today?", icon: '🟢' },
+    { key: 'startBreak', label: 'Out for Lunch', prompt: 'Any notes before your break?', icon: '🍽️' },
+    { key: 'endBreak', label: 'In from Lunch', prompt: "What are you working on next?", icon: '🔄' },
+    { key: 'timeOut', label: 'Out from Work', prompt: "How did your day go?", icon: '🔴' },
+  ];
 
 const ROLE_FILTERS = [
-  { label: 'All',      value: undefined },
-  { label: 'Staff',    value: 'STAFF' },
-  { label: 'Cashier',  value: 'CASHIER' },
+  { label: 'All', value: undefined },
+  { label: 'Staff', value: 'STAFF' },
+  { label: 'Cashier', value: 'CASHIER' },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -58,21 +58,21 @@ function formatPct(rate: number): string {
 
 function statusColor(status: string, colors: any): string {
   switch (status) {
-    case 'PRESENT':  return colors.success;
+    case 'PRESENT': return colors.success;
     case 'ON_BREAK': return colors.warning;
     case 'OFF_DUTY': return colors.textSecondary;
-    case 'ABSENT':   return colors.error;
-    default:         return colors.textSecondary;
+    case 'ABSENT': return colors.error;
+    default: return colors.textSecondary;
   }
 }
 
 function statusLabel(status: string): string {
   switch (status) {
-    case 'PRESENT':  return 'Present';
+    case 'PRESENT': return 'Present';
     case 'ON_BREAK': return 'On Break';
     case 'OFF_DUTY': return 'Done';
-    case 'ABSENT':   return 'Absent';
-    default:         return status;
+    case 'ABSENT': return 'Absent';
+    default: return status;
   }
 }
 
@@ -126,7 +126,7 @@ function AttendanceActionModal({ visible, step, onConfirm, onClose, colors }: Ac
       setPhoto(result);
       setShowCamera(false);
     } catch (err) {
-      console.error('[AttendanceActionModal] capture failed:', err);
+      if (__DEV__) console.error('[AttendanceActionModal] capture failed:', err);
       Alert.alert('Error', 'Failed to capture photo. Please try again.');
     } finally {
       setCapturing(false);
@@ -148,7 +148,7 @@ function AttendanceActionModal({ visible, step, onConfirm, onClose, colors }: Ac
       setPhoto(null);
       setNote('');
     } catch (err) {
-      console.error('[AttendanceActionModal] confirm failed:', err);
+      if (__DEV__) console.error('[AttendanceActionModal] confirm failed:', err);
     } finally {
       setSubmitting(false);
     }
@@ -198,7 +198,9 @@ function AttendanceActionModal({ visible, step, onConfirm, onClose, colors }: Ac
               <TouchableOpacity style={s.photoArea} onPress={handleOpenCamera} activeOpacity={0.85}>
                 {photo ? (
                   <>
-                    <Image source={{ uri: photo.uri }} style={s.photoPreview} />
+                    <Image source={{ uri: photo.uri }} style={s.photoPreview}
+                      defaultSource={require('@/assets/images/placeholder.png')}
+                    />
                     <View style={s.retakeOverlay}>
                       <Text style={s.retakeText}>📸 Retake</Text>
                     </View>
@@ -257,12 +259,12 @@ function AttendanceActionModal({ visible, step, onConfirm, onClose, colors }: Ac
 function PerformanceCard({ perf, colors }: { perf: PerformanceSummary; colors: any }) {
   const s = perfStyles(colors);
   const stats = [
-    { label: 'Present',      value: String(perf.presentDays),   accent: colors.success },
-    { label: 'Absent',       value: String(perf.absentDays),    accent: colors.error },
-    { label: 'Late Arrivals',value: String(perf.lateLogins),    accent: colors.warning },
-    { label: 'Half Days',    value: String(perf.halfDays),      accent: colors.accent },
-    { label: 'Avg. Clock-in',value: AttendanceService.formatAvgLoginTime(perf.avgLoginTimeMinutes), accent: colors.primary },
-    { label: 'Rate',         value: formatPct(perf.attendanceRate), accent: colors.primaryLight },
+    { label: 'Present', value: String(perf.presentDays), accent: colors.success },
+    { label: 'Absent', value: String(perf.absentDays), accent: colors.error },
+    { label: 'Late Arrivals', value: String(perf.lateLogins), accent: colors.warning },
+    { label: 'Half Days', value: String(perf.halfDays), accent: colors.accent },
+    { label: 'Avg. Clock-in', value: AttendanceService.formatAvgLoginTime(perf.avgLoginTimeMinutes), accent: colors.primary },
+    { label: 'Rate', value: formatPct(perf.attendanceRate), accent: colors.primaryLight },
   ];
 
   return (
@@ -316,7 +318,7 @@ function UserDetailSheet({ entry, visible, onClose, colors, orgId }: UserDetailS
       setHasMore(histData.hasMore);
       setHistPage(1);
     } catch (err) {
-      console.error('[UserDetailSheet] loadData failed:', err);
+      if (__DEV__) console.error('[UserDetailSheet] loadData failed:', err);
     } finally {
       setLoading(false);
     }
@@ -331,7 +333,7 @@ function UserDetailSheet({ entry, visible, onClose, colors, orgId }: UserDetailS
       setHasMore(data.hasMore);
       setHistPage(next);
     } catch (err) {
-      console.error('[UserDetailSheet] loadMoreHistory failed:', err);
+      if (__DEV__) console.error('[UserDetailSheet] loadMoreHistory failed:', err);
     }
   };
 
@@ -370,10 +372,10 @@ function UserDetailSheet({ entry, visible, onClose, colors, orgId }: UserDetailS
                   <Text style={s.sectionTitle}>Today</Text>
                   <View style={s.timeline}>
                     {[
-                      { label: 'Clocked In',  time: entry.attendance.timeIn,     photo: entry.attendance.photoIn },
-                      { label: 'Break Out',   time: entry.attendance.breakStart, photo: entry.attendance.photoBreakStart },
-                      { label: 'Break In',    time: entry.attendance.breakEnd,   photo: entry.attendance.photoBreakEnd },
-                      { label: 'Clocked Out', time: entry.attendance.timeOut,    photo: entry.attendance.photoOut },
+                      { label: 'Clocked In', time: entry.attendance.timeIn, photo: entry.attendance.photoIn },
+                      { label: 'Break Out', time: entry.attendance.breakStart, photo: entry.attendance.photoBreakStart },
+                      { label: 'Break In', time: entry.attendance.breakEnd, photo: entry.attendance.photoBreakEnd },
+                      { label: 'Clocked Out', time: entry.attendance.timeOut, photo: entry.attendance.photoOut },
                     ].map((ev, i) => (
                       <View key={i} style={s.timelineRow}>
                         <View style={[s.timelineDot, !ev.time && s.timelineDotEmpty]} />
@@ -382,7 +384,8 @@ function UserDetailSheet({ entry, visible, onClose, colors, orgId }: UserDetailS
                         </Text>
                         <Text style={s.timelineTime}>{formatTime(ev.time)}</Text>
                         {ev.photo && (
-                          <Image source={{ uri: ev.photo }} style={s.timelinePhoto} />
+                          <Image source={{ uri: ev.photo }} style={s.timelinePhoto}
+                            defaultSource={require('@/assets/images/placeholder.png')} />
                         )}
                       </View>
                     ))}
@@ -467,7 +470,7 @@ export default function EmployeeAttendanceScreen() {
       setTodayRecord(rec);
       setPerf(perfData);
     } catch (err) {
-      console.error('[EmployeeScreen] loadStaffData failed:', err);
+      if (__DEV__) console.error('[EmployeeScreen] loadStaffData failed:', err);
     } finally {
       setLoadingToday(false);
     }
@@ -492,7 +495,7 @@ export default function EmployeeAttendanceScreen() {
       setOwnerTotal(data.total);
       setOwnerHasMore(data.hasMore);
     } catch (err) {
-      console.error('[EmployeeScreen] loadOwnerData failed:', err);
+      if (__DEV__) console.error('[EmployeeScreen] loadOwnerData failed:', err);
     } finally {
       setOwnerLoading(false);
       setOwnerLoadingMore(false);
@@ -529,15 +532,15 @@ export default function EmployeeAttendanceScreen() {
     try {
       let updated: AttendanceRecord;
       switch (activeModal.key) {
-        case 'timeIn':     updated = await AttendanceService.timeIn(photo, note, orgId);     break;
+        case 'timeIn': updated = await AttendanceService.timeIn(photo, note, orgId); break;
         case 'startBreak': updated = await AttendanceService.startBreak(photo, note, orgId); break;
-        case 'endBreak':   updated = await AttendanceService.endBreak(photo, note, orgId);   break;
-        case 'timeOut':    updated = await AttendanceService.timeOut(photo, note, orgId);    break;
+        case 'endBreak': updated = await AttendanceService.endBreak(photo, note, orgId); break;
+        case 'timeOut': updated = await AttendanceService.timeOut(photo, note, orgId); break;
       }
       setTodayRecord(updated!);
       setActiveModal(null);
     } catch (err: any) {
-      console.error('[EmployeeScreen] handleAction failed:', err);
+      if (__DEV__) console.error('[EmployeeScreen] handleAction failed:', err);
       Alert.alert('Error', err?.message || 'Something went wrong. Please try again.');
       throw err;
     }
@@ -549,28 +552,28 @@ export default function EmployeeAttendanceScreen() {
 
   const isStepEnabled = (key: AttendanceActionType): boolean => {
     switch (key) {
-      case 'timeIn':     return stepState.canTimeIn;
+      case 'timeIn': return stepState.canTimeIn;
       case 'startBreak': return stepState.canStartBreak;
-      case 'endBreak':   return stepState.canEndBreak;
-      case 'timeOut':    return stepState.canTimeOut;
+      case 'endBreak': return stepState.canEndBreak;
+      case 'timeOut': return stepState.canTimeOut;
     }
   };
 
   const isStepDone = (key: AttendanceActionType): boolean => {
     switch (key) {
-      case 'timeIn':     return !!todayRecord?.timeIn;
+      case 'timeIn': return !!todayRecord?.timeIn;
       case 'startBreak': return !!todayRecord?.breakStart;
-      case 'endBreak':   return !!todayRecord?.breakEnd;
-      case 'timeOut':    return !!todayRecord?.timeOut;
+      case 'endBreak': return !!todayRecord?.breakEnd;
+      case 'timeOut': return !!todayRecord?.timeOut;
     }
   };
 
   const getStepTime = (key: AttendanceActionType): string | null => {
     switch (key) {
-      case 'timeIn':     return todayRecord?.timeIn ?? null;
+      case 'timeIn': return todayRecord?.timeIn ?? null;
       case 'startBreak': return todayRecord?.breakStart ?? null;
-      case 'endBreak':   return todayRecord?.breakEnd ?? null;
-      case 'timeOut':    return todayRecord?.timeOut ?? null;
+      case 'endBreak': return todayRecord?.breakEnd ?? null;
+      case 'timeOut': return todayRecord?.timeOut ?? null;
     }
   };
 

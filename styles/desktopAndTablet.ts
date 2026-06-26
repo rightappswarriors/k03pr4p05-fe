@@ -1,11 +1,16 @@
 import { StyleSheet } from 'react-native'
 
 export const responsive = StyleSheet.create({
-     desktopPadding : {
-          paddingHorizontal: 450
+     desktopForm: {
+          width: '100%',
+          maxWidth: 500,
+          alignSelf: 'center',
      },
-     tabletPadding : {
-          paddingHorizontal: 50
+
+     tabletForm: {
+          width: '100%',
+          maxWidth: 450,
+          alignSelf: 'center',
      },
      padding: {
           paddingHorizontal: 250

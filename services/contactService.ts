@@ -139,7 +139,7 @@ export class ContactService {
             })
             return response.createContact
         } catch (error) {
-            if (process.env.NODE_ENV === 'development') {
+            if(__DEV__) {
                 console.error('Error creating contact:', error)
             }
             throw new Error('Failed to create contact. Please try again.')

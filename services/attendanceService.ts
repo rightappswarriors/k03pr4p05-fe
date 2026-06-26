@@ -97,7 +97,7 @@ export class AttendanceService {
       const res = await graphQLRequest<{ myAttendanceToday: AttendanceRecord | null }>(QUERY);
       return res.myAttendanceToday;
     } catch (error) {
-      console.error('[AttendanceService] getMyAttendanceToday failed:', error);
+      if (__DEV__) console.error('[AttendanceService] getMyAttendanceToday failed:', error);
       throw error;
     }
   }
@@ -121,7 +121,7 @@ export class AttendanceService {
       );
       return res.myAttendanceHistory;
     } catch (error) {
-      console.error('[AttendanceService] getMyAttendanceHistory failed:', error);
+      if (__DEV__) console.error('[AttendanceService] getMyAttendanceHistory failed:', error);
       throw error;
     }
   }
@@ -144,7 +144,7 @@ export class AttendanceService {
       );
       return res.myPerformanceSummary;
     } catch (error) {
-      console.error('[AttendanceService] getMyPerformanceSummary failed:', error);
+      if (__DEV__) console.error('[AttendanceService] getMyPerformanceSummary failed:', error);
       throw error;
     }
   }
@@ -177,7 +177,7 @@ export class AttendanceService {
       );
       return res.todayAttendanceByOrg;
     } catch (error) {
-      console.error('[AttendanceService] getTodayAttendanceByOrg failed:', error);
+      if (__DEV__) console.error('[AttendanceService] getTodayAttendanceByOrg failed:', error);
       throw error;
     }
   }
@@ -202,7 +202,7 @@ export class AttendanceService {
       );
       return res.userAttendanceHistory;
     } catch (error) {
-      console.error('[AttendanceService] getUserAttendanceHistory failed:', error);
+      if (__DEV__) console.error('[AttendanceService] getUserAttendanceHistory failed:', error);
       throw error;
     }
   }
@@ -226,7 +226,7 @@ export class AttendanceService {
       );
       return res.userPerformanceSummary;
     } catch (error) {
-      console.error('[AttendanceService] getUserPerformanceSummary failed:', error);
+      if (__DEV__) console.error('[AttendanceService] getUserPerformanceSummary failed:', error);
       throw error;
     }
   }
@@ -252,7 +252,7 @@ export class AttendanceService {
       });
       return res.timeIn;
     } catch (error) {
-      console.error('[AttendanceService] timeIn failed:', error);
+      if (__DEV__) console.error('[AttendanceService] timeIn failed:', error);
       throw error;
     }
   }
@@ -278,7 +278,7 @@ export class AttendanceService {
       });
       return res.startBreak;
     } catch (error) {
-      console.error('[AttendanceService] startBreak failed:', error);
+      if (__DEV__) console.error('[AttendanceService] startBreak failed:', error);
       throw error;
     }
   }
@@ -304,7 +304,7 @@ export class AttendanceService {
       });
       return res.endBreak;
     } catch (error) {
-      console.error('[AttendanceService] endBreak failed:', error);
+      if (__DEV__) console.error('[AttendanceService] endBreak failed:', error);
       throw error;
     }
   }
@@ -328,7 +328,7 @@ export class AttendanceService {
       });
       return res.timeOut;
     } catch (error) {
-      console.error('[AttendanceService] timeOut failed:', error);
+      if (__DEV__) console.error('[AttendanceService] timeOut failed:', error);
       throw error;
     }
   }

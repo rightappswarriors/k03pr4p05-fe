@@ -1,25 +1,26 @@
 // services/outletPromoService.ts
 import { gql } from 'graphql-request';
 import { graphQLRequest } from './apiClient'; // or however you call GQL
+import { formatGraphQLError } from '@/utils/errorFormatter';
 
 export type OutletPromoItem = {
-    id: number;
-    promoTypeId: number;
-    discount: number;
-    isActive: boolean;
+  id: number;
+  promoTypeId: number;
+  discount: number;
+  isActive: boolean;
 };
 
 export interface OutletPromoWithType {
+  id: number;
+  outletId: number;
+  promoTypeId: number;
+  discount: number;       // e.g. 0.20 for 20%
+  isActive: boolean;
+  promoType: {
     id: number;
-    outletId: number;
-    promoTypeId: number;
-    discount: number;       // e.g. 0.20 for 20%
-    isActive: boolean;
-    promoType: {
-        id: number;
-        name: string;
-        description?: string;
-    }
+    name: string;
+    description?: string;
+  }
 }
 
 export class OutletPromoService {
@@ -46,8 +47,11 @@ export class OutletPromoService {
       }>(GQL, { outletId });
       return (res.outletPromosByOutlet ?? []).filter((p) => p.isActive);
     } catch (e) {
-      console.error('OutletPromoService.getByOutlet error:', e);
-      return [];
+
+      if (__DEV__) {
+        const errorMessage = formatGraphQLError(e)
+        console.error('OutletPromoService.getByOutlet error:', errorMessage);
+      } return [];
     }
   }
 }

@@ -41,11 +41,11 @@ export function ItemGrid({
     viewMode === 'list'
       ? 1
       : (() => {
-          if (containerWidth >= 900) return 4;
-          if (containerWidth >= 600) return 3;
-          if (containerWidth >= 400) return 2;
-          return 2;
-        })();
+        if (containerWidth >= 900) return 4;
+        if (containerWidth >= 600) return 3;
+        if (containerWidth >= 400) return 2;
+        return 2;
+      })();
 
   const PADDING = 32; // 16px padding on each side of gridContainer
   const GAP = 8; // gap between columns in row style
@@ -99,6 +99,7 @@ export function ItemGrid({
           source={{ uri: item.image }}
           style={styles.itemImage}
           resizeMode="cover"
+          defaultSource={require('@/assets/images/placeholder.png')}
         />
       ) : viewMode === 'grid' ? (
         <View
@@ -149,7 +150,7 @@ export function ItemGrid({
     <View
       style={[styles.container, { backgroundColor: colors.background }]}
       pointerEvents={isDropdownOpen ? 'none' : 'auto'}
-      onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)} // ← key fix
+      onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
     >
       {/* Don't render FlatList until we have a real width */}
       {containerWidth > 0 && (

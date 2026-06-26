@@ -45,7 +45,7 @@ export function useTransactionSync({
       );
       setTransactions(sortedTransactions);
     } catch (error) {
-      console.error('Failed to load orders:', error);
+      if (__DEV__) console.error('Failed to load orders:', error);
     } finally {
       setLoading(false);
     }
@@ -56,7 +56,7 @@ export function useTransactionSync({
       await TransactionService.retryFailedOrder(transactionsId);
       await loadOrders();
     } catch (error) {
-      console.error('Failed to retry order:', error);
+      if (__DEV__) console.error('Failed to retry order:', error);
     }
   };
 

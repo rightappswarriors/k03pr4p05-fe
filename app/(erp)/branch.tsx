@@ -30,7 +30,7 @@ import {
   Package,
 } from 'lucide-react-native';
 import { router } from 'expo-router';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuth } from '@/contexts/AuthContext';
 import { AdminService } from '@/services/ManagerService';
 import { Branch, BranchRevenue } from '@/types';
 import { DateRangeFilter, getDateRange } from '@/utils/dateHelpers';
@@ -205,7 +205,7 @@ export function DropdownField({
             backgroundColor: 'rgba(0,0,0,0.45)',
             justifyContent: 'center',
             padding: 24,
-            alignItems: 'center', // 👈 ADD THIS
+            alignItems: 'center',
           }}
           activeOpacity={1}
           onPress={() => setOpen(false)}
@@ -215,7 +215,7 @@ export function DropdownField({
               backgroundColor: colors.surface,
               borderRadius: 14,
               overflow: 'hidden',
-              maxWidth: isMobile ? '100%' : 600, // 👈 KEY FIX
+              maxWidth: isMobile ? '100%' : 600,
               alignSelf: 'center',
               width: '100%',
               maxHeight: 380,
@@ -665,7 +665,7 @@ export default function BranchOverviewScreen() {
       });
       setBranches((prev) => [...prev, newBranch]);
     } catch (error) {
-      console.error('Failed to create branch:', error);
+      if (__DEV__) console.error('Failed to create branch:', error);
     }
   };
 
@@ -722,9 +722,6 @@ export default function BranchOverviewScreen() {
             Welcome back, {user?.email}
           </Text>
         </View>
-        <TouchableOpacity style={s.logoutButton} onPress={logout}>
-          <LogOut size={18} color="white" strokeWidth={2} />
-        </TouchableOpacity>
       </View>
 
       {/* Centred content wrapper for wide screens */}

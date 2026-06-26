@@ -167,7 +167,7 @@ export class HrService {
       const res = await graphQLRequest<{ checkUserTimeInStatus: any }>(QUERY, { userId });
       return res.checkUserTimeInStatus;
     } catch (error) {
-      console.error('Failed to check time-in status:', error);
+      if (__DEV__) console.error('Failed to check time-in status:', error);
       // Return false if query fails
       return { hasTimeIn: false };
     }
