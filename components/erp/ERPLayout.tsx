@@ -181,7 +181,6 @@ const PRIMARY_NAV: NavItem[] = [
 ];
 
 const FREE_NAV: NavItem[] = [
-  //{ key: 'Dashboard', label: 'Dashboard' },
   { key: 'Inventory', label: 'Inventory' },
   { key: 'DiscountTracking', label: 'Discounts' },
   { key: 'AuditLog', label: 'Audit Log' },

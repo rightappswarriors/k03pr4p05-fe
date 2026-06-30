@@ -89,24 +89,125 @@ export class HrService {
     return res.updateUser;
   }
 
-  static async getAllStaffs(orgId?: number): Promise<any[]> {
-    const QUERY = gql`
-      query GetAllStaffs($orgId: Int) {
-        getAllStaffs(orgId: $orgId) {
+  static async recordSalarySnapshot(
+    employeeId: string,
+    ammount: number,
+    effectiveAt?: string,
+  ): Promise<any> {
+    const mutation = gql`
+    mutation RecordSalarySnapshot(
+      $employeeId: ID!
+      $ammount: Float!
+      $effectiveAt: String
+    ) {
+      recordSalarySnapshot(
+        employeeId: $employeeId
+        ammount: $ammount
+        effectiveAt: $effectiveAt
+      ) {
+        id
+        ammount
+        effectiveAt
+      }
+    }
+  `;
+    try {
+
+      const res = await graphQLRequest<{ recordSalarySnapshot: any }>(mutation, {
+        employeeId,
+        ammount,
+        effectiveAt,
+      });
+      return res.recordSalarySnapshot;
+    } catch (error) {
+      if (__DEV__)
+        console.error(error)
+      throw new Error("Error upon saving Salary")
+    }
+  }
+  /**
+   * Generic employee editor — supports updating any combination of
+   * fullname, username, positionId, role, and salary in a single call.
+   * Use this for the "Edit Employee" flow instead of separate single-field
+   * mutations when more than one field changes at once.
+   */
+  static async updateEmployee(
+    userId: number,
+    fields: {
+      fullname?: string;
+      username?: string;
+      positionId?: string | null;
+      role?: string;
+      salary?: number;
+    },
+  ): Promise<any> {
+    const mutation = gql`
+      mutation UpdateEmployee(
+        $id: ID!
+        $fullname: String
+        $username: String
+        $positionId: String
+        $role: Role
+        $salary: Float
+      ) {
+        updateUser(
+          id: $id
+          fullname: $fullname
+          username: $username
+          positionId: $positionId
+          role: $role
+          salary: $salary
+        ) {
           id
-          email
           fullname
           username
+          email
           role
-          profilePhoto
           positionId
-          department {
-            label
-          }
+          salary
         }
       }
     `;
 
+    try {
+      const res = await graphQLRequest<{ updateUser: any }>(mutation, {
+        id: userId,
+        ...fields,
+      });
+      return res.updateUser;
+    } catch (error) {
+      throw new Error(
+        `Failed to update employee: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  static async updateUserSalary(userId: number, salary: number): Promise<any> {
+    return this.updateEmployee(userId, { salary });
+  }
+  static async getAllStaffs(orgId?: number): Promise<any[]> {
+    const QUERY = gql`
+    query GetAllStaffs($orgId: Int) {
+      getAllStaffs(orgId: $orgId) {
+        id
+        email
+        fullname
+        username
+        role
+        profilePhoto
+        createdAt
+        positionId
+        salary
+        department {
+          label
+        }
+        position {
+          id
+          name
+        }
+      }
+    }
+  `;
     const res = await graphQLRequest<{ getAllStaffs: any[] }>(QUERY, { orgId });
     return res.getAllStaffs;
   }
@@ -117,6 +218,8 @@ export class HrService {
     password: string;
     departmentId?: number;
     positionId?: string;
+    role?: string;
+    salary?: number;
   }): Promise<any> {
     const mutation = gql`
       mutation CreateHRUser(
@@ -125,6 +228,8 @@ export class HrService {
         $password: String!
         $departmentId: Int
         $positionId: String
+        $role: Role
+        $salary: Float
       ) {
         createHRUser(
           fullname: $fullname
@@ -132,6 +237,8 @@ export class HrService {
           password: $password
           departmentId: $departmentId
           positionId: $positionId
+          role: $role
+          salary: $salary
         ) {
           id
           fullname
@@ -139,6 +246,7 @@ export class HrService {
           role
           positionId
           departmentId
+          salary
           createdAt
         }
       }

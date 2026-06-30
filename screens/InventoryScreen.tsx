@@ -3425,6 +3425,7 @@ export default function InventoryScreen() {
               minStock: Number(it.minQuantity || 10),
               itemCode: it.itemCode || undefined,
               stockLabel: it.stockLabel ?? 'piece',
+              description: it.description ?? '',
               stockDescription: it.stockDescription ?? undefined,
               category:
                 it.category?.name ||
