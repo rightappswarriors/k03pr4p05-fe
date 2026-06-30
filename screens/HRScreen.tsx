@@ -26,6 +26,7 @@ import {
   Filter,
   LayoutGrid,
   List,
+  Pencil,
   Plus,
   Search,
   Users,
@@ -360,12 +361,16 @@ function SearchableDropdown({
 
 // ─── Employee Detail Modal ────────────────────────────────────────────────────
 
+// Fixed role set for HR assignment — matches backend Role enum values in use.
+const ASSIGNABLE_ROLES = ['STAFF', 'CASHIER'] as const;
+type AssignableRole = (typeof ASSIGNABLE_ROLES)[number];
+
 function EmployeeDetailModal({
   employee,
   visible,
   onClose,
   onUpdateStatus,
-  onUpdatePosition,
+  onSaveEmployee,
   deptMap,
   positions,
   colors,
@@ -374,14 +379,78 @@ function EmployeeDetailModal({
   visible: boolean;
   onClose: () => void;
   onUpdateStatus: (id: string, status: EmployeeStatus) => void;
-  onUpdatePosition: (id: string, positionId: string) => void;
+  onSaveEmployee: (
+    id: string,
+    changes: { role?: string; positionId?: string | null; salary?: number },
+  ) => Promise<void>;
   deptMap: Record<string, string>;
   positions: MasterItem[];
   colors: any;
 }) {
+  const [editMode, setEditMode] = useState(false);
+  const [roleDraft, setRoleDraft] = useState('');
+  const [positionDraft, setPositionDraft] = useState(''); // holds position LABEL
+  const [salaryDraft, setSalaryDraft] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (employee) {
+      setRoleDraft(employee.role || '');
+      setPositionDraft(employee.position || '');
+      setSalaryDraft(String(employee.salary ?? ''));
+    }
+    setEditMode(false);
+    setError('');
+  }, [employee?.id, visible]);
+
   if (!employee) return null;
   const deptColor = deptMap[employee.department] ?? colors.primary;
   const statusStyle = STATUS_STYLES[employee.status];
+
+  const handleSave = async () => {
+    const num = parseFloat(salaryDraft);
+    if (!salaryDraft.trim() || isNaN(num) || num <= 0) {
+      setError('Enter a valid monthly salary greater than zero.');
+      return;
+    }
+    if (num > 9999999) {
+      setError('Salary amount seems too high. Please check.');
+      return;
+    }
+
+    // Resolve the position label back to its id. If the label doesn't match
+    // a known position (or was cleared), send null to unassign.
+    const matchedPosition = positions.find((p) => p.label === positionDraft);
+    const positionId = positionDraft ? matchedPosition?.id ?? null : null;
+    if (positionDraft && !matchedPosition) {
+      setError('Select a valid position from the list.');
+      return;
+    }
+
+    setError('');
+    setSaving(true);
+    try {
+      await onSaveEmployee(employee.id, {
+        role: roleDraft || undefined,
+        positionId,
+        salary: num,
+      });
+      setEditMode(false);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to save changes. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setRoleDraft(employee.role || '');
+    setPositionDraft(employee.position || '');
+    setSalaryDraft(String(employee.salary ?? ''));
+    setError('');
+    setEditMode(false);
+  };
 
   return (
     <Modal
@@ -430,6 +499,12 @@ function EmployeeDetailModal({
                   {employee.department} · {yearsOfService(employee.hireDate)} tenure
                 </Text>
               </View>
+              <TouchableOpacity
+                style={[edm.closeBtn, editMode && { backgroundColor: '#fff' }]}
+                onPress={() => setEditMode((v) => !v)}
+              >
+                <Pencil size={15} color={editMode ? deptColor : '#fff'} strokeWidth={2.5} />
+              </TouchableOpacity>
               <TouchableOpacity style={edm.closeBtn} onPress={onClose}>
                 <X size={16} color="#fff" strokeWidth={2.5} />
               </TouchableOpacity>
@@ -488,12 +563,46 @@ function EmployeeDetailModal({
                 ]}
               >
                 <Text style={[edm.sectionTitle, { color: colors.textSecondary }]}>COMPENSATION</Text>
-                <View style={[edm.row, { borderBottomColor: 'transparent', borderBottomWidth: 0 }]}>
-                  <Text style={[edm.rowLabel, { color: colors.textSecondary }]}>Monthly Salary</Text>
-                  <Text style={{ fontSize: 22, fontWeight: '900', color: colors.accent }}>
-                    {formatPeso(employee.salary)}
-                  </Text>
-                </View>
+                {!editMode ? (
+                  <View style={[edm.row, { borderBottomColor: 'transparent', borderBottomWidth: 0 }]}>
+                    <Text style={[edm.rowLabel, { color: colors.textSecondary }]}>Monthly Salary</Text>
+                    <Text style={{ fontSize: 22, fontWeight: '900', color: colors.accent }}>
+                      {formatPeso(employee.salary)}
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={{ padding: 12 }}>
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        fontWeight: '700',
+                        color: colors.textSecondary,
+                        marginBottom: 6,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.6,
+                      }}
+                    >
+                      Monthly Salary ₱
+                    </Text>
+                    <TextInput
+                      style={{
+                        backgroundColor: colors.background,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        borderRadius: 10,
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        fontSize: 14,
+                        color: colors.text,
+                      }}
+                      keyboardType="decimal-pad"
+                      value={salaryDraft}
+                      onChangeText={(v) => setSalaryDraft(v.replace(/[^0-9.]/g, ''))}
+                      placeholder="e.g. 25000"
+                      placeholderTextColor={colors.textSecondary}
+                    />
+                  </View>
+                )}
               </View>
 
               {/* Position assignment */}
@@ -506,20 +615,115 @@ function EmployeeDetailModal({
                 <Text style={[edm.sectionTitle, { color: colors.textSecondary }]}>
                   POSITION ASSIGNMENT
                 </Text>
-                <View style={{ padding: 12 }}>
-                  <SearchableDropdown
-                    label="Assign Position"
-                    value={employee.position || 'No position'}
-                    options={positions.map((p) => ({ label: p.label }))}
-                    onSelect={(pos) => {
-                      const posItem = positions.find((p) => p.label === pos);
-                      if (posItem) onUpdatePosition(employee.id, posItem.id);
-                    }}
-                    colors={colors}
-                    placeholder="Select position…"
-                  />
-                </View>
+                {!editMode ? (
+                  <View style={[edm.row, { borderBottomColor: 'transparent', borderBottomWidth: 0 }]}>
+                    <Text style={[edm.rowLabel, { color: colors.textSecondary }]}>Position</Text>
+                    <Text style={[edm.rowValue, { color: colors.text }]}>
+                      {employee.position || 'No position'}
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={{ padding: 12 }}>
+                    <SearchableDropdown
+                      label="Assign Position"
+                      value={positionDraft}
+                      options={positions.map((p) => ({ label: p.label }))}
+                      onSelect={setPositionDraft}
+                      colors={colors}
+                      placeholder="Select position…"
+                    />
+                  </View>
+                )}
               </View>
+
+              {/* Role assignment — only shown in edit mode, this changes system access (STAFF / CASHIER) */}
+              {editMode && (
+                <View
+                  style={[
+                    edm.section,
+                    { backgroundColor: colors.card, borderColor: colors.border, marginTop: 12 },
+                  ]}
+                >
+                  <Text style={[edm.sectionTitle, { color: colors.textSecondary }]}>
+                    ROLE ASSIGNMENT
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: 8, padding: 12 }}>
+                    {ASSIGNABLE_ROLES.map((r) => {
+                      const isActive = roleDraft === r;
+                      return (
+                        <TouchableOpacity
+                          key={r}
+                          style={{
+                            flex: 1,
+                            paddingVertical: 10,
+                            borderRadius: 10,
+                            borderWidth: 1.5,
+                            alignItems: 'center',
+                            backgroundColor: isActive ? colors.primary : colors.primary + '14',
+                            borderColor: colors.primary,
+                          }}
+                          onPress={() => setRoleDraft(r)}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              fontWeight: '700',
+                              color: isActive ? '#fff' : colors.primary,
+                            }}
+                          >
+                            {r}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
+
+              {/* Save / Cancel footer for edit mode */}
+              {editMode && (
+                <>
+                  {error ? (
+                    <Text style={{ fontSize: 12, color: colors.error, marginTop: 10 }}>
+                      {error}
+                    </Text>
+                  ) : null}
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
+                    <TouchableOpacity
+                      style={{
+                        flex: 1,
+                        paddingVertical: 13,
+                        borderRadius: 12,
+                        alignItems: 'center',
+                        borderWidth: 1.5,
+                        borderColor: colors.border,
+                      }}
+                      onPress={handleCancel}
+                      disabled={saving}
+                    >
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>
+                        Cancel
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={{
+                        flex: 1,
+                        paddingVertical: 13,
+                        borderRadius: 12,
+                        alignItems: 'center',
+                        backgroundColor: colors.primary,
+                        opacity: saving ? 0.7 : 1,
+                      }}
+                      onPress={handleSave}
+                      disabled={saving}
+                    >
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>
+                        {saving ? 'Saving…' : 'Save Changes'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
 
               {/* Status update */}
               <View
@@ -578,7 +782,7 @@ const edm = StyleSheet.create({
     paddingHorizontal: 20,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: 12,
   },
   headerName: { fontSize: 18, fontWeight: '700', color: '#fff' },
   headerRole: { fontSize: 13, color: 'rgba(255,255,255,0.8)', marginTop: 1 },
@@ -648,6 +852,7 @@ function AddEmployeeModal({
   const [name, setName] = useState('');
   const [department, setDepartment] = useState('');
   const [position, setPosition] = useState('');
+  const [role, setRole] = useState('');
   const [salary, setSalary] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -694,14 +899,17 @@ function AddEmployeeModal({
         password: password.trim(),
         departmentId,
         positionId,
+        role: role.trim() || undefined,
+        salary: salaryNum,
       });
 
       const newEmployee: Employee = {
         id: String(createdUser.id),
         name: createdUser.fullname,
+        role: createdUser.role || role.trim() || undefined,
         department: department.trim() || 'Unassigned',
         status,
-        salary: salaryNum,
+        salary: Number(createdUser.salary ?? salaryNum),
         position: position.trim() || undefined,
         hireDate: createdUser.createdAt || new Date().toISOString(),
         email: createdUser.email,
@@ -719,6 +927,7 @@ function AddEmployeeModal({
     setName('');
     setDepartment('');
     setPosition('');
+    setRole('');
     setEmail('');
     setPassword('');
     setSalary('');
@@ -856,6 +1065,31 @@ function AddEmployeeModal({
                 colors={colors}
                 placeholder="Select position…"
               />
+              <Text style={s.label}>ROLE</Text>
+              <View style={s.statRow}>
+                {ASSIGNABLE_ROLES.map((r) => {
+                  const isActive = role === r;
+                  return (
+                    <TouchableOpacity
+                      key={r}
+                      style={[
+                        s.statBtn,
+                        {
+                          backgroundColor: isActive ? colors.primary : colors.primary + '14',
+                          borderColor: colors.primary,
+                        },
+                      ]}
+                      onPress={() => setRole(r)}
+                    >
+                      <Text
+                        style={{ fontSize: 12, fontWeight: '700', color: isActive ? '#fff' : colors.primary }}
+                      >
+                        {r}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
 
               <Text style={s.label}>MONTHLY SALARY ₱ *</Text>
               <TextInput
@@ -1470,6 +1704,7 @@ export default function HRScreen() {
   }, []);
 
   // ── AsyncStorage persist ───────────────────────────────────────────────────
+
   const saveState = useCallback(
     async (vm: ViewMode, df: string, sf: EmployeeStatus | 'All', fo: boolean) => {
       try {
@@ -1515,18 +1750,23 @@ export default function HRScreen() {
       try {
         const staff = await HrService.getAllStaffs();
         if (Array.isArray(staff)) {
+          if (__DEV__) console.log(staff)
           setEmployees(
-            staff.map((u) => ({
-              id: String(u.id),
-              name: u.fullname || u.name || 'Unknown',
-              role: u.role || 'Staff',
-              department: u.department?.label || 'General',
-              status: 'Active' as EmployeeStatus,
-              salary: Number(u.salary || 0),
-              hireDate: u.createdAt || new Date().toISOString(),
-              email: u.email || 'n/a',
-              profilePhoto: u.profilePhoto,
-            })),
+            staff.map((u) => {
+              // first linked Employee record
+              return {
+                id: String(u.id),
+                name: u.fullname || u.name || 'Unknown',
+                role: u.role || 'Staff',
+                department: u.department?.label || 'General',
+                status: 'Active' as EmployeeStatus,
+                salary: Number(u.salary ?? 0),
+                hireDate: u.createdAt || new Date().toISOString(),
+                email: u.email || 'n/a',
+                profilePhoto: u.profilePhoto,
+                position: u.position?.name ?? undefined,
+              };
+            }),
           );
         }
       } catch (err) {
@@ -1558,20 +1798,52 @@ export default function HRScreen() {
   const totalSalary = filtered.reduce((s, e) => s + e.salary, 0);
   const uniqueDepts = [...new Set(filtered.map((e) => e.department))].length;
 
-  const handleUpdatePosition = (id: string, positionId: string) => {
-    setEmployees((prev) =>
-      prev.map((e) =>
-        e.id === id
-          ? { ...e, position: positions.find((p) => p.id === positionId)?.label || 'No position' }
-          : e,
-      ),
-    );
-  };
-
   const handleUpdateStatus = (id: string, status: EmployeeStatus) => {
+    // NOTE: EmployeeStatus (Active/On Leave/Contract) is currently a local-only
+    // concept and has no backend field — it is not persisted via HrService.
     setEmployees((prev) => prev.map((e) => (e.id === id ? { ...e, status } : e)));
   };
+  const handleSaveEmployee = useCallback(
+    async (
+      id: string,
+      changes: { role?: string; positionId?: string | null; salary?: number },
+    ) => {
+      const prevEmployees = employees;
 
+      setEmployees((prev) =>
+        prev.map((e) => {
+          if (e.id !== id) return e;
+          const positionLabel =
+            changes.positionId === null
+              ? undefined
+              : changes.positionId
+                ? positions.find((p) => p.id === changes.positionId)?.label ?? e.position
+                : e.position;
+          return {
+            ...e,
+            ...(changes.role !== undefined && { role: changes.role }),
+            ...(changes.salary !== undefined && { salary: changes.salary }),
+            ...(typeof changes.positionId !== 'undefined' && { position: positionLabel }),
+          };
+        }),
+      );
+
+      try {
+        await HrService.updateEmployee(Number(id), {
+          role: changes.role,
+          positionId: changes.positionId,
+          salary: changes.salary,
+        });
+        // ✅ Removed: HrService.recordSalarySnapshot(id, changes.salary)
+        // The backend updateUser already writes SalaryHistory when salary changes
+        // via the linkedEmployee lookup in user.service.ts
+      } catch (err: any) {
+        setEmployees(prevEmployees);
+        throw err;
+      }
+    },
+    [employees, positions],
+  );
   const handleAddEmployee = (emp: Employee) => {
     setEmployees((prev) => [emp, ...prev]);
   };
@@ -1931,11 +2203,11 @@ export default function HRScreen() {
         employee={selectedEmp}
         visible={detailVisible}
         deptMap={deptMap}
-        onClose={() => setDetailVisible(false)}
-        onUpdateStatus={handleUpdateStatus}
-        onUpdatePosition={handleUpdatePosition}
         positions={positions}
         colors={colors}
+        onClose={() => setDetailVisible(false)}
+        onUpdateStatus={handleUpdateStatus}
+        onSaveEmployee={handleSaveEmployee}   // ← was missing, caused the error
       />
       <AddEmployeeModal
         visible={addVisible}
