@@ -624,9 +624,10 @@ export default function ERPLayout({ children }: { children: React.ReactNode }) {
         <View style={styles.headerBadge}>
           <Building2 size={12} color="#fff" strokeWidth={2} />
         </View>
-
-        <ThemeToggleButton />
-        <PlanToggleFAB />
+        {__DEV__ && (<>
+          <ThemeToggleButton />
+          <PlanToggleFAB />
+        </>)}
       </View>
 
       <View style={styles.body}>
