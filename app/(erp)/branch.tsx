@@ -717,7 +717,7 @@ export default function BranchOverviewScreen() {
         ]}
       >
         <View style={{ flex: 1 }}>
-          <Text style={[s.title, { color: colors.text }]}>Admin Dashboard</Text>
+          <Text style={[s.title, { color: colors.text }]}>Branch and Outlets</Text>
           <Text style={[s.subtitle, { color: colors.textSecondary }]}>
             Welcome back, {user?.email}
           </Text>

@@ -15,6 +15,7 @@ import {
   View,
   Image,
 } from 'react-native';
+import { usePathname, useRouter } from 'expo-router';
 import {
   BarChart2,
   Building2,
@@ -27,7 +28,6 @@ import {
   PackagePlus,
   PhilippinePeso,
   Settings,
-  ShoppingBag,
   ShoppingCart,
   ShieldCheck,
   Sun,
@@ -37,22 +37,8 @@ import {
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
-import { LockedNavItem, LockedScreen } from '@/components/LockedFeature';
-import DashboardScreen from '@/screens/DashboardScreen';
-import SalesScreen from '@/screens/SalesScreen';
-import InventoryScreen from '@/screens/InventoryScreen';
-import HRScreen from '@/screens/HRScreen';
-import FinanceScreen from '@/screens/FinancesScreen';
-import SalesAnalyticsScreen from '@/screens/SalesAnalyticsScreen';
-import MasterFileScreen from '@/screens/MasterFileScreen';
-import RestockSchedulingScreen from '@/screens/RestockSchedulingScreen';
-import AuditLogScreen from '@/screens/AuditLogScreen';
-import DiscountTrackingScreen from '@/screens/DiscountTrackingScreen';
-import OrderManagement from '@/screens/KompraOrderManagement';
+import { LockedNavItem } from '@/components/LockedFeature';
 import { useAuth } from '@/contexts/AuthContext';
-import BranchOverviewScreen from '@/app/(erp)/branch';
-import SettingsScreen from '@/components/Settings';
-import { ComingSoonScreen } from '../ComingSoon';
 
 // ─── DEV: Plan Toggle FAB ─────────────────────────────────────────────────────
 function PlanToggleFAB() {
@@ -132,16 +118,13 @@ type ERPRoute =
   | 'RestockScheduling'
   | 'AuditLog'
   | 'Settings';
-// ✅ Restore proper width
+
 const DRAWER_WIDTH = 264; // for mobile drawer
 const SIDEBAR_WIDTH = 272; // for tablet/web persistent sidebar
 const themeAwareShadow = (colors: any) =>
   colors.background === '#F4F7FB' ? 0.08 : 0.18;
 
-
-// ─── Route → DB page.key map ──────────────────────────────────────────────────
-// Keys must match exactly what's in your pages seed file.
-// Dashboard is omitted intentionally — not in the seed, so always visible.
+// ─── Route → DB page.key map (for permission filtering) ───────────────────────
 const ROUTE_TO_PAGE_KEY: Partial<Record<ERPRoute, string>> = {
   SalesOrders: 'salesOrderPage',
   KompraOrders: 'kompraOrderPage',
@@ -153,6 +136,46 @@ const ROUTE_TO_PAGE_KEY: Partial<Record<ERPRoute, string>> = {
   HR: 'hrPage',
   SalesAnalytics: 'salesAnalyticsPage',
   MasterFile: 'masterFilePage',
+};
+
+// ─── URL path ↔ ERPRoute maps ──────────────────────────────────────────────────
+// Adjust these strings to match your actual file names under app/(erp)/.
+// NOTE: Expo Router strips group segments like "(erp)" from the actual
+// pathname, so usePathname() returns "/branch", NOT "/(erp)/branch".
+// These keys must NOT include the group prefix.
+const PATH_TO_ROUTE: Record<string, ERPRoute> = {
+  '/': 'Dashboard',
+  '/index': 'Dashboard',
+  '/branch': 'BranchOutlet',
+  '/outlets': 'BranchOutlet',
+  '/outlet-detail': 'BranchOutlet',
+  '/sales-order': 'SalesOrders',
+  '/kompra-orders': 'KompraOrders',
+  '/inventory': 'Inventory',
+  '/hr': 'HR',
+  '/finance': 'Finance',
+  '/sales-analytics': 'SalesAnalytics',
+  '/masterfile': 'MasterFile',
+  '/discount': 'DiscountTracking',
+  '/restock': 'RestockScheduling',
+  '/audit': 'AuditLog',
+  '/settings': 'Settings',
+};
+
+const ROUTE_TO_PATH: Record<ERPRoute, string> = {
+  Dashboard: '/(erp)',
+  BranchOutlet: '/(erp)/branch',
+  SalesOrders: '/(erp)/sales-order',
+  KompraOrders: '/(erp)/kompra-orders',
+  Inventory: '/(erp)/inventory',
+  HR: '/(erp)/hr',
+  Finance: '/(erp)/finance',
+  SalesAnalytics: '/(erp)/sales-analytics',
+  MasterFile: '/(erp)/masterfile',
+  DiscountTracking: '/(erp)/discount',
+  RestockScheduling: '/(erp)/restock',
+  AuditLog: '/(erp)/audit',
+  Settings: '/(erp)/settings',
 };
 
 // ─── Icon map ─────────────────────────────────────────────────────────────────
@@ -175,12 +198,6 @@ const NAV_ICON_MAP: Record<ERPRoute, React.FC<{ size: number; color: string; str
 // ─── Nav structure ────────────────────────────────────────────────────────────
 interface NavItem { key: ERPRoute; label: string; }
 
-interface NavItem {
-  key: ERPRoute;
-  label: string;
-}
-
-// Always visible for both Basic and Gold
 const PRIMARY_NAV: NavItem[] = [
   { key: 'Dashboard', label: 'Dashboard' },
   { key: 'BranchOutlet', label: 'Branch & Outlet' },
@@ -249,8 +266,6 @@ const makeStyles = (colors: any, isTablet: boolean) =>
       fontWeight: '800',
       color: colors.text,
     },
-    //headerLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 },
-    // headerTitle: { fontSize: 16, fontWeight: '700', color: colors.text, letterSpacing: -0.3 },
     headerBadge: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -270,7 +285,6 @@ const makeStyles = (colors: any, isTablet: boolean) =>
       flexDirection: isTablet ? 'row' : 'column',
       overflow: 'hidden',
     },
-    //headerBadgeTx: { color: '#fff', fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
     sidebar: {
       width: SIDEBAR_WIDTH,
       backgroundColor: colors.sidebar,
@@ -337,8 +351,6 @@ const makeStyles = (colors: any, isTablet: boolean) =>
       marginTop: 1,
       textTransform: 'uppercase',
     },
-    //drawerLogo: { fontSize: 16, fontWeight: '800', color: colors.primary, letterSpacing: -0.5 },
-    //drawerSubtitle: { fontSize: 10, color: colors.textSecondary, marginTop: 1, letterSpacing: 0.5, textTransform: 'uppercase' },
     navItem: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -373,7 +385,6 @@ const makeStyles = (colors: any, isTablet: boolean) =>
       marginVertical: 10,
       marginHorizontal: 10,
     },
-    // Master File accordion
     mfItem: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -416,6 +427,7 @@ const SidebarContent = memo(function SidebarContent({
   if (!user) return null;
 
   const organizationName = user.org?.name || 'Right ERP';
+
   const renderNavItem = (item: NavItem) => {
     const isActive = activeRoute === item.key;
     const Icon = NAV_ICON_MAP[item.key];
@@ -427,23 +439,12 @@ const SidebarContent = memo(function SidebarContent({
         onPress={() => navigate(item.key)}
         activeOpacity={0.75}
       >
-        <Icon
-          size={17}
-          color={isActive ? '#fff' : colors.textSecondary}
-          strokeWidth={isActive ? 2.6 : 2}
-        />
-        <Text
-          style={[
-            styles.navLabel,
-            { color: isActive ? '#fff' : colors.text },
-          ]}
-        >
-          {item.label}
-        </Text>
+        <Icon size={17} color={isActive ? '#fff' : colors.textSecondary} strokeWidth={isActive ? 2.6 : 2} />
+        <Text style={[styles.navLabel, { color: isActive ? '#fff' : colors.text }]}>{item.label}</Text>
       </TouchableOpacity>
     );
   };
-  // ── Permission filter ───────────────────────────────────────────────────────
+
   // OWNER and MANAGER always see everything.
   // STAFF with a position: hide routes where canView === false.
   // STAFF with no position set: show everything (fail-open).
@@ -452,16 +453,15 @@ const SidebarContent = memo(function SidebarContent({
     if (!user?.position?.permissions?.length) return true;
 
     const pageKey = ROUTE_TO_PAGE_KEY[routeKey];
-    if (!pageKey) return true; // Dashboard and unmapped routes always visible
+    if (!pageKey) return true;
 
     const perm = user.position.permissions.find(p => p.page?.key === pageKey);
-    if (!perm) return true; // page not in permissions list → visible by default
+    if (!perm) return true;
     return perm.canView;
   };
 
   return (
     <>
-      {/* Org header */}
       <View style={styles.drawerHeader}>
         <View style={styles.drawerLogoIcon}>
           {user?.org?.profileImg ? (
@@ -476,7 +476,6 @@ const SidebarContent = memo(function SidebarContent({
         </View>
       </View>
 
-      {/* Free nav items — always visible */}
       <Text style={styles.navSectionLabel}>Workspace</Text>
       {PRIMARY_NAV.map(renderNavItem)}
 
@@ -484,27 +483,9 @@ const SidebarContent = memo(function SidebarContent({
 
       <Text style={styles.navSectionLabel}>Operations</Text>
 
-      {FREE_NAV.filter(item => canViewPage(item.key)).map((item) => {
-        const isActive = activeRoute === item.key;
-        const Icon = NAV_ICON_MAP[item.key];
-        return (
-          <TouchableOpacity
-            key={item.key}
-            style={[styles.navItem, isActive && styles.navItemActive]}
-            onPress={() => navigate(item.key)}
-            activeOpacity={0.75}
-          >
-            <Icon size={17} color={isActive ? '#fff' : colors.textSecondary} strokeWidth={isActive ? 2.5 : 2} />
-            <Text style={[styles.navLabel, { color: isActive ? '#fff' : colors.text }]}>{item.label}</Text>
-          </TouchableOpacity>
-        );
-      })}
+      {FREE_NAV.filter(item => canViewPage(item.key)).map(renderNavItem)}
 
-      {/* Gated nav — filtered by canView, then by subscription limits */}
       {GATED_NAV.filter(item => canViewPage(item.key)).map((item) => {
-        const isActive = activeRoute === item.key;
-        const Icon = NAV_ICON_MAP[item.key];
-
         const canAccess =
           item.key === 'HR' ? limits.canAccessHR
             : item.key === 'Finance' ? limits.canAccessFinance
@@ -516,7 +497,7 @@ const SidebarContent = memo(function SidebarContent({
             <LockedNavItem
               key={item.key}
               label={item.label}
-              icon={Icon}
+              icon={NAV_ICON_MAP[item.key]}
               featureName={item.featureName}
               colors={colors}
               styles={styles}
@@ -524,20 +505,9 @@ const SidebarContent = memo(function SidebarContent({
           );
         }
 
-        return (
-          <TouchableOpacity
-            key={item.key}
-            style={[styles.navItem, isActive && styles.navItemActive]}
-            onPress={() => navigate(item.key)}
-            activeOpacity={0.75}
-          >
-            <Icon size={17} color={isActive ? '#fff' : colors.textSecondary} strokeWidth={isActive ? 2.5 : 2} />
-            <Text style={[styles.navLabel, { color: isActive ? '#fff' : colors.text }]}>{item.label}</Text>
-          </TouchableOpacity>
-        );
+        return renderNavItem(item);
       })}
 
-      {/* Master File — filtered by canView, then by subscription */}
       {canViewPage('MasterFile') && (
         !limits.canAccessMasterFile ? (
           <LockedNavItem label="Master File" icon={Database} featureName="Master File" colors={colors} styles={styles} />
@@ -545,7 +515,7 @@ const SidebarContent = memo(function SidebarContent({
           <>
             <TouchableOpacity
               style={[styles.mfItem, activeRoute === 'MasterFile' && styles.mfItemActive]}
-              onPress={toggleMF}
+              onPress={() => { toggleMF(); navigate('MasterFile'); }}
               activeOpacity={0.75}
             >
               <Database size={17} color={activeRoute === 'MasterFile' ? '#fff' : colors.textSecondary} strokeWidth={activeRoute === 'MasterFile' ? 2.5 : 2} />
@@ -584,13 +554,14 @@ const SidebarContent = memo(function SidebarContent({
 });
 
 // ─── Main Layout ──────────────────────────────────────────────────────────────
-export default function ERPLayout() {
+export default function ERPLayout({ children }: { children: React.ReactNode }) {
   const { colors, theme } = useTheme();
   const { width } = Dimensions.get('window');
   const isTablet = width >= 1024;
   const { limits } = useSubscription();
+  const router = useRouter();
+  const pathname = usePathname();
 
-  const [activeRoute, setActiveRoute] = useState<ERPRoute>('Dashboard');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [mfOpen, setMFOpen] = useState(false);
 
@@ -599,28 +570,7 @@ export default function ERPLayout() {
 
   const styles = React.useMemo(() => makeStyles(colors, isTablet), [colors, isTablet]);
 
-  const SCREEN_MAP = React.useMemo(
-    (): Record<ERPRoute, React.ReactElement> => ({
-      Dashboard: <DashboardScreen />,
-      BranchOutlet: <BranchOverviewScreen />,
-      SalesOrders: <SalesScreen />,
-      KompraOrders: <OrderManagement />,
-      Inventory: <InventoryScreen />,
-      HR: <HRScreen />,
-      SalesAnalytics: limits.canAccessAnalytics ? <SalesAnalyticsScreen /> : <LockedScreen featureName="Sales Analytics" />,
-      MasterFile: limits.canAccessMasterFile ? <MasterFileScreen /> : <LockedScreen featureName="Master File" />,
-      DiscountTracking: <DiscountTrackingScreen />,
-      AuditLog: <AuditLogScreen />,
-      Settings: <SettingsScreen />,
-      Finance: __DEV__
-        ? limits.canAccessFinance ? <FinanceScreen /> : <LockedScreen featureName="Finance & Budget Planner" />
-        : <ComingSoonScreen featureName="Finance" />,
-      RestockScheduling: __DEV__
-        ? limits.canAccessRestockScheduling ? <RestockSchedulingScreen /> : <LockedScreen featureName="Restock Scheduling" />
-        : <ComingSoonScreen featureName="Restock Scheduling" />,
-    }),
-    [limits],
-  );
+  const activeRoute: ERPRoute = PATH_TO_ROUTE[pathname] ?? 'Dashboard';
 
   const openDrawer = useCallback(() => {
     setDrawerOpen(true);
@@ -638,8 +588,12 @@ export default function ERPLayout() {
   }, [mfOpen, mfChevronAnim]);
 
   const navigate = useCallback(
-    (route: ERPRoute) => { setActiveRoute(route); if (!isTablet) closeDrawer(); },
-    [isTablet, closeDrawer],
+    (route: ERPRoute) => {
+      const path = ROUTE_TO_PATH[route];
+      if (path) router.push(path as any);
+      if (!isTablet) closeDrawer();
+    },
+    [isTablet, closeDrawer, router],
   );
 
   const drawerTranslate = drawerAnim.interpolate({ inputRange: [0, 1], outputRange: [-DRAWER_WIDTH, 0] });
@@ -682,7 +636,8 @@ export default function ERPLayout() {
           </ScrollView>
         )}
 
-        <View style={styles.content}>{SCREEN_MAP[activeRoute]}</View>
+        {/* Render whatever Expo Router's <Stack> resolved, not an internal SCREEN_MAP */}
+        <View style={styles.content}>{children}</View>
 
         {!isTablet && drawerOpen && (
           <>
