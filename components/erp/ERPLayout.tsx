@@ -66,14 +66,6 @@ function PlanToggleFAB() {
       onPress={() => setPlan(isGold ? 'basic' : 'gold')}
       activeOpacity={0.8}
     >
-      <Star size={13} color={isGold ? '#fff' : colors.textSecondary} strokeWidth={isGold ? 2.5 : 2} fill={isGold ? '#fff' : 'none'} />
-      <Text style={{ fontSize: 12, fontWeight: '700', color: isGold ? '#fff' : colors.textSecondary, letterSpacing: 0.3 }}>
-        {isGold ? 'Gold' : 'Basic'}
-      </Text>
-      <View style={{ width: 1, height: 12, backgroundColor: isGold ? 'rgba(255,255,255,0.4)' : colors.border }} />
-      <Text style={{ fontSize: 10, color: isGold ? 'rgba(255,255,255,0.8)' : colors.textSecondary, fontWeight: '500' }}>
-        {isGold ? 'tap → Basic' : 'tap → Gold'}
-      </Text>
     </TouchableOpacity>
   );
 }

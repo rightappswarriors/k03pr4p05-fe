@@ -53,7 +53,7 @@ export default function SplashScreen() {
       }
 
       // For CASHIER — check outlet assignment first
-      if (user.role === 'CASHIER') {
+      if (user.role === 'CASHIER'|| user.role === 'STAFF') {
         AuthService.getMyOutletAssignment().then((assignment) => {
           if (assignment?.role === 'CASHIER') {
             // Assigned to an outlet as cashier → POS

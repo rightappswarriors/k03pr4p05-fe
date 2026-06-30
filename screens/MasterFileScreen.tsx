@@ -161,13 +161,23 @@ type PermissionRow = {
   canEdit: boolean;
   canDelete: boolean;
 };
-type PermissionTemplateKey = 'Admin' | 'Staff' | 'Viewer';
+type PermissionTemplateKey = 'Admin' | 'Staff' | 'Viewer' | 'POSCashier' | 'Custom';
 type PageItem = { id: string; key: string; label: string };
 
 const PERMISSION_TEMPLATES: Record<PermissionTemplateKey, PermissionRow> = {
   Admin: { canView: true, canCreate: true, canEdit: true, canDelete: true },
   Staff: { canView: true, canCreate: true, canEdit: true, canDelete: false },
   Viewer: { canView: true, canCreate: false, canEdit: false, canDelete: false },
+  POSCashier: { canView: true, canCreate: true, canEdit: false, canDelete: false },
+  Custom: { canView: false, canCreate: false, canEdit: false, canDelete: false }
+};
+
+const TEMPLATE_DEFAULTS: Partial<Record<PermissionTemplateKey, { label: string; description: string }>> = {
+  Admin: { label: 'Admin', description: 'Full access to all modules and settings.' },
+  Staff: { label: 'Staff', description: 'Can view, create, and edit but cannot delete.' },
+  Viewer: { label: 'Viewer', description: 'Read-only access across all modules.' },
+  POSCashier: { label: 'POS Cashier', description: 'Can only access the POS Terminal to view and process transactions.' },
+  Custom: { label: '', description: '' }
 };
 
 const PERMISSION_COLUMNS = [
@@ -873,13 +883,25 @@ function ItemModal({
   const [error, setError] = useState('');
   const [extraValues, setExtraValues] = useState<Record<string, string>>({});
   const [template, setTemplate] = useState<
-    'Admin' | 'Staff' | 'Viewer' | 'Custom'
+    'Admin' | 'Staff' | 'Viewer' | 'Custom' | 'POSCashier'
   >('Staff');
   const [pages, setPages] = useState<PageItem[]>([]);
   const [permissions, setPermissions] = useState<Record<string, PermissionRow>>(
     {},
   );
   const config = TABLE_CONFIG.find((t) => t.key === meta.key);
+  // Auto-fill name + description when starter template is chosen (add only)
+  React.useEffect(() => {
+    if (meta.key !== 'positions') return;
+    if (existing) return; // don't overwrite when editing
+
+
+    const defaults = TEMPLATE_DEFAULTS[template as PermissionTemplateKey];
+    if (defaults) {
+      setLabel(defaults.label);
+      setExtraValues(prev => ({ ...prev, description: defaults.description }));
+    }
+  }, [template]);
 
   React.useEffect(() => {
     if (!visible) return;
@@ -1117,7 +1139,7 @@ function ItemModal({
                   STARTER TEMPLATE
                 </Text>
                 <View style={im.templateRow}>
-                  {(['Admin', 'Staff', 'Viewer', 'Custom'] as const).map(
+                  {(['Admin', 'Staff', 'Viewer', 'POSCashier', 'Custom'] as const).map(
                     (opt) => (
                       <TouchableOpacity
                         key={opt}
@@ -1127,17 +1149,20 @@ function ItemModal({
                         ]}
                         onPress={() => {
                           setTemplate(opt);
-                          if (opt !== 'Custom')
-                            setPermissions(
-                              Object.fromEntries(
-                                pages.map((p): [string, PermissionRow] => [
-                                  p.id,
-                                  PERMISSION_TEMPLATES[
-                                  opt as PermissionTemplateKey
-                                  ],
-                                ]),
-                              ),
-                            );
+                          
+                          setPermissions(
+                            Object.fromEntries(
+                              pages.map((p): [string, PermissionRow] => {
+                                if (opt === 'POSCashier') {
+                                  return [p.id, p.key === 'posTerminalPage'
+                                    ? { canView: true, canCreate: true, canEdit: false, canDelete: false }
+                                    : { canView: false, canCreate: false, canEdit: false, canDelete: false }
+                                  ];
+                                }
+                                return [p.id, PERMISSION_TEMPLATES[opt as PermissionTemplateKey]];
+                              }),
+                            ),
+                          );
                         }}
                       >
                         <Text
@@ -1146,7 +1171,7 @@ function ItemModal({
                             template === opt && { color: '#fff' },
                           ]}
                         >
-                          {opt}
+                          {opt === 'POSCashier' ? 'POS Cashier' : opt}
                         </Text>
                       </TouchableOpacity>
                     ),
