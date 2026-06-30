@@ -5,6 +5,15 @@ import { getGraphQLClient } from '@/utils/constants';
 import { MediaService } from './mediaService';
 import { formatGraphQLError } from '@/utils/errorFormatter';
 
+const MIN_DESC_LENGTH = 50;
+
+export function validateDescription(description: string): string | null {
+  if (description.trim().length < MIN_DESC_LENGTH) {
+    return `Description is required and must be at least ${MIN_DESC_LENGTH} characters.`;
+  }
+  return null;
+}
+
 export class InventoryService {
   static async getItemStockDistribution(itemId: number): Promise<any> {
     const QUERY = gql`
@@ -240,7 +249,7 @@ export class InventoryService {
 
   static async createItem(data: {
     name: string;
-    description?: string;
+    description: string;
     barcode: string;
     brand?: string;
     categoryId?: number;        // global
@@ -314,6 +323,10 @@ export class InventoryService {
   }
 
   static async updateItem(itemId: number, data: any): Promise<any> {
+    const descError = validateDescription(data.description ?? '');
+    if (descError) {
+      throw new Error(descError); // local guard — never calls the API
+    }
     const MUTATION = gql`
       mutation UpdateItem($id: ID!, $data: UpdateItemInput!) {
         updateItem(id: $id, data: $data) {

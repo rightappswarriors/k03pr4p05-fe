@@ -45,7 +45,86 @@ import { autoCode } from '@/utils/autoCode';
 import { useResponsive } from '@/hooks/useResponsive';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+const MIN_DESC_LENGTH = 50;
 
+function getDescColor(len: number, colors: any) {
+  if (len >= MIN_DESC_LENGTH) return colors.success;
+  if (len >= MIN_DESC_LENGTH * 0.6) return '#D97706'; // amber/warning
+  return colors.error;
+}
+function DescriptionField({
+  value,
+  onChangeText,
+  touched,
+  onBlur,
+  colors,
+}: {
+  value: string;
+  onChangeText: (v: string) => void;
+  touched: boolean;
+  onBlur: () => void;
+  colors: any;
+}) {
+  const len = value.trim().length;
+  const showError = touched && len < MIN_DESC_LENGTH;
+  const counterColor = getDescColor(len, colors);
+
+  const s = StyleSheet.create({
+    label: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.textSecondary,
+      letterSpacing: 0.8,
+      marginBottom: 6,
+      marginTop: 14,
+    },
+    input: {
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: showError ? colors.error : colors.border,
+      borderRadius: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 11,
+      fontSize: 14,
+      color: colors.text,
+      minHeight: 80,
+      textAlignVertical: 'top',
+    },
+    footerRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginTop: 4,
+    },
+    errTxt: { fontSize: 11, color: colors.error, flex: 1, paddingRight: 8 },
+    counter: { fontSize: 11, fontWeight: '700', color: counterColor },
+  });
+
+  return (
+    <>
+      <Text style={s.label}>Item description *</Text>
+      <TextInput
+        style={s.input}
+        value={value}
+        onChangeText={onChangeText}
+        onBlur={onBlur}
+        multiline
+        numberOfLines={4}
+        placeholder="Describe the item — what it is, how it's sold, any important details (50 characters minimum)"
+        placeholderTextColor={colors.textSecondary}
+      />
+      <View style={s.footerRow}>
+        <Text style={s.errTxt}>
+          {showError
+            ? `Description is required and must be at least ${MIN_DESC_LENGTH} characters.`
+            : ''}
+        </Text>
+        <Text style={s.counter}>
+          {len} / {MIN_DESC_LENGTH} minimum
+        </Text>
+      </View>
+    </>
+  );
+}
 export interface InventoryItem {
   id: string;
   name: string;
@@ -53,6 +132,7 @@ export interface InventoryItem {
   stock: number;
   minStock: number;
   category: string;
+  description: string,
   sellingPrice: number;
   lowStock: boolean;
   imageUrl?: string;
@@ -719,6 +799,10 @@ function EditItemModal({
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(
     null,
   );
+  const [description, setDescription] = useState('');
+  const [descTouched, setDescTouched] = useState(false);
+
+
   const [selectedCategoryIsGlobal, setSelectedCategoryIsGlobal] =
     useState(false);
   const [selectedCategoryName, setSelectedCategoryName] = useState('');
@@ -747,6 +831,8 @@ function EditItemModal({
     setOpExPct(
       item.opExPct != null ? String(Math.round(item.opExPct * 100)) : '10',
     );
+    setDescription(item.description ?? '');
+    setDescTouched(false);
     setPriceB(item.priceB != null ? String(item.priceB) : '');
     setPriceC(item.priceC != null ? String(item.priceC) : '');
     setStockLabel(item.stockLabel ?? 'piece');
@@ -837,6 +923,7 @@ function EditItemModal({
         skuNumber: sku.trim() || undefined,
         barcode: sku.trim() || undefined,
         stock: parseInt(stock) || 0,
+        description: description.trim(),
         minQuantity: parseInt(minStock) || 0,
         sellingPrice: parseFloat(price),
         opExPct: parseFloat(opExPct) / 100 || 0.1,
@@ -1135,6 +1222,14 @@ function EditItemModal({
                 onChangeText={setSku}
                 autoCapitalize="characters"
                 placeholderTextColor={colors.textSecondary}
+              />
+
+              <DescriptionField
+                value={description}
+                onChangeText={setDescription}
+                touched={descTouched}
+                onBlur={() => setDescTouched(true)}
+                colors={colors}
               />
 
               {/* ── Stock ── */}
@@ -2547,6 +2642,8 @@ function AddItemModal({
   const [stockDescription, setStockDescription] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [itemImageUri, setItemImageUri] = useState('');
+  const [description, setDescription] = useState('');
+  const [descTouched, setDescTouched] = useState(false);
   const [costLines, setCostLines] = useState<CostLine[]>([
     { id: 'cl_purchase', label: 'Purchase Cost', amount: 0 },
   ]);
@@ -2581,6 +2678,8 @@ function AddItemModal({
     setPrice('');
     setOpExPct('10');
     setVatExempt(false);
+    setDescription('');
+    setDescTouched(false);
     setIsBNPC(false);
     setHasSeniorDiscountVATExempt(false);
     setVatRate('12');
@@ -2594,6 +2693,11 @@ function AddItemModal({
   const handleAdd = async () => {
     if (!name.trim()) {
       setError('Item name is required.');
+      return;
+    }
+    setDescTouched(true);
+    if (description.trim().length < MIN_DESC_LENGTH) {
+      setError(`Description is required and must be at least ${MIN_DESC_LENGTH} characters.`);
       return;
     }
     if (!price.trim()) {
@@ -2630,6 +2734,7 @@ function AddItemModal({
         name: name.trim(),
         stock: parseInt(stock) || 0,
         itemCode: finalCode,
+        description: description.trim(),
         barcode: sku.trim() || `SKU-${Date.now().toString().slice(-6)}`,
         sellingPrice: parseFloat(price) || 0,
         vatExempt: !selectedVatTypeId ? vatExempt : undefined,
@@ -2666,6 +2771,7 @@ function AddItemModal({
             createdItem.skuNumber ||
             `SKU-${createdItem.id}`,
           stock: returnedStock,
+          description: createdItem.description ?? description.trim(),
           minStock: parseInt(minStock) || 10,
           category: category || 'General',
           sellingPrice: parseFloat(price) || 0,
@@ -2830,6 +2936,14 @@ function AddItemModal({
                 value={sku}
                 onChangeText={setSku}
                 autoCapitalize="characters"
+              />
+
+              <DescriptionField
+                value={description}
+                onChangeText={setDescription}
+                touched={descTouched}
+                onBlur={() => setDescTouched(true)}
+                colors={colors}
               />
 
               <Text style={s.label}>Category</Text>
@@ -3336,7 +3450,7 @@ export default function InventoryScreen() {
           ),
         );
       } catch (error) {
-        if (__DEV__)console.warn('Unable to load inventory items', error);
+        if (__DEV__) console.warn('Unable to load inventory items', error);
       } finally {
         setLoadingItems(false);
       }
