@@ -6,9 +6,7 @@
     "jsx": "react",
     "strict": true,
     "paths": {
-      "@/*": [
-        "./*"
-      ]
+      "@/*": ["./*"]
     }
   },
   "include": [
@@ -19,6 +17,7 @@
     "components/pos/CategoryDropdowntsx",
     "app.config.js",
     ".expo/types/**/*.ts",
-    "expo-env.d.ts"
-, "components/dashboardSummary"  ]
+    "expo-env.d.ts",
+    "components/dashboardSummary"
+  ]
 }
