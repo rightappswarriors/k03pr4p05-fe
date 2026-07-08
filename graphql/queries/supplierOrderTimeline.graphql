@@ -1,0 +1,56 @@
+query SupplierOrderTimeline(
+  $supplierOrgId: Int!
+  $search: String
+  $status: SupplierTimelineStatus
+  $eventTypes: [SupplierTimelineEventType!]
+  $startDate: String
+  $endDate: String
+  $limit: Int
+  $offset: Int
+  $sort: SupplierTimelineSort
+) {
+  supplierOrderTimeline(
+    supplierOrgId: $supplierOrgId
+    search: $search
+    status: $status
+    eventTypes: $eventTypes
+    startDate: $startDate
+    endDate: $endDate
+    limit: $limit
+    offset: $offset
+    sort: $sort
+  ) {
+    totalCount
+    hasNextPage
+    summary {
+      total
+      purchaseOrders
+      deliveries
+      wallet
+      mandates
+      inventory
+      notifications
+      attention
+    }
+    groups {
+      label
+      events {
+        id
+        eventType
+        title
+        description
+        status
+        referenceId
+        referenceType
+        organization
+        createdAt
+        actor
+        icon
+        color
+        actionLabel
+        actionRoute
+        metadata
+      }
+    }
+  }
+}
