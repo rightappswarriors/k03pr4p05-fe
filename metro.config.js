@@ -1,9 +1,11 @@
+const path = require("path");
 const { getDefaultConfig } = require("expo/metro-config");
 
 const config = getDefaultConfig(__dirname)
 
 config.resolver.unstable_enablePackageExports = false;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+
   if (platform === 'web') {
     if (moduleName.includes('react-native-maps') || moduleName === '../Utilities/Platform' || moduleName === './PlatformColorValueTypes' || moduleName.includes('ReactNativePrivateInterface') || moduleName.includes('ReactNativeViewConfigRegistry') || moduleName.includes('createReactNativeComponentClass') || moduleName.includes('requireNativeComponent') || moduleName.includes('codegenNativeComponent') || moduleName.includes('react-native-external-display')) {
       return { type: 'empty' };

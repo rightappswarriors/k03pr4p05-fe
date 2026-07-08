@@ -17,5 +17,5 @@ export default function POInboxRoute() {
     )
   }
 
-  return <POInboxScreen onSelectPO={id => setSelectedPoId(id)} />
+  return <POInboxScreen />
 }

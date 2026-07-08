@@ -11,6 +11,7 @@ interface ActiveRoleContextType {
     isSupplier: boolean
     availableRoles: AppRole[]
     canSwitchToSupplier: boolean
+    roleLoaded: boolean
     switchRole: (role: AppRole) => Promise<void>
     toggleRole: () => Promise<void>
 }
@@ -19,31 +20,56 @@ const ActiveRoleContext = createContext<ActiveRoleContextType | undefined>(undef
 
 export function ActiveRoleProvider({ children }: { children: React.ReactNode }) {
     const { user } = useAuth()
-    const [activeRole, setActiveRoleState] = useState<AppRole>('SELLER')
+    const getDefaultRole = (roles: AppRole[]): AppRole => {
+        if (roles.includes('SELLER')) return 'SELLER';
+        if (roles.includes('SUPPLIER')) return 'SUPPLIER';
 
-    const orgRoles: AppRole[] = ((user as any)?.org?.roles ?? ['SELLER']) as AppRole[]
+        return 'SELLER';
+    };
+
+    const orgRoles: AppRole[] =
+        ((user?.org?.roles ?? []) as AppRole[]);
+
+    const [activeRole, setActiveRoleState] = useState<AppRole>(
+        getDefaultRole(orgRoles)
+    );
+    const [roleLoaded, setRoleLoaded] = useState(false)
     const availableRoles: AppRole[] =
         orgRoles.length > 0 ? orgRoles : ['SELLER']
     const canSwitchToSupplier = availableRoles.includes('SUPPLIER')
 
     useEffect(() => {
+        const defaultRole = getDefaultRole(orgRoles);
+
         const load = async () => {
             try {
                 const stored = await AsyncStorage.getItem(STORAGE_KEY)
-                if (stored === 'SUPPLIER' && canSwitchToSupplier) {
-                    setActiveRoleState('SUPPLIER')
+
+                if (
+                    stored === 'SELLER' &&
+                    orgRoles.includes('SELLER')
+                ) {
+                    setActiveRoleState('SELLER');
+                } else if (
+                    stored === 'SUPPLIER' &&
+                    orgRoles.includes('SUPPLIER')
+                ) {
+                    setActiveRoleState('SUPPLIER');
                 } else {
-                    setActiveRoleState('SELLER')
+                    // No valid stored role, use the organization's default.
+                    setActiveRoleState(defaultRole);
                 }
             } catch {
-                setActiveRoleState('SELLER')
+                setActiveRoleState(defaultRole);
+            } finally {
+                setRoleLoaded(true);
             }
         }
         load()
-    }, [canSwitchToSupplier])
+    }, [user?.org?.roles])
 
     const switchRole = async (role: AppRole) => {
-        if (role === 'SUPPLIER' && !canSwitchToSupplier) return
+        if (!availableRoles.includes(role)) return
         setActiveRoleState(role)
         try {
             await AsyncStorage.setItem(STORAGE_KEY, role)
@@ -51,6 +77,7 @@ export function ActiveRoleProvider({ children }: { children: React.ReactNode }) 
     }
 
     const toggleRole = async () => {
+        if (!availableRoles.includes('SELLER') || !availableRoles.includes('SUPPLIER')) return
         const next = activeRole === 'SELLER' ? 'SUPPLIER' : 'SELLER'
         await switchRole(next)
     }
@@ -62,6 +89,7 @@ export function ActiveRoleProvider({ children }: { children: React.ReactNode }) 
                 isSupplier: activeRole === 'SUPPLIER',
                 availableRoles,
                 canSwitchToSupplier,
+                roleLoaded,
                 switchRole,
                 toggleRole,
             }}

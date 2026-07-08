@@ -27,7 +27,7 @@ export const DisplayProvider: React.FC<{ children: React.ReactNode }> = ({ child
           setHasSecondScreen(false);
         }
       } catch (error) {
-        console.warn('External display check failed:', error);
+        if (__DEV__) console.warn('External display check failed:', error);
         setHasSecondScreen(false);
       }
     };

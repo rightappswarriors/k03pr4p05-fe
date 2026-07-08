@@ -7,7 +7,7 @@ import {
   rejectPO,
   type PurchaseOrder,
   type POStatus,
-} from '@/services/supplierService'
+} from '@/services/supplierService/supplierService'
 
 const formatPHP = (amount: number) =>
   new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount)

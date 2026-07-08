@@ -9,16 +9,18 @@ interface RoleSwitcherProps {
 }
 
 export default function RoleSwitcher({ compact = false }: RoleSwitcherProps) {
-  const { activeRole, canSwitchToSupplier, switchRole } = useActiveRole()
+  const { activeRole, availableRoles, switchRole } = useActiveRole()
   const { colors } = useTheme()
   const router = useRouter()
 
-  if (!canSwitchToSupplier) return null
+  const canSwitchRoles = availableRoles.includes('SELLER') && availableRoles.includes('SUPPLIER')
+  if (!canSwitchRoles) return null
 
   const isSupplier = activeRole === 'SUPPLIER'
 
   const handleSwitch = async () => {
     const next = isSupplier ? 'SELLER' : 'SUPPLIER'
+    if (!availableRoles.includes(next)) return
     await switchRole(next)
     if (next === 'SUPPLIER') {
       router.replace('/(supplier)')
@@ -62,39 +64,43 @@ export default function RoleSwitcher({ compact = false }: RoleSwitcherProps) {
         borderColor: colors.border,
       }}
     >
-      {(['SELLER', 'SUPPLIER'] as const).map((role) => (
-        <TouchableOpacity
-          key={role}
-          onPress={async () => {
-            await switchRole(role)
-            if (role === 'SUPPLIER') router.replace('/(supplier)')
-            else router.replace('/(erp)')
-          }}
-          style={{
-            flex: 1,
-            paddingHorizontal: 16,
-            paddingVertical: 8,
-            borderRadius: 9,
-            backgroundColor:
-              activeRole === role
-                ? role === 'SELLER'
-                  ? '#22C55E'
-                  : '#3B82F6'
-                : 'transparent',
-            alignItems: 'center',
-          }}
-        >
-          <Text
+      {availableRoles.map((role) => {
+        const isActive = activeRole === role
+        return (
+          <TouchableOpacity
+            key={role}
+            onPress={async () => {
+              if (!availableRoles.includes(role)) return
+              await switchRole(role)
+              if (role === 'SUPPLIER') router.replace('/(supplier)')
+              else router.replace('/(erp)')
+            }}
             style={{
-              fontSize: 13,
-              fontWeight: '700',
-              color: activeRole === role ? '#fff' : colors.textSecondary,
+              flex: 1,
+              paddingHorizontal: 16,
+              paddingVertical: 8,
+              borderRadius: 9,
+              backgroundColor:
+                isActive
+                  ? role === 'SELLER'
+                    ? '#22C55E'
+                    : '#3B82F6'
+                  : 'transparent',
+              alignItems: 'center',
             }}
           >
-            {role === 'SELLER' ? '🏪 Seller' : '📦 Supplier'}
-          </Text>
-        </TouchableOpacity>
-      ))}
+            <Text
+              style={{
+                fontSize: 13,
+                fontWeight: '700',
+                color: isActive ? '#fff' : colors.textSecondary,
+              }}
+            >
+              {role === 'SELLER' ? '🏪 Seller' : '📦 Supplier'}
+            </Text>
+          </TouchableOpacity>
+        )
+      })}
     </View>
   )
 }

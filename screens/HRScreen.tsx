@@ -35,11 +35,10 @@ import {
 import { useTheme } from '@/contexts/ThemeContext';
 import { HrService } from '@/services';
 import {
-  MasterItem,
-  useDepartments,
   useRoleLabels,
-  useMasterFile,
 } from '@/contexts/MasterFileContext';
+import { DepartmentService } from '@/services/departMentService';
+import { PositionService } from '@/services/positionService';
 
 // ─── AsyncStorage Keys ────────────────────────────────────────────────────────
 
@@ -384,7 +383,7 @@ function EmployeeDetailModal({
     changes: { role?: string; positionId?: string | null; salary?: number },
   ) => Promise<void>;
   deptMap: Record<string, string>;
-  positions: MasterItem[];
+  positions: any[];
   colors: any;
 }) {
   const [editMode, setEditMode] = useState(false);
@@ -845,9 +844,9 @@ function AddEmployeeModal({
   onClose: () => void;
   onAdd: (emp: Employee) => void;
   colors: any;
-  deptObjects: MasterItem[];
+  deptObjects: Department[];
   roleOptions: string[];
-  positions: MasterItem[];
+  positions: any[];
 }) {
   const [name, setName] = useState('');
   const [department, setDepartment] = useState('');
@@ -859,7 +858,14 @@ function AddEmployeeModal({
   const [status, setStatus] = useState<EmployeeStatus>('Active');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const { width } = useWindowDimensions();
 
+  const modalWidth =
+    width >= 1440 ? 900 :
+      width >= 1200 ? 760 :
+        width >= 900 ? 640 :
+          width >= 768 ? 560 :
+            width - 32;
   const handleAdd = async () => {
     if (!name.trim() || name.trim().length < 2) {
       setError('Full name must be at least 2 characters.');
@@ -948,9 +954,8 @@ function AddEmployeeModal({
     sheet: {
       backgroundColor: colors.surface,
       borderRadius: 20,
-      width: '100%',
-      maxWidth: 520,
-      maxHeight: '93%',
+      width: modalWidth,
+      maxHeight: '90%',
     },
     header: {
       flexDirection: 'row',
@@ -1011,7 +1016,7 @@ function AddEmployeeModal({
               </TouchableOpacity>
             </View>
             <ScrollView
-              contentContainerStyle={{ padding: 20 }}
+              contentContainerStyle={{ padding: 20, paddingTop: -20 }}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
@@ -1442,7 +1447,11 @@ function EmployeeCard({
 }
 
 // ─── Table View ───────────────────────────────────────────────────────────────
-
+interface Department {
+  id: string
+  name: string
+  color: string
+}
 function TableView({
   data,
   onRowPress,
@@ -1667,22 +1676,24 @@ export default function HRScreen() {
   const isDesktop = width >= 1024;
 
   // ── MasterFile context ─────────────────────────────────────────────────────
-  const deptObjects = useDepartments();
-  const ROLE_OPTIONS = useRoleLabels();
-  const mf = useMasterFile();
-  const positions = mf.positions;
-  const DEPARTMENTS = ['All', ...deptObjects.map((d) => d.label)];
-  const deptMap = Object.fromEntries(
-    deptObjects.map((d) => [d.label, d.color ?? colors.primary]),
-  ) as Record<string, string>;
+  //const deptObjects = useDepartments();
 
+  //const mf = useMasterFile();
+  //const positions = mf.positions;
+
+  // const DEPARTMENTS = ['All', ...deptObjects.map((d) => d.label)];
+  //  const deptMap = Object.fromEntries(
+  //   deptObjects.map((d) => [d.label, d.color ?? colors.primary]),
+  // ) as Record<string, string>;
   // ── State — loaded from AsyncStorage ──────────────────────────────────────
   const [viewMode, setViewMode] = useState<ViewMode>('card');
   const [deptFilter, setDeptFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState<EmployeeStatus | 'All'>('All');
   const [filterOpen, setFilterOpen] = useState(false);
   const [stateRestored, setStateRestored] = useState(false);
-
+  const [departments, setDepartments] = useState<
+    { id: string, label: string, color: string } | []
+  >([])
   // ── AsyncStorage restore ───────────────────────────────────────────────────
   useEffect(() => {
     const restore = async () => {
@@ -1743,12 +1754,28 @@ export default function HRScreen() {
   const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null);
   const [detailVisible, setDetailVisible] = useState(false);
   const [addVisible, setAddVisible] = useState(false);
-
+  const [deptMap, setDeptMap] = useState<Record<string, string>>({})
+  const [positions, setPositions] = useState([])
   useEffect(() => {
     const load = async () => {
       setLoadingEmployees(true);
       try {
         const staff = await HrService.getAllStaffs();
+        const deptObjects: Department[] = await DepartmentService.getAll()
+
+        const departmentList = deptObjects.map((d) => ({
+          id: String(d.id),
+          label: d.name,
+          color: d.color,
+        }))
+        const positions = await PositionService.getAll()
+        setPositions(positions)
+        setDepartments(departmentList)
+        setDeptMap(
+          Object.fromEntries(
+            departments.map((d) => [d.label, d.color ?? colors.primary])
+          )
+        )
         if (Array.isArray(staff)) {
           if (__DEV__) console.log(staff)
           setEmployees(
@@ -1847,7 +1874,7 @@ export default function HRScreen() {
   const handleAddEmployee = (emp: Employee) => {
     setEmployees((prev) => [emp, ...prev]);
   };
-
+  const DEPARTMENTS = ['All', ...departments.map((d) => d.label)]
   // ── Styles ─────────────────────────────────────────────────────────────────
   const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
@@ -2213,8 +2240,8 @@ export default function HRScreen() {
         visible={addVisible}
         onClose={() => setAddVisible(false)}
         onAdd={handleAddEmployee}
-        deptObjects={deptObjects}
-        roleOptions={ROLE_OPTIONS}
+        deptObjects={departments}
+        roleOptions={positions}
         positions={positions}
         colors={colors}
       />

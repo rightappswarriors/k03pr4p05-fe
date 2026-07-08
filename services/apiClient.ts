@@ -7,7 +7,7 @@ export interface GraphQLRequestOptions {
   skipAuth?: boolean;
 }
 
-function normalizeError(error: unknown): string {
+export function normalizeError(error: unknown): string {
   if (!error || typeof error !== 'object') return 'Unknown network error';
 
   // graphql-request ClientError

@@ -51,7 +51,15 @@ export default function SplashScreen() {
         router.replace('/(erp)');
         return;
       }
+      if (user.org.roles?.includes('SELLER')) {
+        router.replace('/(erp)');
+        return;
+      }
 
+      if (user.org.roles?.includes('SUPPLIER')) {
+        router.replace('/(supplier)');
+        return;
+      }
       // For CASHIER — check outlet assignment first
       if (user.role === 'CASHIER') {
         AuthService.getMyOutletAssignment().then((assignment) => {

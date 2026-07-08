@@ -49,7 +49,7 @@ export default function ErpLayout() {
       router.replace('/login');
       return;
     }
-
+  
     if (!user) return;
 
     const canAccessERP =
@@ -62,7 +62,9 @@ export default function ErpLayout() {
       router.replace('/(tabs)');
       return;
     }
-
+    if (!user.org?.roles?.includes('SELLER')) {
+      router.replace('/(supplier)')
+    }
     if (!user.orgId) {
       router.replace('/onboarding?step=organization');
       return;

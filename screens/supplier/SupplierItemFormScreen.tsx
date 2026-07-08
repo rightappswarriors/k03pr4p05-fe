@@ -1,12 +1,23 @@
 import React, { useEffect, useState } from 'react'
-import { View, Text, ScrollView, TextInput, TouchableOpacity, Switch, ActivityIndicator, Alert } from 'react-native'
+import {
+  View,
+  Text,
+  ScrollView,
+  TextInput,
+  TouchableOpacity,
+  Switch,
+  ActivityIndicator,
+  StyleSheet,
+  useWindowDimensions,
+} from 'react-native'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useAuth } from '@/contexts/AuthContext'
+import { ChevronLeft, X } from 'lucide-react-native'
 import {
   createSupplierItem,
   updateSupplierItem,
   fetchOrCreateCatalog,
-} from '@/services/supplierService'
+} from '@/services/supplierService/supplierService'
 
 interface PriceTierInput {
   minQty: string
@@ -25,7 +36,7 @@ interface FormData {
   priceTiers: PriceTierInput[]
 }
 
-const COMMON_UNITS = ['piraso', 'kahon', 'kilo', 'boteng', 'lata', 'bag', 'dozen', 'pack', 'set']
+const COMMON_UNITS = ['piraso', 'kahon', 'kilo', 'boteng', 'lata', 'bag', 'dozen', 'pack', 'set', 'litter', 'gallon']
 
 interface SupplierItemFormScreenProps {
   itemId?: string
@@ -34,9 +45,18 @@ interface SupplierItemFormScreenProps {
   onCancel?: () => void
 }
 
-export default function SupplierItemFormScreen({ itemId, catalogId: propCatalogId, onSaved, onCancel }: SupplierItemFormScreenProps) {
+export default function SupplierItemFormScreen({
+  itemId,
+  catalogId: propCatalogId,
+  onSaved,
+  onCancel,
+}: SupplierItemFormScreenProps) {
   const { colors } = useTheme()
   const { user } = useAuth()
+  const { width } = useWindowDimensions()
+  const isDesktop = width >= 1024
+  const isTablet = width >= 600 && width < 1024
+
   const isEdit = Boolean(itemId)
   const [loading, setLoading] = useState(false)
   const [catalogId, setCatalogId] = useState(propCatalogId ?? '')
@@ -60,7 +80,11 @@ export default function SupplierItemFormScreen({ itemId, catalogId: propCatalogI
   const removeTier = (idx: number) => setForm(prev => ({ ...prev, priceTiers: prev.priceTiers.filter((_, i) => i !== idx) }))
 
   const updateTier = (idx: number, field: keyof PriceTierInput, value: string) =>
-    setForm(prev => { const tiers = [...prev.priceTiers]; tiers[idx] = { ...tiers[idx], [field]: value }; return { ...prev, priceTiers: tiers } })
+    setForm(prev => {
+      const tiers = [...prev.priceTiers]
+      tiers[idx] = { ...tiers[idx], [field]: value }
+      return { ...prev, priceTiers: tiers }
+    })
 
   const handleSave = async () => {
     setError('')
@@ -114,112 +138,279 @@ export default function SupplierItemFormScreen({ itemId, catalogId: propCatalogI
     }
   }
 
-  const inputStyle = { borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 12, backgroundColor: colors.surface, color: colors.text, fontSize: 14 }
+  const inputStyle = {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: colors.surface,
+    color: colors.text,
+    fontSize: 14,
+  }
   const labelStyle = { fontSize: 12, fontWeight: '600' as const, color: colors.textSecondary, marginBottom: 4 }
 
-  return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: 16, gap: 16 }} keyboardShouldPersistTaps="handled">
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        {onCancel && (
-          <TouchableOpacity onPress={onCancel} style={{ padding: 4 }}>
-            <Text style={{ fontSize: 20, color: colors.primary }}>←</Text>
-          </TouchableOpacity>
-        )}
-        <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text }}>
-          {isEdit ? 'Edit Item' : 'Add Catalog Item'}
-        </Text>
-      </View>
-
-      {!!error && (
-        <View style={{ backgroundColor: '#FEF2F2', borderRadius: 8, padding: 12, borderLeftWidth: 3, borderLeftColor: '#EF4444' }}>
-          <Text style={{ color: '#DC2626', fontSize: 13 }}>{error}</Text>
-        </View>
-      )}
-
+  // Render form sections as columns on tablet/desktop
+  const renderFormSections = () => {
+    const productDetails = (
       <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 16, gap: 14 }}>
         <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>Product Details</Text>
         <View>
           <Text style={labelStyle}>Product Name *</Text>
-          <TextInput value={form.name} onChangeText={v => set('name', v)} placeholder="e.g. SMB 330ml Case/24" placeholderTextColor={colors.textSecondary} style={inputStyle} />
+          <TextInput
+            value={form.name}
+            onChangeText={v => set('name', v)}
+            placeholder="e.g. SMB 330ml Case/24"
+            placeholderTextColor={colors.textSecondary}
+            style={inputStyle}
+          />
         </View>
         <View>
           <Text style={labelStyle}>SKU (optional)</Text>
-          <TextInput value={form.sku} onChangeText={v => set('sku', v)} placeholder="e.g. SMB-330-24" placeholderTextColor={colors.textSecondary} style={inputStyle} autoCapitalize="characters" />
+          <TextInput
+            value={form.sku}
+            onChangeText={v => set('sku', v)}
+            placeholder="e.g. SMB-330-24"
+            placeholderTextColor={colors.textSecondary}
+            style={inputStyle}
+            autoCapitalize="characters"
+          />
         </View>
         <View>
           <Text style={labelStyle}>Description (optional)</Text>
-          <TextInput value={form.description} onChangeText={v => set('description', v)} placeholder="Brief product description" placeholderTextColor={colors.textSecondary} style={[inputStyle, { minHeight: 72 }]} multiline />
+          <TextInput
+            value={form.description}
+            onChangeText={v => set('description', v)}
+            placeholder="Brief product description"
+            placeholderTextColor={colors.textSecondary}
+            style={[inputStyle, { minHeight: 72 }]}
+            multiline
+          />
         </View>
       </View>
+    )
 
+    const pricingUnits = (
       <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 16, gap: 14 }}>
         <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>Pricing & Units</Text>
         <View>
           <Text style={labelStyle}>Unit *</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
             {COMMON_UNITS.map(u => (
-              <TouchableOpacity key={u} onPress={() => set('unit', u)}
-                style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, backgroundColor: form.unit === u ? colors.primary : colors.background, borderWidth: 1, borderColor: form.unit === u ? colors.primary : colors.border }}>
+              <TouchableOpacity
+                key={u}
+                onPress={() => set('unit', u)}
+                style={{
+                  paddingHorizontal: 12,
+                  paddingVertical: 7,
+                  borderRadius: 20,
+                  backgroundColor: form.unit === u ? colors.primary : colors.background,
+                  borderWidth: 1,
+                  borderColor: form.unit === u ? colors.primary : colors.border,
+                }}
+              >
                 <Text style={{ fontSize: 13, color: form.unit === u ? '#fff' : colors.textSecondary }}>{u}</Text>
               </TouchableOpacity>
             ))}
           </View>
-          <TextInput value={form.unit} onChangeText={v => set('unit', v)} placeholder="Or type a custom unit" placeholderTextColor={colors.textSecondary} style={inputStyle} />
+          <TextInput
+            value={form.unit}
+            onChangeText={v => set('unit', v)}
+            placeholder="Or type a custom unit"
+            placeholderTextColor={colors.textSecondary}
+            style={inputStyle}
+          />
         </View>
         <View>
           <Text style={labelStyle}>Unit Price (₱) *</Text>
-          <TextInput value={form.unitPrice} onChangeText={v => set('unitPrice', v)} placeholder="0.00" placeholderTextColor={colors.textSecondary} style={inputStyle} keyboardType="decimal-pad" />
+          <TextInput
+            value={form.unitPrice}
+            onChangeText={v => set('unitPrice', v)}
+            placeholder="0.00"
+            placeholderTextColor={colors.textSecondary}
+            style={inputStyle}
+            keyboardType="decimal-pad"
+          />
         </View>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <View>
             <Text style={{ fontSize: 14, color: colors.text, fontWeight: '600' }}>VAT Exempt</Text>
-            <Text style={{ fontSize: 12, color: colors.textSecondary }}>{form.isVatExempt ? 'No VAT applied' : '12% BIR VAT applied'}</Text>
+            <Text style={{ fontSize: 12, color: colors.textSecondary }}>
+              {form.isVatExempt ? 'No VAT applied' : '12% BIR VAT applied'}
+            </Text>
           </View>
-          <Switch value={form.isVatExempt} onValueChange={v => set('isVatExempt', v)} trackColor={{ false: colors.border, true: colors.primary }} thumbColor="#fff" />
+          <Switch
+            value={form.isVatExempt}
+            onValueChange={v => set('isVatExempt', v)}
+            trackColor={{ false: colors.border, true: colors.primary }}
+            thumbColor="#fff"
+          />
         </View>
       </View>
+    )
 
+    const stockMoq = (
       <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 16, gap: 14 }}>
         <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>Stock & MOQ</Text>
         <View>
           <Text style={labelStyle}>Minimum Order Quantity</Text>
-          <TextInput value={form.moq} onChangeText={v => set('moq', v)} placeholder="1" placeholderTextColor={colors.textSecondary} style={inputStyle} keyboardType="number-pad" />
+          <TextInput
+            value={form.moq}
+            onChangeText={v => set('moq', v)}
+            placeholder="1"
+            placeholderTextColor={colors.textSecondary}
+            style={inputStyle}
+            keyboardType="number-pad"
+          />
         </View>
         <View>
           <Text style={labelStyle}>Available Quantity</Text>
-          <TextInput value={form.availableQty} onChangeText={v => set('availableQty', v)} placeholder="0" placeholderTextColor={colors.textSecondary} style={inputStyle} keyboardType="number-pad" />
+          <TextInput
+            value={form.availableQty}
+            onChangeText={v => set('availableQty', v)}
+            placeholder="0"
+            placeholderTextColor={colors.textSecondary}
+            style={inputStyle}
+            keyboardType="number-pad"
+          />
         </View>
       </View>
+    )
 
+    const priceTiers = (
       <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 16, gap: 12 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>Price Tiers</Text>
-          <TouchableOpacity onPress={addTier} style={{ backgroundColor: colors.primary + '20', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}>
+          <TouchableOpacity
+            onPress={addTier}
+            style={{ backgroundColor: colors.primary + '20', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
+          >
             <Text style={{ fontSize: 12, fontWeight: '600', color: colors.primary }}>+ Add Tier</Text>
           </TouchableOpacity>
         </View>
-        <Text style={{ fontSize: 12, color: colors.textSecondary }}>Optional volume discounts applied when buyer orders at or above the minimum quantity.</Text>
+        <Text style={{ fontSize: 12, color: colors.textSecondary }}>
+          Optional volume discounts applied when buyer orders at or above the minimum quantity.
+        </Text>
         {form.priceTiers.map((tier, idx) => (
           <View key={idx} style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-end' }}>
             <View style={{ flex: 1 }}>
               <Text style={labelStyle}>Min Qty</Text>
-              <TextInput value={tier.minQty} onChangeText={v => updateTier(idx, 'minQty', v)} placeholder="10" placeholderTextColor={colors.textSecondary} style={inputStyle} keyboardType="number-pad" />
+              <TextInput
+                value={tier.minQty}
+                onChangeText={v => updateTier(idx, 'minQty', v)}
+                placeholder="10"
+                placeholderTextColor={colors.textSecondary}
+                style={inputStyle}
+                keyboardType="number-pad"
+              />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={labelStyle}>Price (₱)</Text>
-              <TextInput value={tier.price} onChangeText={v => updateTier(idx, 'price', v)} placeholder="0.00" placeholderTextColor={colors.textSecondary} style={inputStyle} keyboardType="decimal-pad" />
+              <TextInput
+                value={tier.price}
+                onChangeText={v => updateTier(idx, 'price', v)}
+                placeholder="0.00"
+                placeholderTextColor={colors.textSecondary}
+                style={inputStyle}
+                keyboardType="decimal-pad"
+              />
             </View>
-            <TouchableOpacity onPress={() => removeTier(idx)} style={{ backgroundColor: '#EF444420', borderRadius: 8, padding: 12 }}>
+            <TouchableOpacity
+              onPress={() => removeTier(idx)}
+              style={{ backgroundColor: '#EF444420', borderRadius: 8, padding: 12 }}
+            >
               <Text style={{ color: '#EF4444', fontWeight: '700' }}>✕</Text>
             </TouchableOpacity>
           </View>
         ))}
       </View>
+    )
 
-      <TouchableOpacity onPress={handleSave} disabled={loading}
-        style={{ backgroundColor: colors.primary, padding: 16, borderRadius: 12, alignItems: 'center', opacity: loading ? 0.6 : 1, marginTop: 4, marginBottom: 24 }}>
-        {loading ? <ActivityIndicator color="#fff" /> : (
-          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>{isEdit ? 'Save Changes' : 'Add to Catalog'}</Text>
+    if (isDesktop) {
+      return (
+        <View style={{ flexDirection: 'row', gap: 16, flexWrap: 'wrap' }}>
+          <View style={{ flex: 1, minWidth: 300 }}>{productDetails}</View>
+          <View style={{ flex: 1, minWidth: 300 }}>{pricingUnits}</View>
+          <View style={{ flex: 1, minWidth: 300 }}>{stockMoq}</View>
+          <View style={{ flex: 1, minWidth: 300 }}>{priceTiers}</View>
+        </View>
+      )
+    }
+
+    if (isTablet) {
+      return (
+        <View style={{ flexDirection: 'row', gap: 16, flexWrap: 'wrap' }}>
+          <View style={{ flex: 1, minWidth: 280 }}>{productDetails}</View>
+          <View style={{ flex: 1, minWidth: 280 }}>{pricingUnits}</View>
+          <View style={{ width: '100%' }}>{stockMoq}</View>
+          <View style={{ width: '100%' }}>{priceTiers}</View>
+        </View>
+      )
+    }
+
+    // Mobile: single column
+    return (
+      <>
+        {productDetails}
+        {pricingUnits}
+        {stockMoq}
+        {priceTiers}
+      </>
+    )
+  }
+
+  return (
+    <ScrollView
+      style={{ flex: 1, backgroundColor: colors.background }}
+      contentContainerStyle={{ padding: 16, gap: 16 }}
+      keyboardShouldPersistTaps="handled"
+    >
+      {/* Header */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        {onCancel && (
+          <TouchableOpacity onPress={onCancel} style={{ padding: 4 }}>
+            <ChevronLeft size={24} color={colors.primary} />
+          </TouchableOpacity>
+        )}
+        <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text, flex: 1 }}>
+          {isEdit ? 'Edit Item' : 'Add Catalog Item'}
+        </Text>
+      </View>
+
+      {!!error && (
+        <View style={{
+          backgroundColor: '#FEF2F2',
+          borderRadius: 8,
+          padding: 12,
+          borderLeftWidth: 3,
+          borderLeftColor: '#EF4444',
+        }}>
+          <Text style={{ color: '#DC2626', fontSize: 13 }}>{error}</Text>
+        </View>
+      )}
+
+      {/* Form sections - responsive layout */}
+      {renderFormSections()}
+
+      {/* Save button - full width on all screens */}
+      <TouchableOpacity
+        onPress={handleSave}
+        disabled={loading}
+        style={{
+          backgroundColor: colors.primary,
+          padding: 16,
+          borderRadius: 12,
+          alignItems: 'center',
+          opacity: loading ? 0.6 : 1,
+          marginTop: 4,
+          marginBottom: 24,
+        }}
+      >
+        {loading ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>
+            {isEdit ? 'Save Changes' : 'Add to Catalog'}
+          </Text>
         )}
       </TouchableOpacity>
     </ScrollView>

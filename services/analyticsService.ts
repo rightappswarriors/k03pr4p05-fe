@@ -3,7 +3,7 @@
 
 import { gql } from 'graphql-request';
 import { graphQLRequest } from './apiClient';
-import { GraphQLError } from 'graphql';
+import { formatGraphQLError } from '@/utils/errorFormatter';
 
 // ─── Shared Types ─────────────────────────────────────────────────────────────
 
@@ -212,7 +212,7 @@ export class AnalyticsService {
       });
       return res.getSalesAnalytics;
     } catch (error) {
-      const errorString = error instanceof GraphQLError ? JSON.stringify(error, null, 2) : String(error);
+      const errorString = formatGraphQLError(error)
       if (__DEV__) console.log('AnalyticsService.getSalesAnalytics error:', errorString);
       throw error;
     }
@@ -274,7 +274,7 @@ export class AnalyticsService {
       });
       return res.getBranchAnalytics;
     } catch (error) {
-      const errorString = error instanceof GraphQLError ? JSON.stringify(error, null, 2) : String(error);
+      const errorString = formatGraphQLError(error)
       if (__DEV__) console.log('AnalyticsService.getBranchAnalytics error:', errorString);
       throw error;
     }

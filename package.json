@@ -61,7 +61,7 @@
     "expo-video": "~2.2.2",
     "expo-web-browser": "~14.2.0",
     "fuse.js": "^7.1.0",
-    "graphql": "^16.11.0",
+    "graphql": "^16.14.2",
     "graphql-request": "^7.2.0",
     "lucide-react-native": "^0.475.0",
     "mitt": "^3.0.1",

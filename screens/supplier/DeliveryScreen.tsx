@@ -1,195 +1,274 @@
-import React, { useEffect, useState } from 'react'
-import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Alert } from 'react-native'
+import React, { useEffect, useState, useMemo, useCallback } from 'react'
+import { View, Text, ScrollView, RefreshControl, useWindowDimensions, TouchableOpacity, Alert } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import { Truck, Clock, CheckCircle2, AlertTriangle, LayoutGrid, List } from 'lucide-react-native'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useAuth } from '@/contexts/AuthContext'
 import {
-  fetchPurchaseOrdersForDelivery,
+  fetchDeliveries,
   startDelivery,
   markDelivered,
-  type PurchaseOrder,
-} from '@/services/supplierService'
+  applyDeliveryFilters,
+  isSameDay,
+  isWithinLastDays,
+  isOverdue,
+  type DeliveryItem,
+  type DeliveryStatus,
+  type DeliverySort,
+  type DeliveryDateRange,
+} from '@/services/supplierService/deliveryService'
+import { DeliverySummaryCard } from '@/components/supplier/delivery/DeliverySummaryCard'
+import { DeliveryFilters } from '@/components/supplier/delivery/DeliveryFilters'
+import { DeliveryCard } from '@/components/supplier/delivery/DeliveryCard'
+import { DeliveryTable } from '@/components/supplier/delivery/DeliveryTable'
+import { FadeInView } from '@/components/supplier/FadeInView'
+import { KpiSkeletonRow, OrderCardSkeletonList } from '@/components/supplier/LoadingSkeleton'
+import DeliveryDetailsScreen from './DeliveryDetailsScreen'
+import { getCardWidthPct, getKpiColumns } from './SupplierDashboardScreen'
+
+const BREAKPOINTS = { tablet: 768, desktop: 1100 }
+
+const STORAGE_KEYS = {
+  layout: 'supplierDeliveryLayout',
+  dateRange: 'supplierDeliveryDateRange',
+  status: 'supplierDeliveryStatus',
+  sort: 'supplierDeliverySort',
+} as const
+
+type Layout = 'table' | 'cards'
 
 const formatPHP = (amount: number) =>
   new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount)
 
-type DeliveryStatus = 'SCHEDULED' | 'IN_TRANSIT' | 'DELIVERED' | 'FAILED'
-
-const STATUS_COLORS: Record<DeliveryStatus, string> = { SCHEDULED: '#F59E0B', IN_TRANSIT: '#3B82F6', DELIVERED: '#22C55E', FAILED: '#EF4444' }
-const STATUS_LABELS: Record<DeliveryStatus, string> = { SCHEDULED: 'Scheduled', IN_TRANSIT: 'In Transit', DELIVERED: 'Delivered', FAILED: 'Failed' }
-const STATUS_ICONS: Record<DeliveryStatus, string> = { SCHEDULED: '📅', IN_TRANSIT: '🚚', DELIVERED: '✅', FAILED: '❌' }
-const FILTERS: Array<DeliveryStatus | 'ALL'> = ['ALL', 'SCHEDULED', 'IN_TRANSIT', 'DELIVERED', 'FAILED']
-
-interface DeliveryItem {
-  poId: string
-  poNumber: string
-  buyerName: string
-  outletName: string
-  scheduledDate: string
-  deliveredAt?: string | null
-  status: DeliveryStatus
-  driverName?: string | null
-  driverContact?: string | null
-  totalAmount: number
-}
-
-function mapPOToDelivery(po: PurchaseOrder): DeliveryItem | null {
-  if (!po.delivery) return null
-  return {
-    poId: po.id,
-    poNumber: po.poNumber,
-    buyerName: po.buyerOrg.name,
-    outletName: po.outlet.name,
-    scheduledDate: po.delivery.scheduledDate,
-    deliveredAt: po.delivery.deliveredAt,
-    status: po.delivery.status,
-    driverName: po.delivery.driverName,
-    driverContact: po.delivery.driverContact,
-    totalAmount: po.totalAmount,
-  }
-}
-
-function DeliveryCard({ delivery, onMarkInTransit, onMarkDelivered }: { delivery: DeliveryItem; onMarkInTransit: () => void; onMarkDelivered: () => void }) {
-  const { colors } = useTheme()
-  const color = STATUS_COLORS[delivery.status]
-  return (
-    <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 16, gap: 10, borderLeftWidth: 4, borderLeftColor: color }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-        <View style={{ flex: 1, gap: 2 }}>
-          <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>{STATUS_ICONS[delivery.status]} {delivery.poNumber}</Text>
-          <Text style={{ fontSize: 13, color: colors.textSecondary }}>{delivery.buyerName}</Text>
-          <Text style={{ fontSize: 12, color: colors.textSecondary }}>{delivery.outletName}</Text>
-        </View>
-        <View style={{ backgroundColor: color + '20', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, alignSelf: 'flex-start' }}>
-          <Text style={{ fontSize: 11, fontWeight: '600', color }}>{STATUS_LABELS[delivery.status]}</Text>
-        </View>
-      </View>
-
-      <View style={{ gap: 4 }}>
-        <Text style={{ fontSize: 12, color: colors.textSecondary }}>
-          📅 Scheduled: {new Date(delivery.scheduledDate).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}
-        </Text>
-        {delivery.deliveredAt && (
-          <Text style={{ fontSize: 12, color: '#22C55E' }}>
-            ✅ Delivered: {new Date(delivery.deliveredAt).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}
-          </Text>
-        )}
-        {delivery.driverName && (
-          <Text style={{ fontSize: 12, color: colors.textSecondary }}>
-            🧑 Driver: {delivery.driverName}{delivery.driverContact ? ` · ${delivery.driverContact}` : ''}
-          </Text>
-        )}
-      </View>
-
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>{formatPHP(delivery.totalAmount)}</Text>
-        {delivery.status === 'SCHEDULED' && (
-          <TouchableOpacity onPress={onMarkInTransit} style={{ backgroundColor: '#3B82F620', borderWidth: 1, borderColor: '#3B82F6', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8 }}>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: '#3B82F6' }}>Mark In Transit</Text>
-          </TouchableOpacity>
-        )}
-        {delivery.status === 'IN_TRANSIT' && (
-          <TouchableOpacity onPress={onMarkDelivered} style={{ backgroundColor: '#22C55E20', borderWidth: 1, borderColor: '#22C55E', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8 }}>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: '#22C55E' }}>Mark Delivered</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    </View>
-  )
-}
-
 export default function DeliveryScreen() {
   const { colors } = useTheme()
   const { user } = useAuth()
-  const [filter, setFilter] = useState<DeliveryStatus | 'ALL'>('ALL')
-  const [refreshing, setRefreshing] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [deliveries, setDeliveries] = useState<DeliveryItem[]>([])
+  const { width } = useWindowDimensions()
 
-  const load = async () => {
+  const isTablet = width >= BREAKPOINTS.tablet
+  const isDesktop = width >= BREAKPOINTS.desktop
+  const horizontalPadding = isDesktop ? 32 : isTablet ? 24 : 16
+  const contentMaxWidth = isDesktop ? 1680 : undefined
+  
+  const cardColumns = getKpiColumns(width)
+  const cardWidthPct = getCardWidthPct(cardColumns)
+
+  const kpiColumns = getKpiColumns(width)
+  const kpiWidthPct = getCardWidthPct(kpiColumns)
+
+  const availableWidth =
+    (contentMaxWidth ?? width) - horizontalPadding * 2
+
+  const [deliveries, setDeliveries] = useState<DeliveryItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [prefsLoaded, setPrefsLoaded] = useState(false)
+
+  const [layout, setLayout] = useState<Layout>('cards')
+  const [search, setSearch] = useState('')
+  const [status, setStatus] = useState<DeliveryStatus | 'ALL'>('ALL')
+  const [dateRange, setDateRange] = useState<DeliveryDateRange>({ start: null, end: null })
+  const [sort, setSort] = useState<DeliverySort>('NEWEST')
+
+  const [selectedPOId, setSelectedPOId] = useState<string | null>(null)
+
+  // ── Load persisted preferences once ───────────────────────────────────
+  useEffect(() => {
+    (async () => {
+      try {
+        const [savedLayout, savedDateRange, savedStatus, savedSort] = await Promise.all([
+          AsyncStorage.getItem(STORAGE_KEYS.layout),
+          AsyncStorage.getItem(STORAGE_KEYS.dateRange),
+          AsyncStorage.getItem(STORAGE_KEYS.status),
+          AsyncStorage.getItem(STORAGE_KEYS.sort),
+        ])
+
+        if (savedLayout === 'table' || savedLayout === 'cards') {
+          setLayout(savedLayout)
+        } else {
+          // First-time default: desktop = table, tablet/phone = cards.
+          setLayout(width >= BREAKPOINTS.desktop ? 'table' : 'cards')
+        }
+        if (savedDateRange) {
+          try { setDateRange(JSON.parse(savedDateRange)) } catch {}
+        }
+        if (savedStatus) setStatus(savedStatus as DeliveryStatus | 'ALL')
+        if (savedSort) setSort(savedSort as DeliverySort)
+      } catch (e) {
+        if (__DEV__) console.error('Failed to load delivery screen preferences', e)
+      } finally {
+        setPrefsLoaded(true)
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const persistLayout = useCallback(async (v: Layout) => {
+    setLayout(v)
+    try { await AsyncStorage.setItem(STORAGE_KEYS.layout, v) } catch (e) { if (__DEV__) console.error(e) }
+  }, [])
+  const persistDateRange = useCallback(async (v: DeliveryDateRange) => {
+    setDateRange(v)
+    try { await AsyncStorage.setItem(STORAGE_KEYS.dateRange, JSON.stringify(v)) } catch (e) { if (__DEV__) console.error(e) }
+  }, [])
+  const persistStatus = useCallback(async (v: DeliveryStatus | 'ALL') => {
+    setStatus(v)
+    try { await AsyncStorage.setItem(STORAGE_KEYS.status, v) } catch (e) { if (__DEV__) console.error(e) }
+  }, [])
+  const persistSort = useCallback(async (v: DeliverySort) => {
+    setSort(v)
+    try { await AsyncStorage.setItem(STORAGE_KEYS.sort, v) } catch (e) { if (__DEV__) console.error(e) }
+  }, [])
+
+  const load = useCallback(async () => {
     if (!user?.orgId) return
     try {
-      const pos = await fetchPurchaseOrdersForDelivery(user.orgId)
-      setDeliveries(pos.map(mapPOToDelivery).filter(Boolean) as DeliveryItem[])
+      const data = await fetchDeliveries(user.orgId)
+      setDeliveries(data)
     } catch (e) {
-      if (__DEV__) console.error('fetchPurchaseOrdersForDelivery error', e)
+      if (__DEV__) console.error('fetchDeliveries error', e)
     } finally {
       setLoading(false)
     }
-  }
+  }, [user?.orgId])
 
-  useEffect(() => { load() }, [user?.orgId])
-
-  const filtered = filter === 'ALL' ? deliveries : deliveries.filter(d => d.status === filter)
+  useEffect(() => { load() }, [load])
 
   const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false) }
+
+  // Tablet always renders cards per spec, regardless of the persisted preference
+  // (the toggle is only meaningful — and only shown — on desktop widths).
+  const effectiveLayout: Layout = isDesktop ? layout : 'cards'
+
+  const kpis = useMemo(() => {
+    const scheduledToday = deliveries.filter((d) => d.status === 'SCHEDULED' && isSameDay(d.scheduledDate)).length
+    const inTransit = deliveries.filter((d) => d.status === 'IN_TRANSIT').length
+    const deliveredThisWeek = deliveries.filter((d) => d.status === 'DELIVERED' && isWithinLastDays(d.deliveredAt, 7)).length
+    const failedOrOverdue = deliveries.filter((d) => d.status === 'FAILED' || isOverdue(d)).length
+    return { scheduledToday, inTransit, deliveredThisWeek, failedOrOverdue }
+  }, [deliveries])
+
+  const filtered = useMemo(
+    () => applyDeliveryFilters(deliveries, { search, status, dateRange, sort }),
+    [deliveries, search, status, dateRange, sort]
+  )
 
   const handleMarkInTransit = (d: DeliveryItem) => {
     Alert.alert('Mark as In Transit', `Mark delivery for ${d.poNumber} as in transit?`, [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Confirm', onPress: async () => {
-          try {
-            await startDelivery(d.poId)
-            await load()
-          } catch (e: any) {
-            Alert.alert('Error', e.message ?? 'Failed.')
-          }
-        },
-      },
+      { text: 'Confirm', onPress: async () => { try { await startDelivery(d.poId); await load() } catch (e: any) { Alert.alert('Error', e.message ?? 'Failed.') } } },
     ])
   }
 
   const handleMarkDelivered = (d: DeliveryItem) => {
-    Alert.alert('Confirm Delivery', `Mark ${d.poNumber} as delivered? This will update buyer stock if item mappings are configured.`, [
+    Alert.alert('Confirm Delivery', `Mark ${d.poNumber} as delivered?`, [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delivered', onPress: async () => {
-          try {
-            await markDelivered(d.poId)
-            await load()
-          } catch (e: any) {
-            Alert.alert('Error', e.message ?? 'Failed.')
-          }
-        },
-      },
+      { text: 'Delivered', onPress: async () => { try { await markDelivered(d.poId); await load() } catch (e: any) { Alert.alert('Error', e.message ?? 'Failed.') } } },
     ])
   }
 
+  if (selectedPOId) {
+    return (
+      <DeliveryDetailsScreen
+        poId={selectedPOId}
+        onBack={() => setSelectedPOId(null)}
+        onUpdated={load}
+      />
+    )
+  }
+
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <View style={{ padding: 16, gap: 4 }}>
-        <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text }}>Deliveries</Text>
-        <Text style={{ fontSize: 13, color: colors.textSecondary }}>Manage and track your scheduled deliveries</Text>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: colors.background }}
+      contentContainerStyle={{ paddingHorizontal: horizontalPadding, paddingVertical: 16, gap: 20, width: '100%', maxWidth: contentMaxWidth, alignSelf: 'center' }}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+    >
+      {/* ── Hero ─────────────────────────────────────────────────────────── */}
+      <View style={{ flexDirection: isTablet ? 'row' : 'column', justifyContent: 'space-between', alignItems: isTablet ? 'center' : 'flex-start', gap: 8 }}>
+        <View style={{ gap: 4 }}>
+          <Text style={{ fontSize: isDesktop ? 26 : 20, fontWeight: '800', color: colors.text }}>Deliveries</Text>
+          <Text style={{ fontSize: 13, color: colors.textSecondary }}>Track and manage every delivery from schedule to doorstep</Text>
+        </View>
+        {isDesktop && prefsLoaded && (
+          <View style={{ flexDirection: 'row', backgroundColor: colors.surface, borderRadius: 10, padding: 3, borderWidth: 1, borderColor: colors.border }}>
+            <TouchableOpacity
+              onPress={() => persistLayout('table')}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8, backgroundColor: layout === 'table' ? colors.primary : 'transparent' }}
+            >
+              <List size={13} color={layout === 'table' ? '#fff' : colors.textSecondary} />
+              <Text style={{ fontSize: 13, fontWeight: '600', color: layout === 'table' ? '#fff' : colors.textSecondary }}>Table</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => persistLayout('cards')}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8, backgroundColor: layout === 'cards' ? colors.primary : 'transparent' }}
+            >
+              <LayoutGrid size={13} color={layout === 'cards' ? '#fff' : colors.textSecondary} />
+              <Text style={{ fontSize: 13, fontWeight: '600', color: layout === 'cards' ? '#fff' : colors.textSecondary }}>Cards</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 8, paddingBottom: 8 }}>
-        {FILTERS.map(f => (
-          <TouchableOpacity key={f} onPress={() => setFilter(f)}
-            style={{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: filter === f ? colors.primary : colors.surface, borderWidth: 1, borderColor: filter === f ? colors.primary : colors.border }}>
-            <Text style={{ fontSize: 13, fontWeight: '600', color: filter === f ? '#fff' : colors.textSecondary }}>
-              {f === 'ALL' ? 'All' : STATUS_LABELS[f as DeliveryStatus]}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      {/* ── KPIs ─────────────────────────────────────────────────────────── */}
+      {loading ? (
+        <KpiSkeletonRow />
+      ) : (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+          <FadeInView delay={0} style={{ width: kpiWidthPct }}>
+            <DeliverySummaryCard title="Scheduled Today" value={kpis.scheduledToday} accent="#F59E0B" icon={Clock} subtitle={""} widthPct="100%" />
+          </FadeInView>
+          <FadeInView delay={40} style={{ width: kpiWidthPct }}>
+            <DeliverySummaryCard title="In Transit" value={kpis.inTransit} accent="#3B82F6" icon={Truck} subtitle={""} widthPct="100%" />
+          </FadeInView>
+          <FadeInView delay={80} style={{ width: kpiWidthPct }}>
+            <DeliverySummaryCard title="Delivered This Week" value={kpis.deliveredThisWeek} accent="#22C55E" subtitle={""} icon={CheckCircle2} widthPct="100%" />
+          </FadeInView>
+          <FadeInView delay={120} style={{ width: kpiWidthPct }}>
+            <DeliverySummaryCard title="Failed / Overdue" value={kpis.failedOrOverdue} accent="#EF4444" subtitle={""} icon={AlertTriangle} widthPct="100%" />
+          </FadeInView>
+        </View>
+      )}
 
-      <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
-        {loading ? (
-          [0, 1, 2].map(i => <View key={i} style={{ height: 120, backgroundColor: colors.surface, borderRadius: 12, opacity: 0.4 }} />)
-        ) : filtered.length === 0 ? (
-          <View style={{ alignItems: 'center', padding: 48, gap: 8 }}>
-            <Text style={{ fontSize: 40 }}>🚚</Text>
-            <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text }}>No deliveries</Text>
-            <Text style={{ fontSize: 13, color: colors.textSecondary, textAlign: 'center' }}>
-              {filter === 'ALL' ? 'Accepted purchase orders will generate deliveries here.' : `No ${STATUS_LABELS[filter as DeliveryStatus].toLowerCase()} deliveries.`}
-            </Text>
-          </View>
-        ) : (
-          filtered.map(d => (
-            <DeliveryCard key={d.poId} delivery={d} onMarkInTransit={() => handleMarkInTransit(d)} onMarkDelivered={() => handleMarkDelivered(d)} />
-          ))
-        )}
-      </ScrollView>
-    </View>
+      {/* ── Filters ──────────────────────────────────────────────────────── */}
+      <DeliveryFilters
+        search={search} onSearchChange={setSearch}
+        status={status} onStatusChange={persistStatus}
+        dateRange={dateRange} onDateRangeChange={persistDateRange}
+        sort={sort} onSortChange={persistSort}
+      />
+
+      {/* ── List ─────────────────────────────────────────────────────────── */}
+      {loading || !prefsLoaded ? (
+        <OrderCardSkeletonList />
+      ) : filtered.length === 0 ? (
+        <View style={{ alignItems: 'center', padding: 48, gap: 8 }}>
+          <Truck size={36} color={colors.textSecondary} />
+          <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>No deliveries</Text>
+          <Text style={{ fontSize: 13, color: colors.textSecondary, textAlign: 'center' }}>
+            {status === 'ALL' ? 'Accepted purchase orders will generate deliveries here.' : `No matching deliveries for the current filters.`}
+          </Text>
+        </View>
+      ) : effectiveLayout === 'table' ? (
+        <DeliveryTable
+          deliveries={filtered}
+          onSelect={setSelectedPOId}
+          onMarkInTransit={handleMarkInTransit}
+          onMarkDelivered={handleMarkDelivered}
+        />
+      ) : (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>
+          {filtered.map((d, idx) => (
+            <FadeInView key={d.poId} delay={Math.min(idx, 8) * 30} style={{ width: cardWidthPct }}>
+              <DeliveryCard
+                delivery={d}
+                onPress={() => setSelectedPOId(d.poId)}
+                onMarkInTransit={() => handleMarkInTransit(d)}
+                onMarkDelivered={() => handleMarkDelivered(d)}
+              />
+            </FadeInView>
+          ))}
+        </View>
+      )}
+    </ScrollView>
   )
 }

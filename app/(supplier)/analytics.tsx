@@ -1,3 +1,3 @@
-import SupplierAnalyticsScreen from '@/screens/supplier/SupplierAnalyticsScreen'
+import AnalyticsScreen from '@/screens/supplier/AnalyticsScreen'
 
-export default SupplierAnalyticsScreen
+export default AnalyticsScreen

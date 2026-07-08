@@ -1,3 +1,4 @@
+// @/services/mediaService.ts
 import { formatGraphQLError } from '@/utils/errorFormatter';
 import { Platform } from 'react-native';
 
