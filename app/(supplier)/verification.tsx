@@ -1,3 +1,3 @@
-import PlaceholderScreen from '@/components/Placeholder'
+import { VerificationDashboardScreen } from '@/screens/supplier/VerificationDashboardScreem'
 
-export default PlaceholderScreen
+export default VerificationDashboardScreen

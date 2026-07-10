@@ -141,7 +141,7 @@ export function SuccessModal({
     }
 
     return (
-        <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+        <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
             {content}
         </Modal>
     );

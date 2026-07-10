@@ -302,7 +302,7 @@ const DashboardSection = memo(({ title, children }: { title: string; children: R
 const TableHeader = memo(({ columns }: { columns: string[] }) => {
   const { colors } = useTheme();
   return (
-    <View style={[styles.tableHeader, { backgroundColor: colors.cardBackground, borderBottomColor: colors.border }]}>
+    <View style={[styles.tableHeader, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
       {columns.map((col) => (
         <Text key={col} style={[styles.tableHeaderText, { color: colors.textSecondary, flex: 1 }]} numberOfLines={1}>
           {col}
@@ -319,7 +319,7 @@ const TableRow = memo(({ cells, isLast, index }: { cells: React.ReactNode[]; isL
       style={[
         styles.tableRow,
         {
-          backgroundColor: index % 2 === 0 ? colors.card : colors.cardBackground,
+          backgroundColor: index % 2 === 0 ? colors.card: colors.sidebar,
           borderBottomColor: isLast ? 'transparent' : colors.border,
           borderBottomWidth: isLast ? 0 : StyleSheet.hairlineWidth,
         },
@@ -349,7 +349,7 @@ const TableSkeleton = memo(({ rows = 5, cols = 3 }: { rows?: number; cols?: numb
   const { colors } = useTheme();
   return (
     <View>
-      <View style={[styles.tableHeader, { backgroundColor: colors.cardBackground, borderBottomColor: colors.border }]}>
+      <View style={[styles.tableHeader, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
         {Array.from({ length: cols }).map((_, i) => (
           <SkeletonBox key={i} height={10} width={'25%'} style={{ flex: 1, marginHorizontal: 4 }} />
         ))}
@@ -357,7 +357,7 @@ const TableSkeleton = memo(({ rows = 5, cols = 3 }: { rows?: number; cols?: numb
       {Array.from({ length: rows }).map((_, i) => (
         <View
           key={i}
-          style={[styles.tableRow, { backgroundColor: i % 2 === 0 ? colors.card : colors.cardBackground, borderBottomColor: colors.border, borderBottomWidth: i < rows - 1 ? StyleSheet.hairlineWidth : 0 }]}
+          style={[styles.tableRow, { backgroundColor: i % 2 === 0 ? colors.card : colors.card, borderBottomColor: colors.border, borderBottomWidth: i < rows - 1 ? StyleSheet.hairlineWidth : 0 }]}
         >
           {Array.from({ length: cols }).map((__, j) => (
             <View key={j} style={[styles.tableCell, { flex: 1 }]}>

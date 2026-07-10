@@ -3,8 +3,6 @@ import { StyleSheet, Text, View } from 'react-native'
 import { Banknote, Wallet2 } from 'lucide-react-native'
 import { useTheme } from '@/contexts/ThemeContext'
 import {
-  FinanceDataTable,
-  FinanceEmptyState,
   FinanceHeroCard,
   FinanceScreenShell,
   FinanceSectionCard,
@@ -18,6 +16,7 @@ import {
   type SupplierLedgerEntry,
   type SupplierWalletSummary,
 } from '@/services/supplierService/financeService'
+import { DataTable, EmptyState } from '@/components/DataTable'
 
 function formatPHP(value: number): string {
   return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(value)
@@ -104,9 +103,9 @@ export default function FinanceWalletScreen() {
 
       <FinanceSectionCard title="Recent wallet activity" subtitle="The latest ledger entries for your supplier wallet">
         {entries.length === 0 ? (
-          <FinanceEmptyState title="No activity yet" message="Ledger entries will appear here once orders, fees, or withdrawals are posted." />
+          <EmptyState title="No activity yet" message="Ledger entries will appear here once orders, fees, or withdrawals are posted." />
         ) : (
-          <FinanceDataTable
+          <DataTable
             columns={[
               { label: 'Entry', width: 220 },
               { label: 'Date', width: 160 },
@@ -124,7 +123,7 @@ export default function FinanceWalletScreen() {
                 <Text key="status" style={{ color: colors.textSecondary, fontSize: 12 }}>{entry.status}</Text>,
               ],
             }))}
-            emptyState={<FinanceEmptyState title="No activity yet" message="Ledger entries will appear here once orders, fees, or withdrawals are posted." />}
+            emptyState={<EmptyState title="No activity yet" message="Ledger entries will appear here once orders, fees, or withdrawals are posted." />}
           />
         )}
       </FinanceSectionCard>

@@ -128,7 +128,7 @@ function PressableScale({
   )
 }
 
-function DashboardCard({
+export function DashboardCard({
   children,
   style,
 }: {

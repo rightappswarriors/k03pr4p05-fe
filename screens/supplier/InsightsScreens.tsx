@@ -35,20 +35,18 @@ import {
   CardGrid,
   EmptyPanel,
   ErrorState,
-  FadeIn,
-  InsightCard,
   InsightHeader,
   InsightsDrawer,
   InsightToolbar,
-  KpiGrid,
-  LoadingState,
   MiniChart,
   StatusPill,
-  compact,
   money,
   number,
 } from '@/components/supplier/insights/InsightsComponents'
-import { FinanceDataTable, FinanceSectionCard } from '@/components/supplier/finance/FinanceScreenShell'
+import {  FinanceSectionCard } from '@/components/supplier/finance/FinanceScreenShell'
+import { DataTable } from '@/components/DataTable'
+import { Kpis } from '@/components/Kpi'
+import { LoadingState } from '@/components/LoadingState'
 
 type ScreenKind = 'analytics' | 'revenue' | 'customers' | 'products'
 
@@ -94,18 +92,6 @@ function InsightScreenFrame({ kind, title, subtitle, children }: { kind: ScreenK
         {!loaded || insights.loading ? <LoadingState /> : insights.error ? <ErrorState message={insights.error} onRetry={insights.reload} /> : children({ ...insights, prefs, setPrefs, loaded })}
       </ScrollView>
     </View>
-  )
-}
-
-function Kpis({ items }: { items: Array<React.ComponentProps<typeof InsightCard>> }) {
-  return (
-    <KpiGrid>
-      {items.map((item, index) => (
-        <View key={item.title} style={{ flexGrow: 1, flexBasis: 185, minWidth: 165 }}>
-          <FadeIn delay={index * 25}><InsightCard {...item} /></FadeIn>
-        </View>
-      ))}
-    </KpiGrid>
   )
 }
 
@@ -204,7 +190,7 @@ export function AnalyticsScreen() {
 function RevenueTable({ rows }: { rows: RevenueRow[] }) {
   const { colors } = useTheme()
   return (
-    <FinanceDataTable
+    <DataTable
       columns={[
         { label: 'Date', width: 120 },
         { label: 'Invoice', width: 150 },
@@ -294,7 +280,7 @@ function CustomerCard({ customer, onPress }: { customer: CustomerInsight; onPres
 function CustomerTable({ customers, onSelect }: { customers: CustomerInsight[]; onSelect: (customer: CustomerInsight) => void }) {
   const { colors } = useTheme()
   return (
-    <FinanceDataTable
+    <DataTable
       columns={[
         { label: 'Avatar', width: 80 },
         { label: 'Customer', width: 230 },
@@ -395,7 +381,7 @@ function ProductCard({ product, onPress }: { product: ProductInsight; onPress: (
 function ProductTable({ products, onSelect }: { products: ProductInsight[]; onSelect: (product: ProductInsight) => void }) {
   const { colors } = useTheme()
   return (
-    <FinanceDataTable
+    <DataTable
       columns={[
         { label: 'Image', width: 76 },
         { label: 'Product', width: 220 },

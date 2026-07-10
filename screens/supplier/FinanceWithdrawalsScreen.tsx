@@ -3,8 +3,6 @@ import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-nativ
 import { Banknote, ChevronLeft, ChevronRight, Filter } from 'lucide-react-native'
 import { useTheme } from '@/contexts/ThemeContext'
 import {
-  FinanceDataTable,
-  FinanceEmptyState,
   FinanceFormGrid,
   FinanceHeroCard,
   FinanceScreenShell,
@@ -22,6 +20,7 @@ import {
   type SupplierWithdrawalRecord,
   type SupplierWalletSummary,
 } from '@/services/supplierService/financeService'
+import { DataTable, EmptyState } from '@/components/DataTable'
 
 function formatPHP(value: number): string {
   return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(value)
@@ -239,10 +238,10 @@ export default function FinanceWithdrawalsScreen() {
           </View>
         </View>
         {filteredWithdrawals.length === 0 ? (
-          <FinanceEmptyState title="No withdrawals yet" message="Approved or pending requests will appear here." />
+          <EmptyState title="No withdrawals yet" message="Approved or pending requests will appear here." />
         ) : (
           <>
-            <FinanceDataTable
+            <DataTable
               columns={[
                 { label: 'Amount', width: 150, align: 'right' },
                 { label: 'Method', width: 220 },
@@ -262,7 +261,7 @@ export default function FinanceWithdrawalsScreen() {
                   </Pressable>,
                 ],
               }))}
-              emptyState={<FinanceEmptyState title="No withdrawals yet" message="Approved or pending requests will appear here." />}
+              emptyState={<EmptyState title="No withdrawals yet" message="Approved or pending requests will appear here." />}
             />
             <View style={styles.paginationRow}>
               <Pressable onPress={() => setPage((prev) => Math.max(1, prev - 1))} disabled={page === 1} style={[styles.paginationButton, { borderColor: colors.border, opacity: page === 1 ? 0.4 : 1 }]}> 

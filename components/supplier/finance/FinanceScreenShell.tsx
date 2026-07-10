@@ -140,88 +140,12 @@ export function FinanceSectionCard({ title, subtitle, children }: { title: strin
   )
 }
 
-interface FinanceDataTableColumn {
-  label: string
-  width?: number | string
-  align?: 'left' | 'right' | 'center'
-}
-
-interface FinanceDataTableRow {
-  key: string | number
-  cells: React.ReactNode[]
-}
-
-interface FinanceDataTableProps {
-  columns: FinanceDataTableColumn[]
-  rows: FinanceDataTableRow[]
-  emptyState?: React.ReactNode
-}
-
-export function FinanceDataTable({ columns, rows, emptyState }: FinanceDataTableProps) {
-  const { colors } = useTheme()
-  const breakpoint = useFinanceBreakpoint()
-
-  if (breakpoint === 'mobile') {
-    return (
-      <View style={{ gap: 8 }}>
-        {rows.length === 0 ? emptyState : rows.map((row) => (
-          <View key={row.key} style={[styles.mobileRow, { backgroundColor: colors.background, borderColor: colors.border }]}> 
-            {row.cells.map((cell, index) => (
-              <View key={`${row.key}-${index}`} style={styles.mobileCell}>
-                {index === 0 ? <Text style={[styles.mobileLabel, { color: colors.textSecondary }]}>{columns[index]?.label}</Text> : null}
-                {cell}
-              </View>
-            ))}
-          </View>
-        ))}
-      </View>
-    )
-  }
-
-  return (
-    <View style={[styles.tableShell, { borderColor: colors.border }]}> 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View style={{ minWidth: 760 }}>
-          <View style={[styles.tableHeader, { backgroundColor: colors.background }]}> 
-            {columns.map((column, index) => (
-              <View key={`${column.label}-${index}`} style={[styles.tableCell, { width: column.width ?? 'auto', alignItems: column.align === 'right' ? 'flex-end' : column.align === 'center' ? 'center' : 'flex-start' }]}> 
-                <Text style={[styles.tableHeaderText, { color: colors.textSecondary }]}>{column.label}</Text>
-              </View>
-            ))}
-          </View>
-          {rows.length === 0 ? (
-            <View style={[styles.tableEmpty, { backgroundColor: colors.surface }]}> 
-              {emptyState}
-            </View>
-          ) : rows.map((row) => (
-            <View key={row.key} style={[styles.tableRow, { borderTopColor: colors.border }]}> 
-              {row.cells.map((cell, index) => (
-                <View key={`${row.key}-${index}`} style={[styles.tableCell, { width: columns[index]?.width ?? 'auto', alignItems: columns[index]?.align === 'right' ? 'flex-end' : columns[index]?.align === 'center' ? 'center' : 'flex-start' }]}> 
-                  {cell}
-                </View>
-              ))}
-            </View>
-          ))}
-        </View>
-      </ScrollView>
-    </View>
-  )
-}
-
 export function FinanceFormGrid({ children }: { children: React.ReactNode }) {
   const breakpoint = useFinanceBreakpoint()
   return <View style={[styles.formGrid, breakpoint === 'mobile' ? styles.formGridColumn : styles.formGridRow]}>{children}</View>
 }
 
-export function FinanceEmptyState({ title, message }: { title: string; message: string }) {
-  const { colors } = useTheme()
-  return (
-    <View style={[styles.emptyState, { borderColor: colors.border, backgroundColor: colors.background }]}> 
-      <Text style={[styles.emptyTitle, { color: colors.text }]}>{title}</Text>
-      <Text style={[styles.emptyMessage, { color: colors.textSecondary }]}>{message}</Text>
-    </View>
-  )
-}
+
 
 const styles = StyleSheet.create({
   root: { flex: 1 },

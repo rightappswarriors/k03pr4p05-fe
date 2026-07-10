@@ -167,6 +167,42 @@ export class PositionService {
     }
   }
 
+  static async getUserPermissionOverrides(userId: number) {
+    try {
+      const query = `
+        query GetUserPermissionOverrides($userId: Int!) {
+          userPermissionOverrides(userId: $userId) {
+            id
+            pageId
+            canView
+            canCreate
+            canEdit
+            canDelete
+            page {
+              id
+              key
+              label
+            }
+          }
+        }
+      `;
+      const response = await graphQLRequest(query, { userId });
+      return (response.userPermissionOverrides ?? []) as Array<{
+        id: string;
+        pageId: string;
+        canView: boolean | null;
+        canCreate: boolean | null;
+        canEdit: boolean | null;
+        canDelete: boolean | null;
+        page?: { id: string; key: string; label: string } | null;
+      }>;
+    } catch (error) {
+      if (__DEV__) console.error('PositionService.getUserPermissionOverrides failed:', error);
+      // Return empty array if the query is not yet supported by the backend
+      return [];
+    }
+  }
+
   static async setUserPermissionOverride(
     userId: number,
     pageId: string,

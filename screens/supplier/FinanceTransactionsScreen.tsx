@@ -2,8 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import { ReceiptText } from 'lucide-react-native'
 import {
-  FinanceDataTable,
-  FinanceEmptyState,
   FinanceHeroCard,
   FinanceScreenShell,
   FinanceSectionCard,
@@ -19,6 +17,7 @@ import {
 } from '@/services/supplierService/financeService'
 import { useTheme } from '@/contexts/ThemeContext'
 import { styles } from './FinancePayoutMethodsScreen'
+import { DataTable, EmptyState } from '@/components/DataTable'
 
 function formatPHP(value: number): string {
   return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(value)
@@ -72,7 +71,7 @@ export default function FinanceTransactionsScreen() {
             accent="#16A34A"
             icon={ReceiptText}
           />
-          <View style={[styles.sidePanel, { borderColor: colors.border, backgroundColor: colors.background }]}> 
+          <View style={[styles.sidePanel, { borderColor: colors.border, backgroundColor: colors.background }]}>
             <Text style={[styles.sideTitle, { color: colors.text }]}>Ledger snapshot</Text>
             <Text style={[styles.sideText, { color: colors.textSecondary }]}>The most recent entries and their movement help keep your supplier account balanced.</Text>
           </View>
@@ -88,9 +87,9 @@ export default function FinanceTransactionsScreen() {
       </FinanceStatGrid>
       <FinanceSectionCard title="Recent transactions" subtitle="Sorted by most recent posting">
         {entries.length === 0 ? (
-          <FinanceEmptyState title="No transactions yet" message="Transactions will appear after payouts, fees, or orders are posted." />
+          <EmptyState title="No transactions yet" message="Transactions will appear after payouts, fees, or orders are posted." />
         ) : (
-          <FinanceDataTable
+          <DataTable
             columns={[
               { label: 'Entry', width: 240 },
               { label: 'Date', width: 180 },
@@ -109,7 +108,7 @@ export default function FinanceTransactionsScreen() {
                 <Text key="status" style={{ color: colors.textSecondary, fontSize: 12 }}>{entry.status}</Text>,
               ],
             }))}
-            emptyState={<FinanceEmptyState title="No transactions yet" message="Transactions will appear after payouts, fees, or orders are posted." />}
+            emptyState={<EmptyState title="No transactions yet" message="Transactions will appear after payouts, fees, or orders are posted." />}
           />
         )}
       </FinanceSectionCard>

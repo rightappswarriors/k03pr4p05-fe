@@ -1,3 +1,3 @@
-import PlaceholderScreen from '@/components/Placeholder'
+import SecurityScreen from '@/screens/supplier/SecurityScreen'
 
-export default PlaceholderScreen
+export default SecurityScreen

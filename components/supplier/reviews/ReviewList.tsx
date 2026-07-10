@@ -2,11 +2,11 @@ import React from 'react'
 import { ScrollView, Text, View } from 'react-native'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useResponsive } from '@/hooks/useResponsive'
-import { FinanceDataTable, FinanceEmptyState } from '@/components/supplier/finance/FinanceScreenShell'
 import { RatingStars } from '@/components/supplier/catalog/RatingStars'
 import { OrganizationReviewCard } from './OrganizationReviewCard'
 import type { OrganizationReview } from '@/services/supplierService/supplierService'
 
+import { DataTable, EmptyState } from '@/components/DataTable'
 function label(review: OrganizationReview) {
   return review.reviewer?.name ?? review.reviewerName ?? 'Guest reviewer'
 }
@@ -24,7 +24,7 @@ export function ReviewList({
   const { isDesktop } = useResponsive()
 
   if (!reviews.length) {
-    return <FinanceEmptyState title="No reviews yet" message="Organization reviews will appear here once customers leave feedback." />
+    return <EmptyState title="No reviews yet" message="Organization reviews will appear here once customers leave feedback." />
   }
 
   if (!isDesktop) {
@@ -32,7 +32,7 @@ export function ReviewList({
   }
 
   return (
-    <FinanceDataTable
+    <DataTable
       columns={[
         { label: 'Reviewer', width: 210 },
         { label: 'Rating', width: 160 },

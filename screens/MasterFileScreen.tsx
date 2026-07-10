@@ -39,7 +39,7 @@ import { TABLE_CONFIG } from '@/utils/masterfileTable';
 import { PositionService } from '@/services/positionService';
 import { AdminService } from '@/services/ManagerService';
 import { useResponsiveGrid } from '@/hooks/useResponsiveGrid';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth } from '@/contexts/AuthContext'; 
 
 // ─── Table meta ───────────────────────────────────────────────────────────────
 

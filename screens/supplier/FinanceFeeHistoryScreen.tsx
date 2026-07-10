@@ -3,8 +3,6 @@ import { StyleSheet, Text, View } from 'react-native'
 import { BadgeDollarSign } from 'lucide-react-native'
 import { useTheme } from '@/contexts/ThemeContext'
 import {
-  FinanceDataTable,
-  FinanceEmptyState,
   FinanceHeroCard,
   FinanceScreenShell,
   FinanceSectionCard,
@@ -12,6 +10,7 @@ import {
   FinanceStatCard,
   FinanceStatGrid,
 } from '@/components/supplier/finance/FinanceScreenShell'
+import { DataTable, EmptyState } from '@/components/DataTable'
 import {
   getSupplierFinanceFeeHistory,
   getSupplierWalletSummary,
@@ -83,9 +82,9 @@ export default function FinanceFeeHistoryScreen() {
       </FinanceStatGrid>
       <FinanceSectionCard title="Fee activity" subtitle="Historical fee postings">
         {entries.length === 0 ? (
-          <FinanceEmptyState title="No fee history yet" message="Fee activity will appear after charges are posted to your wallet." />
+          <EmptyState title="No fee history yet" message="Fee activity will appear after charges are posted to your wallet." />
         ) : (
-          <FinanceDataTable
+          <DataTable
             columns={[
               { label: 'Fee', width: 220 },
               { label: 'Date', width: 180 },
@@ -99,7 +98,7 @@ export default function FinanceFeeHistoryScreen() {
                 <Text key="amount" style={{ color: colors.error, fontWeight: '800' }}>{formatPHP(entry.amount)}</Text>,
               ],
             }))}
-            emptyState={<FinanceEmptyState title="No fee history yet" message="Fee activity will appear after charges are posted to your wallet." />}
+            emptyState={<EmptyState title="No fee history yet" message="Fee activity will appear after charges are posted to your wallet." />}
           />
         )}
       </FinanceSectionCard>

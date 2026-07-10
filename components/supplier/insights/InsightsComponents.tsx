@@ -25,23 +25,13 @@ import DateRangePickerModal from '@/components/DateRangePickerModal'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useResponsive } from '@/hooks/useResponsive'
 import type { ChartPoint, InsightDateRange, InsightDensity, InsightSort, InsightViewMode } from '@/hooks/useSupplierInsights'
-import { FinanceDataTable, FinanceEmptyState, FinanceSectionCard } from '@/components/supplier/finance/FinanceScreenShell'
+import { FinanceSectionCard } from '@/components/supplier/finance/FinanceScreenShell'
+import { EmptyState,  } from '@/components/DataTable'
 
 export const money = (value: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', maximumFractionDigits: 0 }).format(value || 0)
 export const number = (value: number) => new Intl.NumberFormat('en-PH').format(value || 0)
 export const compact = (value: number) => new Intl.NumberFormat('en-PH', { notation: 'compact', maximumFractionDigits: 1 }).format(value || 0)
 
-export function FadeIn({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
-  const opacity = useRef(new Animated.Value(0)).current
-  const translateY = useRef(new Animated.Value(10)).current
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(opacity, { toValue: 1, duration: 260, delay, useNativeDriver: true }),
-      Animated.timing(translateY, { toValue: 0, duration: 260, delay, useNativeDriver: true }),
-    ]).start()
-  }, [delay, opacity, translateY])
-  return <Animated.View style={{ opacity, transform: [{ translateY }] }}>{children}</Animated.View>
-}
 
 export function StatusPill({ label, tone = '#2563EB' }: { label: string; tone?: string }) {
   return (
@@ -191,10 +181,6 @@ export function InsightToolbar({
   )
 }
 
-export function KpiGrid({ children }: { children: React.ReactNode }) {
-  return <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>{children}</View>
-}
-
 export function MiniChart({ title, subtitle, data, type = 'bar' }: { title: string; subtitle?: string; data: ChartPoint[]; type?: 'bar' | 'line' }) {
   const { colors } = useTheme()
   const max = Math.max(1, ...data.map((item) => item.value))
@@ -266,26 +252,6 @@ export function InsightsDrawer({ visible, title, subtitle, onClose, children }: 
   )
 }
 
-export function LoadingState() {
-  const { colors } = useTheme()
-  const opacity = useRef(new Animated.Value(0.35)).current
-  useEffect(() => {
-    const loop = Animated.loop(Animated.sequence([
-      Animated.timing(opacity, { toValue: 0.75, duration: 720, useNativeDriver: true }),
-      Animated.timing(opacity, { toValue: 0.35, duration: 720, useNativeDriver: true }),
-    ]))
-    loop.start()
-    return () => loop.stop()
-  }, [opacity])
-  return (
-    <View style={{ gap: 14 }}>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-        {Array.from({ length: 8 }).map((_, index) => <Animated.View key={index} style={{ opacity, flexGrow: 1, flexBasis: 210, height: 124, borderRadius: 16, backgroundColor: colors.surface }} />)}
-      </View>
-      {Array.from({ length: 3 }).map((_, index) => <Animated.View key={index} style={{ opacity, height: 230, borderRadius: 16, backgroundColor: colors.surface }} />)}
-    </View>
-  )
-}
 
 export function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   const { colors } = useTheme()
@@ -301,6 +267,6 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry: () 
 }
 
 export function EmptyPanel({ title, message }: { title: string; message: string }) {
-  return <FinanceEmptyState title={title} message={message} />
+  return <EmptyState title={title} message={message} />
 }
 

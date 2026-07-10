@@ -1,2250 +1,1782 @@
-// screens/HRScreen.tsx
-// Full ERP HR Module — responsive card grid + table view (mirrors InventoryScreen patterns)
-// Breakpoints: desktop ≥1024, tablet ≥768, mobile <768
-// AsyncStorage: persists viewMode, deptFilter, statusFilter, filterOpen
-
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+// HRScreen.tsx — Enterprise HR Workspace (redesigned)
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ActivityIndicator,
-  FlatList,
-  Image,
+  Alert,
+  Animated,
   Modal,
   Platform,
-  Pressable,
+  RefreshControl,
   ScrollView,
-  StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
   View,
   useWindowDimensions,
-} from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+} from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import {
-  CheckCircle2,
+  Activity,
+  Archive,
+  BriefcaseBusiness,
+  Calendar,
+  Check,
   ChevronDown,
+  ChevronRight,
+  Clock,
+  Copy,
+  Download,
+  Edit3,
+  Eye,
   Filter,
+  KeyRound,
   LayoutGrid,
   List,
-  Pencil,
+  LogIn,
+  LogOut,
+  Monitor,
+  MoreHorizontal,
   Plus,
+  RefreshCcw,
   Search,
+  Shield,
+  ShieldCheck,
+  ShieldOff,
+  Smartphone,
+  Trash2,
+  UserCheck,
+  UserPlus,
   Users,
   X,
-} from 'lucide-react-native';
-import { useTheme } from '@/contexts/ThemeContext';
-import { HrService } from '@/services';
-import {
-  useRoleLabels,
-} from '@/contexts/MasterFileContext';
-import { DepartmentService } from '@/services/departMentService';
-import { PositionService } from '@/services/positionService';
-
-// ─── AsyncStorage Keys ────────────────────────────────────────────────────────
-
-const STORAGE_KEYS = {
-  VIEW_MODE: 'hr_view_mode',
-  DEPT_FILTER: 'hr_dept_filter',
-  STATUS_FILTER: 'hr_status_filter',
-  FILTER_OPEN: 'hr_filter_open',
-} as const;
+  ZapOff,
+} from 'lucide-react-native'
+import DateRangePickerModal from '@/components/DateRangePickerModal'
+import { useTheme } from '@/contexts/ThemeContext'
+import { useAuth } from '@/contexts/AuthContext'
+import { HrService } from '@/services'
+import { AuditService } from '@/services/auditService'
+import { PositionService } from '@/services/positionService'
+import { StatCard } from '@/screens/supplier/SupplierDashboardScreen'
+import { CatalogPagination } from '@/components/supplier/catalog/CatalogPagination'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+type ViewMode = 'table' | 'cards'
+type Density = 'comfortable' | 'compact'
+type SortKey = 'name' | 'newest' | 'position' | 'department' | 'status'
+type DrawerTab = 'overview' | 'permissions' | 'activity' | 'devices' | 'audit'
+type BuilderStep = 'general' | 'permissions' | 'summary'
 
-type EmployeeStatus = 'Active' | 'On Leave' | 'Contract';
-type ViewMode = 'card' | 'table';
-
-interface Employee {
-  id: string;
-  name: string;
-  role?: string;
-  department: string;
-  status: EmployeeStatus;
-  salary: number;
-  hireDate: string;
-  email: string;
-  position?: string;
-  profilePhoto?: string;
+type PermissionRow = {
+  pageId: string
+  page?: { id: string; key: string; label: string } | null
+  canView: boolean
+  canCreate: boolean
+  canEdit: boolean
+  canDelete: boolean
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const STATUS_STYLES: Record<EmployeeStatus, { bg: string; text: string }> = {
-  Active: { bg: 'rgba(16,185,129,0.14)', text: '#10B981' },
-  'On Leave': { bg: 'rgba(245,158,11,0.14)', text: '#F59E0B' },
-  Contract: { bg: 'rgba(139,92,246,0.14)', text: '#8B5CF6' },
-};
-
-const ALL_STATUSES: EmployeeStatus[] = ['Active', 'On Leave', 'Contract'];
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function getInitials(name: string) {
-  return name
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
-}
-
-function formatPeso(n: number) {
-  return '₱' + n.toLocaleString('en-PH');
-}
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString('en-PH', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
-
-function yearsOfService(hireDate: string) {
-  const diff = Date.now() - new Date(hireDate).getTime();
-  const years = Math.floor(diff / (1000 * 60 * 60 * 24 * 365));
-  const months = Math.floor(
-    (diff % (1000 * 60 * 60 * 24 * 365)) / (1000 * 60 * 60 * 24 * 30),
-  );
-  if (years === 0) return `${months}mo`;
-  if (months === 0) return `${years}yr`;
-  return `${years}yr ${months}mo`;
-}
-
-// ─── Avatar ───────────────────────────────────────────────────────────────────
-
-function Avatar({
-  name,
-  profilePhoto,
-  size,
-  color,
-}: {
-  name: string;
-  profilePhoto?: string;
-  size: number;
-  color: string;
-}) {
-  const [imgError, setImgError] = useState(false);
-  const showImage = profilePhoto && !imgError;
-  return (
-    <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        backgroundColor: showImage ? 'transparent' : color,
-        alignItems: 'center',
-        justifyContent: 'center',
-        overflow: 'hidden',
-        flexShrink: 0,
-      }}
-    >
-      {showImage ? (
-        <Image
-          source={{ uri: profilePhoto }}
-          style={{ width: size, height: size, borderRadius: size / 2 }}
-          onError={() => setImgError(true)}
-          resizeMode="cover"
-        />
-      ) : (
-        <Text
-          style={{
-            fontSize: size * 0.34,
-            fontWeight: '900',
-            color: '#fff',
-            lineHeight: size * 0.36,
-          }}
-        >
-          {getInitials(name)}
-        </Text>
-      )}
-    </View>
-  );
-}
-
-// ─── Searchable Dropdown ──────────────────────────────────────────────────────
-
-function SearchableDropdown({
-  label,
-  value,
-  options,
-  onSelect,
-  colors,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  options: { label: string; color?: string }[];
-  onSelect: (v: string) => void;
-  colors: any;
-  placeholder?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
-
-  const filteredOpts = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return q ? options.filter((o) => o.label.toLowerCase().includes(q)) : options;
-  }, [options, query]);
-
-  const selectedColor = options.find((o) => o.label === value)?.color;
-
-  return (
-    <View style={{ marginBottom: 14 }}>
-      <Text
-        style={{
-          fontSize: 11,
-          fontWeight: '700',
-          color: colors.textSecondary,
-          marginBottom: 5,
-          textTransform: 'uppercase',
-          letterSpacing: 0.6,
-        }}
-      >
-        {label}
-      </Text>
-      <TouchableOpacity
-        style={{
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          borderWidth: 1,
-          borderColor: colors.border,
-          borderRadius: 10,
-          paddingHorizontal: 12,
-          paddingVertical: 11,
-          backgroundColor: colors.background,
-        }}
-        onPress={() => { setOpen(true); setQuery(''); }}
-        activeOpacity={0.75}
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
-          {selectedColor && (
-            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: selectedColor }} />
-          )}
-          <Text
-            style={{ fontSize: 14, color: value ? colors.text : colors.textSecondary, flex: 1 }}
-            numberOfLines={1}
-          >
-            {value || placeholder || 'Select…'}
-          </Text>
-        </View>
-        <ChevronDown size={16} color={colors.textSecondary} strokeWidth={2} />
-      </TouchableOpacity>
-
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <TouchableOpacity
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 24 }}
-          activeOpacity={1}
-          onPress={() => setOpen(false)}
-        >
-          <TouchableOpacity activeOpacity={1} onPress={() => { }}>
-            <View
-              style={{
-                backgroundColor: colors.surface,
-                borderRadius: 16,
-                overflow: 'hidden',
-                maxHeight: 460,
-                width: '100%',
-                maxWidth: 480,
-                alignSelf: 'center',
-              }}
-            >
-              <View
-                style={{
-                  padding: 16,
-                  borderBottomWidth: 1,
-                  borderBottomColor: colors.border,
-                }}
-              >
-                <Text
-                  style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 10 }}
-                >
-                  {label}
-                </Text>
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 6,
-                    backgroundColor: colors.background,
-                    borderRadius: 10,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    paddingHorizontal: 10,
-                    paddingVertical: 8,
-                  }}
-                >
-                  <Search size={13} color={colors.textSecondary} strokeWidth={2} />
-                  <TextInput
-                    style={{ flex: 1, fontSize: 13, color: colors.text }}
-                    placeholder={`Search ${label.toLowerCase()}…`}
-                    placeholderTextColor={colors.textSecondary}
-                    value={query}
-                    onChangeText={setQuery}
-                    autoFocus
-                    autoCorrect={false}
-                  />
-                  {query.length > 0 && (
-                    <TouchableOpacity onPress={() => setQuery('')}>
-                      <X size={13} color={colors.textSecondary} strokeWidth={2} />
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
-              <FlatList
-                data={filteredOpts}
-                keyExtractor={(item, index) => `${item.label}-${index}`}
-                keyboardShouldPersistTaps="handled"
-                ListEmptyComponent={
-                  <View style={{ padding: 24, alignItems: 'center' }}>
-                    <Text style={{ fontSize: 13, color: colors.textSecondary }}>
-                      No results for "{query}"
-                    </Text>
-                  </View>
-                }
-                renderItem={({ item }) => {
-                  const isActive = item.label === value;
-                  return (
-                    <TouchableOpacity
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        paddingHorizontal: 16,
-                        paddingVertical: 13,
-                        borderBottomWidth: 1,
-                        borderBottomColor: colors.border,
-                        backgroundColor: isActive ? colors.primary + '12' : 'transparent',
-                      }}
-                      onPress={() => { onSelect(item.label); setOpen(false); }}
-                      activeOpacity={0.75}
-                    >
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
-                        {item.color && (
-                          <View
-                            style={{
-                              width: 14,
-                              height: 14,
-                              borderRadius: 7,
-                              backgroundColor: item.color,
-                              flexShrink: 0,
-                            }}
-                          />
-                        )}
-                        <Text
-                          style={{
-                            fontSize: 14,
-                            color: isActive ? colors.primary : colors.text,
-                            fontWeight: isActive ? '600' : '400',
-                            flex: 1,
-                          }}
-                        >
-                          {item.label}
-                        </Text>
-                      </View>
-                      {isActive && (
-                        <CheckCircle2 size={16} color={colors.primary} strokeWidth={2} />
-                      )}
-                    </TouchableOpacity>
-                  );
-                }}
-              />
-            </View>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
-    </View>
-  );
-}
-
-// ─── Employee Detail Modal ────────────────────────────────────────────────────
-
-// Fixed role set for HR assignment — matches backend Role enum values in use.
-const ASSIGNABLE_ROLES = ['STAFF', 'CASHIER'] as const;
-type AssignableRole = (typeof ASSIGNABLE_ROLES)[number];
-
-function EmployeeDetailModal({
-  employee,
-  visible,
-  onClose,
-  onUpdateStatus,
-  onSaveEmployee,
-  deptMap,
-  positions,
-  colors,
-}: {
-  employee: Employee | null;
-  visible: boolean;
-  onClose: () => void;
-  onUpdateStatus: (id: string, status: EmployeeStatus) => void;
-  onSaveEmployee: (
-    id: string,
-    changes: { role?: string; positionId?: string | null; salary?: number },
-  ) => Promise<void>;
-  deptMap: Record<string, string>;
-  positions: any[];
-  colors: any;
-}) {
-  const [editMode, setEditMode] = useState(false);
-  const [roleDraft, setRoleDraft] = useState('');
-  const [positionDraft, setPositionDraft] = useState(''); // holds position LABEL
-  const [salaryDraft, setSalaryDraft] = useState('');
-  const [error, setError] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (employee) {
-      setRoleDraft(employee.role || '');
-      setPositionDraft(employee.position || '');
-      setSalaryDraft(String(employee.salary ?? ''));
-    }
-    setEditMode(false);
-    setError('');
-  }, [employee?.id, visible]);
-
-  if (!employee) return null;
-  const deptColor = deptMap[employee.department] ?? colors.primary;
-  const statusStyle = STATUS_STYLES[employee.status];
-
-  const handleSave = async () => {
-    const num = parseFloat(salaryDraft);
-    if (!salaryDraft.trim() || isNaN(num) || num <= 0) {
-      setError('Enter a valid monthly salary greater than zero.');
-      return;
-    }
-    if (num > 9999999) {
-      setError('Salary amount seems too high. Please check.');
-      return;
-    }
-
-    // Resolve the position label back to its id. If the label doesn't match
-    // a known position (or was cleared), send null to unassign.
-    const matchedPosition = positions.find((p) => p.label === positionDraft);
-    const positionId = positionDraft ? matchedPosition?.id ?? null : null;
-    if (positionDraft && !matchedPosition) {
-      setError('Select a valid position from the list.');
-      return;
-    }
-
-    setError('');
-    setSaving(true);
-    try {
-      await onSaveEmployee(employee.id, {
-        role: roleDraft || undefined,
-        positionId,
-        salary: num,
-      });
-      setEditMode(false);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to save changes. Please try again.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleCancel = () => {
-    setRoleDraft(employee.role || '');
-    setPositionDraft(employee.position || '');
-    setSalaryDraft(String(employee.salary ?? ''));
-    setError('');
-    setEditMode(false);
-  };
-
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <TouchableOpacity
-        style={{
-          flex: 1,
-          backgroundColor: 'rgba(0,0,0,0.45)',
-          justifyContent: 'center',
-          alignItems: 'center',
-          paddingVertical: 40,
-          paddingHorizontal: 24,
-        }}
-        activeOpacity={1}
-        onPress={onClose}
-      >
-        <TouchableOpacity
-          activeOpacity={1}
-          onPress={() => { }}
-          style={{ width: '100%', maxWidth: 560 }}
-        >
-          <View
-            style={{
-              borderRadius: 20,
-              overflow: 'hidden',
-              backgroundColor: colors.background,
-              maxHeight: '90%',
-            }}
-          >
-            {/* Header */}
-            <View style={[edm.header, { backgroundColor: deptColor }]}>
-              <Avatar
-                name={employee.name}
-                profilePhoto={employee.profilePhoto}
-                size={56}
-                color="rgba(255,255,255,0.25)"
-              />
-              <View style={{ flex: 1 }}>
-                <Text style={edm.headerName}>{employee.name}</Text>
-                <Text style={edm.headerRole}>{employee.role || 'No role assigned'}</Text>
-                <Text style={edm.headerDept}>
-                  {employee.department} · {yearsOfService(employee.hireDate)} tenure
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={[edm.closeBtn, editMode && { backgroundColor: '#fff' }]}
-                onPress={() => setEditMode((v) => !v)}
-              >
-                <Pencil size={15} color={editMode ? deptColor : '#fff'} strokeWidth={2.5} />
-              </TouchableOpacity>
-              <TouchableOpacity style={edm.closeBtn} onPress={onClose}>
-                <X size={16} color="#fff" strokeWidth={2.5} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView
-              contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
-              showsVerticalScrollIndicator={false}
-            >
-              {/* Status badge */}
-              <View style={[edm.statusRow, { backgroundColor: statusStyle.bg }]}>
-                <View style={[edm.statusDot, { backgroundColor: statusStyle.text }]} />
-                <Text style={[edm.statusText, { color: statusStyle.text }]}>
-                  {employee.status}
-                </Text>
-              </View>
-
-              {/* Info */}
-              <View
-                style={[edm.section, { backgroundColor: colors.card, borderColor: colors.border }]}
-              >
-                <Text style={[edm.sectionTitle, { color: colors.textSecondary }]}>
-                  EMPLOYEE INFORMATION
-                </Text>
-                {(
-                  [
-                    ['Email', employee.email],
-                    ['Department', employee.department],
-                    ['Role', employee.role],
-                    ['Position', employee.position || 'No position'],
-                    ['Hire Date', formatDate(employee.hireDate)],
-                    ['Tenure', yearsOfService(employee.hireDate)],
-                  ] as [string, string | undefined][]
-                ).map(([label, value], i, arr) => (
-                  <View
-                    key={label}
-                    style={[
-                      edm.row,
-                      {
-                        borderBottomColor: colors.border,
-                        borderBottomWidth: i < arr.length - 1 ? 1 : 0,
-                      },
-                    ]}
-                  >
-                    <Text style={[edm.rowLabel, { color: colors.textSecondary }]}>{label}</Text>
-                    <Text style={[edm.rowValue, { color: colors.text }]}>{value}</Text>
-                  </View>
-                ))}
-              </View>
-
-              {/* Salary */}
-              <View
-                style={[
-                  edm.section,
-                  { backgroundColor: colors.card, borderColor: colors.border, marginTop: 12 },
-                ]}
-              >
-                <Text style={[edm.sectionTitle, { color: colors.textSecondary }]}>COMPENSATION</Text>
-                {!editMode ? (
-                  <View style={[edm.row, { borderBottomColor: 'transparent', borderBottomWidth: 0 }]}>
-                    <Text style={[edm.rowLabel, { color: colors.textSecondary }]}>Monthly Salary</Text>
-                    <Text style={{ fontSize: 22, fontWeight: '900', color: colors.accent }}>
-                      {formatPeso(employee.salary)}
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={{ padding: 12 }}>
-                    <Text
-                      style={{
-                        fontSize: 11,
-                        fontWeight: '700',
-                        color: colors.textSecondary,
-                        marginBottom: 6,
-                        textTransform: 'uppercase',
-                        letterSpacing: 0.6,
-                      }}
-                    >
-                      Monthly Salary ₱
-                    </Text>
-                    <TextInput
-                      style={{
-                        backgroundColor: colors.background,
-                        borderWidth: 1,
-                        borderColor: colors.border,
-                        borderRadius: 10,
-                        paddingHorizontal: 12,
-                        paddingVertical: 10,
-                        fontSize: 14,
-                        color: colors.text,
-                      }}
-                      keyboardType="decimal-pad"
-                      value={salaryDraft}
-                      onChangeText={(v) => setSalaryDraft(v.replace(/[^0-9.]/g, ''))}
-                      placeholder="e.g. 25000"
-                      placeholderTextColor={colors.textSecondary}
-                    />
-                  </View>
-                )}
-              </View>
-
-              {/* Position assignment */}
-              <View
-                style={[
-                  edm.section,
-                  { backgroundColor: colors.card, borderColor: colors.border, marginTop: 12 },
-                ]}
-              >
-                <Text style={[edm.sectionTitle, { color: colors.textSecondary }]}>
-                  POSITION ASSIGNMENT
-                </Text>
-                {!editMode ? (
-                  <View style={[edm.row, { borderBottomColor: 'transparent', borderBottomWidth: 0 }]}>
-                    <Text style={[edm.rowLabel, { color: colors.textSecondary }]}>Position</Text>
-                    <Text style={[edm.rowValue, { color: colors.text }]}>
-                      {employee.position || 'No position'}
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={{ padding: 12 }}>
-                    <SearchableDropdown
-                      label="Assign Position"
-                      value={positionDraft}
-                      options={positions.map((p) => ({ label: p.label }))}
-                      onSelect={setPositionDraft}
-                      colors={colors}
-                      placeholder="Select position…"
-                    />
-                  </View>
-                )}
-              </View>
-
-              {/* Role assignment — only shown in edit mode, this changes system access (STAFF / CASHIER) */}
-              {editMode && (
-                <View
-                  style={[
-                    edm.section,
-                    { backgroundColor: colors.card, borderColor: colors.border, marginTop: 12 },
-                  ]}
-                >
-                  <Text style={[edm.sectionTitle, { color: colors.textSecondary }]}>
-                    ROLE ASSIGNMENT
-                  </Text>
-                  <View style={{ flexDirection: 'row', gap: 8, padding: 12 }}>
-                    {ASSIGNABLE_ROLES.map((r) => {
-                      const isActive = roleDraft === r;
-                      return (
-                        <TouchableOpacity
-                          key={r}
-                          style={{
-                            flex: 1,
-                            paddingVertical: 10,
-                            borderRadius: 10,
-                            borderWidth: 1.5,
-                            alignItems: 'center',
-                            backgroundColor: isActive ? colors.primary : colors.primary + '14',
-                            borderColor: colors.primary,
-                          }}
-                          onPress={() => setRoleDraft(r)}
-                        >
-                          <Text
-                            style={{
-                              fontSize: 12,
-                              fontWeight: '700',
-                              color: isActive ? '#fff' : colors.primary,
-                            }}
-                          >
-                            {r}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </View>
-              )}
-
-              {/* Save / Cancel footer for edit mode */}
-              {editMode && (
-                <>
-                  {error ? (
-                    <Text style={{ fontSize: 12, color: colors.error, marginTop: 10 }}>
-                      {error}
-                    </Text>
-                  ) : null}
-                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
-                    <TouchableOpacity
-                      style={{
-                        flex: 1,
-                        paddingVertical: 13,
-                        borderRadius: 12,
-                        alignItems: 'center',
-                        borderWidth: 1.5,
-                        borderColor: colors.border,
-                      }}
-                      onPress={handleCancel}
-                      disabled={saving}
-                    >
-                      <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>
-                        Cancel
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={{
-                        flex: 1,
-                        paddingVertical: 13,
-                        borderRadius: 12,
-                        alignItems: 'center',
-                        backgroundColor: colors.primary,
-                        opacity: saving ? 0.7 : 1,
-                      }}
-                      onPress={handleSave}
-                      disabled={saving}
-                    >
-                      <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>
-                        {saving ? 'Saving…' : 'Save Changes'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </>
-              )}
-
-              {/* Status update */}
-              <View
-                style={[
-                  edm.section,
-                  { backgroundColor: colors.card, borderColor: colors.border, marginTop: 12 },
-                ]}
-              >
-                <Text style={[edm.sectionTitle, { color: colors.textSecondary }]}>
-                  UPDATE STATUS
-                </Text>
-                <View style={{ flexDirection: 'row', gap: 8, padding: 12 }}>
-                  {ALL_STATUSES.map((s) => {
-                    const ss = STATUS_STYLES[s];
-                    const isActive = employee.status === s;
-                    return (
-                      <TouchableOpacity
-                        key={s}
-                        style={[
-                          edm.statusBtn,
-                          {
-                            backgroundColor: isActive ? ss.text : ss.bg,
-                            borderColor: ss.text,
-                            flex: 1,
-                          },
-                        ]}
-                        onPress={() => { onUpdateStatus(employee.id, s); onClose(); }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 12,
-                            fontWeight: '700',
-                            color: isActive ? '#fff' : ss.text,
-                            textAlign: 'center',
-                          }}
-                        >
-                          {s}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-            </ScrollView>
-          </View>
-        </TouchableOpacity>
-      </TouchableOpacity>
-    </Modal>
-  );
-}
-
-const edm = StyleSheet.create({
-  header: {
-    paddingTop: 52,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  headerName: { fontSize: 18, fontWeight: '700', color: '#fff' },
-  headerRole: { fontSize: 13, color: 'rgba(255,255,255,0.8)', marginTop: 1 },
-  headerDept: { fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 2 },
-  closeBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 16,
-  },
-  statusDot: { width: 8, height: 8, borderRadius: 4 },
-  statusText: { fontSize: 13, fontWeight: '700' },
-  section: { borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
-  sectionTitle: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 1,
-    padding: 12,
-    paddingBottom: 4,
-  },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-  },
-  rowLabel: { fontSize: 13, fontWeight: '500' },
-  rowValue: { fontSize: 13, fontWeight: '600', textAlign: 'right', flex: 1, marginLeft: 16 },
-  statusBtn: {
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    alignItems: 'center',
-  },
-});
-
-// ─── Add Employee Modal ───────────────────────────────────────────────────────
-
-function AddEmployeeModal({
-  visible,
-  onClose,
-  onAdd,
-  colors,
-  deptObjects,
-  roleOptions,
-  positions,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  onAdd: (emp: Employee) => void;
-  colors: any;
-  deptObjects: Department[];
-  roleOptions: string[];
-  positions: any[];
-}) {
-  const [name, setName] = useState('');
-  const [department, setDepartment] = useState('');
-  const [position, setPosition] = useState('');
-  const [role, setRole] = useState('');
-  const [salary, setSalary] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [status, setStatus] = useState<EmployeeStatus>('Active');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const { width } = useWindowDimensions();
-
-  const modalWidth =
-    width >= 1440 ? 900 :
-      width >= 1200 ? 760 :
-        width >= 900 ? 640 :
-          width >= 768 ? 560 :
-            width - 32;
-  const handleAdd = async () => {
-    if (!name.trim() || name.trim().length < 2) {
-      setError('Full name must be at least 2 characters.');
-      return;
-    }
-    if (!/^[a-zA-ZÀ-ÿ\s.'\-]+$/.test(name.trim())) {
-      setError('Full name can only contain letters, spaces, and punctuation.');
-      return;
-    }
-    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())) {
-      setError('A valid email address is required.');
-      return;
-    }
-    if (!password.trim() || password.trim().length < 6) {
-      setError('Password must be at least 6 characters long.');
-      return;
-    }
-    const salaryNum = parseFloat(salary);
-    if (!salary.trim() || isNaN(salaryNum) || salaryNum <= 0) {
-      setError('Enter a valid monthly salary greater than zero.');
-      return;
-    }
-    if (salaryNum > 9999999) {
-      setError('Salary amount seems too high. Please check.');
-      return;
-    }
-
-    const departmentIdRaw = deptObjects.find((d) => d.label === department)?.id;
-    const departmentId = departmentIdRaw ? Number(departmentIdRaw) : undefined;
-    const positionId = positions.find((p) => p.label === position)?.id;
-
-    setLoading(true);
-    try {
-      const createdUser = await HrService.createHRUser({
-        fullname: name.trim(),
-        email: email.trim(),
-        password: password.trim(),
-        departmentId,
-        positionId,
-        role: role.trim() || undefined,
-        salary: salaryNum,
-      });
-
-      const newEmployee: Employee = {
-        id: String(createdUser.id),
-        name: createdUser.fullname,
-        role: createdUser.role || role.trim() || undefined,
-        department: department.trim() || 'Unassigned',
-        status,
-        salary: Number(createdUser.salary ?? salaryNum),
-        position: position.trim() || undefined,
-        hireDate: createdUser.createdAt || new Date().toISOString(),
-        email: createdUser.email,
-        profilePhoto: createdUser.profilePhoto,
-      };
-
-      onAdd(newEmployee);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to create employee. Please try again.');
-      return;
-    } finally {
-      setLoading(false);
-    }
-
-    setName('');
-    setDepartment('');
-    setPosition('');
-    setRole('');
-    setEmail('');
-    setPassword('');
-    setSalary('');
-    setStatus('Active');
-    setError('');
-    onClose();
-  };
-
-  const s = StyleSheet.create({
-    overlay: {
-      flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.5)',
-      justifyContent: 'center',
-      alignItems: 'center',
-      paddingVertical: 40,
-      paddingHorizontal: 24,
-    },
-    sheet: {
-      backgroundColor: colors.surface,
-      borderRadius: 20,
-      width: modalWidth,
-      maxHeight: '90%',
-    },
-    header: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingHorizontal: 20,
-      paddingVertical: 14,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
-    title: { fontSize: 16, fontWeight: '800', color: colors.text },
-    label: {
-      fontSize: 11,
-      fontWeight: '700',
-      color: colors.textSecondary,
-      letterSpacing: 0.8,
-      marginBottom: 6,
-      marginTop: 14,
-    },
-    input: {
-      backgroundColor: colors.background,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 10,
-      paddingHorizontal: 14,
-      paddingVertical: 11,
-      fontSize: 14,
-      color: colors.text,
-    },
-    statRow: { flexDirection: 'row', gap: 8 },
-    statBtn: {
-      flex: 1,
-      paddingVertical: 10,
-      borderRadius: 10,
-      borderWidth: 1.5,
-      alignItems: 'center',
-    },
-    addBtn: {
-      backgroundColor: colors.primary,
-      borderRadius: 12,
-      paddingVertical: 15,
-      alignItems: 'center',
-      marginTop: 20,
-    },
-    addTxt: { fontSize: 15, fontWeight: '700', color: '#fff' },
-    errTxt: { fontSize: 12, color: colors.error, marginTop: 6 },
-  });
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={onClose}>
-        <TouchableOpacity activeOpacity={1} onPress={() => { }}>
-          <View style={s.sheet}>
-            <View style={s.header}>
-              <Text style={s.title}>Add Employee</Text>
-              <TouchableOpacity onPress={onClose}>
-                <X size={20} color={colors.textSecondary} strokeWidth={2} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView
-              contentContainerStyle={{ padding: 20, paddingTop: -20 }}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              <Text style={s.label}>FULL NAME *</Text>
-              <TextInput
-                style={s.input}
-                placeholder="e.g. Maria Santos"
-                placeholderTextColor={colors.textSecondary}
-                value={name}
-                onChangeText={setName}
-                autoCorrect={false}
-              />
-
-              <Text style={s.label}>EMAIL</Text>
-              <TextInput
-                style={s.input}
-                placeholder="e.g. m.santos@company.ph"
-                placeholderTextColor={colors.textSecondary}
-                value={email}
-                onChangeText={(v) => setEmail(v.trim())}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-
-              <Text style={s.label}>PASSWORD *</Text>
-              <TextInput
-                style={s.input}
-                placeholder="Enter a password"
-                placeholderTextColor={colors.textSecondary}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-                autoCorrect={false}
-                autoCapitalize="none"
-              />
-
-              <SearchableDropdown
-                label="Department"
-                value={department}
-                options={deptObjects}
-                onSelect={setDepartment}
-                colors={colors}
-                placeholder="Select department…"
-              />
-              <SearchableDropdown
-                label="Position"
-                value={position}
-                options={positions.map((p) => ({ label: p.label }))}
-                onSelect={setPosition}
-                colors={colors}
-                placeholder="Select position…"
-              />
-              <Text style={s.label}>ROLE</Text>
-              <View style={s.statRow}>
-                {ASSIGNABLE_ROLES.map((r) => {
-                  const isActive = role === r;
-                  return (
-                    <TouchableOpacity
-                      key={r}
-                      style={[
-                        s.statBtn,
-                        {
-                          backgroundColor: isActive ? colors.primary : colors.primary + '14',
-                          borderColor: colors.primary,
-                        },
-                      ]}
-                      onPress={() => setRole(r)}
-                    >
-                      <Text
-                        style={{ fontSize: 12, fontWeight: '700', color: isActive ? '#fff' : colors.primary }}
-                      >
-                        {r}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              <Text style={s.label}>MONTHLY SALARY ₱ *</Text>
-              <TextInput
-                style={s.input}
-                placeholder="e.g. 25000"
-                placeholderTextColor={colors.textSecondary}
-                value={salary}
-                onChangeText={(v) => setSalary(v.replace(/[^0-9.]/g, ''))}
-                keyboardType="decimal-pad"
-              />
-
-              <Text style={s.label}>EMPLOYMENT STATUS</Text>
-              <View style={s.statRow}>
-                {ALL_STATUSES.map((st) => {
-                  const ss = STATUS_STYLES[st];
-                  const isActive = status === st;
-                  return (
-                    <TouchableOpacity
-                      key={st}
-                      style={[
-                        s.statBtn,
-                        { backgroundColor: isActive ? ss.text : ss.bg, borderColor: ss.text },
-                      ]}
-                      onPress={() => setStatus(st)}
-                    >
-                      <Text
-                        style={{ fontSize: 12, fontWeight: '700', color: isActive ? '#fff' : ss.text }}
-                      >
-                        {st}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              {error ? <Text style={s.errTxt}>{error}</Text> : null}
-
-              <TouchableOpacity
-                style={[s.addBtn, loading && { opacity: 0.7 }]}
-                onPress={handleAdd}
-                activeOpacity={0.85}
-                disabled={loading}
-              >
-                <Text style={s.addTxt}>
-                  {loading ? 'Creating employee…' : 'Add Employee'}
-                </Text>
-              </TouchableOpacity>
-              <View style={{ height: 8 }} />
-            </ScrollView>
-          </View>
-        </TouchableOpacity>
-      </TouchableOpacity>
-    </Modal>
-  );
-}
-
-// ─── Desktop Employee Card (vertical, like InventoryScreen desktop card) ──────
-
-function DesktopEmployeeCard({
-  item,
-  deptMap,
-  colors,
-  onPress,
-}: {
-  item: Employee;
-  deptMap: Record<string, string>;
-  colors: any;
-  onPress: () => void;
-}) {
-  const deptColor = deptMap[item.department] ?? colors.primary;
-  const statusStyle = STATUS_STYLES[item.status];
-
-  return (
-    <Pressable
-      // @ts-ignore
-      style={({ hovered }: any) => ({
-        flex: 1,
-        borderRadius: 14,
-        borderWidth: 1,
-        overflow: 'hidden',
-        backgroundColor: colors.card,
-        borderColor: colors.border,
-        minWidth: 0,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: hovered ? 4 : 2 },
-        shadowOpacity: hovered ? 0.12 : 0.06,
-        shadowRadius: hovered ? 10 : 4,
-        elevation: hovered ? 6 : 2,
-        transform: [{ translateY: hovered ? -2 : 0 }],
-      })}
-      onPress={onPress}
-    >
-      {/* Dept color header strip */}
-      <View style={{ height: 5, backgroundColor: deptColor }} />
-
-      {/* Avatar + name header */}
-      <View
-        style={{
-          padding: 16,
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 12,
-          borderBottomWidth: 1,
-          borderBottomColor: colors.border,
-        }}
-      >
-        <Avatar name={item.name} profilePhoto={item.profilePhoto} size={44} color={deptColor} />
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text
-            style={{ fontSize: 14, fontWeight: '700', color: colors.text }}
-            numberOfLines={1}
-          >
-            {item.name}
-          </Text>
-          <Text
-            style={{ fontSize: 12, color: colors.textSecondary, marginTop: 1 }}
-            numberOfLines={1}
-          >
-            {item.role || 'No role'}
-          </Text>
-        </View>
-        <View style={[{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20, flexShrink: 0 }, { backgroundColor: statusStyle.bg }]}>
-          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: statusStyle.text }} />
-          <Text style={{ fontSize: 10, fontWeight: '700', color: statusStyle.text }}>
-            {item.status}
-          </Text>
-        </View>
-      </View>
-
-      {/* Details body */}
-      <View style={{ padding: 14, gap: 8 }}>
-        {/* Department tag */}
-        <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 5,
-              paddingHorizontal: 8,
-              paddingVertical: 4,
-              borderRadius: 20,
-              borderWidth: 1,
-              backgroundColor: deptColor + '22',
-              borderColor: deptColor + '55',
-            }}
-          >
-            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: deptColor }} />
-            <Text style={{ fontSize: 11, fontWeight: '600', color: deptColor }} numberOfLines={1}>
-              {item.department}
-            </Text>
-          </View>
-          {item.position && (
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                paddingHorizontal: 8,
-                paddingVertical: 4,
-                borderRadius: 20,
-                borderWidth: 1,
-                backgroundColor: colors.primary + '18',
-                borderColor: colors.primary + '40',
-              }}
-            >
-              <Text style={{ fontSize: 11, fontWeight: '600', color: colors.primary }} numberOfLines={1}>
-                {item.position}
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {/* Salary + tenure row */}
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
-          <View>
-            <Text style={{ fontSize: 10, color: colors.textSecondary, letterSpacing: 0.4, marginBottom: 2 }}>
-              SALARY
-            </Text>
-            <Text style={{ fontSize: 14, fontWeight: '800', color: colors.accent }}>
-              {formatPeso(item.salary)}
-            </Text>
-          </View>
-          <View style={{ alignItems: 'flex-end' }}>
-            <Text style={{ fontSize: 10, color: colors.textSecondary, letterSpacing: 0.4, marginBottom: 2 }}>
-              TENURE
-            </Text>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
-              {yearsOfService(item.hireDate)}
-            </Text>
-          </View>
-        </View>
-
-        {/* Email */}
-        <Text
-          style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2 }}
-          numberOfLines={1}
-        >
-          {item.email}
-        </Text>
-      </View>
-    </Pressable>
-  );
-}
-
-// ─── Mobile/Tablet Employee Card (horizontal, original style) ─────────────────
-
-function EmployeeCard({
-  item,
-  isTablet,
-  deptMap,
-  colors,
-  onPress,
-}: {
-  item: Employee;
-  isTablet: boolean;
-  deptMap: Record<string, string>;
-  colors: any;
-  onPress: () => void;
-}) {
-  const deptColor = deptMap[item.department] ?? colors.primary;
-  const statusStyle = STATUS_STYLES[item.status];
-
-  return (
-    <TouchableOpacity
-      style={[
-        {
-          backgroundColor: colors.card,
-          borderRadius: 14,
-          borderWidth: 1,
-          borderColor: colors.border,
-          overflow: 'hidden',
-        },
-        isTablet && { flex: 1 },
-      ]}
-      onPress={onPress}
-      activeOpacity={0.82}
-    >
-      <View style={{ height: 4, backgroundColor: deptColor }} />
-      <View style={{ padding: 14 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-          <Avatar name={item.name} profilePhoto={item.profilePhoto} size={42} color={deptColor} />
-          <View style={{ flex: 1, marginLeft: 10, minWidth: 0 }}>
-            <Text
-              style={{ fontSize: 14, fontWeight: '700', color: colors.text }}
-              numberOfLines={1}
-            >
-              {item.name}
-            </Text>
-            <Text
-              style={{ fontSize: 12, color: colors.textSecondary, marginTop: 1 }}
-              numberOfLines={1}
-            >
-              {item.role || 'No role'}
-            </Text>
-          </View>
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 4,
-              paddingHorizontal: 8,
-              paddingVertical: 4,
-              borderRadius: 20,
-              flexShrink: 0,
-              backgroundColor: statusStyle.bg,
-            }}
-          >
-            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: statusStyle.text }} />
-            <Text style={{ fontSize: 10, fontWeight: '700', color: statusStyle.text }}>
-              {item.status}
-            </Text>
-          </View>
-        </View>
-
-        <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 5,
-              paddingHorizontal: 8,
-              paddingVertical: 4,
-              borderRadius: 20,
-              borderWidth: 1,
-              backgroundColor: deptColor + '22',
-              borderColor: deptColor + '55',
-              maxWidth: '60%',
-            }}
-          >
-            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: deptColor, flexShrink: 0 }} />
-            <Text style={{ fontSize: 11, fontWeight: '600', color: deptColor }} numberOfLines={1}>
-              {item.department}
-            </Text>
-          </View>
-          {item.position && (
-            <View
-              style={{
-                paddingHorizontal: 8,
-                paddingVertical: 4,
-                borderRadius: 20,
-                borderWidth: 1,
-                backgroundColor: colors.primary + '18',
-                borderColor: colors.primary + '40',
-              }}
-            >
-              <Text style={{ fontSize: 11, fontWeight: '600', color: colors.primary }} numberOfLines={1}>
-                {item.position}
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {isTablet && (
-          <View
-            style={{
-              flexDirection: 'row',
-              borderTopWidth: 1,
-              borderTopColor: colors.border,
-              paddingTop: 10,
-            }}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 10, fontWeight: '600', color: colors.textSecondary, letterSpacing: 0.4, marginBottom: 2 }}>
-                SALARY
-              </Text>
-              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.text }}>
-                {formatPeso(item.salary)}
-              </Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 10, fontWeight: '600', color: colors.textSecondary, letterSpacing: 0.4, marginBottom: 2 }}>
-                TENURE
-              </Text>
-              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.text }}>
-                {yearsOfService(item.hireDate)}
-              </Text>
-            </View>
-            <View style={{ flex: 2, minWidth: 0 }}>
-              <Text style={{ fontSize: 10, fontWeight: '600', color: colors.textSecondary, letterSpacing: 0.4, marginBottom: 2 }}>
-                EMAIL
-              </Text>
-              <Text style={{ fontSize: 11, fontWeight: '600', color: colors.text }} numberOfLines={1}>
-                {item.email}
-              </Text>
-            </View>
-          </View>
-        )}
-      </View>
-    </TouchableOpacity>
-  );
-}
-
-// ─── Table View ───────────────────────────────────────────────────────────────
-interface Department {
+type PositionRow = {
   id: string
   name: string
-  color: string
+  description?: string | null
+  color?: string | null
+  permissions?: PermissionRow[]
+  users?: Array<{ id: number; fullname: string }>
+  createdAt?: string
+  updatedAt?: string
 }
-function TableView({
-  data,
-  onRowPress,
-  deptMap,
-  colors,
-}: {
-  data: Employee[];
-  onRowPress: (emp: Employee) => void;
-  deptMap: Record<string, string>;
-  colors: any;
-}) {
-  const [sortKey, setSortKey] = useState<string>('name');
-  const [sortAsc, setSortAsc] = useState(true);
 
-  const sorted = useMemo(() => {
-    return [...data].sort((a, b) => {
-      let av: any, bv: any;
-      switch (sortKey) {
-        case 'name': av = a.name; bv = b.name; break;
-        case 'department': av = a.department; bv = b.department; break;
-        case 'role': av = a.role ?? ''; bv = b.role ?? ''; break;
-        case 'status': av = a.status; bv = b.status; break;
-        case 'salary': av = a.salary; bv = b.salary; break;
-        case 'hireDate': av = a.hireDate; bv = b.hireDate; break;
-        default: av = a.name; bv = b.name;
-      }
-      if (typeof av === 'number') return sortAsc ? av - bv : bv - av;
-      return sortAsc
-        ? String(av).localeCompare(String(bv))
-        : String(bv).localeCompare(String(av));
-    });
-  }, [data, sortKey, sortAsc]);
+type EmployeeRow = {
+  id: number
+  fullname?: string | null
+  username?: string | null
+  email?: string | null
+  role?: string | null
+  profilePhoto?: string | null
+  createdAt?: string | null
+  positionId?: string | null
+  salary?: number | null
+  departmentId?: number | null
+  department?: { label?: string | null } | null
+  position?: PositionRow | null
+}
 
-  const handleSort = (key: string) => {
-    if (sortKey === key) setSortAsc((v) => !v);
-    else { setSortKey(key); setSortAsc(true); }
-  };
+type PageRow = { id: string; key: string; label: string; sortOrder?: number }
 
-  const SortIcon = ({ col }: { col: string }) => {
-    if (sortKey !== col)
-      return <Text style={{ fontSize: 10, color: colors.textSecondary, marginLeft: 3 }}>↕</Text>;
-    return (
-      <Text style={{ fontSize: 10, color: colors.primary, marginLeft: 3 }}>
-        {sortAsc ? '↑' : '↓'}
-      </Text>
-    );
-  };
+// ─── Constants ────────────────────────────────────────────────────────────────
+const STORAGE_KEY = 'enterpriseHrWorkspace:prefs:v2'
 
-  const COLS = [
-    { key: 'name', label: 'Employee', flex: 2.2 },
-    { key: 'department', label: 'Department', flex: 1.2 },
-    { key: 'role', label: 'Role', flex: 1.2 },
-    { key: 'status', label: 'Status', flex: 0.9 },
-    { key: 'salary', label: 'Salary', flex: 1, align: 'right' as const },
-    { key: 'hireDate', label: 'Hire Date', flex: 1 },
-  ];
+const MODULE_GROUPS: Record<string, string> = {
+  dashboard: 'Dashboard', catalog: 'Catalog', kompra: 'Catalog',
+  sales: 'Operations', inventory: 'Operations', restock: 'Operations', delivery: 'Operations',
+  finance: 'Finance', budget: 'Finance',
+  analytics: 'Analytics',
+  audit: 'Security', permission: 'Security',
+  hr: 'HR',
+  admin: 'Administration', settings: 'Administration', masterfile: 'Administration',
+}
 
+const MODULE_COLORS: Record<string, string> = {
+  Dashboard: '#2563EB', Catalog: '#7C3AED', Operations: '#0EA5E9',
+  Finance: '#16A34A', Analytics: '#F59E0B', Security: '#DC2626',
+  HR: '#0891B2', Administration: '#6B7280',
+}
+
+const POSITION_COLORS = ['#2563EB', '#7C3AED', '#0EA5E9', '#16A34A', '#F59E0B', '#DC2626', '#0891B2', '#EC4899']
+
+const defaultDateRange = () => {
+  const end = new Date()
+  const start = new Date()
+  start.setDate(end.getDate() - 90)
+  return { startDate: start.toISOString(), endDate: end.toISOString() }
+}
+
+const defaultPrefs = {
+  viewMode: 'table' as ViewMode,
+  sort: 'name' as SortKey,
+  density: 'comfortable' as Density,
+  status: 'ALL',
+  department: 'ALL',
+  position: 'ALL',
+  dateRange: defaultDateRange(),
+}
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
+const formatDate = (value?: string | null) =>
+  value ? new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Never'
+
+const formatDateTime = (value?: string | null) =>
+  value ? new Date(value).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Never'
+
+const safeName = (e: EmployeeRow) => e.fullname || e.username || e.email || `Employee ${e.id}`
+
+function employeeStatus(e: EmployeeRow): 'Active' | 'Inactive' {
+  if (e.role === 'OWNER' || e.role === 'MANAGER' || e.role === 'STAFF') return 'Active'
+  return 'Inactive'
+}
+
+function getModuleFromKey(key: string): string {
+  const prefix = key.split(/[._]/)[0].toLowerCase()
+  return MODULE_GROUPS[prefix] ?? 'General'
+}
+
+function groupPagesByModule(pages: PageRow[]): Record<string, PageRow[]> {
+  const result: Record<string, PageRow[]> = {}
+  for (const page of pages) {
+    const mod = getModuleFromKey(page.key)
+    result[mod] = [...(result[mod] ?? []), page]
+  }
+  return result
+}
+
+// ─── Animations ───────────────────────────────────────────────────────────────
+function useFade(delay = 0) {
+  const opacity = useRef(new Animated.Value(0)).current
+  const translateY = useRef(new Animated.Value(10)).current
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, { toValue: 1, duration: 280, delay, useNativeDriver: true }),
+      Animated.timing(translateY, { toValue: 0, duration: 280, delay, useNativeDriver: true }),
+    ]).start()
+  }, [delay, opacity, translateY])
+  return { opacity, transform: [{ translateY }] }
+}
+
+function FadeIn({ children, delay = 0, style }: { children: React.ReactNode; delay?: number; style?: any }) {
+  return <Animated.View style={[useFade(delay), style]}>{children}</Animated.View>
+}
+
+function useScale() {
+  const scale = useRef(new Animated.Value(1)).current
+  const onPressIn = () => Animated.spring(scale, { toValue: 0.97, useNativeDriver: true, speed: 40, bounciness: 2 }).start()
+  const onPressOut = () => Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 30, bounciness: 4 }).start()
+  return { scale, onPressIn, onPressOut }
+}
+
+// ─── Shared Atoms ─────────────────────────────────────────────────────────────
+function Badge({
+  label, tone = '#2563EB', size = 'sm',
+}: { label: string; tone?: string; size?: 'xs' | 'sm' | 'md' }) {
+  const px = size === 'xs' ? 6 : size === 'md' ? 12 : 8
+  const py = size === 'xs' ? 2 : size === 'md' ? 6 : 4
+  const fs = size === 'xs' ? 10 : size === 'md' ? 13 : 11
   return (
-    <View style={{ flex: 1, width: '100%' }}>
-      {/* Header */}
-      <View
-        style={{
-          flexDirection: 'row',
-          paddingHorizontal: 16,
-          borderTopWidth: 1,
-          borderBottomWidth: 2,
-          borderTopColor: colors.border,
-          borderBottomColor: colors.border,
-          backgroundColor: colors.card,
-        }}
-      >
-        {COLS.map((col) => (
-          <TouchableOpacity
-            key={col.key}
-            style={{ flex: col.flex, flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 6 }}
-            onPress={() => handleSort(col.key)}
-            activeOpacity={0.7}
-          >
-            <Text
-              style={{
-                fontSize: 11,
-                fontWeight: '700',
-                letterSpacing: 0.6,
-                textTransform: 'uppercase',
-                color: colors.textSecondary,
-                textAlign: col.align ?? 'left',
-              }}
-            >
-              {col.label}
-            </Text>
-            <SortIcon col={col.key} />
-          </TouchableOpacity>
+    <View style={{ borderRadius: 6, paddingHorizontal: px, paddingVertical: py, backgroundColor: `${tone}1A` }}>
+      <Text style={{ fontSize: fs, fontWeight: '700', color: tone }}>{label}</Text>
+    </View>
+  )
+}
+
+function StatusDot({ active }: { active: boolean }) {
+  return (
+    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: active ? '#16A34A' : '#6B7280' }} />
+  )
+}
+
+function Divider() {
+  const { colors } = useTheme()
+  return <View style={{ height: 1, backgroundColor: colors.border }} />
+}
+
+function InfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  const { colors } = useTheme()
+  return (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, paddingVertical: 8 }}>
+      <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary, flexShrink: 0 }}>{label}</Text>
+      <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text, textAlign: 'right', flex: 1, fontFamily: mono ? Platform.OS === 'ios' ? 'Menlo' : 'monospace' : undefined }}>{value}</Text>
+    </View>
+  )
+}
+
+function SectionCard({ title, subtitle, children, action, padded = true }: {
+  title: string; subtitle?: string; children: React.ReactNode; action?: React.ReactNode; padded?: boolean
+}) {
+  const { colors } = useTheme()
+  return (
+    <View style={{ borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, borderRadius: 16, overflow: 'hidden' }}>
+      <View style={{ paddingHorizontal: 16, paddingVertical: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.text, fontSize: 14, fontWeight: '800' }}>{title}</Text>
+          {subtitle ? <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '500', marginTop: 1 }}>{subtitle}</Text> : null}
+        </View>
+        {action}
+      </View>
+      <View style={padded ? { padding: 16, gap: 12 } : {}}>{children}</View>
+    </View>
+  )
+}
+
+function EmptyState({ icon: Icon = Users, title, message }: { icon?: any; title: string; message: string }) {
+  const { colors } = useTheme()
+  return (
+    <View style={{ alignItems: 'center', paddingVertical: 40, gap: 10 }}>
+      <View style={{ width: 48, height: 48, borderRadius: 14, backgroundColor: `${colors.primary}14`, alignItems: 'center', justifyContent: 'center' }}>
+        <Icon size={22} color={colors.primary} strokeWidth={1.8} />
+      </View>
+      <Text style={{ color: colors.text, fontSize: 15, fontWeight: '800' }}>{title}</Text>
+      <Text style={{ color: colors.textSecondary, fontSize: 13, textAlign: 'center', maxWidth: 280 }}>{message}</Text>
+    </View>
+  )
+}
+
+function LoadingRows() {
+  const { colors } = useTheme()
+  const opacity = useRef(new Animated.Value(0.3)).current
+  useEffect(() => {
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(opacity, { toValue: 0.7, duration: 800, useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 0.3, duration: 800, useNativeDriver: true }),
+    ]))
+    loop.start()
+    return () => loop.stop()
+  }, [opacity])
+  return (
+    <View style={{ gap: 12 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+        {Array.from({ length: 7 }).map((_, i) => (
+          <Animated.View key={i} style={{ opacity, height: 120, flexGrow: 1, flexBasis: 160, borderRadius: 16, backgroundColor: colors.surface }} />
         ))}
       </View>
-
-      <FlatList
-        data={sorted}
-        keyExtractor={(item) => item.id}
-        scrollEnabled={false}
-        ListEmptyComponent={
-          <View style={{ padding: 48, alignItems: 'center' }}>
-            <Users size={36} color={colors.border} strokeWidth={1} />
-            <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 10 }}>
-              No employees found
-            </Text>
-          </View>
-        }
-        renderItem={({ item, index }) => {
-          const deptColor = deptMap[item.department] ?? colors.primary;
-          const statusStyle = STATUS_STYLES[item.status];
-          const isEven = index % 2 === 0;
-          return (
-            <Pressable
-              // @ts-ignore
-              style={({ hovered }: any) => ({
-                flexDirection: 'row',
-                paddingHorizontal: 16,
-                borderBottomWidth: 1,
-                borderBottomColor: colors.border,
-                minHeight: 58,
-                backgroundColor: hovered ? colors.primary + '0A' : isEven ? colors.background : colors.card + 'aa',
-              })}
-              onPress={() => onRowPress(item)}
-            >
-              {/* Employee col */}
-              <View style={{ flex: 2.2, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 6 }}>
-                <Avatar name={item.name} profilePhoto={item.profilePhoto} size={34} color={deptColor} />
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text
-                    style={{ fontSize: 13, fontWeight: '600', color: colors.text }}
-                    numberOfLines={1}
-                  >
-                    {item.name}
-                  </Text>
-                  <Text style={{ fontSize: 11, color: colors.textSecondary }} numberOfLines={1}>
-                    {item.email}
-                  </Text>
-                </View>
-              </View>
-              {/* Department col */}
-              <View style={{ flex: 1.2, justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 6 }}>
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 5,
-                    paddingHorizontal: 8,
-                    paddingVertical: 4,
-                    borderRadius: 20,
-                    borderWidth: 1,
-                    backgroundColor: deptColor + '20',
-                    borderColor: deptColor + '50',
-                    alignSelf: 'flex-start',
-                    maxWidth: '100%',
-                  }}
-                >
-                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: deptColor, flexShrink: 0 }} />
-                  <Text style={{ fontSize: 11, fontWeight: '600', color: deptColor }} numberOfLines={1}>
-                    {item.department}
-                  </Text>
-                </View>
-              </View>
-              {/* Role col */}
-              <View style={{ flex: 1.2, justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 6 }}>
-                <Text style={{ fontSize: 13, color: colors.text }} numberOfLines={1}>
-                  {item.role || '—'}
-                </Text>
-                {item.position && (
-                  <Text style={{ fontSize: 11, color: colors.textSecondary }} numberOfLines={1}>
-                    {item.position}
-                  </Text>
-                )}
-              </View>
-              {/* Status col */}
-              <View style={{ flex: 0.9, justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 6 }}>
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 5,
-                    paddingHorizontal: 8,
-                    paddingVertical: 4,
-                    borderRadius: 20,
-                    alignSelf: 'flex-start',
-                    backgroundColor: statusStyle.bg,
-                  }}
-                >
-                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: statusStyle.text }} />
-                  <Text style={{ fontSize: 11, fontWeight: '600', color: statusStyle.text }}>
-                    {item.status}
-                  </Text>
-                </View>
-              </View>
-              {/* Salary col */}
-              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'flex-end', paddingVertical: 10, paddingHorizontal: 6 }}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
-                  {formatPeso(item.salary)}
-                </Text>
-                <Text style={{ fontSize: 10, color: colors.textSecondary }}>/mo</Text>
-              </View>
-              {/* Hire Date col */}
-              <View style={{ flex: 1, justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 6 }}>
-                <Text style={{ fontSize: 13, color: colors.text }}>{formatDate(item.hireDate)}</Text>
-                <Text style={{ fontSize: 11, color: colors.textSecondary }}>
-                  {yearsOfService(item.hireDate)}
-                </Text>
-              </View>
-            </Pressable>
-          );
-        }}
-      />
+      <Animated.View style={{ opacity, height: 56, borderRadius: 14, backgroundColor: colors.surface }} />
+      {Array.from({ length: 6 }).map((_, i) => (
+        <Animated.View key={i} style={{ opacity, height: 52, borderRadius: 10, backgroundColor: colors.surface }} />
+      ))}
     </View>
-  );
+  )
 }
 
-// ─── Main Screen ──────────────────────────────────────────────────────────────
+// ─── Modern Horizontal Tabs ───────────────────────────────────────────────────
+function TabBar<T extends string>({
+  tabs, active, onChange, scrollable = false,
+}: { tabs: Array<{ key: T; label: string; icon?: any }>; active: T; onChange: (t: T) => void; scrollable?: boolean }) {
+  const { colors } = useTheme()
+  const indicatorX = useRef(new Animated.Value(0)).current
+  const tabWidths = useRef<Record<string, number>>({})
+  const tabOffsets = useRef<Record<string, number>>({})
 
-export default function HRScreen() {
-  const { colors } = useTheme();
-  const { width } = useWindowDimensions();
-  const isTablet = width >= 768;
-  const isDesktop = width >= 1024;
+  const animateIndicator = (key: string) => {
+    const x = tabOffsets.current[key] ?? 0
+    Animated.spring(indicatorX, { toValue: x, useNativeDriver: true, speed: 40, bounciness: 2 }).start()
+  }
 
-  // ── MasterFile context ─────────────────────────────────────────────────────
-  //const deptObjects = useDepartments();
+  useEffect(() => { animateIndicator(active) }, [active])
 
-  //const mf = useMasterFile();
-  //const positions = mf.positions;
-
-  // const DEPARTMENTS = ['All', ...deptObjects.map((d) => d.label)];
-  //  const deptMap = Object.fromEntries(
-  //   deptObjects.map((d) => [d.label, d.color ?? colors.primary]),
-  // ) as Record<string, string>;
-  // ── State — loaded from AsyncStorage ──────────────────────────────────────
-  const [viewMode, setViewMode] = useState<ViewMode>('card');
-  const [deptFilter, setDeptFilter] = useState('All');
-  const [statusFilter, setStatusFilter] = useState<EmployeeStatus | 'All'>('All');
-  const [filterOpen, setFilterOpen] = useState(false);
-  const [stateRestored, setStateRestored] = useState(false);
-  const [departments, setDepartments] = useState<
-    { id: string, label: string, color: string } | []
-  >([])
-  // ── AsyncStorage restore ───────────────────────────────────────────────────
-  useEffect(() => {
-    const restore = async () => {
-      try {
-        const [vm, df, sf, fo] = await Promise.all([
-          AsyncStorage.getItem(STORAGE_KEYS.VIEW_MODE),
-          AsyncStorage.getItem(STORAGE_KEYS.DEPT_FILTER),
-          AsyncStorage.getItem(STORAGE_KEYS.STATUS_FILTER),
-          AsyncStorage.getItem(STORAGE_KEYS.FILTER_OPEN),
-        ]);
-        if (vm === 'card' || vm === 'table') setViewMode(vm);
-        if (df) setDeptFilter(df);
-        if (sf) setStatusFilter(sf as EmployeeStatus | 'All');
-        if (fo) setFilterOpen(fo === 'true');
-      } catch (_) { }
-      finally { setStateRestored(true); }
-    };
-    restore();
-  }, []);
-
-  // ── AsyncStorage persist ───────────────────────────────────────────────────
-
-  const saveState = useCallback(
-    async (vm: ViewMode, df: string, sf: EmployeeStatus | 'All', fo: boolean) => {
-      try {
-        await AsyncStorage.multiSet([
-          [STORAGE_KEYS.VIEW_MODE, vm],
-          [STORAGE_KEYS.DEPT_FILTER, df],
-          [STORAGE_KEYS.STATUS_FILTER, sf],
-          [STORAGE_KEYS.FILTER_OPEN, String(fo)],
-        ]);
-      } catch (_) { }
-    },
-    [],
-  );
-
-  const setViewModeP = (v: ViewMode) => {
-    setViewMode(v);
-    saveState(v, deptFilter, statusFilter, filterOpen);
-  };
-  const setDeptFilterP = (v: string) => {
-    setDeptFilter(v);
-    saveState(viewMode, v, statusFilter, filterOpen);
-  };
-  const setStatusFilterP = (v: EmployeeStatus | 'All') => {
-    setStatusFilter(v);
-    saveState(viewMode, deptFilter, v, filterOpen);
-  };
-  const setFilterOpenP = (v: boolean) => {
-    setFilterOpen(v);
-    saveState(viewMode, deptFilter, statusFilter, v);
-  };
-
-  // ── Employee data ──────────────────────────────────────────────────────────
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [search, setSearch] = useState('');
-  const [loadingEmployees, setLoadingEmployees] = useState(true);
-  const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null);
-  const [detailVisible, setDetailVisible] = useState(false);
-  const [addVisible, setAddVisible] = useState(false);
-  const [deptMap, setDeptMap] = useState<Record<string, string>>({})
-  const [positions, setPositions] = useState([])
-  useEffect(() => {
-    const load = async () => {
-      setLoadingEmployees(true);
-      try {
-        const staff = await HrService.getAllStaffs();
-        const deptObjects: Department[] = await DepartmentService.getAll()
-
-        const departmentList = deptObjects.map((d) => ({
-          id: String(d.id),
-          label: d.name,
-          color: d.color,
-        }))
-        const positions = await PositionService.getAll()
-        setPositions(positions)
-        setDepartments(departmentList)
-        setDeptMap(
-          Object.fromEntries(
-            departments.map((d) => [d.label, d.color ?? colors.primary])
-          )
+  const inner = (
+    <View style={{ flexDirection: 'row', position: 'relative' }}>
+      {tabs.map((tab) => {
+      
+        const Icon = tab.icon
+        return (
+          <TouchableOpacity
+            key={tab.key}
+            onLayout={(e) => {
+              tabWidths.current[tab.key] = e.nativeEvent.layout.width
+              tabOffsets.current[tab.key] = e.nativeEvent.layout.x
+            }}
+            onPress={() => { onChange(tab.key); animateIndicator(tab.key) }}
+            style={{ paddingHorizontal: 16, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+          >
+            {Icon ? <Icon size={14} color={tab.key === active ? colors.primary : colors.textSecondary} strokeWidth={2} /> : null}
+            <Text style={{ fontSize: 13, fontWeight: tab.key === active ? '800' : '600', color: tab.key === active ? colors.primary : colors.textSecondary }}>
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
         )
-        if (Array.isArray(staff)) {
-          if (__DEV__) console.log(staff)
-          setEmployees(
-            staff.map((u) => {
-              // first linked Employee record
-              return {
-                id: String(u.id),
-                name: u.fullname || u.name || 'Unknown',
-                role: u.role || 'Staff',
-                department: u.department?.label || 'General',
-                status: 'Active' as EmployeeStatus,
-                salary: Number(u.salary ?? 0),
-                hireDate: u.createdAt || new Date().toISOString(),
-                email: u.email || 'n/a',
-                profilePhoto: u.profilePhoto,
-                position: u.position?.name ?? undefined,
-              };
-            }),
-          );
-        }
-      } catch (err) {
-        if (__DEV__) console.warn('Failed to load employees', err);
-      } finally {
-        setLoadingEmployees(false);
-      }
-    };
-    load();
-  }, []);
+      })}
+      <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 1, backgroundColor: colors.border }} />
+      <Animated.View style={{ position: 'absolute', bottom: 0, left: 0, height: 2, width: tabWidths.current[active] ?? 60, backgroundColor: colors.primary, borderRadius: 2, transform: [{ translateX: indicatorX }] }} />
+    </View>
+  )
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return employees.filter((emp) => {
-      const matchSearch =
-        !q ||
-        emp.name.toLowerCase().includes(q) ||
-        emp.role?.toLowerCase().includes(q) ||
-        emp.department.toLowerCase().includes(q) ||
-        emp.email.toLowerCase().includes(q);
-      const matchDept = deptFilter === 'All' || emp.department === deptFilter;
-      const matchStatus = statusFilter === 'All' || emp.status === statusFilter;
-      return matchSearch && matchDept && matchStatus;
-    });
-  }, [employees, search, deptFilter, statusFilter]);
-
-  const activeCount = filtered.filter((e) => e.status === 'Active').length;
-  const onLeaveCount = filtered.filter((e) => e.status === 'On Leave').length;
-  const totalSalary = filtered.reduce((s, e) => s + e.salary, 0);
-  const uniqueDepts = [...new Set(filtered.map((e) => e.department))].length;
-
-  const handleUpdateStatus = (id: string, status: EmployeeStatus) => {
-    // NOTE: EmployeeStatus (Active/On Leave/Contract) is currently a local-only
-    // concept and has no backend field — it is not persisted via HrService.
-    setEmployees((prev) => prev.map((e) => (e.id === id ? { ...e, status } : e)));
-  };
-  const handleSaveEmployee = useCallback(
-    async (
-      id: string,
-      changes: { role?: string; positionId?: string | null; salary?: number },
-    ) => {
-      const prevEmployees = employees;
-
-      setEmployees((prev) =>
-        prev.map((e) => {
-          if (e.id !== id) return e;
-          const positionLabel =
-            changes.positionId === null
-              ? undefined
-              : changes.positionId
-                ? positions.find((p) => p.id === changes.positionId)?.label ?? e.position
-                : e.position;
-          return {
-            ...e,
-            ...(changes.role !== undefined && { role: changes.role }),
-            ...(changes.salary !== undefined && { salary: changes.salary }),
-            ...(typeof changes.positionId !== 'undefined' && { position: positionLabel }),
-          };
-        }),
-      );
-
-      try {
-        await HrService.updateEmployee(Number(id), {
-          role: changes.role,
-          positionId: changes.positionId,
-          salary: changes.salary,
-        });
-        // ✅ Removed: HrService.recordSalarySnapshot(id, changes.salary)
-        // The backend updateUser already writes SalaryHistory when salary changes
-        // via the linkedEmployee lookup in user.service.ts
-      } catch (err: any) {
-        setEmployees(prevEmployees);
-        throw err;
-      }
-    },
-    [employees, positions],
-  );
-  const handleAddEmployee = (emp: Employee) => {
-    setEmployees((prev) => [emp, ...prev]);
-  };
-  const DEPARTMENTS = ['All', ...departments.map((d) => d.label)]
-  // ── Styles ─────────────────────────────────────────────────────────────────
-  const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: colors.background },
-    header: { padding: 16, paddingBottom: 0 },
-    metaRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
-    metaCard: {
-      flex: 1,
-      backgroundColor: colors.card,
-      borderRadius: 10,
-      padding: 10,
-      alignItems: 'center',
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    metaValue: { fontSize: 18, fontWeight: '800', color: colors.text },
-    metaLabel: { fontSize: 10, color: colors.textSecondary, marginTop: 2, textAlign: 'center' },
-    salaryCard: {
-      marginHorizontal: 16,
-      marginBottom: 10,
-      backgroundColor: colors.primary,
-      borderRadius: 12,
-      padding: 14,
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-    },
-    toolbar: {
-      flexDirection: 'row',
-      gap: 8,
-      paddingHorizontal: 16,
-      paddingBottom: 10,
-      alignItems: 'center',
-    },
-    searchBox: {
-      flex: 1,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      backgroundColor: colors.card,
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: colors.border,
-      paddingHorizontal: 10,
-      paddingVertical: 8,
-    },
-    searchInput: { flex: 1, fontSize: 13, color: colors.text },
-    iconBtn: {
-      width: 38,
-      height: 38,
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: colors.border,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: colors.card,
-    },
-    addBtn: {
-      width: 38,
-      height: 38,
-      borderRadius: 10,
-      backgroundColor: colors.primary,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    viewToggleRow: {
-      flexDirection: 'row',
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: colors.border,
-      overflow: 'hidden',
-    },
-    viewToggleBtn: {
-      width: 36,
-      height: 38,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: colors.card,
-    },
-    filterPanel: {
-      marginHorizontal: 16,
-      backgroundColor: colors.card,
-      borderRadius: 12,
-      padding: 12,
-      marginBottom: 8,
-      borderWidth: 1,
-      borderColor: colors.border,
-      gap: 12,
-    },
-    filterLabel: {
-      fontSize: 10,
-      fontWeight: '700',
-      color: colors.textSecondary,
-      letterSpacing: 0.8,
-      marginBottom: 6,
-    },
-    pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-    pill: {
-      paddingHorizontal: 12,
-      paddingVertical: 7,
-      borderRadius: 20,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    pillActive: { borderColor: colors.primary, backgroundColor: colors.primary },
-    pillText: { fontSize: 12, fontWeight: '600', color: colors.text },
-    pillTextAct: { color: '#fff' },
-    listContent: { padding: 16, paddingTop: 0, gap: 10, paddingBottom: 40 },
-    resultCount: {
-      fontSize: 11,
-      color: colors.textSecondary,
-      paddingHorizontal: 16,
-      paddingBottom: 6,
-    },
-  });
-
-  if (!stateRestored || loadingEmployees) {
+  if (scrollable) {
     return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={{ marginTop: 12, color: colors.textSecondary }}>Loading staff data…</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        {inner}
+      </ScrollView>
+    )
+  }
+  return inner
+}
+
+// ─── Animated Toggle Switch ───────────────────────────────────────────────────
+function PermSwitch({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+  const { colors } = useTheme()
+  return (
+    <Switch
+      value={value}
+      onValueChange={onChange}
+      trackColor={{ false: colors.border, true: `${colors.primary}60` }}
+      thumbColor={value ? colors.primary : colors.textSecondary}
+      ios_backgroundColor={colors.border}
+      style={{ transform: [{ scaleX: 0.82 }, { scaleY: 0.82 }] }}
+    />
+  )
+}
+
+// ─── Employee Avatar ──────────────────────────────────────────────────────────
+const AVATAR_COLORS = ['#2563EB', '#7C3AED', '#0891B2', '#16A34A', '#DC2626', '#F59E0B', '#EC4899', '#0EA5E9']
+function avatarColor(name: string) {
+  let h = 0
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0
+  return AVATAR_COLORS[h % AVATAR_COLORS.length]
+}
+
+function EmployeeAvatar({ employee, size = 40 }: { employee: EmployeeRow; size?: number }) {
+  const name = safeName(employee)
+  const color = avatarColor(name)
+  const label = name.slice(0, 2).toUpperCase()
+  return (
+    <View style={{ width: size, height: size, borderRadius: size / 3, backgroundColor: `${color}22`, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: `${color}33` }}>
+      <Text style={{ color, fontWeight: '800', fontSize: size * 0.35 }}>{label}</Text>
+    </View>
+  )
+}
+
+// ─── HR Toolbar ───────────────────────────────────────────────────────────────
+function HRToolbar({
+  search, setSearch, prefs, setPrefs, departments, positions, onAddEmployee, onCreatePosition, onExport,
+}: {
+  search: string; setSearch: (v: string) => void; prefs: typeof defaultPrefs
+  setPrefs: (next: Partial<typeof defaultPrefs>) => void; departments: string[]
+  positions: PositionRow[]; onAddEmployee: () => void; onCreatePosition: () => void; onExport: () => void
+}) {
+  const { colors } = useTheme()
+  const [filterOpen, setFilterOpen] = useState(false)
+  const [dateOpen, setDateOpen] = useState(false)
+  const btn = { height: 38, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: 11, flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6 }
+
+  return (
+    <View style={{ gap: 10 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+        {/* Search */}
+        <View style={{ flex: 1, minWidth: 240, height: 38, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 11 }}>
+          <Search size={15} color={colors.textSecondary} />
+          <TextInput value={search} onChangeText={setSearch} placeholder="Search employees, email, role…" placeholderTextColor={colors.textSecondary} style={{ flex: 1, color: colors.text, fontWeight: '600', fontSize: 13 }} />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch('')}><X size={14} color={colors.textSecondary} /></TouchableOpacity>
+          )}
+        </View>
+        {/* Filters */}
+        <TouchableOpacity style={[btn, filterOpen && { borderColor: colors.primary, backgroundColor: `${colors.primary}10` }]} onPress={() => setFilterOpen(v => !v)}>
+          <Filter size={14} color={filterOpen ? colors.primary : colors.textSecondary} />
+          <Text style={{ color: filterOpen ? colors.primary : colors.text, fontWeight: '700', fontSize: 13 }}>Filters</Text>
+          {(prefs.status !== 'ALL' || prefs.department !== 'ALL' || prefs.position !== 'ALL') && (
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary }} />
+          )}
+        </TouchableOpacity>
+        {/* Date */}
+        <TouchableOpacity style={btn} onPress={() => setDateOpen(true)}>
+          <Calendar size={14} color={colors.textSecondary} />
+          <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>Date Range</Text>
+        </TouchableOpacity>
+        {/* Export */}
+        <TouchableOpacity style={btn} onPress={onExport}>
+          <Download size={14} color={colors.textSecondary} />
+          <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>Export</Text>
+        </TouchableOpacity>
+        {/* View Toggle */}
+        <View style={{ height: 38, flexDirection: 'row', borderWidth: 1, borderColor: colors.border, borderRadius: 10, overflow: 'hidden', backgroundColor: colors.surface }}>
+          <TouchableOpacity onPress={() => setPrefs({ viewMode: 'cards' })} style={{ width: 38, alignItems: 'center', justifyContent: 'center', backgroundColor: prefs.viewMode === 'cards' ? colors.primary : 'transparent' }}>
+            <LayoutGrid size={15} color={prefs.viewMode === 'cards' ? '#fff' : colors.textSecondary} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setPrefs({ viewMode: 'table' })} style={{ width: 38, alignItems: 'center', justifyContent: 'center', backgroundColor: prefs.viewMode === 'table' ? colors.primary : 'transparent' }}>
+            <List size={15} color={prefs.viewMode === 'table' ? '#fff' : colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+        {/* Create Position */}
+        <TouchableOpacity onPress={onCreatePosition} style={[btn, { borderColor: '#3B82F620', backgroundColor: '#EFF6FF' }]}>
+          <ShieldCheck size={14} color="#2563EB" />
+          <Text style={{ color: '#2563EB', fontWeight: '700', fontSize: 13 }}>Create Position</Text>
+        </TouchableOpacity>
+        {/* Add Employee */}
+        <TouchableOpacity onPress={onAddEmployee} style={[btn, { backgroundColor: colors.primary, borderColor: colors.primary }]}>
+          <UserPlus size={14} color="#fff" />
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>Add Employee</Text>
+        </TouchableOpacity>
       </View>
-    );
+
+      {/* Filter Chips */}
+      {filterOpen && (
+        <FadeIn>
+          <View style={{ gap: 8 }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSecondary, alignSelf: 'center', marginRight: 4 }}>STATUS</Text>
+              {['ALL', 'Active', 'Inactive'].map(s => (
+                <TouchableOpacity key={s} onPress={() => setPrefs({ status: s })} style={{ borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: prefs.status === s ? colors.primary : colors.border, backgroundColor: prefs.status === s ? `${colors.primary}14` : colors.surface }}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: prefs.status === s ? colors.primary : colors.textSecondary }}>{s === 'ALL' ? 'All' : s}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSecondary, alignSelf: 'center', marginRight: 4 }}>DEPT</Text>
+              {['ALL', ...departments.slice(0, 8)].map(d => (
+                <TouchableOpacity key={d} onPress={() => setPrefs({ department: d })} style={{ borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: prefs.department === d ? colors.primary : colors.border, backgroundColor: prefs.department === d ? `${colors.primary}14` : colors.surface }}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: prefs.department === d ? colors.primary : colors.textSecondary }}>{d === 'ALL' ? 'All Departments' : d}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSecondary, alignSelf: 'center', marginRight: 4 }}>POSITION</Text>
+              <TouchableOpacity onPress={() => setPrefs({ position: 'ALL' })} style={{ borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: prefs.position === 'ALL' ? colors.primary : colors.border, backgroundColor: prefs.position === 'ALL' ? `${colors.primary}14` : colors.surface }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: prefs.position === 'ALL' ? colors.primary : colors.textSecondary }}>All</Text>
+              </TouchableOpacity>
+              {positions.slice(0, 8).map(p => (
+                <TouchableOpacity key={p.id} onPress={() => setPrefs({ position: p.id })} style={{ borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: prefs.position === p.id ? colors.primary : colors.border, backgroundColor: prefs.position === p.id ? `${colors.primary}14` : colors.surface }}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: prefs.position === p.id ? colors.primary : colors.textSecondary }}>{p.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSecondary, alignSelf: 'center', marginRight: 4 }}>SORT</Text>
+              {(['name', 'newest', 'position', 'department', 'status'] as SortKey[]).map(s => (
+                <TouchableOpacity key={s} onPress={() => setPrefs({ sort: s })} style={{ borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: prefs.sort === s ? colors.primary : colors.border, backgroundColor: prefs.sort === s ? `${colors.primary}14` : colors.surface }}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: prefs.sort === s ? colors.primary : colors.textSecondary }}>{s.charAt(0).toUpperCase() + s.slice(1)}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </FadeIn>
+      )}
+
+      <DateRangePickerModal
+        visible={dateOpen}
+        onClose={() => setDateOpen(false)}
+        initialStart={new Date(prefs.dateRange.startDate)}
+        initialEnd={new Date(prefs.dateRange.endDate)}
+        onApply={(s, e) => { setPrefs({ dateRange: { startDate: s.toISOString(), endDate: e.toISOString() } }); setDateOpen(false) }}
+      />
+    </View>
+  )
+}
+
+// ─── Employee Table (full-width, auto-stretch) ────────────────────────────────
+function EmployeeTable({ employees, onSelect }: { employees: EmployeeRow[]; onSelect: (e: EmployeeRow) => void }) {
+  const { colors } = useTheme()
+  const { width } = useWindowDimensions()
+  const isWide = width >= 1400
+
+  const colHeader = { fontSize: 11, fontWeight: '700' as const, color: colors.textSecondary, textTransform: 'uppercase' as const, letterSpacing: 0.5 }
+  const cell = { fontSize: 13, fontWeight: '600' as const, color: colors.text }
+  const cellSub = { fontSize: 12, fontWeight: '500' as const, color: colors.textSecondary }
+
+  return (
+    <View style={{ borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
+      {/* Header */}
+      <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: colors.background, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        <View style={{ flex: 3, minWidth: 180 }}><Text style={colHeader}>Employee</Text></View>
+        {isWide && <View style={{ flex: 2, minWidth: 180 }}><Text style={colHeader}>Email</Text></View>}
+        <View style={{ flex: 2, minWidth: 120 }}><Text style={colHeader}>Department</Text></View>
+        <View style={{ flex: 2, minWidth: 120 }}><Text style={colHeader}>Position</Text></View>
+        <View style={{ width: 80 }}><Text style={colHeader}>Role</Text></View>
+        <View style={{ width: 90 }}><Text style={colHeader}>Status</Text></View>
+        <View style={{ width: 110 }}><Text style={colHeader}>Joined</Text></View>
+        <View style={{ width: 64 }} />
+      </View>
+      {/* Rows */}
+      {employees.map((employee, i) => {
+        const status = employeeStatus(employee)
+        return (
+          <TouchableOpacity
+            key={employee.id}
+            onPress={() => onSelect(employee)}
+            activeOpacity={0.7}
+            style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: colors.border }}
+          >
+            <View style={{ flex: 3, minWidth: 180, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <EmployeeAvatar employee={employee} size={36} />
+              <View style={{ flex: 1 }}>
+                <Text style={cell} numberOfLines={1}>{safeName(employee)}</Text>
+                {!isWide && <Text style={cellSub} numberOfLines={1}>{employee.email ?? '—'}</Text>}
+              </View>
+            </View>
+            {isWide && <View style={{ flex: 2, minWidth: 180 }}><Text style={cellSub} numberOfLines={1}>{employee.email ?? '—'}</Text></View>}
+            <View style={{ flex: 2, minWidth: 120 }}>
+              <Text style={cellSub} numberOfLines={1}>{employee.department?.label ?? 'Unassigned'}</Text>
+            </View>
+            <View style={{ flex: 2, minWidth: 120 }}>
+              {employee.position ? (
+                <Badge label={employee.position.name} tone="#7C3AED" size="xs" />
+              ) : (
+                <Text style={{ fontSize: 12, color: colors.textSecondary }}>No position</Text>
+              )}
+            </View>
+            <View style={{ width: 80 }}>
+              <Badge label={employee.role ?? '—'} tone="#F59E0B" size="xs" />
+            </View>
+            <View style={{ width: 90, flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+              <StatusDot active={status === 'Active'} />
+              <Text style={{ fontSize: 12, fontWeight: '600', color: status === 'Active' ? '#16A34A' : '#6B7280' }}>{status}</Text>
+            </View>
+            <View style={{ width: 110 }}>
+              <Text style={cellSub}>{formatDate(employee.createdAt)}</Text>
+            </View>
+            <View style={{ width: 64, alignItems: 'center' }}>
+              <ChevronRight size={16} color={colors.textSecondary} />
+            </View>
+          </TouchableOpacity>
+        )
+      })}
+    </View>
+  )
+}
+
+// ─── Employee Card ────────────────────────────────────────────────────────────
+function EmployeeCard({ employee, onSelect }: { employee: EmployeeRow; onSelect: (e: EmployeeRow) => void }) {
+  const { colors } = useTheme()
+  const { scale, onPressIn, onPressOut } = useScale()
+  const status = employeeStatus(employee)
+
+  return (
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <TouchableOpacity
+        onPress={() => onSelect(employee)}
+        onPressIn={onPressIn}
+        onPressOut={onPressOut}
+        activeOpacity={1}
+        style={{ borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, borderRadius: 14, overflow: 'hidden' }}
+      >
+        <View style={{ height: 3, backgroundColor: avatarColor(safeName(employee)) }} />
+        <View style={{ padding: 14, gap: 10 }}>
+          <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+            <EmployeeAvatar employee={employee} size={42} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.text, fontSize: 14, fontWeight: '800' }} numberOfLines={1}>{safeName(employee)}</Text>
+              <Text style={{ color: colors.textSecondary, fontSize: 12 }} numberOfLines={1}>{employee.email ?? 'No email'}</Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+              <StatusDot active={status === 'Active'} />
+              <Text style={{ fontSize: 11, fontWeight: '700', color: status === 'Active' ? '#16A34A' : '#6B7280' }}>{status}</Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+            <Badge label={employee.department?.label ?? 'Unassigned'} tone="#2563EB" size="xs" />
+            {employee.position && <Badge label={employee.position.name} tone="#7C3AED" size="xs" />}
+            {employee.role && <Badge label={employee.role} tone="#F59E0B" size="xs" />}
+          </View>
+          <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+            <Clock size={11} color={colors.textSecondary} />
+            <Text style={{ fontSize: 11, color: colors.textSecondary }}>Joined {formatDate(employee.createdAt)}</Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  )
+}
+
+// ─── Permission Grid (for PositionBuilder) ────────────────────────────────────
+const PERM_KEYS = ['canView', 'canCreate', 'canEdit', 'canDelete'] as const
+const PERM_LABELS: Record<string, string> = { canView: 'View', canCreate: 'Create', canEdit: 'Edit', canDelete: 'Delete' }
+
+function PermissionGrid({
+  pages, permissions, setPermissions,
+}: {
+  pages: PageRow[]
+  permissions: Record<string, PermissionRow>
+  setPermissions: (next: Record<string, PermissionRow>) => void
+}) {
+  const { colors } = useTheme()
+  const [query, setQuery] = useState('')
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
+  const [moduleFilter, setModuleFilter] = useState('ALL')
+
+  const filtered = pages.filter(p => `${p.key} ${p.label}`.toLowerCase().includes(query.toLowerCase()))
+  const groups = useMemo(() => groupPagesByModule(filtered), [filtered])
+  const modules = useMemo(() => Object.keys(groupPagesByModule(pages)), [pages])
+
+  const filteredGroups = moduleFilter === 'ALL' ? groups : Object.fromEntries(Object.entries(groups).filter(([m]) => m === moduleFilter))
+
+  const toggle = (pageId: string, key: typeof PERM_KEYS[number]) => {
+    const cur = permissions[pageId] ?? { pageId, canView: false, canCreate: false, canEdit: false, canDelete: false }
+    setPermissions({ ...permissions, [pageId]: { ...cur, [key]: !cur[key] } })
+  }
+  const setAll = (value: boolean) => {
+    setPermissions(Object.fromEntries(pages.map(p => [p.id, { pageId: p.id, canView: value, canCreate: value, canEdit: value, canDelete: value }])))
+  }
+  const toggleGroup = (group: string) => {
+    const next = new Set(expandedGroups)
+    next.has(group) ? next.delete(group) : next.add(group)
+    setExpandedGroups(next)
+  }
+  const expandAll = () => setExpandedGroups(new Set(Object.keys(groups)))
+  const collapseAll = () => setExpandedGroups(new Set())
+
+  return (
+    <View style={{ gap: 12 }}>
+      {/* Controls */}
+      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+        <View style={{ flex: 1, minWidth: 200, height: 38, borderWidth: 1, borderColor: colors.border, borderRadius: 10, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, backgroundColor: colors.background }}>
+          <Search size={13} color={colors.textSecondary} />
+          <TextInput value={query} onChangeText={setQuery} placeholder="Search pages…" placeholderTextColor={colors.textSecondary} style={{ flex: 1, color: colors.text, fontSize: 13, marginLeft: 6 }} />
+        </View>
+        <TouchableOpacity onPress={expandAll} style={{ borderRadius: 8, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: colors.surface }}>
+          <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text }}>Expand All</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={collapseAll} style={{ borderRadius: 8, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: colors.surface }}>
+          <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text }}>Collapse All</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setAll(true)} style={{ borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: '#DCFCE7' }}>
+          <Text style={{ fontSize: 12, fontWeight: '700', color: '#15803D' }}>Select All</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setAll(false)} style={{ borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: '#FEE2E2' }}>
+          <Text style={{ fontSize: 12, fontWeight: '700', color: '#DC2626' }}>Clear All</Text>
+        </TouchableOpacity>
+      </View>
+      {/* Module filter */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          {['ALL', ...modules].map(m => (
+            <TouchableOpacity key={m} onPress={() => setModuleFilter(m)} style={{ borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: moduleFilter === m ? (MODULE_COLORS[m] ?? colors.primary) : colors.border, backgroundColor: moduleFilter === m ? `${MODULE_COLORS[m] ?? colors.primary}14` : colors.surface }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: moduleFilter === m ? (MODULE_COLORS[m] ?? colors.primary) : colors.textSecondary }}>{m === 'ALL' ? 'All Modules' : m}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
+      {/* Sticky column header */}
+      <View style={{ flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 6 }}>
+        <View style={{ flex: 1 }} />
+        {PERM_KEYS.map(k => (
+          <View key={k} style={{ width: 68, alignItems: 'center' }}>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSecondary }}>{PERM_LABELS[k]}</Text>
+          </View>
+        ))}
+      </View>
+      {/* Groups */}
+      {Object.entries(filteredGroups).map(([group, rows]) => {
+        const isExpanded = expandedGroups.has(group) || query.length > 0
+        const modColor = MODULE_COLORS[group] ?? '#6B7280'
+        const granted = rows.reduce((n, p) => n + PERM_KEYS.filter(k => permissions[p.id]?.[k]).length, 0)
+        return (
+          <View key={group} style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 12, overflow: 'hidden' }}>
+            <TouchableOpacity onPress={() => toggleGroup(group)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, backgroundColor: colors.background }}>
+              <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: modColor }} />
+              <Text style={{ flex: 1, color: colors.text, fontWeight: '800', fontSize: 13 }}>{group}</Text>
+              <Text style={{ fontSize: 12, color: colors.textSecondary }}>{rows.length} pages · {granted} granted</Text>
+              <ChevronDown size={15} color={colors.textSecondary} style={{ transform: [{ rotate: isExpanded ? '180deg' : '0deg' }] }} />
+            </TouchableOpacity>
+            {isExpanded && rows.map((page, pi) => {
+              const perm = permissions[page.id] ?? { pageId: page.id, canView: false, canCreate: false, canEdit: false, canDelete: false }
+              return (
+                <View key={page.id} style={{ flexDirection: 'row', alignItems: 'center', padding: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
+                  <View style={{ flex: 1, paddingLeft: 20 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>{page.label}</Text>
+                    <Text style={{ fontSize: 11, color: colors.textSecondary }}>{page.key}</Text>
+                  </View>
+                  {PERM_KEYS.map(k => (
+                    <View key={k} style={{ width: 68, alignItems: 'center' }}>
+                      <PermSwitch value={!!perm[k]} onChange={() => toggle(page.id, k)} />
+                    </View>
+                  ))}
+                </View>
+              )
+            })}
+          </View>
+        )
+      })}
+    </View>
+  )
+}
+
+// ─── Position Builder (modal, centered, 900px max) ────────────────────────────
+function PositionBuilder({
+  visible, pages, position, onClose, onSaved,
+}: {
+  visible: boolean; pages: PageRow[]; position: PositionRow | null; onClose: () => void; onSaved: () => Promise<void>
+}) {
+  const { colors } = useTheme()
+  const { width, height } = useWindowDimensions()
+  const isMobile = width < 640
+  const [step, setStep] = useState<BuilderStep>('general')
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [color, setColor] = useState(POSITION_COLORS[0])
+  const [permissions, setPermissions] = useState<Record<string, PermissionRow>>({})
+  const [saving, setSaving] = useState(false)
+  const editing = Boolean(position)
+
+  const fadeAnim = useRef(new Animated.Value(0)).current
+  const scaleAnim = useRef(new Animated.Value(0.95)).current
+
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.timing(fadeAnim, { toValue: 1, duration: 220, useNativeDriver: true }),
+        Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 30, bounciness: 4 }),
+      ]).start()
+    } else {
+      Animated.parallel([
+        Animated.timing(fadeAnim, { toValue: 0, duration: 160, useNativeDriver: true }),
+        Animated.timing(scaleAnim, { toValue: 0.95, duration: 160, useNativeDriver: true }),
+      ]).start()
+    }
+  }, [visible])
+
+  useEffect(() => {
+    if (!visible) return
+    setStep('general')
+    setName(position?.name ?? '')
+    setDescription(position?.description ?? '')
+    setColor(position?.color ?? POSITION_COLORS[0])
+    setPermissions(Object.fromEntries((position?.permissions ?? []).map(p => [p.pageId, { ...p }])))
+  }, [position, visible])
+
+  const granted = Object.values(permissions).reduce((s, p) => s + Number(p.canView) + Number(p.canCreate) + Number(p.canEdit) + Number(p.canDelete), 0)
+  const affectedModules = useMemo(() => {
+    const activePageIds = new Set(Object.entries(permissions).filter(([, p]) => p.canView || p.canCreate || p.canEdit || p.canDelete).map(([id]) => id))
+    const activeMods = new Set<string>()
+    pages.filter(p => activePageIds.has(p.id)).forEach(p => activeMods.add(getModuleFromKey(p.key)))
+    return [...activeMods]
+  }, [permissions, pages])
+
+  const save = async () => {
+    if (!name.trim()) return Alert.alert('Required', 'Position name is required.')
+    setSaving(true)
+    try {
+      const saved = editing
+        ? await PositionService.update(position!.id, name.trim(), description.trim())
+        : await PositionService.create(name.trim(), description.trim())
+      const positionId = editing ? position!.id : String(saved.id)
+      await PositionService.setPermissions(positionId, Object.values(permissions).map(p => ({
+        pageId: p.pageId, canView: Boolean(p.canView), canCreate: Boolean(p.canCreate), canEdit: Boolean(p.canEdit), canDelete: Boolean(p.canDelete),
+      })))
+      await onSaved()
+      onClose()
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Failed to save position.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const steps: Array<{ key: BuilderStep; label: string }> = [
+    { key: 'general', label: '1. General' },
+    { key: 'permissions', label: '2. Permissions' },
+    { key: 'summary', label: '3. Summary' },
+  ]
+
+  const modalContent = (
+    <Animated.View style={{ opacity: fadeAnim, transform: [{ scale: isMobile ? 1 : scaleAnim }], flex: isMobile ? 1 : undefined, width: isMobile ? '100%' : '90%', maxWidth: isMobile ? undefined : 900, backgroundColor: colors.surface, borderRadius: isMobile ? 0 : 20, borderWidth: 1, borderColor: colors.border, overflow: 'hidden', maxHeight: isMobile ? undefined : height * 0.9 }}>
+      {/* Header */}
+      <View style={{ padding: 18, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: `${color}22`, alignItems: 'center', justifyContent: 'center' }}>
+          <ShieldCheck size={18} color={color} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.text, fontSize: 18, fontWeight: '900' }}>{editing ? 'Edit Position' : 'Create Position'}</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 1 }}>Define role permissions across all modules</Text>
+        </View>
+        <TouchableOpacity onPress={onClose} style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' }}>
+          <X size={16} color={colors.textSecondary} />
+        </TouchableOpacity>
+      </View>
+      {/* Step tabs */}
+      <TabBar tabs={steps} active={step} onChange={setStep} />
+      {/* Content */}
+      <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }}>
+        {step === 'general' && (
+          <FadeIn>
+            <View style={{ gap: 14 }}>
+              <View style={{ gap: 6 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary }}>POSITION NAME *</Text>
+                <TextInput value={name} onChangeText={setName} placeholder="e.g. Store Manager" placeholderTextColor={colors.textSecondary} style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, color: colors.text, fontSize: 14, fontWeight: '600', backgroundColor: colors.background }} />
+              </View>
+              <View style={{ gap: 6 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary }}>DESCRIPTION</Text>
+                <TextInput value={description} onChangeText={setDescription} placeholder="What is this position responsible for?" placeholderTextColor={colors.textSecondary} multiline style={{ minHeight: 100, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, color: colors.text, fontSize: 14, textAlignVertical: 'top', backgroundColor: colors.background }} />
+              </View>
+              <View style={{ gap: 8 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary }}>ACCENT COLOR</Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  {POSITION_COLORS.map(c => (
+                    <TouchableOpacity key={c} onPress={() => setColor(c)} style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: c, borderWidth: 3, borderColor: color === c ? colors.text : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+                      {color === c && <Check size={14} color="#fff" strokeWidth={3} />}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </View>
+          </FadeIn>
+        )}
+
+        {step === 'permissions' && (
+          <FadeIn>
+            <PermissionGrid pages={pages} permissions={permissions} setPermissions={setPermissions} />
+          </FadeIn>
+        )}
+
+        {step === 'summary' && (
+          <FadeIn>
+            <View style={{ gap: 14 }}>
+              <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 14, padding: 16, gap: 12 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: `${color}22`, alignItems: 'center', justifyContent: 'center' }}>
+                    <ShieldCheck size={20} color={color} />
+                  </View>
+                  <View>
+                    <Text style={{ color: colors.text, fontSize: 17, fontWeight: '900' }}>{name || 'Unnamed Position'}</Text>
+                    <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{description || 'No description'}</Text>
+                  </View>
+                </View>
+                <Divider />
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                  <View style={{ flex: 1, minWidth: 120, borderRadius: 10, padding: 12, backgroundColor: `${colors.primary}0F`, gap: 4 }}>
+                    <Text style={{ fontSize: 22, fontWeight: '900', color: colors.primary }}>{pages.length}</Text>
+                    <Text style={{ fontSize: 12, color: colors.textSecondary }}>Total Pages</Text>
+                  </View>
+                  <View style={{ flex: 1, minWidth: 120, borderRadius: 10, padding: 12, backgroundColor: '#16A34A0F', gap: 4 }}>
+                    <Text style={{ fontSize: 22, fontWeight: '900', color: '#16A34A' }}>{granted}</Text>
+                    <Text style={{ fontSize: 12, color: colors.textSecondary }}>Permissions Granted</Text>
+                  </View>
+                  <View style={{ flex: 1, minWidth: 120, borderRadius: 10, padding: 12, backgroundColor: '#F59E0B0F', gap: 4 }}>
+                    <Text style={{ fontSize: 22, fontWeight: '900', color: '#F59E0B' }}>{position?.users?.length ?? 0}</Text>
+                    <Text style={{ fontSize: 12, color: colors.textSecondary }}>Users Assigned</Text>
+                  </View>
+                </View>
+                {affectedModules.length > 0 && (
+                  <View style={{ gap: 6 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary }}>AFFECTED MODULES</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                      {affectedModules.map(m => <Badge key={m} label={m} tone={MODULE_COLORS[m] ?? '#6B7280'} />)}
+                    </View>
+                  </View>
+                )}
+                {granted === 0 && (
+                  <View style={{ flexDirection: 'row', gap: 8, backgroundColor: '#FEF3C7', borderRadius: 10, padding: 10, alignItems: 'center' }}>
+                    <ZapOff size={15} color="#F59E0B" />
+                    <Text style={{ fontSize: 12, color: '#92400E', fontWeight: '600' }}>No permissions granted — this role will have read-only access to nothing.</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          </FadeIn>
+        )}
+      </ScrollView>
+      {/* Footer */}
+      <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: colors.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          {steps.map((s, i) => <View key={s.key} style={{ width: step === s.key ? 20 : 6, height: 6, borderRadius: 3, backgroundColor: step === s.key ? colors.primary : colors.border }} />)}
+        </View>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          {step !== 'general' && (
+            <TouchableOpacity onPress={() => setStep(step === 'summary' ? 'permissions' : 'general')} style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border }}>
+              <Text style={{ fontWeight: '700', color: colors.text }}>Back</Text>
+            </TouchableOpacity>
+          )}
+          {step !== 'summary' ? (
+            <TouchableOpacity onPress={() => setStep(step === 'general' ? 'permissions' : 'summary')} style={{ paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10, backgroundColor: colors.primary }}>
+              <Text style={{ fontWeight: '700', color: '#fff' }}>Continue</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity onPress={save} disabled={saving} style={{ paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10, backgroundColor: saving ? colors.border : colors.primary }}>
+              <Text style={{ fontWeight: '700', color: saving ? colors.textSecondary : '#fff' }}>{saving ? 'Saving…' : 'Save Position'}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+    </Animated.View>
+  )
+
+  return (
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
+      <Animated.View style={{ flex: 1, backgroundColor: 'rgba(7,17,31,0.5)', justifyContent: isMobile ? 'flex-end' : 'center', alignItems: 'center', opacity: fadeAnim }}>
+        <TouchableOpacity style={{ position: 'absolute', inset: 0 }} onPress={onClose} activeOpacity={1} />
+        {modalContent}
+      </Animated.View>
+    </Modal>
+  )
+}
+
+// ─── Drawer: Overview Tab ─────────────────────────────────────────────────────
+function OverviewTab({ employee, positions, onPositionSaved }: { employee: EmployeeRow; positions: PositionRow[]; onPositionSaved: () => Promise<void> }) {
+  const { colors } = useTheme()
+  const [positionId, setPositionId] = useState<string | null>(employee.positionId ?? null)
+  const [posMenuOpen, setPosMenuOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const status = employeeStatus(employee)
+  const currentPosition = positions.find(p => p.id === (positionId ?? employee.positionId))
+
+  const assignPosition = async () => {
+    setSaving(true)
+    try {
+      await HrService.updateUserPosition(employee.id, positionId)
+      await onPositionSaved()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const kpis = [
+    { label: 'Department', value: employee.department?.label ?? 'Unassigned', color: '#2563EB' },
+    { label: 'Position', value: employee.position?.name ?? 'No position', color: '#7C3AED' },
+    { label: 'Role', value: employee.role ?? '—', color: '#F59E0B' },
+    { label: 'Status', value: status, color: status === 'Active' ? '#16A34A' : '#6B7280' },
+  ]
+
+  return (
+    <View style={{ gap: 14 }}>
+      {/* KPI Chips */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        {kpis.map(k => (
+          <View key={k.label} style={{ borderRadius: 10, padding: 10, flex: 1, minWidth: 100, borderWidth: 1, borderColor: `${k.color}30`, backgroundColor: `${k.color}0A` }}>
+            <Text style={{ fontSize: 10, fontWeight: '700', color: k.color, textTransform: 'uppercase', marginBottom: 3 }}>{k.label}</Text>
+            <Text style={{ fontSize: 13, fontWeight: '800', color: colors.text }}>{k.value}</Text>
+          </View>
+        ))}
+      </View>
+      {/* Profile details */}
+      <SectionCard title="Profile Details">
+        <InfoRow label="Full Name" value={safeName(employee)} />
+        <Divider />
+        <InfoRow label="Email" value={employee.email ?? '—'} mono />
+        <Divider />
+        <InfoRow label="Salary" value={employee.salary ? `₱${employee.salary.toLocaleString()}` : '—'} />
+        <Divider />
+        <InfoRow label="Member Since" value={formatDate(employee.createdAt)} />
+        <Divider />
+        <InfoRow label="Verification" value="Active" />
+      </SectionCard>
+      {/* Assign Position */}
+      <SectionCard title="Assign Position" subtitle="Changes take effect immediately">
+        <View style={{ gap: 10 }}>
+          <TouchableOpacity onPress={() => setPosMenuOpen(v => !v)} style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 11, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.background }}>
+            <Text style={{ color: currentPosition ? colors.text : colors.textSecondary, fontWeight: '600', fontSize: 13 }}>{currentPosition?.name ?? 'Select a position…'}</Text>
+            <ChevronDown size={15} color={colors.textSecondary} />
+          </TouchableOpacity>
+          {posMenuOpen && (
+            <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, overflow: 'hidden', backgroundColor: colors.surface }}>
+              <TouchableOpacity onPress={() => { setPositionId(null); setPosMenuOpen(false) }} style={{ padding: 11, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                <Text style={{ color: colors.textSecondary, fontSize: 13 }}>— Remove position</Text>
+              </TouchableOpacity>
+              {positions.map(p => (
+                <TouchableOpacity key={p.id} onPress={() => { setPositionId(p.id); setPosMenuOpen(false) }} style={{ padding: 11, borderTopWidth: 1, borderTopColor: colors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>{p.name}</Text>
+                  {positionId === p.id && <Check size={14} color={colors.primary} />}
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+          <TouchableOpacity onPress={assignPosition} disabled={saving} style={{ alignSelf: 'flex-start', backgroundColor: saving ? colors.border : colors.primary, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 9 }}>
+            <Text style={{ color: saving ? colors.textSecondary : '#fff', fontWeight: '700', fontSize: 13 }}>{saving ? 'Saving…' : 'Save Position'}</Text>
+          </TouchableOpacity>
+        </View>
+      </SectionCard>
+    </View>
+  )
+}
+
+// ─── Drawer: Permissions Tab ──────────────────────────────────────────────────
+function PermissionsTab({ employee, position, pages, onRefresh }: { employee: EmployeeRow; position: PositionRow | null; pages: PageRow[]; onRefresh: () => Promise<void> }) {
+  const { colors } = useTheme()
+  const [overrides, setOverrides] = useState<Record<string, PermissionRow>>({})
+  const [saving, setSaving] = useState(false)
+  const [changed, setChanged] = useState(false)
+  const hasPosition = Boolean(employee.positionId)
+
+  useEffect(() => {
+    if (hasPosition) return
+    PositionService.getUserPermissionOverrides(employee.id).then(rows => {
+      setOverrides(Object.fromEntries(rows.map(r => [r.pageId, { pageId: r.pageId, canView: !!r.canView, canCreate: !!r.canCreate, canEdit: !!r.canEdit, canDelete: !!r.canDelete }])))
+    })
+  }, [employee.id, hasPosition])
+
+  const saveOverrides = async () => {
+    setSaving(true)
+    try {
+      for (const [pageId, perm] of Object.entries(overrides)) {
+        await PositionService.setUserPermissionOverride(employee.id, pageId, {
+          canView: perm.canView, canCreate: perm.canCreate, canEdit: perm.canEdit, canDelete: perm.canDelete,
+        })
+      }
+      setChanged(false)
+      await onRefresh()
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Failed to save overrides.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Mode 1: User has a position — show inherited permissions (read-only)
+  if (hasPosition && position) {
+    const perms = position.permissions ?? []
+    const groups = groupPagesByModule(perms.map(p => ({ id: p.pageId, key: p.page?.key ?? p.pageId, label: p.page?.label ?? p.pageId })))
+    return (
+      <View style={{ gap: 14 }}>
+        <View style={{ flexDirection: 'row', gap: 8, backgroundColor: `${colors.primary}0F`, borderRadius: 10, padding: 12, alignItems: 'center' }}>
+          <Shield size={15} color={colors.primary} />
+          <Text style={{ flex: 1, fontSize: 13, color: colors.text, fontWeight: '600' }}>This user inherits permissions from their assigned position.</Text>
+        </View>
+        <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 14, gap: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <ShieldCheck size={16} color="#7C3AED" />
+            <Text style={{ color: colors.text, fontSize: 15, fontWeight: '900' }}>{position.name}</Text>
+          </View>
+          {position.description && <Text style={{ fontSize: 13, color: colors.textSecondary }}>{position.description}</Text>}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+            <Badge label={`${perms.length} permission rows`} tone="#7C3AED" />
+            <Badge label={`${perms.filter(p => p.canView).length} pages visible`} tone="#16A34A" />
+          </View>
+        </View>
+        {/* Permission breakdown per module */}
+        {Object.entries(groups).map(([mod, rows]) => (
+          <View key={mod} style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 12, overflow: 'hidden' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, backgroundColor: colors.background }}>
+              <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: MODULE_COLORS[mod] ?? '#6B7280' }} />
+              <Text style={{ flex: 1, fontSize: 13, fontWeight: '800', color: colors.text }}>{mod}</Text>
+            </View>
+            {rows.map((pageRef, i) => {
+              const perm = position.permissions?.find(p => p.pageId === pageRef.id)
+              if (!perm) return null
+              return (
+                <View key={pageRef.id} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 9, borderTopWidth: 1, borderTopColor: colors.border }}>
+                  <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: colors.text }}>{pageRef.label}</Text>
+                  <View style={{ flexDirection: 'row', gap: 5 }}>
+                    {PERM_KEYS.map(k => (
+                      <View key={k} style={{ paddingHorizontal: 6, paddingVertical: 3, borderRadius: 5, backgroundColor: perm[k] ? '#DCFCE7' : `${colors.border}60` }}>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: perm[k] ? '#15803D' : colors.textSecondary }}>{PERM_LABELS[k]}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )
+            })}
+          </View>
+        ))}
+      </View>
+    )
+  }
+
+  // Mode 2: No position — show full override grid
+  return (
+    <View style={{ gap: 14 }}>
+      <View style={{ flexDirection: 'row', gap: 8, backgroundColor: '#FEF3C70F', borderRadius: 10, padding: 12, alignItems: 'center', borderWidth: 1, borderColor: '#F59E0B30' }}>
+        <ShieldOff size={15} color="#F59E0B" />
+        <Text style={{ flex: 1, fontSize: 13, color: colors.text, fontWeight: '600' }}>No position assigned. You can set per-page permission overrides for this user.</Text>
+      </View>
+      <PermissionGrid pages={pages} permissions={overrides} setPermissions={(next) => { setOverrides(next); setChanged(true) }} />
+      {changed && (
+        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
+          <TouchableOpacity onPress={() => { setChanged(false) }} style={{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10, borderWidth: 1, borderColor: colors.border }}>
+            <Text style={{ fontWeight: '700', color: colors.text }}>Discard</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={saveOverrides} disabled={saving} style={{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10, backgroundColor: saving ? colors.border : colors.primary }}>
+            <Text style={{ fontWeight: '700', color: saving ? colors.textSecondary : '#fff' }}>{saving ? 'Saving…' : 'Save Overrides'}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  )
+}
+
+// ─── Drawer: Activity Tab ─────────────────────────────────────────────────────
+const ACTIVITY_ICONS: Record<string, any> = {
+  LOGIN: LogIn, LOGOUT: LogOut, CREATE: Plus, UPDATE: Edit3, DELETE: Trash2,
+  APPROVE: UserCheck, VIEW: Eye, DEFAULT: Activity,
+}
+const ACTIVITY_COLORS: Record<string, string> = {
+  LOGIN: '#16A34A', LOGOUT: '#6B7280', CREATE: '#2563EB', UPDATE: '#F59E0B',
+  DELETE: '#DC2626', APPROVE: '#0891B2', VIEW: '#7C3AED', DEFAULT: '#6B7280',
+}
+
+function ActivityTab({ auditLogs, employeeId }: { auditLogs: any[]; employeeId: number }) {
+  const { colors } = useTheme()
+  const logs = auditLogs.filter(l => String(l.userId) === String(employeeId)).slice(0, 40)
+
+  if (logs.length === 0) {
+    return <EmptyState icon={Activity} title="No activity yet" message="Actions performed by this user will appear here." />
   }
 
   return (
-    <View style={styles.container}>
-      {/* Meta summary cards */}
-      <View style={styles.header}>
-        <View style={styles.metaRow}>
-          <View style={styles.metaCard}>
-            <Text style={styles.metaValue}>{filtered.length}</Text>
-            <Text style={styles.metaLabel}>Total</Text>
+    <View style={{ gap: 2 }}>
+      {logs.map((log, i) => {
+        const action = (log.action ?? 'DEFAULT').toUpperCase()
+        const Icon = ACTIVITY_ICONS[action] ?? ACTIVITY_ICONS.DEFAULT
+        const toneColor = ACTIVITY_COLORS[action] ?? ACTIVITY_COLORS.DEFAULT
+        return (
+          <View key={log.id ?? i} style={{ flexDirection: 'row', gap: 12, paddingVertical: 10 }}>
+            {/* Timeline line */}
+            <View style={{ alignItems: 'center', width: 32 }}>
+              <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: `${toneColor}18`, alignItems: 'center', justifyContent: 'center' }}>
+                <Icon size={14} color={toneColor} strokeWidth={2} />
+              </View>
+              {i < logs.length - 1 && <View style={{ width: 1, flex: 1, backgroundColor: colors.border, marginTop: 4 }} />}
+            </View>
+            <View style={{ flex: 1, paddingTop: 4, paddingBottom: 10 }}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>{log.action ?? 'Action'}</Text>
+              {(log.recordType || log.recordId) && (
+                <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 1 }}>{[log.recordType, log.recordId && `#${log.recordId}`, log.pageKey].filter(Boolean).join(' · ')}</Text>
+              )}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 }}>
+                <Clock size={11} color={colors.textSecondary} />
+                <Text style={{ fontSize: 11, color: colors.textSecondary }}>{formatDateTime(log.createdAt)}</Text>
+              </View>
+            </View>
           </View>
-          <View style={styles.metaCard}>
-            <Text style={[styles.metaValue, { color: '#10B981' }]}>{activeCount}</Text>
-            <Text style={styles.metaLabel}>Active</Text>
-          </View>
-          <View style={styles.metaCard}>
-            <Text style={[styles.metaValue, { color: '#F59E0B' }]}>{onLeaveCount}</Text>
-            <Text style={styles.metaLabel}>On Leave</Text>
-          </View>
-          <View style={styles.metaCard}>
-            <Text style={styles.metaValue}>{uniqueDepts}</Text>
-            <Text style={styles.metaLabel}>Depts</Text>
-          </View>
-        </View>
-      </View>
+        )
+      })}
+    </View>
+  )
+}
 
-      {/* Monthly payroll banner */}
-      {filtered.length > 0 && (
-        <View style={styles.salaryCard}>
-          <View>
-            <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.6)', fontWeight: '700', letterSpacing: 0.8 }}>
-              {deptFilter === 'All' ? 'TOTAL MONTHLY PAYROLL' : `${deptFilter.toUpperCase()} PAYROLL`}
-            </Text>
-            <Text style={{ fontSize: 20, fontWeight: '900', color: '#fff', marginTop: 2 }}>
-              {formatPeso(totalSalary)}
-            </Text>
+// ─── Drawer: Devices Tab ──────────────────────────────────────────────────────
+function DevicesTab() {
+  const { colors } = useTheme()
+  // Device data is not yet captured by the backend - show placeholder UI
+  const placeholderDevices = [
+    { browser: 'Chrome 124', os: 'Windows 11', ip: '—', country: '—', lastSeen: 'Today', trusted: true, current: true },
+  ]
+  return (
+    <View style={{ gap: 10 }}>
+      {placeholderDevices.map((d, i) => (
+        <View key={i} style={{ borderWidth: 1, borderColor: d.current ? `${colors.primary}40` : colors.border, borderRadius: 12, padding: 14, gap: 10, backgroundColor: d.current ? `${colors.primary}06` : colors.surface }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Monitor size={18} color={d.current ? colors.primary : colors.textSecondary} />
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                <Text style={{ fontSize: 14, fontWeight: '800', color: colors.text }}>{d.browser}</Text>
+                {d.current && <Badge label="Current" tone={colors.primary} size="xs" />}
+                {d.trusted && <Badge label="Trusted" tone="#16A34A" size="xs" />}
+              </View>
+              <Text style={{ fontSize: 12, color: colors.textSecondary }}>{d.os}</Text>
+            </View>
           </View>
-          <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>
-            {filtered.length} employee{filtered.length !== 1 ? 's' : ''}
-          </Text>
-        </View>
-      )}
-
-      {/* Toolbar */}
-      <View style={styles.toolbar}>
-        <View style={styles.searchBox}>
-          <Search size={13} color={colors.textSecondary} strokeWidth={2} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search by name, role, department…"
-            placeholderTextColor={colors.textSecondary}
-            value={search}
-            onChangeText={setSearch}
-            returnKeyType="search"
-          />
-          {search.length > 0 && (
-            <TouchableOpacity onPress={() => setSearch('')}>
-              <X size={13} color={colors.textSecondary} strokeWidth={2} />
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>
+            <InfoRow label="IP" value={d.ip} />
+            <InfoRow label="Country" value={d.country} />
+            <InfoRow label="Last Seen" value={d.lastSeen} />
+          </View>
+          {!d.current && (
+            <TouchableOpacity style={{ alignSelf: 'flex-start', borderRadius: 8, borderWidth: 1, borderColor: '#DC262640', paddingHorizontal: 10, paddingVertical: 6 }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#DC2626' }}>Sign Out Device</Text>
             </TouchableOpacity>
           )}
         </View>
-
-        {/* View mode toggle — tablet and desktop only */}
-        {(isTablet || isDesktop) && (
-          <View style={styles.viewToggleRow}>
-            <TouchableOpacity
-              style={[
-                styles.viewToggleBtn,
-                viewMode === 'card' && { backgroundColor: colors.primary },
-              ]}
-              onPress={() => setViewModeP('card')}
-            >
-              <LayoutGrid
-                size={15}
-                color={viewMode === 'card' ? '#fff' : colors.textSecondary}
-                strokeWidth={2}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.viewToggleBtn,
-                viewMode === 'table' && { backgroundColor: colors.primary },
-              ]}
-              onPress={() => setViewModeP('table')}
-            >
-              <List
-                size={15}
-                color={viewMode === 'table' ? '#fff' : colors.textSecondary}
-                strokeWidth={2}
-              />
-            </TouchableOpacity>
-          </View>
-        )}
-
-        <TouchableOpacity
-          style={[
-            styles.iconBtn,
-            filterOpen && { backgroundColor: colors.primary, borderColor: colors.primary },
-          ]}
-          onPress={() => setFilterOpenP(!filterOpen)}
-        >
-          <Filter size={16} color={filterOpen ? '#fff' : colors.textSecondary} strokeWidth={2} />
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.addBtn} onPress={() => setAddVisible(true)}>
-          <Plus size={18} color="#fff" strokeWidth={2.5} />
-        </TouchableOpacity>
+      ))}
+      <View style={{ borderRadius: 10, padding: 12, backgroundColor: `${colors.border}40`, alignItems: 'center' }}>
+        <Text style={{ fontSize: 12, color: colors.textSecondary, textAlign: 'center' }}>Full device management is available in the Security Center.</Text>
       </View>
+    </View>
+  )
+}
 
-      {/* Filter panel */}
-      {filterOpen && (
-        <View style={styles.filterPanel}>
-          <View>
-            <Text style={styles.filterLabel}>DEPARTMENT</Text>
-            <View style={styles.pillRow}>
-              {DEPARTMENTS.map((dept) => (
-                <TouchableOpacity
-                  key={dept}
-                  style={[
-                    styles.pill,
-                    deptFilter === dept && styles.pillActive,
-                    dept !== 'All' && deptFilter !== dept && { borderColor: deptMap[dept] ?? colors.border },
-                  ]}
-                  onPress={() => setDeptFilterP(dept)}
-                >
-                  <Text
-                    style={[
-                      styles.pillText,
-                      deptFilter === dept && styles.pillTextAct,
-                      dept !== 'All' && deptFilter !== dept && { color: deptMap[dept] ?? colors.text },
-                    ]}
-                  >
-                    {dept}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+// ─── Drawer: Audit Tab ────────────────────────────────────────────────────────
+function AuditTab({ auditLogs, employeeId }: { auditLogs: any[]; employeeId: number }) {
+  const { colors } = useTheme()
+  const { width } = useWindowDimensions()
+  const isWide = width >= 1024
+  const [query, setQuery] = useState('')
+  const logs = auditLogs
+    .filter(l => String(l.userId) === String(employeeId))
+    .filter(l => !query || `${l.action} ${l.recordType} ${l.pageKey}`.toLowerCase().includes(query.toLowerCase()))
+    .slice(0, 50)
+
+  return (
+    <View style={{ gap: 12 }}>
+      <View style={{ height: 36, borderWidth: 1, borderColor: colors.border, borderRadius: 10, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, backgroundColor: colors.background }}>
+        <Search size={13} color={colors.textSecondary} />
+        <TextInput value={query} onChangeText={setQuery} placeholder="Search audit events…" placeholderTextColor={colors.textSecondary} style={{ flex: 1, color: colors.text, fontSize: 13, marginLeft: 6 }} />
+      </View>
+      {logs.length === 0 ? (
+        <EmptyState icon={ShieldCheck} title="No audit logs" message="Audit events for this user will appear here." />
+      ) : isWide ? (
+        <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 12, overflow: 'hidden' }}>
+          <View style={{ flexDirection: 'row', padding: 10, backgroundColor: colors.background }}>
+            {['Date', 'Action', 'Entity', 'Old', 'New'].map(h => (
+              <Text key={h} style={{ flex: 1, fontSize: 11, fontWeight: '700', color: colors.textSecondary, textTransform: 'uppercase' }}>{h}</Text>
+            ))}
           </View>
-          <View>
-            <Text style={styles.filterLabel}>STATUS</Text>
-            <View style={styles.pillRow}>
-              {(['All', ...ALL_STATUSES] as (EmployeeStatus | 'All')[]).map((s) => (
-                <TouchableOpacity
-                  key={s}
-                  style={[styles.pill, statusFilter === s && styles.pillActive]}
-                  onPress={() => setStatusFilterP(s)}
-                >
-                  <Text style={[styles.pillText, statusFilter === s && styles.pillTextAct]}>
-                    {s}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+          {logs.map((log, i) => (
+            <View key={log.id ?? i} style={{ flexDirection: 'row', padding: 10, borderTopWidth: 1, borderTopColor: colors.border }}>
+              <Text style={{ flex: 1, fontSize: 12, color: colors.textSecondary }}>{formatDateTime(log.createdAt)}</Text>
+              <Text style={{ flex: 1, fontSize: 12, fontWeight: '700', color: colors.text }}>{log.action}</Text>
+              <Text style={{ flex: 1, fontSize: 12, color: colors.textSecondary }}>{log.recordType ?? '—'}</Text>
+              <Text style={{ flex: 1, fontSize: 12, color: colors.textSecondary }} numberOfLines={1}>{log.oldValue ?? '—'}</Text>
+              <Text style={{ flex: 1, fontSize: 12, color: colors.textSecondary }} numberOfLines={1}>{log.newValue ?? '—'}</Text>
             </View>
-          </View>
+          ))}
+        </View>
+      ) : (
+        <View style={{ gap: 8 }}>
+          {logs.map((log, i) => (
+            <View key={log.id ?? i} style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, gap: 4 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: colors.text }}>{log.action}</Text>
+                <Text style={{ fontSize: 11, color: colors.textSecondary }}>{formatDateTime(log.createdAt)}</Text>
+              </View>
+              <Text style={{ fontSize: 12, color: colors.textSecondary }}>{[log.recordType, log.recordId && `#${log.recordId}`].filter(Boolean).join(' ')}</Text>
+            </View>
+          ))}
         </View>
       )}
+    </View>
+  )
+}
 
-      {/* Result count */}
-      <Text style={styles.resultCount}>
-        {filtered.length} employee{filtered.length !== 1 ? 's' : ''}
-        {search ? ` matching "${search}"` : ''}
-        {deptFilter !== 'All' ? ` · ${deptFilter}` : ''}
-        {statusFilter !== 'All' ? ` · ${statusFilter}` : ''}
-      </Text>
+// ─── Employee Drawer ──────────────────────────────────────────────────────────
+const DRAWER_TABS: Array<{ key: DrawerTab; label: string; icon: any }> = [
+  { key: 'overview', label: 'Overview', icon: UserCheck },
+  { key: 'permissions', label: 'Permissions', icon: ShieldCheck },
+  { key: 'activity', label: 'Activity', icon: Activity },
+  { key: 'devices', label: 'Devices', icon: Monitor },
+  { key: 'audit', label: 'Audit', icon: ShieldCheck },
+]
 
-      {/* ── TABLE VIEW (desktop + tablet when toggled) ── */}
-      {(isTablet || isDesktop) && viewMode === 'table' ? (
-        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-          <TableView
-            data={filtered}
-            onRowPress={(emp) => { setSelectedEmp(emp); setDetailVisible(true); }}
-            deptMap={deptMap}
-            colors={colors}
-          />
-          <View style={{ height: 40 }} />
-        </ScrollView>
-      ) : (
-        /* ── CARD VIEW ── */
-        <FlatList
-          data={filtered}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={[
-            styles.listContent,
-            isDesktop && { paddingHorizontal: 16, gap: 0 },
-            filtered.length === 0 && { flex: 1 },
-          ]}
-          showsVerticalScrollIndicator={false}
-          numColumns={isDesktop ? 3 : isTablet ? 2 : 1}
-          key={isDesktop ? 'desktop-3' : isTablet ? 'tablet-2' : 'mobile-1'}
-          columnWrapperStyle={
-            isDesktop
-              ? { gap: 12, marginBottom: 12 }
-              : isTablet
-                ? { gap: 10 }
-                : undefined
-          }
-          ListEmptyComponent={
-            <View style={{ flex: 1, alignItems: 'center', paddingTop: 60 }}>
-              <Users size={48} color={colors.border} strokeWidth={1} />
-              <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 12 }}>
-                No employees found
-              </Text>
+function EmployeeDrawer({
+  employee, positions, pages, auditLogs, onClose, onRefresh,
+}: {
+  employee: EmployeeRow | null; positions: PositionRow[]; pages: PageRow[]
+  auditLogs: any[]; onClose: () => void; onRefresh: () => Promise<void>
+}) {
+  const { colors } = useTheme()
+  const { width } = useWindowDimensions()
+  const isDesktop = width >= 1024
+  const drawerWidth = isDesktop ? 580 : width
+  const [tab, setTab] = useState<DrawerTab>('overview')
+
+  const slideX = useRef(new Animated.Value(drawerWidth)).current
+  const fadeOverlay = useRef(new Animated.Value(0)).current
+
+  useEffect(() => {
+    if (employee) {
+      setTab('overview')
+      Animated.parallel([
+        Animated.spring(slideX, { toValue: 0, useNativeDriver: true, speed: 30, bounciness: 3 }),
+        Animated.timing(fadeOverlay, { toValue: 1, duration: 200, useNativeDriver: true }),
+      ]).start()
+    } else {
+      Animated.parallel([
+        Animated.timing(slideX, { toValue: drawerWidth, duration: 220, useNativeDriver: true }),
+        Animated.timing(fadeOverlay, { toValue: 0, duration: 180, useNativeDriver: true }),
+      ]).start()
+    }
+  }, [employee])
+
+  const position = employee ? positions.find(p => p.id === employee.positionId) ?? null : null
+  const status = employee ? employeeStatus(employee) : 'Inactive'
+
+  return (
+    <Modal visible={!!employee} transparent animationType="none" onRequestClose={onClose}>
+      <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'flex-end' }}>
+        {/* Overlay */}
+        <Animated.View style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(7,17,31,0.45)', opacity: fadeOverlay }}>
+          <TouchableOpacity style={{ flex: 1 }} onPress={onClose} activeOpacity={1} />
+        </Animated.View>
+        {/* Drawer */}
+        <Animated.View style={{ width: drawerWidth, backgroundColor: colors.surface, borderLeftWidth: isDesktop ? 1 : 0, borderLeftColor: colors.border, transform: [{ translateX: slideX }] }}>
+          {employee ? (
+            <View style={{ flex: 1 }}>
+              {/* Employee header */}
+              <View style={{ backgroundColor: colors.background, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                <View style={{ padding: 16, flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+                  <EmployeeAvatar employee={employee} size={48} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.text, fontSize: 18, fontWeight: '900' }} numberOfLines={1}>{safeName(employee)}</Text>
+                    <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 1 }} numberOfLines={1}>{employee.email ?? 'No email'}</Text>
+                    <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
+                      {employee.role && <Badge label={employee.role} tone="#F59E0B" size="xs" />}
+                      {employee.department?.label && <Badge label={employee.department.label} tone="#2563EB" size="xs" />}
+                      {employee.position?.name && <Badge label={employee.position.name} tone="#7C3AED" size="xs" />}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <StatusDot active={status === 'Active'} />
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: status === 'Active' ? '#16A34A' : '#6B7280' }}>{status}</Text>
+                      </View>
+                    </View>
+                  </View>
+                  <TouchableOpacity onPress={onClose} style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}>
+                    <X size={15} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+                {/* Modern tabs */}
+                <TabBar tabs={DRAWER_TABS} active={tab} onChange={setTab} scrollable />
+              </View>
+              {/* Tab content */}
+              <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+                {tab === 'overview' && (
+                  <FadeIn>
+                    <OverviewTab employee={employee} positions={positions} onPositionSaved={onRefresh} />
+                  </FadeIn>
+                )}
+                {tab === 'permissions' && (
+                  <FadeIn>
+                    <PermissionsTab employee={employee} position={position} pages={pages} onRefresh={onRefresh} />
+                  </FadeIn>
+                )}
+                {tab === 'activity' && (
+                  <FadeIn>
+                    <ActivityTab auditLogs={auditLogs} employeeId={employee.id} />
+                  </FadeIn>
+                )}
+                {tab === 'devices' && (
+                  <FadeIn>
+                    <DevicesTab />
+                  </FadeIn>
+                )}
+                {tab === 'audit' && (
+                  <FadeIn>
+                    <AuditTab auditLogs={auditLogs} employeeId={employee.id} />
+                  </FadeIn>
+                )}
+              </ScrollView>
             </View>
-          }
-          renderItem={({ item }) => {
-            if (isDesktop) {
-              return (
-                <DesktopEmployeeCard
-                  item={item}
-                  deptMap={deptMap}
-                  colors={colors}
-                  onPress={() => { setSelectedEmp(item); setDetailVisible(true); }}
+          ) : null}
+        </Animated.View>
+      </View>
+    </Modal>
+  )
+}
+
+// ─── Add Employee Modal ───────────────────────────────────────────────────────
+function AddEmployeeModal({ visible, positions, onClose, onSaved }: { visible: boolean; positions: PositionRow[]; onClose: () => void; onSaved: () => Promise<void> }) {
+  const { colors } = useTheme()
+  const [fullname, setFullname] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('Welcome123!')
+  const [positionId, setPositionId] = useState<string | undefined>()
+  const [saving, setSaving] = useState(false)
+  const fadeAnim = useRef(new Animated.Value(0)).current
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, { toValue: visible ? 1 : 0, duration: 200, useNativeDriver: true }).start()
+  }, [visible])
+
+  const save = async () => {
+    if (!fullname.trim() || !email.trim()) return Alert.alert('Required', 'Name and email are required.')
+    setSaving(true)
+    try {
+      await HrService.createHRUser({ fullname: fullname.trim(), email: email.trim(), password, positionId, role: 'STAFF' })
+      await onSaved()
+      onClose()
+      setFullname(''); setEmail(''); setPositionId(undefined)
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Failed to create employee.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
+      <Animated.View style={{ flex: 1, backgroundColor: 'rgba(7,17,31,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20, opacity: fadeAnim }}>
+        <TouchableOpacity style={{ position: 'absolute', inset: 0 }} onPress={onClose} activeOpacity={1} />
+        <View style={{ width: '100%', maxWidth: 520, backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' }}>
+          <View style={{ padding: 18, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: `${colors.primary}18`, alignItems: 'center', justifyContent: 'center' }}>
+              <UserPlus size={17} color={colors.primary} />
+            </View>
+            <Text style={{ flex: 1, color: colors.text, fontSize: 17, fontWeight: '900' }}>Add Employee</Text>
+            <TouchableOpacity onPress={onClose}><X size={18} color={colors.textSecondary} /></TouchableOpacity>
+          </View>
+          <View style={{ padding: 18, gap: 12 }}>
+            <View style={{ gap: 5 }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary }}>FULL NAME *</Text>
+              <TextInput value={fullname} onChangeText={setFullname} placeholder="e.g. Maria Santos" placeholderTextColor={colors.textSecondary} style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 11, color: colors.text, fontSize: 13, backgroundColor: colors.background }} />
+            </View>
+            <View style={{ gap: 5 }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary }}>EMAIL ADDRESS *</Text>
+              <TextInput value={email} onChangeText={setEmail} placeholder="maria@company.com" placeholderTextColor={colors.textSecondary} autoCapitalize="none" keyboardType="email-address" style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 11, color: colors.text, fontSize: 13, backgroundColor: colors.background }} />
+            </View>
+            <View style={{ gap: 5 }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary }}>TEMPORARY PASSWORD</Text>
+              <TextInput value={password} onChangeText={setPassword} style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 11, color: colors.text, fontSize: 13, backgroundColor: colors.background }} />
+            </View>
+            <View style={{ gap: 5 }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary }}>POSITION (OPTIONAL)</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  {positions.map(p => (
+                    <TouchableOpacity key={p.id} onPress={() => setPositionId(positionId === p.id ? undefined : p.id)} style={{ borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: positionId === p.id ? colors.primary : colors.border, backgroundColor: positionId === p.id ? `${colors.primary}14` : colors.surface }}>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: positionId === p.id ? colors.primary : colors.textSecondary }}>{p.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+            </View>
+          </View>
+          <View style={{ padding: 14, borderTopWidth: 1, borderTopColor: colors.border, flexDirection: 'row', gap: 8, justifyContent: 'flex-end' }}>
+            <TouchableOpacity onPress={onClose} style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border }}>
+              <Text style={{ fontWeight: '700', color: colors.text }}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={save} disabled={saving} style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: saving ? colors.border : colors.primary }}>
+              <Text style={{ fontWeight: '700', color: saving ? colors.textSecondary : '#fff' }}>{saving ? 'Creating…' : 'Create Employee'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Animated.View>
+    </Modal>
+  )
+}
+
+// ─── Position Cards ───────────────────────────────────────────────────────────
+function PositionCard({ position, onEdit, onDuplicate, onDelete, onViewUsers }: {
+  position: PositionRow
+  onEdit: () => void
+  onDuplicate: () => void
+  onDelete: () => void
+  onViewUsers: () => void
+}) {
+  const { colors } = useTheme()
+  const [menuOpen, setMenuOpen] = useState(false)
+  const toneColor = position.color ?? POSITION_COLORS[0]
+  const pageCount = position.permissions?.filter(p => p.canView).length ?? 0
+  const permCount = position.permissions?.length ?? 0
+  const userCount = position.users?.length ?? 0
+
+  return (
+    <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 14, overflow: 'hidden', backgroundColor: colors.surface }}>
+      <View style={{ height: 3, backgroundColor: toneColor }} />
+      <View style={{ padding: 14, gap: 10 }}>
+        {/* Title row */}
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+          <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: `${toneColor}18`, alignItems: 'center', justifyContent: 'center' }}>
+            <ShieldCheck size={17} color={toneColor} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: colors.text, fontSize: 14, fontWeight: '900' }} numberOfLines={1}>{position.name}</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }} numberOfLines={2}>{position.description || 'No description'}</Text>
+          </View>
+          <View style={{ position: 'relative' }}>
+            <TouchableOpacity onPress={() => setMenuOpen(v => !v)} style={{ width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}>
+              <MoreHorizontal size={15} color={colors.textSecondary} />
+            </TouchableOpacity>
+            {menuOpen && (
+              <View style={{ position: 'absolute', top: 34, right: 0, zIndex: 10, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 10, minWidth: 150, overflow: 'hidden' }}>
+                {[
+                  { label: 'Edit', icon: Edit3, color: colors.text, action: onEdit },
+                  { label: 'Duplicate', icon: Copy, color: colors.text, action: onDuplicate },
+                  { label: 'View Users', icon: Users, color: colors.text, action: onViewUsers },
+                  { label: 'Archive', icon: Archive, color: '#F59E0B', action: () => {} },
+                  { label: 'Delete', icon: Trash2, color: '#DC2626', action: onDelete },
+                ].map(item => (
+                  <TouchableOpacity key={item.label} onPress={() => { item.action(); setMenuOpen(false) }} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: item.label !== 'Edit' ? 1 : 0, borderTopColor: colors.border }}>
+                    <item.icon size={14} color={item.color} />
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: item.color }}>{item.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+        </View>
+        {/* Stats */}
+        <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+          <Badge label={`${userCount} ${userCount === 1 ? 'user' : 'users'}`} tone="#2563EB" size="xs" />
+          <Badge label={`${pageCount} pages`} tone="#16A34A" size="xs" />
+          <Badge label={`${permCount} perms`} tone="#7C3AED" size="xs" />
+        </View>
+        {/* Last updated */}
+        {position.updatedAt && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Clock size={10} color={colors.textSecondary} />
+            <Text style={{ fontSize: 11, color: colors.textSecondary }}>Updated {formatDate(position.updatedAt)}</Text>
+          </View>
+        )}
+        {/* Quick actions */}
+        <View style={{ flexDirection: 'row', gap: 8, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10, marginTop: 2 }}>
+          <TouchableOpacity onPress={onEdit} style={{ flex: 1, height: 32, borderRadius: 8, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text }}>Edit</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onViewUsers} style={{ flex: 1, height: 32, borderRadius: 8, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text }}>Users</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  )
+}
+
+// ─── Main HRScreen ────────────────────────────────────────────────────────────
+export default function HRScreen() {
+  const { colors } = useTheme()
+  const { user } = useAuth()
+  const { width } = useWindowDimensions()
+  const isDesktop = width >= 1100
+  const isTablet = width >= 768
+
+  const [prefs, setPrefsState] = useState(defaultPrefs)
+  const [search, setSearch] = useState('')
+  const [employees, setEmployees] = useState<EmployeeRow[]>([])
+  const [positions, setPositions] = useState<PositionRow[]>([])
+  const [pages, setPages] = useState<PageRow[]>([])
+  const [auditLogs, setAuditLogs] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(25)
+  const [selected, setSelected] = useState<EmployeeRow | null>(null)
+  const [positionBuilderOpen, setPositionBuilderOpen] = useState(false)
+  const [editingPosition, setEditingPosition] = useState<PositionRow | null>(null)
+  const [addEmployeeOpen, setAddEmployeeOpen] = useState(false)
+
+  const setPrefs = useCallback((next: Partial<typeof defaultPrefs>) => {
+    setPrefsState(cur => {
+      const merged = { ...cur, ...next }
+      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(merged)).catch(() => {})
+      return merged
+    })
+  }, [])
+
+  useEffect(() => {
+    AsyncStorage.getItem(STORAGE_KEY).then(saved => {
+      if (saved) setPrefsState({ ...defaultPrefs, ...JSON.parse(saved) })
+    }).catch(() => {})
+  }, [])
+
+  const load = useCallback(async () => {
+    try {
+      setError(null)
+      const [staff, posRows, pageRows, logs] = await Promise.all([
+        HrService.getAllStaffs(user?.orgId),
+        PositionService.getAll(),
+        PositionService.getPages((user?.org?.roles ?? ['SELLER']) as any),
+        user?.orgId ? AuditService.getLogs(user.orgId, { dateFrom: prefs.dateRange.startDate, dateTo: prefs.dateRange.endDate }, { page: 1, pageSize: 200 }) : Promise.resolve([]),
+      ])
+      setEmployees(staff ?? [])
+      setPositions(posRows ?? [])
+      setPages((pageRows ?? []).map((p: any) => ({ id: String(p.id), key: p.key, label: p.label, sortOrder: p.sortOrder })))
+      setAuditLogs(logs ?? [])
+    } catch (e: any) {
+      setError(e?.message ?? 'Unable to load HR workspace.')
+    } finally {
+      setLoading(false)
+    }
+  }, [prefs.dateRange.startDate, prefs.dateRange.endDate, user?.org?.roles, user?.orgId])
+
+  useEffect(() => { load() }, [load])
+
+  const refresh = useCallback(async () => {
+    setRefreshing(true)
+    await load()
+    setRefreshing(false)
+  }, [load])
+
+  const departments = useMemo(() => [...new Set(employees.map(e => e.department?.label ?? 'Unassigned'))], [employees])
+
+  const kpis = useMemo(() => {
+    const active = employees.filter(e => employeeStatus(e) === 'Active').length
+    const recent = employees.filter(e => e.createdAt && Date.now() - new Date(e.createdAt).getTime() < 86400000 * 30).length
+    const overrides = auditLogs.filter(l => l.recordType === 'UserPermissionOverride').length
+    return { total: employees.length, active, inactive: employees.length - active, positions: positions.length, recent, overrides }
+  }, [auditLogs, employees, positions.length])
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    let rows = employees.filter(e => {
+      const hay = `${safeName(e)} ${e.email ?? ''} ${e.role ?? ''} ${e.department?.label ?? ''} ${e.position?.name ?? ''}`.toLowerCase()
+      const created = e.createdAt ? new Date(e.createdAt).getTime() : 0
+      const inRange = !created || (created >= new Date(prefs.dateRange.startDate).getTime() && created <= new Date(prefs.dateRange.endDate).getTime())
+      return (!q || hay.includes(q))
+        && (prefs.status === 'ALL' || employeeStatus(e) === prefs.status)
+        && (prefs.department === 'ALL' || (e.department?.label ?? 'Unassigned') === prefs.department)
+        && (prefs.position === 'ALL' || e.positionId === prefs.position)
+        && inRange
+    })
+    rows = [...rows].sort((a, b) => {
+      if (prefs.sort === 'newest') return new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
+      if (prefs.sort === 'department') return (a.department?.label ?? '').localeCompare(b.department?.label ?? '')
+      if (prefs.sort === 'position') return (a.position?.name ?? '').localeCompare(b.position?.name ?? '')
+      if (prefs.sort === 'status') return employeeStatus(a).localeCompare(employeeStatus(b))
+      return safeName(a).localeCompare(safeName(b))
+    })
+    return rows
+  }, [employees, prefs, search])
+
+  const paged = filtered.slice((page - 1) * pageSize, page * pageSize)
+
+  const statWidthPct = isDesktop ? '13.4%' : isTablet ? '31%' : '48%'
+
+  const exportCsv = () => {
+    const rows = filtered.map(e => [safeName(e), e.email ?? '', e.department?.label ?? '', e.position?.name ?? '', e.role ?? '', employeeStatus(e), e.createdAt ?? ''])
+    const csv = [['Employee', 'Email', 'Department', 'Position', 'Role', 'Status', 'Joined'], ...rows]
+      .map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))
+      .join('\n')
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = `hr-${new Date().toISOString().slice(0, 10)}.csv`
+      a.click(); URL.revokeObjectURL(url)
+    } else {
+      Alert.alert('Export ready', 'CSV export is available on web.')
+    }
+  }
+
+  const openCreatePosition = () => { setEditingPosition(null); setPositionBuilderOpen(true) }
+  const openEditPosition = (pos: PositionRow) => { setEditingPosition(pos); setPositionBuilderOpen(true) }
+
+  const duplicatePosition = async (pos: PositionRow) => {
+    const created = await PositionService.create(`${pos.name} Copy`, pos.description ?? '')
+    if (pos.permissions?.length) {
+      await PositionService.setPermissions(String(created.id), pos.permissions.map(p => ({
+        pageId: p.pageId, canView: p.canView, canCreate: p.canCreate, canEdit: p.canEdit, canDelete: p.canDelete,
+      })))
+    }
+    await refresh()
+  }
+
+  const deletePosition = (pos: PositionRow) => {
+    if ((pos.users?.length ?? 0) > 0) return Alert.alert('Cannot delete', 'Reassign employees before deleting this position.')
+    Alert.alert('Delete position?', `This will permanently delete "${pos.name}".`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => { await PositionService.delete(pos.id); await refresh() } },
+    ])
+  }
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <ScrollView
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} />}
+        contentContainerStyle={{ width: '100%', alignSelf: 'center', paddingHorizontal: isDesktop ? 28 : 16, paddingVertical: 20, gap: 18 }}
+      >
+        {/* Page header */}
+        <View style={{ flexDirection: isDesktop ? 'row' : 'column', justifyContent: 'space-between', alignItems: isDesktop ? 'center' : 'flex-start', gap: 12 }}>
+          <View>
+            <Text style={{ color: colors.text, fontSize: isDesktop ? 28 : 22, fontWeight: '900', letterSpacing: -0.5 }}>HR Workspace</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: 13, marginTop: 3 }}>Workforce management · Access control · Positions · Activity</Text>
+          </View>
+          <TouchableOpacity onPress={refresh} style={{ flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: colors.surface, borderRadius: 10, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 8 }}>
+            <RefreshCcw size={14} color={colors.textSecondary} />
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>Refresh</Text>
+          </TouchableOpacity>
+        </View>
+
+        {loading ? <LoadingRows /> : error ? (
+          <EmptyState icon={ZapOff} title="Unable to load HR" message={error} />
+        ) : (
+          <>
+            {/* KPI Stats */}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+              <StatCard title="Total Employees" value={kpis.total} subtitle="All workforce" accent="#2563EB" icon={Users} widthPct={statWidthPct} />
+              <StatCard title="Active" value={kpis.active} subtitle="Currently enabled" accent="#16A34A" icon={UserCheck} widthPct={statWidthPct} />
+              <StatCard title="Inactive" value={kpis.inactive} subtitle="Needs review" accent="#6B7280" icon={Users} widthPct={statWidthPct} />
+              <StatCard title="Positions" value={kpis.positions} subtitle="RBAC roles" accent="#7C3AED" icon={BriefcaseBusiness} widthPct={statWidthPct} />
+              <StatCard title="Recent Hires" value={kpis.recent} subtitle="Last 30 days" accent="#0EA5E9" icon={UserPlus} widthPct={statWidthPct} />
+              <StatCard title="Perm Overrides" value={kpis.overrides} subtitle="Audit events" accent="#DC2626" icon={KeyRound} widthPct={statWidthPct} />
+            </View>
+
+            {/* Toolbar */}
+            <HRToolbar
+              search={search} setSearch={setSearch} prefs={prefs} setPrefs={setPrefs}
+              departments={departments} positions={positions}
+              onAddEmployee={() => setAddEmployeeOpen(true)}
+              onCreatePosition={openCreatePosition}
+              onExport={exportCsv}
+            />
+
+            {/* Workforce Table / Cards */}
+            <SectionCard
+              title={`Workforce  ·  ${filtered.length} employees`}
+              subtitle={prefs.viewMode === 'table' ? 'Click any row to open the employee details panel' : 'Tap any card to inspect details'}
+              padded={false}
+            >
+              <View style={{ padding: 16 }}>
+                {filtered.length === 0 ? (
+                  <EmptyState icon={Users} title="No employees found" message="Try adjusting your filters or adding an employee." />
+                ) : prefs.viewMode === 'table' ? (
+                  <EmployeeTable employees={paged} onSelect={setSelected} />
+                ) : (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+                    {paged.map((e, i) => (
+                      <FadeIn key={e.id} delay={i * 16} style={{ flexGrow: 1, flexBasis: isTablet ? 280 : '100%' as any }}>
+                        <EmployeeCard employee={e} onSelect={setSelected} />
+                      </FadeIn>
+                    ))}
+                  </View>
+                )}
+              </View>
+              <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingHorizontal: 16 }}>
+                <CatalogPagination
+                  page={page} pageSize={pageSize} totalItems={filtered.length}
+                  onPageChange={p => { setPage(p) }}
+                  onPageSizeChange={s => { setPageSize(s); setPage(1) }}
                 />
-              );
-            }
-            return (
-              <EmployeeCard
-                item={item}
-                isTablet={isTablet}
-                deptMap={deptMap}
-                colors={colors}
-                onPress={() => { setSelectedEmp(item); setDetailVisible(true); }}
-              />
-            );
-          }}
-        />
+              </View>
+            </SectionCard>
+
+            {/* Position Management */}
+            <SectionCard
+              title="Position Management"
+              subtitle="Define role-based permission sets and assign them to employees"
+              action={
+                <TouchableOpacity onPress={openCreatePosition} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.primary, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 }}>
+                  <Plus size={14} color="#fff" />
+                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>New Position</Text>
+                </TouchableOpacity>
+              }
+            >
+              {positions.length === 0 ? (
+                <EmptyState icon={ShieldCheck} title="No positions yet" message="Create your first position to define employee permission sets." />
+              ) : (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+                  {positions.map((pos, i) => (
+                    <FadeIn key={pos.id} delay={i * 20} style={{ flexGrow: 1, flexBasis: isDesktop ? 260 : isTablet ? 220 : '100%' as any }}>
+                      <PositionCard
+                        position={pos}
+                        onEdit={() => openEditPosition(pos)}
+                        onDuplicate={() => duplicatePosition(pos)}
+                        onDelete={() => deletePosition(pos)}
+                        onViewUsers={() => { setPrefs({ position: pos.id }) }}
+                      />
+                    </FadeIn>
+                  ))}
+                </View>
+              )}
+            </SectionCard>
+          </>
+        )}
+      </ScrollView>
+
+      {/* FAB — mobile */}
+      {!isDesktop && (
+        <TouchableOpacity
+          onPress={() => setAddEmployeeOpen(true)}
+          style={{ position: 'absolute', right: 18, bottom: 24, width: 54, height: 54, borderRadius: 16, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', shadowColor: colors.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.35, shadowRadius: 16, elevation: 6 }}
+        >
+          <Plus size={22} color="#fff" strokeWidth={2.5} />
+        </TouchableOpacity>
       )}
 
-      {/* Modals */}
-      <EmployeeDetailModal
-        employee={selectedEmp}
-        visible={detailVisible}
-        deptMap={deptMap}
-        positions={positions}
-        colors={colors}
-        onClose={() => setDetailVisible(false)}
-        onUpdateStatus={handleUpdateStatus}
-        onSaveEmployee={handleSaveEmployee}   // ← was missing, caused the error
-      />
-      <AddEmployeeModal
-        visible={addVisible}
-        onClose={() => setAddVisible(false)}
-        onAdd={handleAddEmployee}
-        deptObjects={departments}
-        roleOptions={positions}
-        positions={positions}
-        colors={colors}
-      />
+      <EmployeeDrawer employee={selected} positions={positions} pages={pages} auditLogs={auditLogs} onClose={() => setSelected(null)} onRefresh={refresh} />
+      <PositionBuilder visible={positionBuilderOpen} pages={pages} position={editingPosition} onClose={() => setPositionBuilderOpen(false)} onSaved={refresh} />
+      <AddEmployeeModal visible={addEmployeeOpen} positions={positions} onClose={() => setAddEmployeeOpen(false)} onSaved={refresh} />
     </View>
-  );
+  )
 }
