@@ -15,8 +15,6 @@ export default function ProtectedRoute({
   const router = useRouter();
   const pathname = usePathname();
 
-  // ✅ Only include dependencies that actually change
-  // router object reference doesn't matter for route changes
   useEffect(() => {
     if (isLoading) return;
 
@@ -25,18 +23,56 @@ export default function ProtectedRoute({
       return;
     }
 
-    if (pathname.startsWith('/supplier')) {
+    // Allow access to public supplier registration
+    if (pathname.startsWith('/(public)/supplier')) {
       return;
     }
 
+    // Redirect unauthenticated users to login
     if (!isAuthenticated || !user) {
       if (pathname !== '/login') {
         router.replace('/login');
       }
+      return;
+    }
+
+    // Handle SUPPLIER role - redirect based on approval status
+    if (user.role === 'SUPPLIER') {
+      if (user.approvalStatus === 'PENDING') {
+        // Pending suppliers go to pending screen
+        if (pathname !== '/(supplier)/pending') {
+          router.replace('/(supplier)/pending');
+        }
+        return;
+      }
+      if (user.approvalStatus === 'REJECTED') {
+        // Rejected suppliers see rejection message (stay on login)
+        router.replace('/login');
+        return;
+      }
+      // Approved suppliers proceed normally
+      return;
+    }
+
+    // Role-based redirects for authenticated users
+    const roleRedirects: Record<string, string> = {
+      ADMIN: '/(admin)',
+      OWNER: '/(erp)',
+      MANAGER: '/(employee)',
+      STAFF: '/(employee)',
+      CASHIER: '/(erp)',
+      CUSTOMER: '/(customer)',
+    };
+
+    // If user is on login page and already authenticated, redirect to their default route
+    if (pathname === '/login' && isAuthenticated && user) {
+      const targetRoute = roleRedirects[user.role] || '/(admin)';
+      router.replace(targetRoute as any);
+      return;
     }
   }, [isLoading, isAuthenticated, user, pathname]);
 
-  // ✅ Render hooks consistently - always render children structure
+  // Render hooks consistently - always render children structure
   // Just conditionally show loading overlay inside
   return (
     <>

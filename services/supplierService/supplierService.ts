@@ -1,12 +1,31 @@
+// k03pr4p05-fe\services\supplierService\supplierService.ts
 import { gql } from 'graphql-request'
 import { graphQLRequest } from '../apiClient'
+import type { MarketplaceListing } from '../marketplaceService'
+import type { SupplierItemVariant, VariantGroup } from './variantService'
+import type { SupplierItemImage, ProductSpecification } from '@/types'
 
 // ─── Fragments ───────────────────────────────────────────────────────────────
 
 const PRICE_TIER_FIELDS = `
   id
   minQty
+  maxQty
   price
+`
+
+// Inline marketplace listing fields — fetched alongside each catalog item.
+const MARKETPLACE_LISTING_FIELDS = `
+  marketplaceListing {
+    id
+    status
+    publishedAt
+    unpublishedAt
+    featured
+    views
+    clicks
+    inquiries
+  }
 `
 
 const SUPPLIER_ITEM_FIELDS = `
@@ -27,6 +46,7 @@ const SUPPLIER_ITEM_FIELDS = `
   createdAt
   updatedAt
   priceTiers { ${PRICE_TIER_FIELDS} }
+  ${MARKETPLACE_LISTING_FIELDS}
 `
 
 
@@ -287,6 +307,17 @@ export interface SupplierItem {
   returnedQty: number
   reorderLevel?: number | null
   reorderQty?: number | null
+  // Marketplace listing — null when the item has never been published.
+  marketplaceListing?: MarketplaceListing | null
+  // Variant system
+  hasVariants?: boolean
+  totalStock?: number
+  variantGroups?: VariantGroup[]
+  variants?: SupplierItemVariant[]
+  // Image collections for Alibaba-style product management
+  images?: SupplierItemImage[]
+  // Specifications
+  productSpecifications?: ProductSpecification[]
 }
 
 export interface SupplierCatalog {
@@ -618,7 +649,7 @@ export async function updateSupplierItem(input: UpdateSupplierItemInput): Promis
       $isVatExempt: Boolean
       $vatRate: Float
       $moq: Int
-      $image: String!
+      $image: String
       $availableQty: Int
       $isActive: Boolean
       $priceTiers: [PriceTierInput!]

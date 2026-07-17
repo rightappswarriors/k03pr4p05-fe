@@ -563,7 +563,8 @@ export default function ERPLayout({ children }: { children: React.ReactNode }) {
 
   const styles = React.useMemo(() => makeStyles(colors, isTablet), [colors, isTablet]);
 
-  const activeRoute: SupplierRoute = PATH_TO_ROUTE[pathname] ?? 'Dashboard';
+  // Keep Supplier Links highlighted while viewing a deep-linked relationship workspace.
+  const activeRoute: SupplierRoute = pathname.startsWith('/supplier-links/') ? 'SupplierLinks' : (PATH_TO_ROUTE[pathname] ?? 'Dashboard');
 
   const openDrawer = useCallback(() => {
     setDrawerOpen(true);

@@ -11,9 +11,11 @@ import { CatalogTable } from '@/components/supplier/catalog/CatalogTable'
 import { CatalogCards } from '@/components/supplier/catalog/CatalogCards'
 import { ProductDetailsModal } from '@/components/supplier/catalog/ProductsDetailModal'
 import { getProductStatus } from '@/components/supplier/catalog/ProductStatusBadge'
-import { KpiSkeletonRow, OrderCardSkeletonList } from '@/components/supplier/LoadingSkeleton'
+import { KpiSkeletonRow, OrderCardSkeletonList } from '@/components/LoadingSkeleton'
 import { AddSupplierItemModal } from '@/components/supplier/catalog/AddSupplierItemModal'
 import { CatalogPagination } from '@/components/supplier/catalog/CatalogPagination'
+import { MarketplaceReadinessModal } from '@/components/supplier/catalog/MarketplaceReadinessModal'
+import type { MarketplaceListing } from '@/services/marketplaceService'
 
 
 const BREAKPOINTS = { tablet: 768, desktop: 1100 }
@@ -58,6 +60,15 @@ export default function CatalogScreen({ onAddItem }: CatalogScreenProps) {
   const [selectedItem, setSelectedItem] = useState<SupplierItem | null>(null)
   const [modalVisible, setModalVisible] = useState(false)
   const [modalEditMode, setModalEditMode] = useState(false)
+
+  // Marketplace readiness modal state
+  const [marketplaceItem, setMarketplaceItem] = useState<SupplierItem | null>(null)
+  const [marketplaceModalVisible, setMarketplaceModalVisible] = useState(false)
+
+  const openMarketplaceModal = useCallback((item: SupplierItem) => {
+    setMarketplaceItem(item)
+    setMarketplaceModalVisible(true)
+  }, [])
 
 
   useEffect(() => {
@@ -207,9 +218,9 @@ export default function CatalogScreen({ onAddItem }: CatalogScreenProps) {
           ) : (
             <>
               {isDesktop && layout === 'table' ? (
-                <CatalogTable items={paginatedItems} onView={openView} onEdit={openEdit} />
+                <CatalogTable items={paginatedItems} onView={openView} onEdit={openEdit} onValidate={openMarketplaceModal} />
               ) : (
-                <CatalogCards items={paginatedItems} columns={cardColumns} onView={openView} onEdit={openEdit} />
+                <CatalogCards items={paginatedItems} columns={cardColumns} onView={openView} onEdit={openEdit} onValidate={openMarketplaceModal} />
               )}
               <CatalogPagination
                 page={page}
@@ -241,6 +252,27 @@ export default function CatalogScreen({ onAddItem }: CatalogScreenProps) {
           setCatalog((prev) => prev ? { ...prev, items: [created, ...prev.items] } : prev)
         }}
       />
+      {/* Marketplace readiness / publish / unpublish modal */}
+      {marketplaceItem && (
+        <MarketplaceReadinessModal
+          visible={marketplaceModalVisible}
+          supplierItemId={marketplaceItem.id}
+          itemName={marketplaceItem.name}
+          currentListing={marketplaceItem.marketplaceListing}
+          onClose={() => setMarketplaceModalVisible(false)}
+          onPublished={(listing: MarketplaceListing) => {
+            // Patch the listing into the local catalog state without a full reload.
+            setCatalog((prev) => prev
+              ? { ...prev, items: prev.items.map((i) => i.id === marketplaceItem.id ? { ...i, marketplaceListing: listing } : i) }
+              : prev)
+          }}
+          onUnpublished={(listing: MarketplaceListing) => {
+            setCatalog((prev) => prev
+              ? { ...prev, items: prev.items.map((i) => i.id === marketplaceItem.id ? { ...i, marketplaceListing: listing } : i) }
+              : prev)
+          }}
+        />
+      )}
     </View>
   )
 }

@@ -4,7 +4,7 @@ import { CheckCircle2, XCircle, Clock, Upload } from 'lucide-react-native'
 import { useTheme } from '@/contexts/ThemeContext'
 import { DashboardCard } from '@/screens/supplier/SupplierDashboardScreen'
 import { withAlpha } from '@/utils/color'
-import { FadeInView } from '@/components/supplier/FadeInView'
+import { FadeInView } from '@/components/FadeInView'
 import type { BusinessVerificationDocument } from '@/services/supplierService/verificationService'
 
 interface TimelineEvent {

@@ -1,3 +1,1 @@
-import PlaceholderScreen from '@/components/Placeholder'
-
-export default PlaceholderScreen
+export { default } from '@/screens/supplier/SupplierLinksScreen'

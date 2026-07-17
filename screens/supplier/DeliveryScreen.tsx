@@ -21,8 +21,8 @@ import { DeliverySummaryCard } from '@/components/supplier/delivery/DeliverySumm
 import { DeliveryFilters } from '@/components/supplier/delivery/DeliveryFilters'
 import { DeliveryCard } from '@/components/supplier/delivery/DeliveryCard'
 import { DeliveryTable } from '@/components/supplier/delivery/DeliveryTable'
-import { FadeInView } from '@/components/supplier/FadeInView'
-import { KpiSkeletonRow, OrderCardSkeletonList } from '@/components/supplier/LoadingSkeleton'
+import { FadeInView } from '@/components/FadeInView'
+import { KpiSkeletonRow, OrderCardSkeletonList } from '@/components/LoadingSkeleton'
 import DeliveryDetailsScreen from './DeliveryDetailsScreen'
 import { getCardWidthPct, getKpiColumns } from './SupplierDashboardScreen'
 

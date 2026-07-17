@@ -5,7 +5,7 @@ import { useTheme } from '@/contexts/ThemeContext'
 import { DashboardCard } from '@/screens/supplier/SupplierDashboardScreen'
 
 import { withAlpha } from '@/utils/color'
-import { FadeInView } from '@/components/supplier/FadeInView'
+import { FadeInView } from '@/components/FadeInView'
 import { VerificationStatusBadge } from './VerificationStatusBadge'
 import { RenewalCountdown } from './RenewalCountdown'
 import type { OrgVerificationStatus } from '@/services/supplierService/verificationService'

@@ -34,6 +34,7 @@ import {
   Users,
   Star,
   BadgePercent,
+  Link2,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
@@ -117,6 +118,7 @@ type ERPRoute =
   | 'DiscountTracking'
   | 'RestockScheduling'
   | 'AuditLog'
+  | 'SupplierLinks'
   | 'Settings';
 
 const DRAWER_WIDTH = 264; // for mobile drawer
@@ -133,6 +135,7 @@ const ROUTE_TO_PAGE_KEY: Partial<Record<ERPRoute, string>> = {
   RestockScheduling: 'restockSchedulingPage',
   DiscountTracking: 'discountPage',
   AuditLog: 'auditLogPage',
+  SupplierLinks: 'supplierLinksPage',
   HR: 'hrPage',
   SalesAnalytics: 'salesAnalyticsPage',
   MasterFile: 'masterFilePage',
@@ -159,6 +162,7 @@ const PATH_TO_ROUTE: Record<string, ERPRoute> = {
   '/discount': 'DiscountTracking',
   '/restock': 'RestockScheduling',
   '/audit': 'AuditLog',
+  '/supplier-links': 'SupplierLinks',
   '/settings': 'Settings',
 };
 
@@ -175,6 +179,7 @@ const ROUTE_TO_PATH: Record<ERPRoute, string> = {
   DiscountTracking: '/(erp)/discount',
   RestockScheduling: '/(erp)/restock',
   AuditLog: '/(erp)/audit',
+  SupplierLinks: '/(erp)/supplier-links',
   Settings: '/(erp)/settings',
 };
 
@@ -192,6 +197,7 @@ const NAV_ICON_MAP: Record<ERPRoute, React.FC<{ size: number; color: string; str
   MasterFile: Database,
   DiscountTracking: BadgePercent,
   AuditLog: ShieldCheck,
+  SupplierLinks: Link2,
   Settings,
 };
 
@@ -209,6 +215,7 @@ const FREE_NAV: NavItem[] = [
   { key: 'Inventory', label: 'Inventory' },
   { key: 'DiscountTracking', label: 'Discounts' },
   { key: 'AuditLog', label: 'Audit Log' },
+  { key: 'SupplierLinks', label: 'Supplier Links' },
 ];
 
 const GATED_NAV: (NavItem & { featureName: string })[] = [
@@ -570,7 +577,8 @@ export default function ERPLayout({ children }: { children: React.ReactNode }) {
 
   const styles = React.useMemo(() => makeStyles(colors, isTablet), [colors, isTablet]);
 
-  const activeRoute: ERPRoute = PATH_TO_ROUTE[pathname] ?? 'Dashboard';
+  // Keep Supplier Links highlighted while viewing a deep-linked relationship workspace.
+  const activeRoute: ERPRoute = pathname.startsWith('/supplier-links/') ? 'SupplierLinks' : (PATH_TO_ROUTE[pathname] ?? 'Dashboard');
 
   const openDrawer = useCallback(() => {
     setDrawerOpen(true);

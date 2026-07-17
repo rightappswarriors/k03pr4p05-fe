@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react'
 import { View, Text, Animated } from 'react-native'
 import { useTheme } from '@/contexts/ThemeContext'
 import { DashboardCard } from '@/screens/supplier/SupplierDashboardScreen'
-import { FadeInView } from '@/components/supplier/FadeInView'
+import { FadeInView } from '@/components/FadeInView'
 
 export function VerificationProgressCard({
   approvedCount,

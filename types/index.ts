@@ -89,7 +89,7 @@ export interface User {
   email: string;
   fullname?: string;
   name: string;
-  role: 'OWNER' | 'CASHIER' | 'STAFF' | 'MANAGER' | 'ADMIN';
+  role: 'OWNER' | 'CASHIER' | 'STAFF' | 'MANAGER' | 'ADMIN' | 'SUPPLIER' | 'CUSTOMER';
   isVerified?: boolean;
   orgId: number;
   org: OrganizationInfo | null;
@@ -98,6 +98,7 @@ export interface User {
   createdAt: string;
   profilePhoto?: string;
   position?: Position | null;
+  approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
 }
 export interface Position {
   id: string;
@@ -540,6 +541,190 @@ export interface CatalogItem {
   stock?: number;
   remainingStock?: number;
   maxAllocatable?: number;
+}
+
+// ─── Wholesale Product Types ──────────────────────────────────────────────────────
+
+export interface PriceTier {
+  id: string;
+  minQty: number;
+  maxQty?: number | null; // null means unlimited upper bound
+  price: number;
+  currency: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WholesaleDocType {
+  CE: 'CE';
+  FDA: 'FDA';
+  ISO: 'ISO';
+  ROHS: 'ROHS';
+  MSDS: 'MSDS';
+  OTHER: 'OTHER';
+}
+
+export interface WholesaleDocument {
+  id: string;
+  supplierItemId: string;
+  title?: string;
+  type: keyof WholesaleDocType;
+  fileUrl: string;
+  verified: boolean;
+  verifiedById?: number;
+  verifiedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProductWholesaleSettings {
+  id: string;
+  supplierItemId: string;
+  minimumOrderQty?: number;
+  sampleAvailable: boolean;
+  samplePrice?: number;
+  leadTime?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProductSpecification {
+  id: string;
+  supplierItemId: string;
+  category?: string;
+  groupName?: string;
+  name: string;
+  value: string;
+  unit?: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WholesalePackaging {
+  id: string;
+  supplierItemId: string;
+  sellingUnit?: string;
+  packageLength?: number;
+  packageWidth?: number;
+  packageHeight?: number;
+  grossWeight?: number; // kg
+  netWeight?: number; // kg
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WholesaleShipping {
+  id: string;
+  supplierItemId: string;
+  originCountry?: string;
+  originProvince?: string;
+  originCity?: string;
+  shippingMethod?: string;
+  estimatedDays?: number;
+  shippingNotes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type SupplierCapabilityType =
+  | 'MINOR_CUSTOMIZATION'
+  | 'DRAWING_CUSTOMIZATION'
+  | 'SAMPLE_CUSTOMIZATION'
+  | 'FULL_CUSTOMIZATION'
+  | 'OEM'
+  | 'ODM';
+
+export interface SupplierCapability {
+  id: string;
+  organizationId: number;
+  type: SupplierCapabilityType;
+  name: string;
+  icon?: string;
+  available: boolean;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SupplierItemImage {
+  id: number;
+  supplierItemId: string;
+  url: string;
+  sortOrder: number;
+  createdAt?: string;
+  updatedAt?: string;
+  deletedAt?: string;
+}
+
+export interface SupplierItemVariantImage {
+  id: number;
+  supplierItemVariantId: string;
+  url: string;
+  sortOrder: number;
+  createdAt?: string;
+  updatedAt?: string;
+  deletedAt?: string;
+}
+
+export interface SupplierItemReviewImage {
+  id: number;
+  supplierItemReviewId: string;
+  url: string;
+  sortOrder: number;
+  createdAt?: string;
+  updatedAt?: string;
+  deletedAt?: string;
+}
+
+export interface SupplierItem {
+  id: string;
+  name: string;
+  description?: string;
+  sku?: string;
+  unit: string;
+  unitPrice: number;
+  isVatExempt: boolean;
+  vatRate: number;
+  moq: number;
+  availableQty: number;
+  isActive: boolean;
+  averageRating: number;
+  reviewCount: number;
+  image?: string;
+  currentCost?: number;
+  reservedQty: number;
+  incomingQty: number;
+  damagedQty: number;
+  returnedQty: number;
+  reorderLevel?: number;
+  reorderQty?: number;
+  createdAt: string;
+  updatedAt: string;
+  // Relations
+  priceTiers: PriceTier[];
+  reviews: SupplierItemReview[];
+  productWholesaleSettings?: ProductWholesaleSettings;
+  productSpecifications: ProductSpecification[];
+  wholesalePackaging?: WholesalePackaging;
+  wholesaleShipping?: WholesaleShipping;
+  wholesaleDocuments?: WholesaleDocument[];
+  // Image collections for Alibaba-style product management
+  images: SupplierItemImage[];
+}
+
+export interface SupplierItemReview {
+  id: string;
+  supplierItemId: string;
+  reviewerOrgId: number;
+  rating: number;
+  title?: string;
+  comment?: string;
+  isVerifiedPurchase: boolean;
+  createdAt: string;
+  updatedAt: string;
+  // Review images for Alibaba-style display
+  images: SupplierItemReviewImage[];
 }
 
 

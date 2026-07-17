@@ -9,6 +9,8 @@ import { ThemeProvider } from '@/contexts/ThemeContext';
 import { ActiveRoleProvider } from '@/contexts/ActiveRoleContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { ConfirmDialogProvider } from '@/contexts/ConfirmDialogContext';
+import { ToastProvider } from '@/contexts/ToastContext';
+import { OverlayHostModal, OverlayHostProvider } from '@/contexts/OverlayHostContext';
 
 // Keep onboarding context to avoid extra changes for existing onboarding data usage
 interface OnboardingContextType {
@@ -77,32 +79,35 @@ export default function RootLayout() {
   }
 
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <ConfirmDialogProvider>
-          <ActiveRoleProvider>
-            <OnboardingContext.Provider
-              value={{
-                hasOnboarded,
-                setHasOnboarded,
-                isLoggedIn,
-                setIsLoggedIn,
-              }}
-            >
-              <ProtectedRoute>
-                <Stack screenOptions={{ headerShown: false }}>
-                  <Stack.Screen name="(supplier)" />
-                  <Stack.Screen name="(public)" />
-                  <Stack.Screen name="login" />
-                  <Stack.Screen name="onboarding" />
-                  <Stack.Screen name="index" />
-                  <Stack.Screen name="+not-found" />
-                </Stack>
-              </ProtectedRoute>
-            </OnboardingContext.Provider>
-          </ActiveRoleProvider>
-        </ConfirmDialogProvider>
-      </AuthProvider>
-    </ThemeProvider>
+    <OverlayHostProvider>
+      <ThemeProvider>
+
+        <ToastProvider>
+          <AuthProvider>
+            <OverlayHostModal />
+            <ConfirmDialogProvider>
+              <ActiveRoleProvider>
+                <OnboardingContext.Provider
+                  value={{ hasOnboarded, setHasOnboarded, isLoggedIn, setIsLoggedIn }}
+                >
+                  <ProtectedRoute>
+                    <Stack screenOptions={{ headerShown: false }}>
+                      <Stack.Screen name="(supplier)" />
+                      <Stack.Screen name="(public)" />
+                      <Stack.Screen name="login" />
+                      <Stack.Screen name="onboarding" />
+                      <Stack.Screen name="index" />
+                      <Stack.Screen name="+not-found" />
+                    </Stack>
+                  </ProtectedRoute>
+                </OnboardingContext.Provider>
+              </ActiveRoleProvider>
+
+            </ConfirmDialogProvider>
+
+          </AuthProvider>
+        </ToastProvider>
+      </ThemeProvider>
+    </OverlayHostProvider>
   );
 }

@@ -3,7 +3,7 @@ import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-nativ
 import { CreditCard } from 'lucide-react-native'
 import { useTheme } from '@/contexts/ThemeContext'
 import {
-  FinanceEmptyState,
+
   FinanceFormGrid,
   FinanceHeroCard,
   FinanceScreenShell,
@@ -12,7 +12,7 @@ import {
   FinanceStatCard,
   FinanceStatGrid,
 } from '@/components/supplier/finance/FinanceScreenShell'
-
+import { EmptyState } from '@/components/DataTable'
 import { formatPeso as formatPHP } from '@/utils/moneyHelpers';
 import {
   createSupplierPayoutMethod,
@@ -124,7 +124,7 @@ export default function FinancePayoutMethodsScreen() {
 
       <FinanceSectionCard title="Existing methods" subtitle="Your saved payout methods">
         {methods.length === 0 ? (
-          <FinanceEmptyState title="No payout methods yet" message="Create one to enable withdrawals." />
+          <EmptyState title="No payout methods yet" message="Create one to enable withdrawals." />
         ) : (
           <View style={{ gap: 8 }}>
             {methods.map((method) => (

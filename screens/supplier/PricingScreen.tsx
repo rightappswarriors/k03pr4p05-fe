@@ -59,7 +59,7 @@ import {
   type PricingSort,
 } from '@/components/supplier/pricing/PricingToolBar'
 import { CatalogPagination } from '@/components/supplier/catalog/CatalogPagination'
-import { OrderCardSkeletonList } from '@/components/supplier/LoadingSkeleton'
+import { OrderCardSkeletonList } from '@/components/LoadingSkeleton'
 
 const BREAKPOINTS = { tablet: 768, desktop: 1100 }
 const PAGE_SIZE = 18

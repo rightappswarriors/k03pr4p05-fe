@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { View, Text, ScrollView, useWindowDimensions, RefreshControl } from 'react-native'
 import { useTheme } from '@/contexts/ThemeContext'
-import { KpiSkeletonRow } from '@/components/supplier/LoadingSkeleton'
+import { KpiSkeletonRow } from '@/components/LoadingSkeleton'
 import {
   fetchVerificationDashboard,
   type VerificationDashboardData,

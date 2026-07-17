@@ -8,4 +8,5 @@ export { MasterFileService } from './masterFileService';
 export { DashboardService } from './dashboardService';
 export { KompraCOrderService } from './kompraCOrderService';
 export { SubscriptionService } from './subscriptionService';
+export { WholesaleService } from './wholesaleService';
 export { graphQLRequest } from './apiClient';

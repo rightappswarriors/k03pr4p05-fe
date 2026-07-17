@@ -14,8 +14,8 @@ import { OrderFilters, applyOrderFilters, type DateFilter, type SortOption } fro
 import { PurchaseOrderCard } from '@/components/supplier/purchase-order/PurchaseOrderCard'
 import { EmptyOrdersCard } from '@/components/supplier/purchase-order/EmptyOrderCard'
 import { OrderDetailsModal } from '@/components/supplier/purchase-order/OrderDetailsModal'
-import { FadeInView } from '@/components/supplier/FadeInView'
-import { OrderCardSkeletonList } from '@/components/supplier/LoadingSkeleton'
+import { FadeInView } from '@/components/FadeInView'
+import { OrderCardSkeletonList } from '@/components/LoadingSkeleton'
 import { getOrderPriority } from '@/components/supplier/purchase-order/PriorityBadge'
 import { getCardWidthPct, getKpiColumns, getUtilityColumns, SkeletonCard, StatCard } from './SupplierDashboardScreen'
 

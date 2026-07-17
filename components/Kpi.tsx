@@ -1,7 +1,7 @@
 import { useTheme } from "@/contexts/ThemeContext";
 import React from "react";
 import { View, Text } from "react-native";
-import { FadeInView } from "./supplier/FadeInView";
+import { FadeInView } from "./FadeInView";
 import { LucideIcon } from "lucide-react-native";
 
 
