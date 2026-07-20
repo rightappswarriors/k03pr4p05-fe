@@ -2,6 +2,14 @@
  * ProductSpecificationBuilder — inline editor for product specifications.
  * Used within ProductsDetailModal to manage technical specs for wholesale products.
  * Controlled component: onChange lifts edits to parent state; persistence happens on Save.
+ *
+ * Fix: the Group field previously fed every keystroke straight into
+ * `spec.groupName`, which is also the grouping key used to bucket specs into
+ * <View key={group}> containers. Since the key changed on every keystroke,
+ * React unmounted/remounted the whole group subtree each time — including
+ * the TextInput being typed into — so only one letter registered before
+ * focus was lost. The Group field now keeps its own local text while
+ * focused and only commits (and triggers regrouping) on blur.
  */
 import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet } from 'react-native'
@@ -44,6 +52,7 @@ export function ProductSpecificationBuilder({ supplierItemId, specifications, on
   }, [onChange])
 
   const addSpec = useCallback(() => {
+    const tempId = `temp_${Date.now()}`
     const newSpec: EditingSpec = {
       supplierItemId,
       name: '',
@@ -52,7 +61,7 @@ export function ProductSpecificationBuilder({ supplierItemId, specifications, on
       category: '',
       groupName: '',
       sortOrder: specs.length,
-      _tempId: `temp_${Date.now()}`,
+      _tempId: tempId,
     }
     setSpecs(prev => {
       const updated = [...prev, newSpec]
@@ -81,6 +90,7 @@ export function ProductSpecificationBuilder({ supplierItemId, specifications, on
   const groupedSpecs = specs.reduce((acc, spec, index) => {
     const group = spec.groupName || 'General'
     if (!acc[group]) acc[group] = []
+    // Store original index for stable keying - prevents remount when group changes
     acc[group].push({ ...spec, _index: index })
     return acc
   }, {} as Record<string, Array<EditingSpec & { _index: number }>>)
@@ -149,7 +159,7 @@ export function ProductSpecificationBuilder({ supplierItemId, specifications, on
                 <View style={styles.specsList}>
                   {groupSpecs.map((spec) => (
                     <SpecEditorRow
-                      key={spec.id || spec._tempId}
+                      key={`spec-${spec._index}`}
                       spec={spec}
                       index={spec._index}
                       colors={colors}
@@ -192,6 +202,22 @@ function SpecEditorRow({ spec, index, colors, onUpdate, onRemove }: SpecEditorRo
     backgroundColor: colors.background,
   }
   const lbl = { fontSize: 11, fontWeight: '600' as const, color: colors.textSecondary, marginBottom: 2 }
+
+  // Group field: local uncommitted text so typing doesn't trigger a
+  // regroup (and the resulting remount) on every keystroke. Only commits
+  // to the real spec.groupName — and therefore only regroups — on blur.
+  const [localGroup, setLocalGroup] = useState(spec.groupName || '')
+  useEffect(() => {
+    setLocalGroup(spec.groupName || '')
+    // Only re-sync from the committed value, not on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spec.groupName])
+
+  const commitGroup = () => {
+    if (localGroup !== (spec.groupName || '')) {
+      onUpdate(index, 'groupName', localGroup)
+    }
+  }
 
   return (
     <View style={[styles.editorRow, { borderBottomColor: colors.border }]}>
@@ -247,8 +273,10 @@ function SpecEditorRow({ spec, index, colors, onUpdate, onRemove }: SpecEditorRo
         <View style={styles.inlineField}>
           <Text style={lbl}>Group</Text>
           <TextInput
-            value={spec.groupName || ''}
-            onChangeText={(v) => onUpdate(index, 'groupName', v)}
+            value={localGroup}
+            onChangeText={setLocalGroup}
+            onBlur={commitGroup}
+            onSubmitEditing={commitGroup}
             placeholder="Optional grouping"
             placeholderTextColor={colors.textSecondary}
             style={inp}

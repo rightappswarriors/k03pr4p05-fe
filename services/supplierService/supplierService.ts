@@ -46,6 +46,90 @@ const SUPPLIER_ITEM_FIELDS = `
   createdAt
   updatedAt
   priceTiers { ${PRICE_TIER_FIELDS} }
+
+    reviews {
+      id
+      supplierItemId
+      reviewerOrgId
+      rating
+      title
+      comment
+      isVerifiedPurchase
+      createdAt
+      updatedAt
+      reviewer {
+        id
+        name
+      }
+      images {
+        id
+        url
+        sortOrder
+      }
+    }
+    productWholesaleSettings {
+      id
+      supplierItemId
+      minimumOrderQty
+      sampleAvailable
+      samplePrice
+      leadTime
+      createdAt
+      updatedAt
+    }
+    productSpecifications {
+      id
+      supplierItemId
+      category
+      groupName
+      name
+      value
+      unit
+      sortOrder
+      createdAt
+      updatedAt
+    }
+    wholesalePackaging {
+      id
+      supplierItemId
+      sellingUnit
+      packageLength
+      packageWidth
+      packageHeight
+      grossWeight
+      netWeight
+      createdAt
+      updatedAt
+    }
+    wholesaleShipping {
+      id
+      supplierItemId
+      originCountry
+      originProvince
+      originCity
+      shippingMethod
+      estimatedDays
+      shippingNotes
+      createdAt
+      updatedAt
+    }
+    wholesaleDocument {
+      id
+      supplierItemId
+      title
+      type
+      fileUrl
+      verified
+      verifiedById
+      verifiedAt
+      createdAt
+      updatedAt
+    }
+    supplierItemImage {
+      id
+      url
+      sortOrder
+    }
   ${MARKETPLACE_LISTING_FIELDS}
 `
 
@@ -316,8 +400,54 @@ export interface SupplierItem {
   variants?: SupplierItemVariant[]
   // Image collections for Alibaba-style product management
   images?: SupplierItemImage[]
+  // Wholesale documents
+  wholesaleDocuments?: WholesaleDocumentFields[]
+  // Wholesale packaging
+  wholesalePackaging?: WholesalePackagingFields | null
+  // Wholesale shipping
+  wholesaleShipping?: WholesaleShippingFields | null
   // Specifications
   productSpecifications?: ProductSpecification[]
+}
+
+// Helper type for wholesale documents
+export interface WholesaleDocumentFields {
+  id: string
+  supplierItemId: string
+  title?: string | null
+  type: string
+  fileUrl: string
+  verified: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+// Helper type for wholesale packaging
+export interface WholesalePackagingFields {
+  id: string
+  supplierItemId: string
+  sellingUnit?: string | null
+  packageLength?: number | null
+  packageWidth?: number | null
+  packageHeight?: number | null
+  grossWeight?: number | null
+  netWeight?: number | null
+  createdAt: string
+  updatedAt: string
+}
+
+// Helper type for wholesale shipping
+export interface WholesaleShippingFields {
+  id: string
+  supplierItemId: string
+  originCountry?: string | null
+  originProvince?: string | null
+  originCity?: string | null
+  shippingMethod?: string | null
+  estimatedDays?: number | null
+  shippingNotes?: string | null
+  createdAt: string
+  updatedAt: string
 }
 
 export interface SupplierCatalog {
@@ -579,7 +709,7 @@ export interface CreateSupplierItemInput {
   isVatExempt: boolean
   vatRate: number
   moq: number
-  image: string
+  image?: string
   availableQty: number
   priceTiers?: Array<{ minQty: number; price: number }>
 }
@@ -596,7 +726,7 @@ export async function createSupplierItem(input: CreateSupplierItemInput): Promis
       $isVatExempt: Boolean!
       $vatRate: Float!
       $moq: Int!
-      $image: String!
+      $image: String
       $availableQty: Int!
       $priceTiers: [PriceTierInput!]
     ) {
@@ -649,7 +779,7 @@ export async function updateSupplierItem(input: UpdateSupplierItemInput): Promis
       $isVatExempt: Boolean
       $vatRate: Float
       $moq: Int
-      $image: String
+      $image: String!
       $availableQty: Int
       $isActive: Boolean
       $priceTiers: [PriceTierInput!]

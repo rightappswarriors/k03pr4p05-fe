@@ -28,26 +28,29 @@ export function PackagingBuilder({ supplierItemId, packaging, onChange, editable
   })
 
   // Lift changes to parent (controlled state pattern)
-  const notifyParent = useCallback(() => {
+  const notifyParentManually = useCallback((updatedFields: typeof fields) => {
     onChange({
       id: packaging?.id || '',
       supplierItemId,
-      sellingUnit: fields.sellingUnit || undefined,
-      packageLength: fields.packageLength ? parseFloat(fields.packageLength) : undefined,
-      packageWidth: fields.packageWidth ? parseFloat(fields.packageWidth) : undefined,
-      packageHeight: fields.packageHeight ? parseFloat(fields.packageHeight) : undefined,
-      grossWeight: fields.grossWeight ? parseFloat(fields.grossWeight) : undefined,
-      netWeight: fields.netWeight ? parseFloat(fields.netWeight) : undefined,
+      sellingUnit: updatedFields.sellingUnit || undefined,
+      packageLength: updatedFields.packageLength ? parseFloat(updatedFields.packageLength) : undefined,
+      packageWidth: updatedFields.packageWidth ? parseFloat(updatedFields.packageWidth) : undefined,
+      packageHeight: updatedFields.packageHeight ? parseFloat(updatedFields.packageHeight) : undefined,
+      grossWeight: updatedFields.grossWeight ? parseFloat(updatedFields.grossWeight) : undefined,
+      netWeight: updatedFields.netWeight ? parseFloat(updatedFields.netWeight) : undefined,
       createdAt: packaging?.createdAt || new Date().toISOString(),
       updatedAt: packaging?.updatedAt || new Date().toISOString(),
     })
-  }, [onChange, packaging, supplierItemId, fields])
+  }, [onChange, packaging, supplierItemId])
 
   const update = useCallback((key: keyof typeof fields, value: string) => {
-    setFields(prev => ({ ...prev, [key]: value }))
-    // Notify parent after state change (debounced in actual use by batching in parent)
-    notifyParent()
-  }, [notifyParent])
+    setFields(prev => {
+      const updated = { ...prev, [key]: value }
+      // Notify parent with the updated fields immediately
+      notifyParentManually(updated)
+      return updated
+    })
+  }, [notifyParentManually])
 
   // Guard to prevent prop sync loop
   const lastPropRef = useRef<string | null>(null)

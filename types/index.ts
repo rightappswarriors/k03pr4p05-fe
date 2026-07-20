@@ -575,6 +575,7 @@ export interface WholesaleDocument {
   verifiedAt?: string;
   createdAt: string;
   updatedAt: string;
+  _tempId?: string; // Client-side temporary ID for new documents
 }
 
 export interface ProductWholesaleSettings {
@@ -599,6 +600,7 @@ export interface ProductSpecification {
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
+  _tempId?: string; // Client-side temporary ID for new specs
 }
 
 export interface WholesalePackaging {
@@ -645,6 +647,7 @@ export interface SupplierCapability {
   description?: string;
   createdAt: string;
   updatedAt: string;
+  _tempId?: string; // Client-side temporary ID for new capabilities
 }
 
 export interface SupplierItemImage {
@@ -708,9 +711,9 @@ export interface SupplierItem {
   productSpecifications: ProductSpecification[];
   wholesalePackaging?: WholesalePackaging;
   wholesaleShipping?: WholesaleShipping;
-  wholesaleDocuments?: WholesaleDocument[];
+  wholesaleDocument?: WholesaleDocument[];
   // Image collections for Alibaba-style product management
-  images: SupplierItemImage[];
+  supplierItemImage: SupplierItemImage[];
 }
 
 export interface SupplierItemReview {

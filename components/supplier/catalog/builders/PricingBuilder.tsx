@@ -189,7 +189,7 @@ export function PricingBuilder({ supplierItemId, priceTiers, moq, unit, currency
     <View style={styles.container}>
       {/* Validation Errors Banner - always visible at top of editor */}
       {errors.length > 0 && (
-        <View style={[styles.errorContainer,  { backgroundColor: '#FEF2F2' }]}>
+        <View style={[styles.errorContainer, { backgroundColor: '#FEF2F2' }]}>
           <Text style={[styles.errorTitle, { color: '#EF4444' }]}>Validation Errors</Text>
           {errors.map((err, i) => (
             <Text key={i} style={[styles.errorText, { color: '#EF4444' }]}>• {err}</Text>
@@ -198,7 +198,7 @@ export function PricingBuilder({ supplierItemId, priceTiers, moq, unit, currency
       )}
 
       {editable && (
-        <View style={[styles.editorSection, { backgroundColor: colors.card}]}>
+        <View style={[styles.editorSection, { backgroundColor: colors.card }]}>
           <Text style={[styles.sectionTitle, { color: colors.text, borderBottomColor: colors.border }]}>
             Volume Pricing Tiers
           </Text>
@@ -230,7 +230,7 @@ export function PricingBuilder({ supplierItemId, priceTiers, moq, unit, currency
         </View>
       )}
 
-      <View style={[styles.previewSection,  { backgroundColor: colors.card}]}>
+      <View style={[styles.previewSection, { backgroundColor: colors.card }]}>
         <TouchableOpacity onPress={() => setExpandedPreview(p => !p)} style={styles.previewHeader}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             {expandedPreview ? (
@@ -289,7 +289,45 @@ interface TierEditorRowProps {
   minQtyError?: string
 }
 
+// Regex allowing a partial/complete decimal number as the user types it:
+// "", "0", "12", "12.", "12.5", ".5" — but not multiple dots or letters.
+const DECIMAL_INPUT_RE = /^\d*\.?\d*$/
+
 function TierEditorRow({ tier, index, colors, onUpdate, onRemove, onMarkPriceTouched, onMarkMinQtyTouched, showUnlimitedOption, priceError, minQtyError }: TierEditorRowProps) {
+  // Local text buffer for the price input. This is what's rendered in the
+  // TextInput. It's kept separate from `tier.price` (the numeric value sent
+  // to the parent) so the user can type "12." or "0.5" without the trailing
+  // decimal point getting stripped by a numeric round-trip on every keystroke.
+  const [priceText, setPriceText] = useState<string>(tier.price ? String(tier.price) : '')
+  const priceFocused = useRef(false)
+
+  // If the tier's price changes from outside (e.g. parent reset, tier
+  // switched) while the user isn't actively editing it, resync the buffer.
+  useEffect(() => {
+    if (!priceFocused.current) {
+      setPriceText(tier.price ? String(tier.price) : '')
+    }
+  }, [tier.price])
+
+  const handlePriceChange = (v: string) => {
+    // Reject anything that isn't a valid (possibly partial) decimal number.
+    if (v !== '' && !DECIMAL_INPUT_RE.test(v)) return
+    setPriceText(v)
+    const parsed = v === '' || v === '.' ? 0 : parseFloat(v)
+    onUpdate(index, 'price', Number.isNaN(parsed) ? 0 : parsed)
+  }
+
+  const handlePriceFocus = () => {
+    priceFocused.current = true
+  }
+
+  const handlePriceBlur = () => {
+    priceFocused.current = false
+    // Normalize display (e.g. "12." -> "12", "" stays "" until touched shows error)
+    setPriceText(tier.price ? String(tier.price) : '')
+    onMarkPriceTouched()
+  }
+
   const inp = {
     borderWidth: 1,
     borderColor: colors.border,
@@ -339,11 +377,12 @@ function TierEditorRow({ tier, index, colors, onUpdate, onRemove, onMarkPriceTou
         <View style={styles.inlineField}>
           <Text style={lbl}>Unit Price</Text>
           <TextInput
-            value={String(tier.price)}
-            onChangeText={(v) => onUpdate(index, 'price', parseFloat(v) || 0)}
-            onBlur={onMarkPriceTouched}
+            value={priceText}
+            onChangeText={handlePriceChange}
+            onFocus={handlePriceFocus}
+            onBlur={handlePriceBlur}
             keyboardType="decimal-pad"
-            placeholder="0"
+            placeholder="0.00"
             placeholderTextColor={colors.textSecondary}
             style={[inp, priceError ? { borderColor: '#EF4444' } : {}]}
           />

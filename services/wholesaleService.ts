@@ -10,6 +10,7 @@ import type {
   WholesaleDocument,
   PriceTier,
   SupplierItemImage,
+  SupplierCapability,
 } from '@/types/index';
 
 // ─────────────────────────────────────────────────────────────
@@ -58,7 +59,7 @@ const GET_WHOLESALE_PRODUCT = gql`
           id
           name
         }
-        images {
+        supplierItemImage {
           id
           url
           sortOrder
@@ -304,7 +305,15 @@ const UPLOAD_DOCUMENT = gql`
       updatedAt
     }
   }
-`;
+`
+
+const DELETE_DOCUMENT = gql`
+  mutation DeleteDocument($id: String!) {
+    deleteDocument(id: $id) {
+      id
+    }
+  }
+`
 
 const UPDATE_WHOLESALE_SETTINGS = gql`
   mutation UpdateWholesaleSettings(
@@ -327,6 +336,74 @@ const UPDATE_WHOLESALE_SETTINGS = gql`
       sampleAvailable
       samplePrice
       leadTime
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+const CREATE_SUPPLIER_CAPABILITY = gql`
+  mutation CreateSupplierCapability($input: CreateSupplierCapabilityInput!) {
+    createSupplierCapability(input: $input) {
+      id
+      organizationId
+      type
+      name
+      available
+      description
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+const UPDATE_SUPPLIER_CAPABILITY = gql`
+  mutation UpdateSupplierCapability($input: UpdateSupplierCapabilityInput!) {
+    updateSupplierCapability(input: $input) {
+      id
+      organizationId
+      type
+      name
+      available
+      description
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+const DELETE_SUPPLIER_CAPABILITY = gql`
+  mutation DeleteSupplierCapability($id: String!) {
+    deleteSupplierCapability(id: $id) {
+      id
+    }
+  }
+`;
+
+const UPDATE_DOCUMENT = gql`
+  mutation UpdateDocument($input: UpdateDocumentInput!) {
+    updateDocument(input: $input) {
+      id
+      supplierItemId
+      title
+      type
+      fileUrl
+      verified
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+const GET_SUPPLIER_CAPABILITIES = gql`
+  query GetSupplierCapabilities($organizationId: Int!) {
+    supplierCapabilities(organizationId: $organizationId) {
+      id
+      organizationId
+      type
+      name
+      available
+      description
       createdAt
       updatedAt
     }
@@ -488,14 +565,19 @@ export class WholesaleService {
   }
 
   // Packaging mutations
+  // NOTE: field names below (packageLength/packageWidth/packageHeight) must match
+  // UpdatePackagingInput on the server — confirmed against the WholesalePackaging
+  // fields queried in GET_WHOLESALE_PRODUCT above. Previously this sent
+  // length/width/height, which the schema doesn't define, causing:
+  //   Field "length" is not defined by type "UpdatePackagingInput"
   static async updatePackaging(input: {
     supplierItemId: string;
     sellingUnit?: string;
-    length?: number;
-    width?: number;
-    height?: number;
-    grossWeight?: number;
-    netWeight?: number;
+    packageLength?: number | null;
+    packageWidth?: number | null;
+    packageHeight?: number | null;
+    grossWeight?: number | null;
+    netWeight?: number | null;
   }): Promise<WholesalePackaging> {
     const response = await graphQLRequest<{ updatePackaging: WholesalePackaging }>(
       UPDATE_PACKAGING,
@@ -535,6 +617,26 @@ export class WholesaleService {
     return response.uploadDocument;
   }
 
+  static async deleteDocument(id: string): Promise<{ id: string }> {
+    const response = await graphQLRequest<{ deleteDocument: { id: string } }>(
+      DELETE_DOCUMENT,
+      { id }
+    );
+    return response.deleteDocument;
+  }
+
+  static async updateDocument(input: {
+    id: string;
+    type?: string;
+    title?: string;
+  }): Promise<WholesaleDocument> {
+    const response = await graphQLRequest<{ updateDocument: WholesaleDocument }>(
+      UPDATE_DOCUMENT,
+      { input }
+    );
+    return response.updateDocument;
+  }
+
   // Wholesale settings mutations
   static async updateWholesaleSettings(
     supplierItemId: string,
@@ -550,6 +652,54 @@ export class WholesaleService {
       { supplierItemId, ...data }
     );
     return response.updateWholesaleSettings;
+  }
+
+  // Supplier capability mutations
+  static async createSupplierCapability(input: {
+    organizationId: number;
+    type: string;
+    name?: string;
+    available?: boolean;
+    description?: string;
+  }): Promise<SupplierCapability> {
+    const response = await graphQLRequest<{ createSupplierCapability: SupplierCapability }>(
+      CREATE_SUPPLIER_CAPABILITY,
+      { input }
+    );
+    return response.createSupplierCapability;
+  }
+
+  static async updateSupplierCapability(input: {
+    id: string;
+    available?: boolean;
+    description?: string;
+  }): Promise<SupplierCapability> {
+    const response = await graphQLRequest<{ updateSupplierCapability: SupplierCapability }>(
+      UPDATE_SUPPLIER_CAPABILITY,
+      { input }
+    );
+    return response.updateSupplierCapability;
+  }
+
+  static async deleteSupplierCapability(id: string): Promise<SupplierCapability> {
+    const response = await graphQLRequest<{ deleteSupplierCapability: SupplierCapability }>(
+      DELETE_SUPPLIER_CAPABILITY,
+      { id }
+    );
+    return response.deleteSupplierCapability;
+  }
+
+  static async getSupplierCapabilities(organizationId: number): Promise<SupplierCapability[]> {
+    try {
+      const response = await graphQLRequest<{ supplierCapabilities: SupplierCapability[] }>(
+        GET_SUPPLIER_CAPABILITIES,
+        { organizationId }
+      );
+      return response.supplierCapabilities || [];
+    } catch (error) {
+      if (__DEV__) console.error('Failed to fetch supplier capabilities:', error);
+      return [];
+    }
   }
 
   // Image management methods

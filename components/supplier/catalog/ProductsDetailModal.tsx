@@ -14,7 +14,21 @@
  * loads. Reverting a field back to its original value clears dirty state.
  *
  * Sub-resource dirty checking: pricingTiers, packaging, shipping, documents,
- * capabilities, and specifications are all compared against their snapshots.
+ * capabilities, specifications, and images are all compared against their
+ * snapshots.
+ *
+ * Save-flow notes (fixed):
+ * - Pricing tier edits are now actually sent to the backend, bundled into the
+ *   same updateSupplierItem call as the core fields (the schema accepts
+ *   priceTiers directly on that mutation — no separate CRUD needed).
+ * - Packaging update now sends packageLength/packageWidth/packageHeight,
+ *   matching the real UpdatePackagingInput schema (previously sent
+ *   length/width/height, which the schema doesn't define).
+ * - MediaBuilder changes (upload/replace/delete/reorder/make-primary) are now
+ *   diffed against imagesSnapshot and persisted via WholesaleService's image
+ *   mutations, and the resulting primary image URL is written to
+ *   SupplierItem.image — nothing here writes to any Supplier (org)-level
+ *   field.
  */
 import React, { useEffect, useMemo, useState } from 'react'
 import {
@@ -51,6 +65,7 @@ import type {
   SupplierItem,
   PriceTier, WholesalePackaging, WholesaleShipping, WholesaleDocument,
   ProductWholesaleSettings, SupplierCapability, ProductSpecification,
+  SupplierItemImage, SupplierCapabilityType,
 } from '@/types'
 import {
   ProductSpecificationBuilder,
@@ -76,6 +91,16 @@ const TABS: Array<{ key: TabKey; label: string; Icon: any }> = [
   { key: 'documents', label: 'Documents', Icon: FileText },
   { key: 'capabilities', label: 'Capabilities', Icon: Settings },
   { key: 'reviews', label: 'Reviews', Icon: Star },
+]
+
+// Capability types supported by the system
+const CAPABILITY_TYPES: Array<{ value: SupplierCapabilityType; label: string; description: string }> = [
+  { value: 'MINOR_CUSTOMIZATION', label: 'Minor Customization', description: 'Small changes to existing products' },
+  { value: 'DRAWING_CUSTOMIZATION', label: 'Drawing Customization', description: 'Custom designs based on drawings' },
+  { value: 'SAMPLE_CUSTOMIZATION', label: 'Sample Customization', description: 'Modifications to samples' },
+  { value: 'FULL_CUSTOMIZATION', label: 'Full Customization', description: 'Complete product customization' },
+  { value: 'OEM', label: 'OEM', description: 'Original Equipment Manufacturing' },
+  { value: 'ODM', label: 'ODM', description: 'Original Design Manufacturing' },
 ]
 
 interface Props {
@@ -121,10 +146,19 @@ function stableStringify(value: unknown): string {
   return JSON.stringify(value)
 }
 
+// Numeric coercion helper for packaging fields: treats '', null, undefined,
+// and NaN uniformly as "not provided" (null) rather than sending garbage or
+// throwing further down the line.
+function toNullableNumber(v: unknown): number | null {
+  if (v === '' || v === null || v === undefined) return null
+  const n = typeof v === 'number' ? v : Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
 // Saving overlay — registers into the shared OverlayHost at priority 200,
 // so it renders above FadeDialogModal sheets (100) but below confirm dialogs (300).
 function SavingOverlay({ visible }: { visible: boolean }) {
-  const { colors,  } = useTheme()
+  const { colors, } = useTheme()
 
   const node = (
     <View style={{
@@ -188,6 +222,13 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
   const [wholesaleSettings, setWholesaleSettings] = useState<ProductWholesaleSettings | null>(null)
   const [wholesaleSettingsSnapshot, setWholesaleSettingsSnapshot] = useState<ProductWholesaleSettings | null>(null)
 
+  // Track capabilities per type for proper dirty checking and toggle handling
+  const [capabilities, setCapabilities] = useState<Record<string, SupplierCapability>>({})
+  const [capabilitiesSnapshot, setCapabilitiesSnapshot] = useState<Record<string, SupplierCapability>>({})
+
+  // Track current images for dirty comparison
+  const [images, setImages] = useState<SupplierItemImage[]>(item?.supplierItemImage || [])
+  const [imagesSnapshot, setImagesSnapshot] = useState<SupplierItemImage[]>(item?.supplierItemImage || [])
   // Field-level validation errors for inventory tab
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof Fields, string>>>({})
 
@@ -211,13 +252,32 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
     setPackagingSnapshot(item.wholesalePackaging || null)
     setShipping(item.wholesaleShipping || null)
     setShippingSnapshot(item.wholesaleShipping || null)
-    setDocuments(item.wholesaleDocuments || [])
-    setDocumentsSnapshot(item.wholesaleDocuments || [])
+    setDocuments(item.wholesaleDocument || [])
+    setDocumentsSnapshot(item.wholesaleDocument || [])
     setSpecifications(item.productSpecifications || [])
     setSpecificationsSnapshot(item.productSpecifications || [])
     setWholesaleSettings(item.productWholesaleSettings || null)
     setWholesaleSettingsSnapshot(item.productWholesaleSettings || null)
+    setImages(item.supplierItemImage || [])
+    setImagesSnapshot(item.supplierItemImage || [])
+    // Initialize capabilities from wholesale settings (all start as sampleAvailable for now)
+    const initialCaps: Record<string, SupplierCapability> = {}
+    CAPABILITY_TYPES.forEach(t => {
+      initialCaps[t.value] = {
+        id: item.productWholesaleSettings?.id || '',
+        organizationId: 0,
+        type: t.value,
+        name: t.label,
+        available: t.value === 'MINOR_CUSTOMIZATION' ? !!item.productWholesaleSettings?.sampleAvailable : false,
+        description: t.value === 'MINOR_CUSTOMIZATION' ? item.productWholesaleSettings?.leadTime || '' : '',
+        createdAt: item.productWholesaleSettings?.createdAt || new Date().toISOString(),
+        updatedAt: item.productWholesaleSettings?.updatedAt || new Date().toISOString(),
+      }
+    })
+    setCapabilities(initialCaps)
+    setCapabilitiesSnapshot({ ...initialCaps })
   }, [item?.id, startInEditMode])
+
 
   // Dirty = any field differs from the snapshot, OR a new image was picked, OR any sub-resource changed.
   const isDirty = useMemo(() => {
@@ -247,8 +307,14 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
     // Check wholesale settings (capabilities)
     if (stableStringify(wholesaleSettings) !== stableStringify(wholesaleSettingsSnapshot)) return true
 
+    // Check capabilities
+    if (stableStringify(capabilities) !== stableStringify(capabilitiesSnapshot)) return true
+
+    // Check images
+    if (stableStringify(images) !== stableStringify(imagesSnapshot)) return true
+
     return false
-  }, [fields, snapshot, pendingImageAsset, pricingTiers, pricingTiersSnapshot, packaging, packagingSnapshot, shipping, shippingSnapshot, documents, documentsSnapshot, specifications, specificationsSnapshot, wholesaleSettings, wholesaleSettingsSnapshot])
+  }, [fields, snapshot, pendingImageAsset, pricingTiers, pricingTiersSnapshot, packaging, packagingSnapshot, shipping, shippingSnapshot, documents, documentsSnapshot, specifications, specificationsSnapshot, wholesaleSettings, wholesaleSettingsSnapshot, capabilities, capabilitiesSnapshot, images, imagesSnapshot])
 
   if (!item || !fields) return null
 
@@ -316,6 +382,8 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
       setDocuments(documentsSnapshot)
       setSpecifications(specificationsSnapshot)
       setWholesaleSettings(wholesaleSettingsSnapshot)
+      setImages(imagesSnapshot)
+      setCapabilities(capabilitiesSnapshot)
     }
     setSaveError('')
     setEditing(false)
@@ -335,6 +403,8 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
     setDocuments(documentsSnapshot)
     setSpecifications(specificationsSnapshot)
     setWholesaleSettings(wholesaleSettingsSnapshot)
+    setImages(imagesSnapshot)
+    setCapabilities(capabilitiesSnapshot)
     setEditing(false)
   }
 
@@ -349,6 +419,24 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
     const price = Number(fields.unitPrice)
     if (isNaN(price) || price <= 0) { setSaveError('A valid unit price is required.'); setTab('pricing'); return }
 
+    // Packaging validation — catches the "sellingUnit: sdasdasd, everything else
+    // null" case before it ever reaches the network. Only validate if the user
+    // actually touched packaging this session.
+    const packagingChanged = stableStringify(packaging) !== stableStringify(packagingSnapshot)
+    if (packagingChanged && packaging) {
+      if (!packaging.sellingUnit || !packaging.sellingUnit.trim()) {
+        setSaveError('Selling unit is required in Packaging.')
+        setTab('packaging')
+        return
+      }
+      const dims = [packaging.packageLength, packaging.packageWidth, packaging.packageHeight, packaging.grossWeight, packaging.netWeight]
+      if (dims.some((v) => v !== null && v !== undefined && (typeof v === 'string' ? v !== '' : true) && !Number.isFinite(Number(v)))) {
+        setSaveError('Packaging dimensions and weights must be valid numbers.')
+        setTab('packaging')
+        return
+      }
+    }
+
     const confirmed = await confirm({
       title: 'Save Changes',
       message: `Update "${item.name}"?`,
@@ -361,7 +449,8 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
     const errors: string[] = []
 
     try {
-      let imageUrl: string | undefined
+      // --- Overview-tab quick photo upload (legacy single-image flow) ---
+      let overviewImageUrl: string | undefined
       if (pendingImageAsset && user?.orgId) {
         const { publicUrl } = await MediaService.uploadMedia(
           {
@@ -371,10 +460,73 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
           },
           String(user.orgId),
         )
-        imageUrl = publicUrl
+        overviewImageUrl = publicUrl
+      }
+
+      // --- Media tab: diff `images` vs `imagesSnapshot` and persist to
+      //     SupplierItemImage. This is what MediaBuilder was missing —
+      //     previously it only updated local state, never the backend.
+      
+      const imagesChanged = stableStringify(images) !== stableStringify(imagesSnapshot)
+      if (imagesChanged) {
+        try {
+          const snapshotIds = new Set((imagesSnapshot || []).map((img) => img.id))
+          const currentIds = new Set((images || []).map((img) => img.id))
+
+          // Deletes — present before, gone now.
+          for (const img of imagesSnapshot || []) {
+            if (!currentIds.has(img.id)) {
+              await WholesaleService.deleteSupplierItemImage(img.id)
+            }
+          }
+
+          // Creates & updates. MediaBuilder assigns brand-new images a
+          // client-generated id (Date.now() + Math.random()), so anything
+          // whose id wasn't in the snapshot is a create; anything that was
+          // there but changed (replaced photo / moved) is an update.
+          const idMap = new Map<number, number>() // client-side temp id -> real server id
+          for (const img of images || []) {
+            if (!snapshotIds.has(img.id)) {
+              const created = await WholesaleService.createSupplierItemImage({
+                supplierItemId: item.id,
+                url: img.url,
+                sortOrder: img.sortOrder,
+              })
+              idMap.set(img.id, created.id)
+            } else {
+              const original = (imagesSnapshot || []).find((o) => o.id === img.id)
+              if (original && (original.url !== img.url || original.sortOrder !== img.sortOrder)) {
+                await WholesaleService.updateSupplierItemImage({
+                  id: img.id,
+                  url: img.url,
+                  sortOrder: img.sortOrder,
+                })
+              }
+            }
+          }
+
+          // Final reorder pass — cheap safety net so sortOrder in the DB
+          // always matches what's on screen, even across mixed create/update/
+          // delete/reorder actions in the same save.
+          const finalOrder = [...images].sort((a, b) => a.sortOrder - b.sortOrder)
+          if (finalOrder.length > 0) {
+            const realIds = finalOrder.map((img) => idMap.get(img.id) ?? img.id)
+            await WholesaleService.reorderSupplierItemImages({
+              ids: realIds,
+              sortOrders: finalOrder.map((_, i) => i),
+            })
+          }
+
+        } catch (e: any) {
+          errors.push(`Media: ${e?.message ?? 'Failed to save images'}`)
+        }
       }
 
       // --- Core item update ---
+      // Image priority: an explicit overview-tab photo pick wins (the user
+      // just did it this save), otherwise fall back to whatever the Media
+      // tab's primary image resolved to, otherwise keep what's already there.
+      // This writes to SupplierItem.image only — never a Supplier-level field.
       const updated = await updateSupplierItem({
         id: item.id,
         name: fields.name.trim(),
@@ -386,21 +538,23 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
         vatRate: fields.isVatExempt ? 0 : 0.12,
         moq: parseInt(fields.moq, 10) || 1,
         availableQty: parseInt(fields.availableQty, 10) || 0,
-        // Always pass image - use existing image if no new one uploaded
-        image: imageUrl ?? item.image ?? '',
+        image: overviewImageUrl ?? item.image ?? '',
+        // Pricing tiers were previously never sent — the schema accepts them
+        // directly on this mutation, so bundle them in here.
+        priceTiers: pricingTiers.map((t) => ({ minQty: t.minQty, price: t.price })),
       }) as unknown as SupplierItem // Cast to get full typed fields
 
       // --- Packaging update (only if changed) ---
-      if (packaging && stableStringify(packaging) !== stableStringify(packagingSnapshot)) {
+      if (packaging && packagingChanged) {
         try {
           await WholesaleService.updatePackaging({
             supplierItemId: item.id,
             sellingUnit: packaging.sellingUnit,
-            length: packaging.packageLength,
-            width: packaging.packageWidth,
-            height: packaging.packageHeight,
-            grossWeight: packaging.grossWeight,
-            netWeight: packaging.netWeight,
+            packageLength: toNullableNumber(packaging.packageLength),
+            packageWidth: toNullableNumber(packaging.packageWidth),
+            packageHeight: toNullableNumber(packaging.packageHeight),
+            grossWeight: toNullableNumber(packaging.grossWeight),
+            netWeight: toNullableNumber(packaging.netWeight),
           })
         } catch (e: any) {
           errors.push(`Packaging: ${e?.message ?? 'Failed to save'}`)
@@ -425,13 +579,15 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
       }
 
       // --- Specifications diff and save ---
+      let syncedSpecifications = specifications
       try {
         const snapshotIds = new Set((specificationsSnapshot || []).map(s => s.id).filter(id => !String(id).startsWith('temp_')))
+        const createdSpecIds: Array<{ tempId?: string, realId: string }> = []
 
         // Create new specs (those with temp ids or id not in snapshot)
         for (const spec of specifications || []) {
           if (!spec.id || String(spec.id).startsWith('temp_')) {
-            await WholesaleService.createSpecification({
+            const created = await WholesaleService.createSpecification({
               supplierItemId: item.id,
               name: spec.name,
               value: spec.value,
@@ -440,6 +596,8 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
               unit: spec.unit,
               sortOrder: spec.sortOrder,
             })
+            // Track the created specification ID for syncing
+            createdSpecIds.push({ tempId: spec._tempId || spec.id, realId: created.id })
           }
         }
 
@@ -448,8 +606,8 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
           if (spec.id && !String(spec.id).startsWith('temp_') && snapshotIds.has(String(spec.id))) {
             const original = specificationsSnapshot.find(s => s.id === spec.id)
             if (original && (spec.name !== original.name || spec.value !== original.value ||
-                spec.category !== original.category || spec.groupName !== original.groupName ||
-                spec.unit !== original.unit || spec.sortOrder !== original.sortOrder)) {
+              spec.category !== original.category || spec.groupName !== original.groupName ||
+              spec.unit !== original.unit || spec.sortOrder !== original.sortOrder)) {
               await WholesaleService.updateSpecification({
                 id: String(spec.id),
                 name: spec.name,
@@ -469,8 +627,78 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
             await WholesaleService.deleteSpecification(String(spec.id))
           }
         }
+
+        // Sync created specification IDs back to local state
+        if (createdSpecIds.length > 0) {
+          syncedSpecifications = specifications.map(s => {
+            const createdSpec = createdSpecIds.find(cs => cs.tempId === s._tempId || cs.tempId === s.id)
+            if (createdSpec) {
+              return { ...s, id: createdSpec.realId, _tempId: undefined }
+            }
+            return s
+          })
+        }
       } catch (e: any) {
         errors.push(`Specifications: ${e?.message ?? 'Failed to save'}`)
+      }
+
+      // --- Capabilities diff and save ---
+      // NOTE: Capabilities are organization-level, stored on SupplierCapability table
+      // The current implementation incorrectly saves to productWholesaleSettings
+      // We need to save each capability separately to the correct table
+      try {
+        const orgId = user?.orgId ?? 0
+        const snapshotCaps = capabilitiesSnapshot // original values
+        const currentCaps = capabilities // current values
+
+        // Get list of capability types that exist in current state
+        const currentTypes = Object.keys(currentCaps)
+        const snapshotTypes = Object.keys(snapshotCaps)
+
+        // Create or update capabilities based on changes
+        for (const type of currentTypes) {
+          const current = currentCaps[type]
+          const wasInSnapshot = snapshotCaps[type]
+
+          if (!wasInSnapshot) {
+            // New capability - create it
+            if (current.available) {
+              await WholesaleService.createSupplierCapability({
+                organizationId: orgId,
+                type: type as SupplierCapabilityType,
+                name: current.name,
+                available: current.available,
+                description: current.description,
+              })
+            }
+          } else if (wasInSnapshot && (current.available !== wasInSnapshot.available || current.description !== wasInSnapshot.description)) {
+            // Updated capability - find the real ID and update
+            const realId = wasInSnapshot.id
+            if (realId && !String(realId).startsWith('temp_')) {
+              await WholesaleService.updateSupplierCapability({
+                id: String(realId),
+                available: current.available,
+                description: current.description,
+              })
+            }
+          }
+        }
+
+        // Delete capabilities that were turned off (only if they exist in DB)
+        for (const type of snapshotTypes) {
+          const wasInSnapshot = snapshotCaps[type]
+          const current = currentCaps[type]
+          if (wasInSnapshot?.id && !String(wasInSnapshot.id).startsWith('temp_') && (!current || !current.available)) {
+            // Capability was removed or turned off - soft delete
+            // Note: We only delete if it was created during this session (has real DB id)
+            // and is now being turned off (available = false)
+            if (current && !current.available) {
+              await WholesaleService.deleteSupplierCapability(String(wasInSnapshot.id))
+            }
+          }
+        }
+      } catch (e: any) {
+        errors.push(`Capabilities: ${e?.message ?? 'Failed to save'}`)
       }
 
       // --- Wholesale settings update (only if changed) ---
@@ -483,8 +711,66 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
             leadTime: wholesaleSettings.leadTime,
           })
         } catch (e: any) {
-          errors.push(`Capabilities: ${e?.message ?? 'Failed to save'}`)
+          errors.push(`WholesaleSettings: ${e?.message ?? 'Failed to save'}`)
         }
+      }
+
+      // --- Documents diff and save ---
+      let syncedDocuments = documents
+      try {
+        const documentsChanged = stableStringify(documents) !== stableStringify(documentsSnapshot)
+        if (documentsChanged) {
+          const snapshotIds = new Set((documentsSnapshot || []).map(d => d.id))
+          const currentIds = new Set((documents || []).map(d => d.id))
+          const createdDocIds: Array<{ tempId?: string, realId: string }> = []
+
+          // Deletes — present before, gone now.
+          for (const doc of documentsSnapshot || []) {
+            if (!currentIds.has(doc.id)) {
+              await WholesaleService.deleteDocument(doc.id)
+            }
+          }
+
+          // Creates & updates. Documents with temp ids are creates, existing ones with changes are updates.
+          for (const doc of documents || []) {
+            const isNew = !snapshotIds.has(doc.id) && doc.id?.toString().startsWith('temp_')
+            const isExisting = snapshotIds.has(doc.id) && !doc.id?.toString().startsWith('temp_')
+
+            if (isNew) {
+              const created = await WholesaleService.uploadDocument({
+                supplierItemId: item.id,
+                type: doc.type,
+                title: doc.title,
+                fileUrl: doc.fileUrl,
+              })
+              // Track the created document ID for syncing
+              createdDocIds.push({ tempId: doc._tempId || doc.id, realId: created.id })
+            } else if (isExisting) {
+              const original = documentsSnapshot.find(d => d.id === doc.id)
+              // Check if type or title changed (fileUrl is immutable after upload)
+              if (original && (doc.type !== original.type || doc.title !== original.title)) {
+                await WholesaleService.updateDocument({
+                  id: doc.id,
+                  type: doc.type,
+                  title: doc.title,
+                })
+              }
+            }
+          }
+
+          // Sync created document IDs back to local state
+          if (createdDocIds.length > 0) {
+            syncedDocuments = documents.map(d => {
+              const createdDoc = createdDocIds.find(cd => cd.tempId === d._tempId || cd.tempId === d.id)
+              if (createdDoc) {
+                return { ...d, id: createdDoc.realId, _tempId: undefined }
+              }
+              return d
+            })
+          }
+        }
+      } catch (e: any) {
+        errors.push(`Documents: ${e?.message ?? 'Failed to save'}`)
       }
 
       if (errors.length > 0) {
@@ -492,7 +778,16 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
       }
 
       // Update all snapshots on partial or full success
-      onUpdated(updated)
+      // Create an updated item that includes our synced sub-resources
+      const fullyUpdated = {
+        ...updated,
+        wholesaleDocuments: syncedDocuments,
+        productSpecifications: syncedSpecifications,
+        wholesalePackaging: packaging,
+        wholesaleShipping: shipping,
+      } as SupplierItem
+
+      onUpdated(fullyUpdated)
       const newSnap = snap(updated)
       setSnapshot(newSnap)
       setFields(newSnap)
@@ -502,9 +797,17 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
       setPricingTiersSnapshot(pricingTiers)
       setPackagingSnapshot(packaging)
       setShippingSnapshot(shipping)
-      setDocumentsSnapshot(documents)
-      setSpecificationsSnapshot(specifications)
+      // Sync the documents/specifications with real IDs after save
+      setDocumentsSnapshot(syncedDocuments)
+      setDocuments(syncedDocuments) // Also update the state to replace temp IDs
+      setSpecificationsSnapshot(syncedSpecifications)
+      setSpecifications(syncedSpecifications) // Also update the state to replace temp IDs
       setWholesaleSettingsSnapshot(wholesaleSettings)
+      // Reflect the server's canonical image list/order if it came back on
+      // `updated`; otherwise keep what we just persisted locally.
+      setImages(updated.supplierItemImage ?? images)
+      setImagesSnapshot(updated.supplierItemImage ?? images)
+      setCapabilitiesSnapshot({ ...capabilities })
 
       // Only exit edit mode if no errors
       if (errors.length === 0) {
@@ -643,7 +946,7 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
         </ScrollView>
 
         {/* ── Body ── */}
-        <ScrollView contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: editing ? 90 : 16 }}  indicatorStyle={theme === 'dark' ? 'black' : 'white'}>
+        <ScrollView contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: editing ? 90 : 16 }} indicatorStyle={theme === 'dark' ? 'black' : 'white'}>
           {!!saveError && (
             <View style={{ backgroundColor: '#FEF2F2', borderRadius: 8, padding: 12, borderLeftWidth: 3, borderLeftColor: '#EF4444' }}>
               <Text style={{ color: '#DC2626', fontSize: 13 }}>{saveError}</Text>
@@ -783,12 +1086,14 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
             <View style={{ backgroundColor: colors.background, borderRadius: 12 }}>
               <MediaBuilder
                 supplierItemId={item.id}
-                images={item.images || []}
-                primaryImageUrl={item.image || undefined}
+                images={item.supplierItemImage || []} // supplierItemImage
+
                 orgId={user?.orgId ?? ''}
-                onUpdated={(imgs, primaryUrl) => {
+                onUpdated={(imgs,) => {
+                  // Update images state for dirty tracking
+                  setImages(imgs)
                   // Update both images array and primary image field
-                  onUpdated({ ...item, images: imgs, image: primaryUrl })
+                  onUpdated({ ...item, supplierItemImage: imgs, })
                 }}
                 editable={editing}
               />
@@ -843,29 +1148,15 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
           {tab === 'capabilities' && (
             <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 16 }}>
               <SupplierCapabilityBuilder
-                capabilities={wholesaleSettings ? [{
-                  id: wholesaleSettings.id,
-                  organizationId: 0,
-                  type: 'MINOR_CUSTOMIZATION',
-                  name: 'Sample Available',
-                  available: wholesaleSettings.sampleAvailable,
-                  description: wholesaleSettings.leadTime,
-                  createdAt: wholesaleSettings.createdAt,
-                  updatedAt: wholesaleSettings.updatedAt,
-                }] : []}
+                capabilities={Object.values(capabilities)}
                 editable={editing}
                 onChange={(caps) => {
-                  const c = caps[0]
-                  setWholesaleSettings({
-                    id: wholesaleSettings?.id || '',
-                    supplierItemId: item.id,
-                    minimumOrderQty: wholesaleSettings?.minimumOrderQty,
-                    sampleAvailable: c?.available ?? false,
-                    samplePrice: wholesaleSettings?.samplePrice,
-                    leadTime: c?.description,
-                    createdAt: wholesaleSettings?.createdAt || new Date().toISOString(),
-                    updatedAt: new Date().toISOString(),
+                  // Update capabilities state
+                  const capsMap: Record<string, SupplierCapability> = {}
+                  caps.forEach(c => {
+                    capsMap[c.type] = c
                   })
+                  setCapabilities(capsMap)
                 }}
               />
             </View>

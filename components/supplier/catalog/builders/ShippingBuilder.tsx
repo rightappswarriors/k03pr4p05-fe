@@ -31,26 +31,29 @@ export function ShippingBuilder({ supplierItemId, shipping, onChange, editable =
   })
 
   // Lift changes to parent (controlled state pattern)
-  const notifyParent = useCallback(() => {
+  const notifyParentManually = useCallback((updatedFields: typeof fields) => {
     onChange({
       id: shipping?.id || '',
       supplierItemId,
-      originCountry: fields.originCountry || undefined,
-      originProvince: fields.originProvince || undefined,
-      originCity: fields.originCity || undefined,
-      shippingMethod: isFreeShipping ? 'Free Shipping' : (fields.shippingMethod || undefined),
-      estimatedDays: fields.estimatedDays ? parseInt(fields.estimatedDays) : undefined,
-      shippingNotes: fields.shippingNotes || undefined,
+      originCountry: updatedFields.originCountry || undefined,
+      originProvince: updatedFields.originProvince || undefined,
+      originCity: updatedFields.originCity || undefined,
+      shippingMethod: isFreeShipping ? 'Free Shipping' : (updatedFields.shippingMethod || undefined),
+      estimatedDays: updatedFields.estimatedDays ? parseInt(updatedFields.estimatedDays) : undefined,
+      shippingNotes: updatedFields.shippingNotes || undefined,
       createdAt: shipping?.createdAt || new Date().toISOString(),
       updatedAt: shipping?.updatedAt || new Date().toISOString(),
     })
-  }, [onChange, shipping, supplierItemId, fields, isFreeShipping])
+  }, [onChange, shipping, supplierItemId, isFreeShipping])
 
   const update = useCallback((key: keyof typeof fields, value: string) => {
-    setFields(prev => ({ ...prev, [key]: value }))
-    // Notify parent after state change
-    notifyParent()
-  }, [notifyParent])
+    setFields(prev => {
+      const updated = { ...prev, [key]: value }
+      // Notify parent with the updated fields immediately
+      notifyParentManually(updated)
+      return updated
+    })
+  }, [notifyParentManually])
 
   // Guard to prevent prop sync loop
   const lastPropRef = useRef<string | null>(null)
@@ -126,7 +129,10 @@ export function ShippingBuilder({ supplierItemId, shipping, onChange, editable =
         <Text style={[styles.freeShippingLabel, { color: colors.text }]}>Free Shipping</Text>
         <Switch
           value={isFreeShipping}
-          onValueChange={(val) => { setIsFreeShipping(val); notifyParent() }}
+          onValueChange={(val) => {
+            setIsFreeShipping(val)
+            notifyParentManually(fields)
+          }}
           trackColor={{ false: colors.border, true: colors.primary }}
           thumbColor="#fff"
         />

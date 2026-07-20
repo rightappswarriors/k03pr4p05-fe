@@ -69,8 +69,10 @@ export function DocumentsBuilder({ supplierItemId, documents, orgId, onChange, e
         String(orgId)
       )
 
+      const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
       const newDoc: WholesaleDocument = {
-        id: `temp_${Date.now()}`,
+        id: tempId,
+        _tempId: tempId,
         supplierItemId,
         title: asset.name,
         type: 'OTHER',

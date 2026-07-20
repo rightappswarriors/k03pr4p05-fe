@@ -32,7 +32,7 @@ import * as ImagePicker from 'expo-image-picker'
 import { Plus, GripVertical, Camera, Expand } from 'lucide-react-native'
 import { PreviewModal } from '@/components/PreviewModal'
 import type { SupplierItemImage } from '@/types'
-
+import { WholesaleService} from '@/services/wholesaleService'
 interface Props {
   supplierItemId: string
   images: SupplierItemImage[]

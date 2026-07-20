@@ -8,6 +8,8 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Switch } from 'rea
 import { useTheme } from '@/contexts/ThemeContext'
 import { Settings, Plus, Trash2, ChevronDown, ChevronRight } from 'lucide-react-native'
 import type { SupplierCapability, SupplierCapabilityType } from '@/types'
+import { WholesaleService } from '@/services/wholesaleService'
+import { useAuth } from '@/contexts/AuthContext'
 
 interface Props {
   capabilities: SupplierCapability[]
@@ -24,16 +26,28 @@ const CAPABILITY_TYPES: { value: SupplierCapabilityType; label: string; descript
   { value: 'ODM', label: 'ODM', description: 'Original Design Manufacturing' },
 ]
 
-export function SupplierCapabilityBuilder({ capabilities, onChange, editable = true }: Props) {
+export function SupplierCapabilityBuilder({ onChange, editable = true }: Props) {
   const { colors } = useTheme()
-  const [caps, setCaps] = useState<SupplierCapability[]>(capabilities)
+  const { user } = useAuth()
+  const [caps, setCaps] = useState<SupplierCapability[]>([])
   const [expanded, setExpanded] = useState<Set<string>>(new Set(CAPABILITY_TYPES.map(c => c.value)))
 
   // Sync with props when they change (controlled component)
+  const getCapability = async (orgId: any): Promise<SupplierCapability[]> => {
+    return await WholesaleService.getSupplierCapabilities(Number(orgId))
+  }
   useEffect(() => {
-    setCaps(capabilities)
-  }, [capabilities])
+    if (!user?.orgId) return
+    let cancelled = false
 
+    WholesaleService.getSupplierCapabilities(Number(user.orgId)).then((result) => {
+      if (!cancelled) setCaps(result)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [user?.orgId])
   const toggleExpanded = (type: SupplierCapabilityType) => {
     setExpanded(prev => {
       const next = new Set(prev)
@@ -43,6 +57,9 @@ export function SupplierCapabilityBuilder({ capabilities, onChange, editable = t
     })
   }
 
+  // Helper to generate temp ID for new capabilities
+  const generateTempId = () => `temp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+
   const updateCapability = useCallback((type: SupplierCapabilityType, updates: Partial<SupplierCapability>) => {
     setCaps(prev => {
       const existing = prev.find(c => c.type === type)
@@ -50,8 +67,9 @@ export function SupplierCapabilityBuilder({ capabilities, onChange, editable = t
       if (existing) {
         newState = prev.map(c => c.type === type ? { ...c, ...updates } : c)
       } else {
+        // Create new capability with temp ID for tracking
         newState = [...prev, {
-          id: `temp_${Date.now()}`,
+          id: generateTempId(), // temp ID for new capabilities
           organizationId: 0,
           type,
           name: CAPABILITY_TYPES.find(c => c.value === type)?.label || type,
@@ -80,7 +98,7 @@ export function SupplierCapabilityBuilder({ capabilities, onChange, editable = t
   const lbl = { fontSize: 11, fontWeight: '600' as const, color: colors.textSecondary, marginBottom: 2 }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.card}]}>
+    <View style={[styles.container, { backgroundColor: colors.card }]}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 }}>
         <Settings size={16} color={colors.primary} />
         <Text style={[styles.sectionTitle, { color: colors.text }]}>
@@ -94,7 +112,7 @@ export function SupplierCapabilityBuilder({ capabilities, onChange, editable = t
         const isExpanded = expanded.has(capType.value)
 
         return (
-          <View key={capType.value} style={[styles.capItem, { borderBottomColor: colors.border}]}>
+          <View key={capType.value} style={[styles.capItem, { borderBottomColor: colors.border }]}>
             <TouchableOpacity onPress={() => toggleExpanded(capType.value)} style={styles.capHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
                 {isExpanded ? (
@@ -143,7 +161,7 @@ export function SupplierCapabilityBuilder({ capabilities, onChange, editable = t
 }
 
 const styles = StyleSheet.create({
-  container: {  borderRadius: 8, padding: 12, gap: 8 },
+  container: { borderRadius: 8, padding: 12, gap: 8 },
   sectionTitle: { fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3 },
   capItem: { borderBottomWidth: 1, paddingVertical: 8 },
   capHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
