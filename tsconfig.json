@@ -1,0 +1,23 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "jsx": "react",
+    "strict": true,
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": [
+    "**/*.ts",
+    "types/**/*.d.ts",
+    "**/*.tsx",
+    "nativewind-env.d.ts",
+    "components/pos/CategoryDropdowntsx",
+    "app.config.js",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts",
+    "components/dashboardSummary"
+  ]
+}

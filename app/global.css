@@ -1,0 +1,29 @@
+[data-auth-screen='true'] input,
+[data-auth-screen='true'] textarea {
+  appearance: none !important;
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+  caret-color: #0f172a;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+[data-auth-screen='true'] input::placeholder,
+[data-auth-screen='true'] textarea::placeholder {
+  color: #64748b !important;
+  opacity: 1;
+}
+
+[data-auth-screen='true'] input:-webkit-autofill,
+[data-auth-screen='true'] input:-webkit-autofill:hover,
+[data-auth-screen='true'] input:-webkit-autofill:focus,
+[data-auth-screen='true'] textarea:-webkit-autofill,
+[data-auth-screen='true'] textarea:-webkit-autofill:hover,
+[data-auth-screen='true'] textarea:-webkit-autofill:focus {
+  -webkit-text-fill-color: #0f172a !important;
+  caret-color: #0f172a;
+  box-shadow: 0 0 0 1000px #f8fafc inset !important;
+  transition: background-color 9999s ease-out;
+}

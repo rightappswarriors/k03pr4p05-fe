@@ -1,0 +1,3 @@
+import FinancePayoutMethodsScreen from '@/screens/supplier/FinancePayoutMethodsScreen'
+
+export default FinancePayoutMethodsScreen

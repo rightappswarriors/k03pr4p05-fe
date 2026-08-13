@@ -1,0 +1,207 @@
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { AppState } from 'react-native'; // ✅ add this import
+import { AuthService } from '@/services/authService';
+import type { AuthState } from '@/types';
+import { useLoading } from '@/contexts/LoadingContext'
+
+interface AuthContextType extends AuthState {
+  login: (email: string, password: string) => Promise<void>;
+  loginWithBiometric: () => Promise<void>;
+  logout: (outletId: number) => Promise<void>;
+  removeUser: () => Promise<void>;
+  refreshUser: () => Promise<void>;
+  setBiometricEnabled: (enabled: boolean) => Promise<void>;
+  isBiometricSupported: () => Promise<boolean>;
+  isBiometricEnabled: () => Promise<boolean>;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const { setLoading } = useLoading()
+  const [authState, setAuthState] = useState<AuthState>({
+    user: null,
+    isLoading: true,
+    isAuthenticated: false,
+    accessToken: null,
+    refreshToken: null,
+  });
+
+  // ─── Initial auth check on mount ───────────────────────────────────────────
+  useEffect(() => {
+    checkAuthStatus();
+  }, []);
+
+  // ─── Refresh token when app comes back to foreground ───────────────────────
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', async (nextState) => {
+      if (nextState === 'active') {
+        const updated = await AuthService.onAppForeground();
+        if (updated) {
+          // Token refreshed — update state silently, no loading spinner needed
+          setAuthState(updated);
+        } else {
+          // Refresh token expired or invalid — force logout
+          setAuthState({
+            user: null,
+            isLoading: false,
+            isAuthenticated: false,
+            accessToken: null,
+            refreshToken: null,
+          });
+        }
+      }
+    });
+
+    return () => sub.remove(); // ✅ cleanup on unmount
+  }, []);
+
+  // ───────────────────────────────────────────────────────────────────────────
+
+  const checkAuthStatus = async () => {
+    try {
+      setLoading(true);
+      const authState = await AuthService.initializeAuth();
+      setAuthState(authState);
+    } catch (error) {
+      setAuthState({
+        user: null,
+        isLoading: false,
+        isAuthenticated: false,
+        accessToken: null,
+        refreshToken: null,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const refreshUser = async () => {
+    try {
+      setLoading(true);
+      const authState = await AuthService.initializeAuth();
+      setAuthState(authState);
+    } catch (error) {
+      setAuthState({
+        user: null,
+        isLoading: false,
+        isAuthenticated: false,
+        accessToken: null,
+        refreshToken: null,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const login = async (email: string, password: string) => {
+    try {
+      setLoading(true);
+      const user = await AuthService.login(email, password);
+      const { accessToken, refreshToken } = await AuthService.getTokens();
+
+      setAuthState({
+        user,
+        isLoading: false,
+        isAuthenticated: true,
+        accessToken,
+        refreshToken,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loginWithBiometric = async () => {
+    try {
+      setLoading(true)
+      const user = await AuthService.loginWithBiometric();
+
+      if (user) {
+        setAuthState({
+          user,
+          isLoading: false,
+          isAuthenticated: true,
+        });
+      } else {
+        throw new Error('Biometric authentication failed');
+      }
+    } catch (error) {
+      throw error;
+    } finally {
+      setLoading(false)
+    }
+  };
+
+  const logout = async (outletId: number) => {
+    try {
+      setLoading(true)
+      await AuthService.logout(outletId);
+      setAuthState({
+        user: null,
+        isLoading: false,
+        isAuthenticated: false,
+        accessToken: null,
+        refreshToken: null,
+      });
+    } catch (error) {
+      if (__DEV__) console.error('Logout error:', error);
+    } finally {
+      setLoading(false)
+    }
+  };
+
+  const setBiometricEnabled = async (enabled: boolean) => {
+    await AuthService.setBiometricEnabled(enabled);
+  };
+
+  const removeUser = async () => {
+    try {
+      setLoading(true)
+      await AuthService.removeUser()
+      setAuthState({
+        user: null,
+        isLoading: false,
+        isAuthenticated: false,
+      });
+    } catch (error) {
+      if (__DEV__) console.error('Logout error:', error);
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const isBiometricSupported = async () => {
+    return await AuthService.isBiometricSupported();
+  };
+
+  const isBiometricEnabled = async () => {
+    return await AuthService.isBiometricEnabled();
+  };
+
+  return (
+    <AuthContext.Provider
+      value={{
+        ...authState,
+        login,
+        loginWithBiometric,
+        logout,
+        removeUser,
+        refreshUser,
+        setBiometricEnabled,
+        isBiometricSupported,
+        isBiometricEnabled,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth() {
+  const context = useContext(AuthContext)
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider')
+  }
+  return context
+}
