@@ -20,7 +20,7 @@ export default function RelationshipWorkspaceScreen() {
   const [orders, setOrders] = useState<PurchaseOrder[]>([]); const [loading, setLoading] = useState(true)
   const load = useCallback(async () => {
     if (!id) return
-    try { setLoading(true); const current = await getLink(id); setLink(current); if (current) setOrders((await fetchPurchaseOrdersForSupplier(current.supplierOrgId)).filter(order => order.outlet.id === current.outletId)) }
+    try { setLoading(true); const current = await getLink(id); setLink(current); if (current) setOrders((await fetchPurchaseOrdersForSupplier(current.supplierOrgId)).filter(order => order.outlet?.id === current.outletId)) }
     catch (error: any) { Alert.alert('Unable to open workspace', error?.message ?? 'Please try again.') }
     finally { setLoading(false) }
   }, [id])

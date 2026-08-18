@@ -3,7 +3,10 @@ import { gql } from 'graphql-request'
 import { graphQLRequest } from '../apiClient'
 import type { MarketplaceListing } from '../marketplaceService'
 import type { SupplierItemVariant, VariantGroup } from './variantService'
-import type { SupplierItemImage, ProductSpecification, SupplierRfqInboxItem, RequestForQuotationDetail, ReplyToRFQInput, ConversationMessage, CounterOfferInput, NegotiationOffer, AcceptNegotiationInput, RejectNegotiationInput } from '@/types'
+import type { SupplierItemImage, ProductSpecification, SupplierRfqInboxItem, RequestForQuotationDetail, ReplyToRFQInput, ConversationMessage, CounterOfferInput, NegotiationOffer, AcceptNegotiationInput, RejectNegotiationInput, RfqEligibilityResult, RfqFilters, PurchaseOrder, POStatus, Delivery, CreateConsolidatedPoInput } from '@/types'
+
+// Re-export types that other modules import from this file
+export type { PurchaseOrder, POStatus, Delivery, RfqEligibilityResult, RfqFilters, RequestForQuotationDetail, SupplierRfqInboxItem, NegotiationOffer, ConversationMessage, ReplyToRFQInput, CounterOfferInput, AcceptNegotiationInput, RejectNegotiationInput, CreateConsolidatedPoInput }
 
 // ─── Fragments ───────────────────────────────────────────────────────────────
 // PROMPT: ADD MISSING TYPESCRIPT TYPES FOR THE FOLLOWING FRAGMENTS
@@ -139,6 +142,9 @@ const PO_LINE_ITEM_FIELDS = `
   qty
   unitPrice
   subtotal
+  itemName
+  itemSku
+  itemDescription
   supplierItem { ${SUPPLIER_ITEM_FIELDS} }
 `
 
@@ -165,6 +171,8 @@ const PURCHASE_ORDER_FIELDS = `
   buyerOrg { id name }
   supplierOrg { id name }
   outlet { id name address }
+  agentId
+  agent { id fullname email organizationId organization { id name profileImg } }
   lineItems { ${PO_LINE_ITEM_FIELDS} }
   delivery { ${DELIVERY_FIELDS} }
 `
@@ -249,37 +257,6 @@ export async function fetchSupplierDashboard(
 }
 // ─── Purchase Orders ─────────────────────────────────────────────────────────
 
-export type POStatus =
-  | 'PENDING'
-  | 'ACCEPTED'
-  | 'REJECTED'
-  | 'IN_TRANSIT'
-  | 'DELIVERED'
-  | 'CANCELLED'
-
-export interface PurchaseOrder {
-  id: string
-  poNumber: string
-  status: POStatus
-  totalAmount: number
-  vatAmount: number
-  notes?: string | null
-  requestedDate?: string | null
-  createdAt: string
-  updatedAt: string
-  buyerOrg: { id: number; name: string }
-  supplierOrg: { id: number; name: string }
-  outlet: { id: number; name: string; address: string }
-  lineItems: Array<{
-    id: string
-    qty: number
-    unitPrice: number
-    subtotal: number
-    supplierItem: SupplierItem
-  }>
-  delivery?: Delivery | null
-}
-
 export async function fetchPurchaseOrdersForSupplier(
   supplierOrgId: number,
   status?: POStatus | null
@@ -344,19 +321,78 @@ export async function rejectPO(id: string): Promise<PurchaseOrder> {
   return res.rejectPO
 }
 
-// ─── Deliveries ───────────────────────────────────────────────────────────────
+// ─── Consolidated PO Creation ───────────────────────────────────────────────────
 
-export interface Delivery {
-  id: string
-  status: 'SCHEDULED' | 'IN_TRANSIT' | 'DELIVERED' | 'FAILED'
-  scheduledDate: string
-  deliveredAt?: string | null
-  driverName?: string | null
-  driverContact?: string | null
-  notes?: string | null
+export interface ConsolidatedPoResult {
+  success: boolean
+  poNumber: string
+  purchaseOrder: PurchaseOrder
 }
 
-export type DeliveryStatus = 'SCHEDULED' | 'IN_TRANSIT' | 'DELIVERED' | 'FAILED'
+export async function createConsolidatedPurchaseOrder(
+  input: CreateConsolidatedPoInput,
+): Promise<ConsolidatedPoResult> {
+  const MUTATION = gql`
+    mutation CreateConsolidatedPO(
+      $rfqIds: [String!]!
+      $deliveryDate: DateTime!
+      $notes: String
+      $otherCharges: Float
+      $driverName: String
+      $driverContact: String
+    ) {
+      createConsolidatedPurchaseOrder(
+        rfqIds: $rfqIds
+        deliveryDate: $deliveryDate
+        notes: $notes
+        otherCharges: $otherCharges
+        driverName: $driverName
+        driverContact: $driverContact
+      ) {
+        success
+        poNumber
+        purchaseOrder {
+          ${PURCHASE_ORDER_FIELDS}
+        }
+      }
+    }
+  `
+
+  const res = await graphQLRequest<{ createConsolidatedPurchaseOrder: ConsolidatedPoResult }>(MUTATION, {
+    rfqIds: input.rfqIds,
+    deliveryDate: input.deliveryDate,
+    notes: input.notes ?? null,
+    otherCharges: input.otherCharges ?? 0,
+    driverName: input.driverName ?? null,
+    driverContact: input.driverContact ?? null,
+  })
+  return res.createConsolidatedPurchaseOrder
+}
+
+// ─── RFQ Eligibility Validation ─────────────────────────────────────────────────
+
+export async function validateRFQEligibility(rfqId: string): Promise<RfqEligibilityResult> {
+  const QUERY = gql`
+    query ValidateRFQEligibility($rfqId: String!) {
+      validateRFQEligibility(rfqId: $rfqId) {
+        valid
+        rfqExists
+        correctOrg
+        notExpired
+        hasAcceptedOffer
+        notCancelled
+        notRejected
+        notConsumed
+        reason
+      }
+    }
+  `
+  const res = await graphQLRequest<{ validateRFQEligibility: RfqEligibilityResult }>(QUERY, { rfqId })
+  return res.validateRFQEligibility
+}
+
+// ─── Deliveries ───────────────────────────────────────────────────────────────
+// Delivery type is now imported from @/types
 
 
 // ─── Supplier Catalog ─────────────────────────────────────────────────────────
@@ -878,6 +914,7 @@ const RFQ_SUPPLIER_FIELDS = `
 
 export interface RfqInboxFilters {
   status?: string | null
+  statuses?: string[] | null
   search?: string | null
   unreadOnly?: boolean | null
   dateFrom?: string | null
@@ -889,12 +926,12 @@ export async function fetchSupplierRFQs(
   filters?: RfqInboxFilters,
 ): Promise<SupplierRfqInboxItem[]> {
   const QUERY = gql`
-    query SupplierInboxRFQs($supplierOrgId: Int!, $status: RfqStatus, $search: String, $unreadOnly: Boolean, $dateFrom: DateTime, $dateTo: DateTime) {
-      supplierInboxRFQs(supplierOrgId: $supplierOrgId, status: $status, search: $search, unreadOnly: $unreadOnly, dateFrom: $dateFrom, dateTo: $dateTo) {
+    query SupplierInboxRFQs($supplierOrgId: Int!, $status: RfqStatus, $statuses: [RfqStatus!], $search: String, $unreadOnly: Boolean, $dateFrom: DateTime, $dateTo: DateTime) {
+      supplierInboxRFQs(supplierOrgId: $supplierOrgId, status: $status, statuses: $statuses, search: $search, unreadOnly: $unreadOnly, dateFrom: $dateFrom, dateTo: $dateTo) {
         ${RFQ_SUPPLIER_FIELDS}
         agent { id fullname email phone organizationId trustTier organization { id name profileImg } }
         supplierOrg { id name profileImg profilePhoto location verificationStatus bio contactNumber }
-        supplierItem { id name sku unit unitPrice moq availableQty leadTime image isActive productWholesaleSettings { minimumOrderQty leadTime } }
+        supplierItem { id name sku unit unitPrice isVatExempt vatRate moq availableQty leadTime image isActive productWholesaleSettings { minimumOrderQty leadTime } }
         conversation {
           id
           type
@@ -937,6 +974,7 @@ export async function fetchSupplierRFQs(
   const variables: any = {
     supplierOrgId,
     status: filters?.status ?? null,
+    statuses: filters?.statuses ?? null,
     search: filters?.search ?? null,
     unreadOnly: filters?.unreadOnly ?? null,
     dateFrom: filters?.dateFrom ?? null,

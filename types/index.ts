@@ -907,10 +907,139 @@ export interface RejectNegotiationInput {
 
 export interface RfqFilters {
   status?: RfqStatus;
+  statuses?: RfqStatus[];
   search?: string;
   unreadOnly?: boolean;
   dateFrom?: string;
   dateTo?: string;
+}
+
+// ─── RFQ Status Groups for inbox tab filtering ────────────────────────────────
+
+export const RFQ_PENDING_STATUSES: RfqStatus[] = ['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'RFQ_RECEIVED', 'PENDING_SUPPLIER_RESPONSE']
+export const RFQ_NEGOTIATING_STATUSES: RfqStatus[] = ['NEGOTIATING', 'SUPPLIER_OFFERED', 'BUYER_COUNTERED', 'COUNTER_OFFERED', 'NEGOTIATION_COMPLETED']
+export const RFQ_ACCEPTED_STATUSES: RfqStatus[] = ['NEGOTIATION_ACCEPTED', 'AGENT_ACCEPTED_FINAL', 'SUPPLIER_ACCEPTED_FINAL', 'WAITING_SUPPLIER_CONFIRMATION']
+export const RFQ_CLOSED_STATUSES: RfqStatus[] = ['CANCELLED', 'EXPIRED']
+
+export type RfqStatusGroup = 'ALL' | 'SUBMITTED' | 'NEGOTIATING' | 'NEGOTIATION_ACCEPTED' | 'CANCELLED'
+
+export const RFQ_STATUS_FILTERS: Array<{ key: RfqStatusGroup; label: string; statuses: RfqStatus[] }> = [
+  { key: 'ALL', label: 'All RFQs', statuses: [...RFQ_PENDING_STATUSES, ...RFQ_NEGOTIATING_STATUSES, ...RFQ_ACCEPTED_STATUSES, ...RFQ_CLOSED_STATUSES] },
+  { key: 'SUBMITTED', label: 'New (Pending)', statuses: RFQ_PENDING_STATUSES },
+  { key: 'NEGOTIATING', label: 'Negotiating', statuses: RFQ_NEGOTIATING_STATUSES },
+  { key: 'NEGOTIATION_ACCEPTED', label: 'Accepted', statuses: RFQ_ACCEPTED_STATUSES },
+  { key: 'CANCELLED', label: 'Cancelled', statuses: RFQ_CLOSED_STATUSES },
+]
+
+export function isStatusInGroup(status: string, group: RfqStatus[]): boolean {
+  return group.includes(status as RfqStatus)
+}
+
+export function getStatusesForFilter(groupKey: RfqStatusGroup): RfqStatus[] {
+  if (groupKey === 'ALL') return RFQ_STATUS_FILTERS[0].statuses
+  return RFQ_STATUS_FILTERS.find(f => f.key === groupKey)?.statuses ?? []
+}
+
+// ─── RFQ Eligibility Validation ────────────────────────────────────────────────
+
+export interface RfqEligibilityResult {
+  valid: boolean;
+  rfqExists: boolean;
+  correctOrg: boolean;
+  notExpired: boolean;
+  hasAcceptedOffer: boolean;
+  notCancelled: boolean;
+  notRejected: boolean;
+  notConsumed: boolean;
+  reason: string | null;
+}
+
+/** Statuses in which an RFQ is eligible for PO creation. */
+export const ELIGIBLE_RFQ_STATUSES: RfqStatus[] = [
+  'NEGOTIATION_ACCEPTED',
+  'AGENT_ACCEPTED_FINAL',
+  'SUPPLIER_ACCEPTED_FINAL',
+  'WAITING_SUPPLIER_CONFIRMATION',
+]
+
+// ─── Purchase Order Types ──────────────────────────────────────────────────────
+
+export type POStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'IN_TRANSIT' | 'DELIVERED' | 'CANCELLED'
+
+export interface Delivery {
+  id: string
+  status: 'SCHEDULED' | 'IN_TRANSIT' | 'DELIVERED' | 'FAILED'
+  scheduledDate: string
+  deliveredAt?: string | null
+  driverName?: string | null
+  driverContact?: string | null
+  notes?: string | null
+}
+
+export interface Agent {
+  id: string
+  fullname: string
+  email: string
+  phone?: string | null
+  organizationId?: number | null
+  trustTier: string
+  organization?: { id: number; name: string; profileImg?: string } | null
+}
+
+export interface POLineItem {
+  id: string
+  supplierItemId: string
+  qty: number
+  unitPrice: number
+  subtotal: number
+  itemName?: string | null
+  itemSku?: string | null
+  itemDescription?: string | null
+  supplierItem: SupplierItem
+}
+
+export interface PurchaseOrder {
+  id: string
+  poNumber: string
+  status: POStatus
+  totalAmount: number
+  vatAmount: number
+  notes?: string | null
+  requestedDate?: string | null
+  createdAt: string
+  updatedAt: string
+  buyerOrg: { id: number; name: string }
+  supplierOrg: { id: number; name: string }
+  outlet?: { id: number; name: string; address: string } | null
+  agentId?: string | null
+  agent?: Agent | null
+  lineItems: POLineItem[]
+  delivery?: Delivery | null
+}
+
+// ─── Consolidated PO Creation ───────────────────────────────────────────────────
+
+export interface ConsolidatedPoLine {
+  rfqId: string
+  rfqNumber: string
+  supplierItemId: string
+  supplierItemName: string
+  qty: number
+  unitPrice: number
+  isVatExempt: boolean
+  vatRate: number
+  lineTotal: number
+  vatAmount: number
+  lineGrandTotal: number
+}
+
+export interface CreateConsolidatedPoInput {
+  rfqIds: string[]
+  deliveryDate: string
+  notes?: string | null
+  otherCharges?: number | null
+  driverName?: string | null
+  driverContact?: string | null
 }
 
 // RFQ status configuration for UI

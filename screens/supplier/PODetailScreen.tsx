@@ -148,8 +148,8 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
       <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 16, gap: 10 }}>
         <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 4 }}>Order Information</Text>
         <InfoRow label="Buyer" value={po.buyerOrg.name} />
-        <InfoRow label="Outlet" value={po.outlet.name} />
-        <InfoRow label="Address" value={po.outlet.address} />
+        <InfoRow label="Outlet" value={po.outlet?.name ?? '—'} />
+        <InfoRow label="Address" value={po.outlet?.address ?? '—'} />
         {po.requestedDate && (
           <InfoRow label="Requested Date" value={new Date(po.requestedDate).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })} />
         )}

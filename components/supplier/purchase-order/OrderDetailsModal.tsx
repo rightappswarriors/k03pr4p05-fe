@@ -158,7 +158,7 @@ export function OrderDetailsModal({ po, visible, onClose, onUpdated }: Props) {
               </View>
               <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 16, gap: 8 }}>
                 <InfoRow label="Buyer" value={po.buyerOrg.name} />
-                <InfoRow label="Outlet" value={po.outlet.name} />
+                <InfoRow label="Outlet" value={po.outlet?.name ?? '—'} />
                 <InfoRow label="Total" value={formatPHP(po.totalAmount)} />
                 {po.notes && <InfoRow label="Notes" value={po.notes} />}
               </View>
@@ -192,7 +192,7 @@ export function OrderDetailsModal({ po, visible, onClose, onUpdated }: Props) {
           {tab === 'buyer' && (
             <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 16, gap: 8 }}>
               <InfoRow label="Company" value={po.buyerOrg.name} />
-              <InfoRow label="Outlet / Branch" value={po.outlet.name} />
+              <InfoRow label="Outlet / Branch" value={po.outlet?.name ?? '—'} />
               {/* TODO(backend): extend PURCHASE_ORDER_FIELDS' buyerOrg fragment with
                   contactNumber/email if you want them shown here — Organization
                   already has both fields, they're just not selected in the query yet. */}
@@ -205,7 +205,7 @@ export function OrderDetailsModal({ po, visible, onClose, onUpdated }: Props) {
           {tab === 'delivery' && (
             <View style={{ gap: 16 }}>
               <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 16, gap: 8 }}>
-                <InfoRow label="Address" value={po.outlet.address} />
+                <InfoRow label="Address" value={po.outlet?.address ?? '—'} />
                 {po.delivery ? (
                   <>
                     <InfoRow label="Scheduled" value={new Date(po.delivery.scheduledDate).toLocaleDateString('en-PH')} />
