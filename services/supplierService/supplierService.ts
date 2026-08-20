@@ -3,10 +3,10 @@ import { gql } from 'graphql-request'
 import { graphQLRequest } from '../apiClient'
 import type { MarketplaceListing } from '../marketplaceService'
 import type { SupplierItemVariant, VariantGroup } from './variantService'
-import type { SupplierItemImage, ProductSpecification, SupplierRfqInboxItem, RequestForQuotationDetail, ReplyToRFQInput, ConversationMessage, CounterOfferInput, NegotiationOffer, AcceptNegotiationInput, RejectNegotiationInput, RfqEligibilityResult, RfqFilters, PurchaseOrder, POStatus, Delivery, CreateConsolidatedPoInput } from '@/types'
+import type { SupplierItemImage, ProductSpecification, SupplierRfqInboxItem, RequestForQuotationDetail, ReplyToRFQInput, ConversationMessage, CounterOfferInput, NegotiationOffer, AcceptNegotiationInput, RejectNegotiationInput, RfqEligibilityResult, RfqFilters, PurchaseOrder, POStatus, PaymentStatus, Delivery, CreateConsolidatedPoInput, ReceiptSnapshot } from '@/types'
 
 // Re-export types that other modules import from this file
-export type { PurchaseOrder, POStatus, Delivery, RfqEligibilityResult, RfqFilters, RequestForQuotationDetail, SupplierRfqInboxItem, NegotiationOffer, ConversationMessage, ReplyToRFQInput, CounterOfferInput, AcceptNegotiationInput, RejectNegotiationInput, CreateConsolidatedPoInput }
+export type { PurchaseOrder, POStatus, PaymentStatus, Delivery, RfqEligibilityResult, RfqFilters, RequestForQuotationDetail, SupplierRfqInboxItem, NegotiationOffer, ConversationMessage, ReplyToRFQInput, CounterOfferInput, AcceptNegotiationInput, RejectNegotiationInput, CreateConsolidatedPoInput, ReceiptSnapshot }
 
 // ─── Fragments ───────────────────────────────────────────────────────────────
 // PROMPT: ADD MISSING TYPESCRIPT TYPES FOR THE FOLLOWING FRAGMENTS
@@ -156,6 +156,44 @@ const DELIVERY_FIELDS = `
   driverName
   driverContact
   notes
+  latitude
+  longitude
+  address
+`
+
+const CONVERSATION_PARTICIPANT_FIELDS = `
+  id
+  conversationId
+  agentId
+  organizationId
+  role
+  joinedAt
+  lastReadAt
+  agent { id fullname email }
+  organization { id name profileImg }
+`
+
+const CONVERSATION_MESSAGE_FIELDS = `
+  id
+  conversationId
+  senderAgentId
+  senderOrgId
+  message
+  type
+  metadata
+  createdAt
+  attachments
+  senderAgent { id fullname }
+  senderOrg { id name }
+`
+
+const PO_CONVERSATION_FIELDS = `
+  id
+  type
+  createdAt
+  updatedAt
+  participants { ${CONVERSATION_PARTICIPANT_FIELDS} }
+  messages { ${CONVERSATION_MESSAGE_FIELDS} }
 `
 
 const PURCHASE_ORDER_FIELDS = `
@@ -175,6 +213,10 @@ const PURCHASE_ORDER_FIELDS = `
   agent { id fullname email organizationId organization { id name profileImg } }
   lineItems { ${PO_LINE_ITEM_FIELDS} }
   delivery { ${DELIVERY_FIELDS} }
+  conversationId
+  paymentStatus
+  receiptSnapshot
+  conversation { ${PO_CONVERSATION_FIELDS} }
 `
 // ── Activity log (backed by the existing AuditLog model) ──────────────────
 // Requires the small Nexus addition below (purchaseOrderActivity query).
@@ -285,6 +327,109 @@ export async function fetchPurchaseOrder(id: string): Promise<PurchaseOrder | nu
   `
   const res = await graphQLRequest<{ purchaseOrder: PurchaseOrder | null }>(QUERY, { id })
   return res.purchaseOrder
+}
+
+// ─── PO Conversation ────────────────────────────────────────────────────────
+
+export interface POConversationDetail {
+  id: string
+  type: 'RFQ' | 'ORDER'
+  createdAt: string
+  updatedAt: string
+  participants: Array<{
+    id: string
+    conversationId: string
+    agentId?: string | null
+    organizationId?: number | null
+    role: 'AGENT' | 'SUPPLIER'
+    joinedAt: string
+    lastReadAt?: string | null
+    agent?: { id: string; fullname: string; email?: string } | null
+    organization?: { id: number; name: string; profileImg?: string } | null
+  }>
+  messages: ConversationMessage[]
+  offers?: NegotiationOffer[]
+}
+
+export async function fetchPOConversation(poId: string): Promise<POConversationDetail | null> {
+  const QUERY = gql`
+    query POConversation($poId: String!) {
+      purchaseOrder(id: $poId) {
+        conversation { ${PO_CONVERSATION_FIELDS} }
+      }
+    }
+  `
+  const res = await graphQLRequest<{ purchaseOrder: { conversation: POConversationDetail | null } | null }>(QUERY, { poId })
+  return res.purchaseOrder?.conversation ?? null
+}
+
+export async function sendPoMessage(
+  poId: string,
+  message: string,
+  attachments?: string[],
+  clientMessageId?: string,
+): Promise<ConversationMessage> {
+  const MUTATION = gql`
+    mutation SendPoMessage($input: SendPoMessageInput!) {
+      sendPoMessage(input: $input) {
+        id
+        conversationId
+        senderAgentId
+        senderOrgId
+        message
+        type
+        metadata
+        createdAt
+        attachments
+        senderAgent { id fullname }
+        senderOrg { id name }
+      }
+    }
+  `
+  const res = await graphQLRequest<{ sendPoMessage: ConversationMessage }>(MUTATION, {
+    input: { poId, message, ...(attachments ? { attachments } : {}), ...(clientMessageId ? { clientMessageId } : {}) },
+  })
+  return res.sendPoMessage
+}
+
+// ─── PO Receipt Upload ────────────────────────────────────────────────────────
+
+export interface SendPoReceiptInput {
+  poId: string
+  receiptId?: string
+  totalAmount: number
+  paymentMethod: string
+  paymentReference?: string
+  paidAt?: string
+  pdfUrl?: string
+}
+
+export async function sendPoReceipt(
+  input: SendPoReceiptInput,
+): Promise<PurchaseOrder> {
+  const MUTATION = gql`
+    mutation SendPoReceipt($input: SendPoReceiptInput!) {
+      sendPoReceipt(input: $input) {
+        ${PURCHASE_ORDER_FIELDS}
+      }
+    }
+  `
+  const res = await graphQLRequest<{ sendPoReceipt: PurchaseOrder }>(MUTATION, { input })
+  return res.sendPoReceipt
+}
+
+export async function startPOConversation(poId: string): Promise<{ success: boolean; conversationId: string | null }> {
+  const MUTATION = gql`
+    mutation StartPOConversation($poId: String!) {
+      startPOConversation(poId: $poId) {
+        id
+        type
+        createdAt
+      }
+    }
+  `
+  const res = await graphQLRequest<{ startPOConversation: { id: string; type: string; createdAt: string } | null }>(MUTATION, { poId })
+  return { success: !!res.startPOConversation, conversationId: res.startPOConversation?.id ?? null }
 }
 
 export async function acceptPO(

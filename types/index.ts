@@ -966,6 +966,8 @@ export const ELIGIBLE_RFQ_STATUSES: RfqStatus[] = [
 
 export type POStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'IN_TRANSIT' | 'DELIVERED' | 'CANCELLED'
 
+export type PaymentStatus = 'PENDING' | 'PARTIAL' | 'PAID' | 'REFUNDED'
+
 export interface Delivery {
   id: string
   status: 'SCHEDULED' | 'IN_TRANSIT' | 'DELIVERED' | 'FAILED'
@@ -974,6 +976,9 @@ export interface Delivery {
   driverName?: string | null
   driverContact?: string | null
   notes?: string | null
+  latitude?: number | null
+  longitude?: number | null
+  address?: string | null
 }
 
 export interface Agent {
@@ -998,6 +1003,15 @@ export interface POLineItem {
   supplierItem: SupplierItem
 }
 
+export interface ReceiptSnapshot {
+  receiptId?: string | null
+  totalAmount: number
+  paymentMethod: string
+  paymentReference?: string | null
+  paidAt?: string | null
+  pdfUrl?: string | null
+}
+
 export interface PurchaseOrder {
   id: string
   poNumber: string
@@ -1015,6 +1029,22 @@ export interface PurchaseOrder {
   agent?: Agent | null
   lineItems: POLineItem[]
   delivery?: Delivery | null
+  conversationId?: string | null
+  paymentStatus?: PaymentStatus
+  receiptSnapshot?: ReceiptSnapshot | null
+  conversation?: POConversation | null
+}
+
+// ─── PO Conversation Types ─────────────────────────────────────────────────
+
+export interface POConversation {
+  id: string
+  type: 'RFQ' | 'ORDER'
+  createdAt: string
+  updatedAt: string
+  participants: ConversationParticipant[]
+  messages: ConversationMessage[]
+  offers?: NegotiationOffer[]
 }
 
 // ─── Consolidated PO Creation ───────────────────────────────────────────────────

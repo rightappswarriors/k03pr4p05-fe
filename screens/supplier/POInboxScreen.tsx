@@ -871,9 +871,10 @@ function TabButton({
 
 interface POInboxScreenProps {
   onRfqPress: (rfqId: string) => void
+  onPoPress?: (poId: string) => void
 }
 
-export default function POInboxScreen({ onRfqPress }: POInboxScreenProps) {
+export default function POInboxScreen({ onRfqPress, onPoPress }: POInboxScreenProps) {
   const { colors } = useTheme()
   const { user } = useAuth()
   const { width } = useWindowDimensions()
@@ -1330,13 +1331,14 @@ export default function POInboxScreen({ onRfqPress }: POInboxScreenProps) {
   }
 
   const handlePoPress = (po: PurchaseOrder) => {
-    // Navigate to PO detail or show details modal
-    // For Day 7, just show an alert with details
-    // Full PO detail view will be implemented in Day 8
-    Alert.alert(
-      `PO ${po.poNumber}`,
-      `Buyer: ${po.buyerOrg?.name ?? 'Unknown'}\nTotal: ${formatPHP(po.totalAmount)}\nStatus: ${PO_STATUS_LABELS[po.status]}`,
-    )
+    if (onPoPress) {
+      onPoPress(po.id)
+    } else {
+      Alert.alert(
+        `PO ${po.poNumber}`,
+        `Buyer: ${po.buyerOrg?.name ?? 'Unknown'}\nTotal: ${formatPHP(po.totalAmount)}\nStatus: ${PO_STATUS_LABELS[po.status]}`,
+      )
+    }
   }
 
   // ─── Render ────────────────────────────────────────────────────────────────────
