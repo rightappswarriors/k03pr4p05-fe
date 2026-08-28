@@ -200,6 +200,15 @@ const PURCHASE_ORDER_FIELDS = `
   id
   poNumber
   status
+  source
+  supplierConfirmation
+  supplierConfirmedAt
+  supplierExpectedDeliveryAt
+  supplierNote
+  rejectionReason
+  subtotalAmount
+  extraCharges
+  extraChargesTotal
   totalAmount
   vatAmount
   notes
@@ -434,35 +443,33 @@ export async function startPOConversation(poId: string): Promise<{ success: bool
 
 export async function acceptPO(
   id: string,
-  scheduledDate: string,
-  driverName?: string,
-  driverContact?: string
+  expectedDeliveryDate?: string,
+  supplierNote?: string,
 ): Promise<PurchaseOrder> {
   const MUTATION = gql`
-    mutation AcceptPO($id: String!, $scheduledDate: DateTime!, $driverName: String, $driverContact: String) {
-      acceptPO(id: $id, scheduledDate: $scheduledDate, driverName: $driverName, driverContact: $driverContact) {
+    mutation AcceptPO($id: String!, $expectedDeliveryDate: DateTime, $supplierNote: String) {
+      acceptPO(id: $id, expectedDeliveryDate: $expectedDeliveryDate, supplierNote: $supplierNote) {
         ${PURCHASE_ORDER_FIELDS}
       }
     }
   `
   const res = await graphQLRequest<{ acceptPO: PurchaseOrder }>(MUTATION, {
     id,
-    scheduledDate,
-    driverName: driverName ?? null,
-    driverContact: driverContact ?? null,
+    expectedDeliveryDate: expectedDeliveryDate ?? null,
+    supplierNote: supplierNote ?? null,
   })
   return res.acceptPO
 }
 
-export async function rejectPO(id: string): Promise<PurchaseOrder> {
+export async function rejectPO(id: string, reason = 'Supplier declined purchase order.'): Promise<PurchaseOrder> {
   const MUTATION = gql`
-    mutation RejectPO($id: String!) {
-      rejectPO(id: $id) {
+    mutation RejectPO($id: String!, $reason: String!) {
+      rejectPO(id: $id, reason: $reason) {
         ${PURCHASE_ORDER_FIELDS}
       }
     }
   `
-  const res = await graphQLRequest<{ rejectPO: PurchaseOrder }>(MUTATION, { id })
+  const res = await graphQLRequest<{ rejectPO: PurchaseOrder }>(MUTATION, { id, reason })
   return res.rejectPO
 }
 

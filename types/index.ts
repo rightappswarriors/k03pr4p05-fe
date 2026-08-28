@@ -966,7 +966,15 @@ export const ELIGIBLE_RFQ_STATUSES: RfqStatus[] = [
 
 export type POStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'IN_TRANSIT' | 'DELIVERED' | 'CANCELLED'
 
-export type PaymentStatus = 'PENDING' | 'PARTIAL' | 'PAID' | 'REFUNDED'
+export type PaymentStatus = 'PENDING' | 'PREPARING' | 'PARTIAL' | 'PAID' | 'REFUNDED'
+
+export interface ExtraCharge {
+  code: string
+  label: string
+  amount: number
+  taxable?: boolean
+  description?: string
+}
 
 export interface Delivery {
   id: string
@@ -979,6 +987,8 @@ export interface Delivery {
   latitude?: number | null
   longitude?: number | null
   address?: string | null
+  recipientName?: string | null
+  recipientContact?: string | null
 }
 
 export interface Agent {
@@ -1016,6 +1026,15 @@ export interface PurchaseOrder {
   id: string
   poNumber: string
   status: POStatus
+  source?: 'DIRECT_ORDER' | 'RFQ'
+  supplierConfirmation?: 'REVIEW_REQUIRED' | 'CONFIRMED' | 'DECLINED'
+  supplierConfirmedAt?: string | null
+  supplierExpectedDeliveryAt?: string | null
+  supplierNote?: string | null
+  rejectionReason?: string | null
+  subtotalAmount: number
+  extraCharges?: ExtraCharge[] | null
+  extraChargesTotal: number
   totalAmount: number
   vatAmount: number
   notes?: string | null

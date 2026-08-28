@@ -32,6 +32,10 @@ import GlobalCategoriesScreen from '@/screens/admin/GlobalCategoriesScreen';
 import UserManagementScreen from '@/screens/admin/users/UserManagementScreen';
 import SubscriptionManagementScreen from '@/screens/admin/SubscriptionManagementScreen';
 import SettingsScreen from '@/components/Settings';
+import FeeConfigScreen from '@/screens/admin/FeeConfigScreen';
+import GovernanceScreen from '@/screens/admin/GovernanceScreen';
+import PayoutVerificationScreen from './payout-verification';
+import PaymentReconciliationScreen from '@/screens/admin/PaymentReconciliationScreen';
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 type AdminRoute =
@@ -40,7 +44,11 @@ type AdminRoute =
   | 'GlobalGroups'
   | 'Subscriptions'
   | 'Settings'
-  | 'UserManagement';
+  | 'UserManagement'
+  | 'FeeConfig'
+  | 'Governance'
+  | 'PayoutVerification'
+  | 'PaymentReconciliation';
 
 const DRAWER_WIDTH = 250;   // ← matches ERP sidebar
 const SIDEBAR_WIDTH = 250;  // ← same value, persistent on tablet
@@ -71,6 +79,10 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'UserManagement', label: 'User Management', icon: Users },
   { key: 'GlobalGroups', label: 'Item Groups', icon: Layers },
   { key: 'Subscriptions', label: 'Subscriptions', icon: CreditCard },
+  { key: 'FeeConfig', label: 'Fee Configuration', icon: CreditCard },
+  { key: 'Governance', label: 'Governance', icon: Shield },
+  { key: 'PayoutVerification', label: 'Payout Verification', icon: CreditCard },
+  { key: 'PaymentReconciliation', label: 'Payment Reconciliation', icon: CreditCard },
   { key: 'Settings', label: 'Settings', icon: Settings },
 ];
 
@@ -272,6 +284,10 @@ function buildScreenMap(): Record<AdminRoute, React.ReactElement> {
     UserManagement: <UserManagementScreen />,
     GlobalGroups: <PlaceholderScreen title="Item Groups" />,
     Subscriptions: <SubscriptionManagementScreen />,
+    FeeConfig: <FeeConfigScreen />,
+    Governance: <GovernanceScreen />,
+    PayoutVerification: <PayoutVerificationScreen />,
+    PaymentReconciliation: <PaymentReconciliationScreen />,
     Settings: <SettingsScreen />,
   };
 }

@@ -88,6 +88,7 @@ const STATUS_LABELS: Record<POStatus, string> = {
 
 const PAYMENT_STATUS_COLORS: Record<PaymentStatus, string> = {
   PENDING: '#F59E0B',
+  PREPARING: '#3B82F6',
   PARTIAL: '#F59E0B',
   PAID: '#10B981',
   REFUNDED: '#8B5CF6',
@@ -95,6 +96,7 @@ const PAYMENT_STATUS_COLORS: Record<PaymentStatus, string> = {
 
 const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
   PENDING: 'Pending Payment',
+  PREPARING: 'Payment Prepared · Awaiting Payment',
   PARTIAL: 'Partially Paid',
   PAID: 'Fully Paid',
   REFUNDED: 'Refunded',
@@ -509,8 +511,11 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
             <Text style={{ fontSize: 12, fontWeight: '600', color: paymentColor }}>{PAYMENT_STATUS_LABELS[paymentStatus]}</Text>
           </View>
         </View>
-        <InfoRow label="Total Amount" value={formatPHP(po.totalAmount)} />
+        <InfoRow label="Merchandise Subtotal" value={formatPHP(po.subtotalAmount)} />
         {po.vatAmount > 0 && <InfoRow label="VAT" value={formatPHP(po.vatAmount)} />}
+        <InfoRow label="Additional Charges" value={formatPHP(po.extraChargesTotal)} />
+        {(po.extraCharges ?? []).map((charge, index) => <InfoRow key={`${charge.code}-${index}`} label={charge.label} value={formatPHP(charge.amount)} />)}
+        <InfoRow label="Grand Total" value={formatPHP(po.totalAmount)} />
         {receipt?.paymentReference && <InfoRow label="Payment Ref" value={String(receipt.paymentReference)} />}
         {receipt?.paidAt && <InfoRow label="Paid At" value={formatDate(receipt.paidAt)} />}
       </View>
@@ -1001,8 +1006,12 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
                     <InfoRow label="Scheduled" value={formatDate(po.delivery.scheduledDate)} />
                     {po.delivery.driverName && <InfoRow label="Driver" value={po.delivery.driverName} />}
                     {po.delivery.driverContact && <InfoRow label="Contact" value={po.delivery.driverContact} />}
+                    {po.delivery.recipientName && <InfoRow label="Recipient" value={po.delivery.recipientName} />}
+                    {po.delivery.recipientContact && <InfoRow label="Recipient contact" value={po.delivery.recipientContact} />}
                     <InfoRow label="Status" value={po.delivery.status} />
                     {po.delivery.address && <InfoRow label="Address" value={po.delivery.address} />}
+                    {po.delivery.notes && <InfoRow label="Instructions" value={po.delivery.notes} />}
+                    {po.delivery.latitude != null && po.delivery.longitude != null && <TouchableOpacity onPress={() => Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${po.delivery!.latitude},${po.delivery!.longitude}`)}><Text style={{ color: colors.primary, fontWeight: '600', fontSize: 13 }}>View on Map</Text></TouchableOpacity>}
                   </Panel>
                 )}
 
@@ -1092,8 +1101,12 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
                   <InfoRow label="Scheduled" value={formatDate(po.delivery.scheduledDate)} />
                   {po.delivery.driverName && <InfoRow label="Driver" value={po.delivery.driverName} />}
                   {po.delivery.driverContact && <InfoRow label="Contact" value={po.delivery.driverContact} />}
+                  {po.delivery.recipientName && <InfoRow label="Recipient" value={po.delivery.recipientName} />}
+                  {po.delivery.recipientContact && <InfoRow label="Recipient contact" value={po.delivery.recipientContact} />}
                   <InfoRow label="Status" value={po.delivery.status} />
                   {po.delivery.address && <InfoRow label="Address" value={po.delivery.address} />}
+                  {po.delivery.notes && <InfoRow label="Instructions" value={po.delivery.notes} />}
+                  {po.delivery.latitude != null && po.delivery.longitude != null && <TouchableOpacity onPress={() => Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${po.delivery!.latitude},${po.delivery!.longitude}`)}><Text style={{ color: colors.primary, fontWeight: '600', fontSize: 13 }}>View on Map</Text></TouchableOpacity>}
                 </Panel>
               )}
               {isPending && (

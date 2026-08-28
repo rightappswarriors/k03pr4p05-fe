@@ -52,7 +52,7 @@ export default function FinanceWalletScreen() {
     load()
   }, [])
 
-  const available = useMemo(() => (wallet ? wallet.balance - wallet.heldBalance : 0), [wallet])
+  const available = useMemo(() => wallet?.balance ?? 0, [wallet])
   const positiveEntries = useMemo(() => entries.filter((entry) => entry.amount > 0).reduce((sum, entry) => sum + entry.amount, 0), [entries])
   const feesPaid = useMemo(() => entries.filter((entry) => entry.amount < 0).reduce((sum, entry) => sum + Math.abs(entry.amount), 0), [entries])
   const totalWithdrawals = useMemo(() => entries.filter((entry) => entry.sourceType === 'WITHDRAWAL').reduce((sum, entry) => sum + Math.abs(entry.amount), 0), [entries])
