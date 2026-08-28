@@ -29,6 +29,7 @@ import { useUserManagementStats } from "@/hooks/useUserManagementStat";
 import { UserDetailsModal } from "./UserDetailModal";
 import { ErrorModal } from "@/components/ErrorModal";
 import { SuccessModal } from "@/components/SuccessModal";
+import { StandaloneAgentManagement } from './StandaloneAgentManagement';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 const formatDate = (d: string) => {
@@ -337,7 +338,7 @@ const FilterChip: React.FC<{ label: string; active: boolean; onPress: () => void
 };
 
 // ─── Main Screen ───────────────────────────────────────────────────────────────
-export const UserManagementScreen: React.FC = () => {
+const OrganizationUserManagementScreen: React.FC = () => {
     const { user: currentUser } = useAuth();
     const { colors } = useTheme();
     const insets = useSafeAreaInsets();
@@ -375,14 +376,6 @@ export const UserManagementScreen: React.FC = () => {
     const showSuccess = (message: string) => setSuccessModal({ visible: true, message });
 
     // ─── Permission Guard ─────────────────────────────────────────────
-    if (currentUser?.role !== "ADMIN") {
-        return (
-            <View style={[styles.centered, { backgroundColor: colors.background }]}>
-                <Text style={[styles.errorText, { color: colors.error }]}>Access denied.</Text>
-            </View>
-        );
-    }
-
     // ─── Load Settings ────────────────────────────────────────────────
     useEffect(() => {
         adminUserService.loadSettings().then((s) => {
@@ -479,6 +472,10 @@ export const UserManagementScreen: React.FC = () => {
     // ─── Table min width (fixed columns, not flex) ────────────────────
     // avatar(52) + name(180) + username(150) + email(220) + role(110) + verified(100) + status(100) + created(120) + padding
     const TABLE_MIN_WIDTH = 52 + 180 + 150 + 220 + 110 + 100 + 100 + 120 + 8 * 16; // ~1160
+
+    if (currentUser?.role !== "ADMIN") {
+        return <View style={[styles.centered, { backgroundColor: colors.background }]}><Text style={[styles.errorText, { color: colors.error }]}>Access denied.</Text></View>;
+    }
 
     return (
         <View style={[styles.screen, { paddingTop: insets.top, backgroundColor: colors.background }]}>
@@ -788,5 +785,19 @@ const styles = StyleSheet.create({
     emptySubtitle: { fontSize: 13, textAlign: "center", paddingHorizontal: 32 },
     errorText: { fontSize: 16, fontWeight: "600" },
 });
+
+export const UserManagementScreen: React.FC = () => {
+    const { colors } = useTheme();
+    const [scope, setScope] = useState<'users' | 'agents'>('users');
+    return (
+        <View style={{ flex: 1, backgroundColor: colors.background }}>
+            <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingTop: 10, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                <TouchableOpacity onPress={() => setScope('users')} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: scope === 'users' ? colors.primary : colors.border }}><Text style={{ color: scope === 'users' ? '#fff' : colors.textSecondary, fontWeight: '700' }}>All Users</Text></TouchableOpacity>
+                <TouchableOpacity onPress={() => setScope('agents')} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: scope === 'agents' ? colors.primary : colors.border }}><Text style={{ color: scope === 'agents' ? '#fff' : colors.textSecondary, fontWeight: '700' }}>Standalone Agents</Text></TouchableOpacity>
+            </View>
+            {scope === 'agents' ? <StandaloneAgentManagement /> : <OrganizationUserManagementScreen />}
+        </View>
+    );
+};
 
 export default UserManagementScreen;

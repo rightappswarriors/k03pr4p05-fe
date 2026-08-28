@@ -49,10 +49,12 @@ export interface SupplierPayoutMethod {
   orgId: number
   type: string
   accountName: string
-  maskedAccountNumber: string
+  accountNumber: string
+  confirmAccountNumber: string
   bankName?: string | null
   isVerified: boolean
   isDefault: boolean
+  isActive: boolean
   createdAt: string
 }
 
@@ -135,6 +137,7 @@ export async function getSupplierFinancePayoutMethods(): Promise<SupplierPayoutM
         bankName
         isVerified
         isDefault
+        isActive
         createdAt
       }
     }
@@ -203,14 +206,16 @@ export async function createSupplierPayoutMethod(input: {
     mutation CreateSupplierPayoutMethod(
       $type: PayoutMethodType!
       $accountName: String!
-      $maskedAccountNumber: String!
+      $accountNumber: String!
+      $confirmAccountNumber: String!
       $bankName: String
       $isDefault: Boolean
     ) {
       createSupplierPayoutMethod(
         type: $type
         accountName: $accountName
-        maskedAccountNumber: $maskedAccountNumber
+        accountNumber: $accountNumber
+        confirmAccountNumber: $confirmAccountNumber
         bankName: $bankName
         isDefault: $isDefault
       ) {
@@ -222,6 +227,7 @@ export async function createSupplierPayoutMethod(input: {
         bankName
         isVerified
         isDefault
+        isActive
         createdAt
       }
     }

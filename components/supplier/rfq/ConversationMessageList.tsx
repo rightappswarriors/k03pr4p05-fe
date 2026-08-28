@@ -1,6 +1,6 @@
 import React, { useCallback, useRef } from 'react'
 import { View, Text, FlatList, TouchableOpacity } from 'react-native'
-import { Package, Tag, FileText, CheckCircle2, XCircle, ArrowLeftRight, PackageCheck, Clock } from 'lucide-react-native'
+import { Package, Tag, FileText, CheckCircle2, XCircle, ArrowLeftRight, PackageCheck, Clock, Calendar } from 'lucide-react-native'
 import { useTheme } from '@/contexts/ThemeContext'
 import type { NegotiationOffer, ConversationParticipant, BuyerAgent } from '@/types'
 
@@ -61,6 +61,14 @@ type BackendMessageType =
   | 'SUPPLIER_CONFIRMED'
   | 'OFFER_REJECTED'
   | 'ORDER_CREATED'
+  | 'CONSOLIDATED_PO_CREATED'
+  | 'PO_ACCEPTED'
+  | 'PO_REJECTED'
+  | 'RECEIPT_UPLOADED'
+  | 'PAYMENT_RECEIVED'
+  | 'DELIVERY_SCHEDULED'
+  | 'SHIPMENT_DISPATCHED'
+  | 'DELIVERY_COMPLETED'
 
 interface ConversationMessage {
   id: string
@@ -88,9 +96,13 @@ interface Props {
   onAcceptOffer?: (offer: NegotiationOffer) => void
   onCounterOffer?: (offer: NegotiationOffer) => void
   onRejectOffer?: (offer: NegotiationOffer) => void
+  onReceiptPress?: (message: ConversationMessage) => void
 }
 
-type SystemEventType = 'agent_accepted' | 'both_confirmed' | 'rejected' | 'counter' | 'po_created'
+type SystemEventType =
+  | 'agent_accepted' | 'both_confirmed' | 'rejected' | 'counter' | 'po_created'
+  | 'po_accepted' | 'po_rejected' | 'receipt_uploaded' | 'payment_received'
+  | 'delivery_scheduled' | 'shipment_dispatched' | 'delivery_completed'
 
 // Structural classification driven by the real Prisma MessageType enum.
 function classifySystemMessage(message: ConversationMessage): SystemEventType | null {
@@ -109,7 +121,22 @@ function classifySystemMessage(message: ConversationMessage): SystemEventType | 
     case 'FINAL_OFFER':
       return 'counter'
     case 'ORDER_CREATED':
+    case 'CONSOLIDATED_PO_CREATED':
       return 'po_created'
+    case 'PO_ACCEPTED':
+      return 'po_accepted'
+    case 'PO_REJECTED':
+      return 'po_rejected'
+    case 'RECEIPT_UPLOADED':
+      return 'receipt_uploaded'
+    case 'PAYMENT_RECEIVED':
+      return 'payment_received'
+    case 'DELIVERY_SCHEDULED':
+      return 'delivery_scheduled'
+    case 'SHIPMENT_DISPATCHED':
+      return 'shipment_dispatched'
+    case 'DELIVERY_COMPLETED':
+      return 'delivery_completed'
     case 'TEXT':
     default:
       return null
@@ -128,6 +155,7 @@ export function ConversationMessageList({
   onAcceptOffer,
   onCounterOffer,
   onRejectOffer,
+  onReceiptPress,
 }: Props) {
   const { colors } = useTheme()
   const listRef = useRef<FlatList>(null)
@@ -141,14 +169,26 @@ export function ConversationMessageList({
 
   type CombinedItem =
     | { type: 'message'; data: ConversationMessage; id: string; showLabel: boolean }
-    | { type: 'event'; data: ConversationMessage; eventType: 'agent_accepted' | 'both_confirmed' | 'rejected' | 'po_created'; id: string }
+    | { type: 'event'; data: ConversationMessage; eventType: SystemEventType; id: string }
     | { type: 'offer'; data: NegotiationOffer; id: string }
     | { type: 'separator'; label: string; id: string }
 
-  const raw: Array<{ sortKey: string; item: Omit<CombinedItem, 'showLabel'> }> = []
+  type RawItem =
+    | { type: 'message'; data: ConversationMessage; id: string }
+    | { type: 'event'; data: ConversationMessage; eventType: SystemEventType; id: string }
+    | { type: 'offer'; data: NegotiationOffer; id: string }
+    | { type: 'separator'; label: string; id: string }
+
+  const PO_EVENT_TYPES: SystemEventType[] = [
+    'po_created', 'po_accepted', 'po_rejected',
+    'receipt_uploaded', 'payment_received',
+    'delivery_scheduled', 'shipment_dispatched', 'delivery_completed',
+  ]
+
+  const raw: Array<{ sortKey: string; item: RawItem }> = []
   for (const { msg, eventType } of preparedMessages) {
-    if (eventType === 'agent_accepted' || eventType === 'both_confirmed' || eventType === 'rejected' || eventType === 'po_created') {
-      raw.push({ sortKey: msg.createdAt, item: { type: 'event', data: msg, eventType, id: `event-${msg.id}` } })
+    if (eventType === 'agent_accepted' || eventType === 'both_confirmed' || eventType === 'rejected' || PO_EVENT_TYPES.includes(eventType as any)) {
+      raw.push({ sortKey: msg.createdAt, item: { type: 'event', data: msg, eventType: eventType as SystemEventType, id: `event-${msg.id}` } })
     } else {
       raw.push({ sortKey: msg.createdAt, item: { type: 'message', data: msg, id: `msg-${msg.id}` } })
     }
@@ -223,7 +263,7 @@ export function ConversationMessageList({
       )
     }
     if (item.type === 'event') {
-      return <EventCard type={item.eventType} message={item.data} colors={colors} unit={unit} />
+      return <EventCard type={item.eventType} message={item.data} colors={colors} unit={unit} onReceiptPress={onReceiptPress} />
     }
     const msg = item.data
     const fromSupplier = msg.senderOrgId === supplierOrgId
@@ -273,17 +313,28 @@ function getOfferVariant(status: string | undefined | null): OfferVariant {
 // Palettes derived from theme success/error/primary/warning colors with alpha,
 // so tints blend correctly in both light and dark mode.
 //
-// Five distinct kinds now:
-//   counter        → blue, buyer/supplier sent a counter offer
-//   accepted       → green, a specific NegotiationOffer record was accepted
-//   rejected       → red, an offer/negotiation was rejected
-//   agent_accepted → amber/warning, agent accepted — WAITING on supplier
-//   both_confirmed → green (distinct icon/label from `accepted`), supplier
-//                    confirmed — BOTH parties have now agreed
-//   po_created     → primary, Purchase Order created
+// Distinct event kinds now:
+//   RFQ negotiation events:
+//     counter        → blue, buyer/supplier sent a counter offer
+//     accepted       → green, a specific NegotiationOffer record was accepted
+//     rejected       → red, an offer/negotiation was rejected
+//     agent_accepted → amber/warning, agent accepted — WAITING on supplier
+//     both_confirmed → green (distinct icon/label from `accepted`), supplier
+//                      confirmed — BOTH parties have now agreed
+//   PO lifecycle events (ORDER-type conversations):
+//     po_created           → primary, Purchase Order created
+//     po_accepted          → green, PO accepted by supplier
+//     po_rejected          → red, PO rejected by supplier
+//     receipt_uploaded     → blue, receipt uploaded
+//     payment_received     → teal, payment received
+//     delivery_scheduled   → amber, delivery scheduled
+//     shipment_dispatched  → purple, shipment dispatched
+//     delivery_completed   → green, delivery completed
 function getEventPalette(
   colors: any,
-  kind: 'accepted' | 'rejected' | 'counter' | 'agent_accepted' | 'both_confirmed' | 'po_created',
+  kind: 'accepted' | 'rejected' | 'counter' | 'agent_accepted' | 'both_confirmed' | 'po_created'
+    | 'po_accepted' | 'po_rejected' | 'receipt_uploaded' | 'payment_received'
+    | 'delivery_scheduled' | 'shipment_dispatched' | 'delivery_completed',
 ) {
   const byKind = {
     accepted: { base: colors.success, icon: CheckCircle2, label: 'Offer Accepted' },
@@ -292,6 +343,13 @@ function getEventPalette(
     agent_accepted: { base: colors.warning ?? '#F59E0B', icon: Clock, label: 'Awaiting Supplier Confirmation' },
     both_confirmed: { base: colors.success, icon: CheckCircle2, label: 'Both Parties Confirmed' },
     po_created: { base: colors.primary, icon: PackageCheck, label: 'Purchase Order Created' },
+    po_accepted: { base: colors.success, icon: PackageCheck, label: 'PO Accepted' },
+    po_rejected: { base: colors.error, icon: XCircle, label: 'PO Rejected' },
+    receipt_uploaded: { base: colors.primary, icon: FileText, label: 'Receipt Uploaded' },
+    payment_received: { base: colors.success, icon: CheckCircle2, label: 'Payment Received' },
+    delivery_scheduled: { base: colors.warning ?? '#F59E0B', icon: Calendar, label: 'Delivery Scheduled' },
+    shipment_dispatched: { base: colors.primary, icon: Package, label: 'Shipment Dispatched' },
+    delivery_completed: { base: colors.success, icon: PackageCheck, label: 'Delivery Completed' },
   }[kind]
   return {
     bg: byKind.base + '26',
@@ -561,20 +619,21 @@ function MessageBubble({
 }
 
 // ─── Compact event card ─────────────────────────────────────────────────────
-// Renders the four non-offer system events. Reads real backend `metadata`
-// fields for each type — see RfqNegotiationService.acceptOffer /
-// supplierRFQService.confirmSupplierAgreement / rejectOffer /
-// createPurchaseOrder for the exact shapes.
+// Renders system event messages. Reads real backend `metadata` fields for each
+// type — see RfqNegotiationService.acceptOffer / supplierRFQService.* /
+// purchaseOrder.mutation.ts for the exact shapes.
 function EventCard({
   type,
   message,
   colors,
   unit,
+  onReceiptPress,
 }: {
-  type: 'agent_accepted' | 'both_confirmed' | 'rejected' | 'po_created'
+  type: SystemEventType
   message: ConversationMessage
   colors: any
   unit: string
+  onReceiptPress?: (message: ConversationMessage) => void
 }) {
   const palette = getEventPalette(colors, type)
   const Icon = palette.icon
@@ -602,7 +661,42 @@ function EventCard({
   } else if (type === 'rejected' && meta.reason) {
     detail = `Reason: ${meta.reason}`
   } else if (type === 'po_created' && meta.poNumber) {
+    // metadata: { poId, poNumber, rfqId, deliveryDate, totalAmount, vatAmount }
     detail = meta.totalAmount != null ? `${meta.poNumber} • ${formatPHP(Number(meta.totalAmount))}` : meta.poNumber
+  } else if (type === 'po_accepted' && meta.poNumber) {
+    detail = meta.poNumber
+  } else if (type === 'po_rejected') {
+    detail = meta.reason ? `Reason: ${meta.reason}` : null
+  } else if (type === 'receipt_uploaded') {
+    // metadata: { poId, poNumber, receiptId, totalAmount, paymentMethod, receiptUrl, paidAt }
+    detail = meta.poNumber ?? null
+    if (meta.receiptUrl) {
+      subDetail = 'Receipt PDF has been uploaded'
+    }
+  } else if (type === 'payment_received') {
+    // metadata: { poId, poNumber, amount, method }
+    detail = meta.poNumber ?? null
+    if (meta.amount != null) {
+      subDetail = `${formatPHP(Number(meta.amount))} ${meta.method ? `via ${meta.method}` : ''}`
+    }
+  } else if (type === 'delivery_scheduled') {
+    // metadata: { poId, poNumber, scheduledDate, driverName }
+    detail = meta.poNumber ?? null
+    if (meta.scheduledDate) {
+      subDetail = `Scheduled for ${new Date(meta.scheduledDate).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}`
+    }
+    if (meta.driverName) {
+      subDetail = subDetail ? `${subDetail} • ${meta.driverName}` : `Driver: ${meta.driverName}`
+    }
+  } else if (type === 'shipment_dispatched') {
+    // metadata: { poId, poNumber, trackingNumber }
+    detail = meta.poNumber ?? null
+    if (meta.trackingNumber) {
+      subDetail = `Tracking: ${meta.trackingNumber}`
+    }
+  } else if (type === 'delivery_completed' && meta.poNumber) {
+    detail = meta.poNumber
+    subDetail = 'Delivery completed'
   }
 
   return (
@@ -625,7 +719,15 @@ function EventCard({
         <Text style={{ fontSize: 12, fontWeight: '700', color: palette.accent, flexShrink: 1 }}>{palette.label}</Text>
         <Text style={{ fontSize: 10, color: colors.textSecondary, opacity: 0.7, marginLeft: 'auto' }}>{formatTime(message.createdAt)}</Text>
       </View>
-      {detail && <Text style={{ fontSize: 11, color: colors.text, marginLeft: 22 }}>{detail}</Text>}
+      {detail && (
+        type === 'receipt_uploaded' && meta?.receiptUrl && onReceiptPress ? (
+          <TouchableOpacity onPress={() => onReceiptPress(message)} style={{ marginLeft: 22 }}>
+            <Text style={{ fontSize: 11, color: palette.accent, fontWeight: '600', textDecorationLine: 'underline' }}>{detail}</Text>
+          </TouchableOpacity>
+        ) : (
+          <Text style={{ fontSize: 11, color: colors.text, marginLeft: 22 }}>{detail}</Text>
+        )
+      )}
       {subDetail && (
         <Text style={{ fontSize: 10, color: colors.textSecondary, marginLeft: 22, marginTop: 1 }}>{subDetail}</Text>
       )}

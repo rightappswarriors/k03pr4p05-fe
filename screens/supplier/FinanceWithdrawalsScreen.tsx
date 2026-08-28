@@ -41,7 +41,7 @@ export default function FinanceWithdrawalsScreen() {
   const [submitting, setSubmitting] = useState(false)
   const [reviewVisible, setReviewVisible] = useState(false)
   const [page, setPage] = useState(1)
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>('ALL')
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'PROCESSING' | 'COMPLETED' | 'REJECTED' | 'FAILED'>('ALL')
   const [sortMode, setSortMode] = useState<'DATE' | 'AMOUNT' | 'STATUS'>('DATE')
   const pageSize = 5
 
@@ -65,7 +65,7 @@ export default function FinanceWithdrawalsScreen() {
     load()
   }, [])
 
-  const availableBalance = useMemo(() => (wallet ? wallet.balance - wallet.heldBalance : 0), [wallet])
+  const availableBalance = useMemo(() => wallet?.balance ?? 0, [wallet])
   const feeEstimate = useMemo(() => {
     const value = Number(amount)
     if (!value || value <= 0) return 0
@@ -73,6 +73,7 @@ export default function FinanceWithdrawalsScreen() {
   }, [amount])
   const netAmount = useMemo(() => Math.max(0, Number(amount) - feeEstimate), [amount, feeEstimate])
   const selectedMethodDetails = payoutMethods.find((method) => method.id === selectedMethod)
+  const verifiedPayoutMethods = payoutMethods.filter((method) => method.isVerified)
   const filteredWithdrawals = useMemo(() => {
     const list = statusFilter === 'ALL' ? withdrawals : withdrawals.filter((entry) => entry.status === statusFilter)
     const sorted = [...list]
@@ -169,11 +170,11 @@ export default function FinanceWithdrawalsScreen() {
             />
           </View>
           <View style={{ flex: 1, minWidth: 220 }}>
-            {payoutMethods.length === 0 ? (
-              <Text style={{ color: colors.textSecondary, fontSize: 12 }}>No payout methods yet. Add one in the Payout Methods screen.</Text>
+            {verifiedPayoutMethods.length === 0 ? (
+              <Text style={{ color: colors.textSecondary, fontSize: 12 }}>You need a verified payout method before withdrawing. Set one up in Payout Methods.</Text>
             ) : (
               <View style={{ gap: 8 }}>
-                {payoutMethods.map((method) => (
+                {verifiedPayoutMethods.map((method) => (
                   <Pressable
                     key={method.id}
                     onPress={() => setSelectedMethod(method.id)}
@@ -191,7 +192,7 @@ export default function FinanceWithdrawalsScreen() {
           <Pressable onPress={() => setReviewVisible((prev) => !prev)} style={[styles.secondaryButton, { borderColor: colors.border }]}> 
             <Text style={[styles.secondaryText, { color: colors.text }]}>Review details</Text>
           </Pressable>
-          <Pressable onPress={submitWithdrawal} disabled={submitting} style={{ backgroundColor: colors.primary, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14, alignItems: 'center' }}>
+          <Pressable onPress={submitWithdrawal} disabled={submitting || availableBalance <= 0 || verifiedPayoutMethods.length === 0} style={{ backgroundColor: colors.primary, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14, alignItems: 'center', opacity: submitting || availableBalance <= 0 || verifiedPayoutMethods.length === 0 ? 0.5 : 1 }}>
             <Text style={{ color: '#fff', fontWeight: '800' }}>{submitting ? 'Submitting…' : 'Request withdrawal'}</Text>
           </Pressable>
         </View>
@@ -230,7 +231,7 @@ export default function FinanceWithdrawalsScreen() {
                 <Text style={{ color: sortMode === option ? '#fff' : colors.text, fontSize: 12, fontWeight: '700' }}>{option}</Text>
               </Pressable>
             ))}
-            {(['ALL', 'PENDING', 'APPROVED', 'REJECTED'] as const).map((option) => (
+            {(['ALL', 'PENDING', 'APPROVED', 'PROCESSING', 'COMPLETED', 'REJECTED', 'FAILED'] as const).map((option) => (
               <Pressable key={option} onPress={() => setStatusFilter(option)} style={[styles.optionButton, { borderColor: colors.border, backgroundColor: statusFilter === option ? colors.primary : colors.background }]}> 
                 <Text style={{ color: statusFilter === option ? '#fff' : colors.text, fontSize: 12, fontWeight: '700' }}>{option}</Text>
               </Pressable>

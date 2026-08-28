@@ -94,7 +94,7 @@ export function PurchaseOrderCard({ po, selected, selectionMode, onPress, onTogg
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 5 }}>
             <MapPin size={13} color={colors.textSecondary} style={{ marginTop: 1 }} />
             <Text style={{ fontSize: 12, color: colors.textSecondary, flex: 1 }} numberOfLines={1}>
-              {po.outlet.address}
+              {po.outlet?.address ?? '—'}
             </Text>
           </View>
 

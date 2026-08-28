@@ -1,0 +1,12 @@
+// @/components/admin/AdminPagination.tsx
+import React from 'react';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useTheme } from '@/contexts/ThemeContext';
+
+export const ADMIN_PAGE_SIZES = [30, 50, 100, 200] as const;
+export function AdminPagination({ page, total, pageSize, onPageChange, onPageSizeChange }: { page: number; total: number; pageSize: number; onPageChange: (page: number) => void; onPageSizeChange: (size: number) => void }) {
+  const { colors } = useTheme(); const styles = makeStyles(colors); const totalPages = Math.max(1, Math.ceil(total / pageSize)); const atStart = page <= 1; const atEnd = page >= totalPages;
+  const button = (text: string, disabled: boolean, onPress: () => void) => <TouchableOpacity disabled={disabled} onPress={onPress} style={[styles.button, disabled && styles.disabled]}><Text style={[styles.buttonText, { color: colors.text }]}>{text}</Text></TouchableOpacity>;
+  return <View style={styles.root}><View style={styles.controls}>{button('«', atStart, () => onPageChange(1))}{button('‹', atStart, () => onPageChange(page - 1))}<Text style={[styles.info, { color: colors.textSecondary }]}>{page} / {totalPages}</Text>{button('›', atEnd, () => onPageChange(page + 1))}{button('»', atEnd, () => onPageChange(totalPages))}</View><ScrollView horizontal showsHorizontalScrollIndicator={false}><View style={styles.sizes}>{ADMIN_PAGE_SIZES.map(size => <TouchableOpacity key={size} onPress={() => onPageSizeChange(size)} style={[styles.size, { backgroundColor: size === pageSize ? colors.primary : colors.border }]}><Text style={{ color: size === pageSize ? '#fff' : colors.textSecondary, fontSize: 12, fontWeight: '700' }}>{size}</Text></TouchableOpacity>)}</View></ScrollView></View>;
+}
+const makeStyles = (colors: any) => StyleSheet.create({ root: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12 }, controls: { flexDirection: 'row', alignItems: 'center', gap: 4 }, button: { width: 34, height: 34, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.border }, disabled: { opacity: 0.35 }, buttonText: { fontSize: 17, fontWeight: '800' }, info: { marginHorizontal: 7, fontSize: 13, fontWeight: '700' }, sizes: { flexDirection: 'row', gap: 5 }, size: { borderRadius: 8, paddingVertical: 7, paddingHorizontal: 10 } });
