@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   Modal,
   View,
@@ -53,6 +53,13 @@ export function CounterOfferModal({ visible, rfq, onClose, onSubmit }: Props) {
     setErrorText(text)
     setErrorModalVisible(true)
   }
+
+  useEffect(() => {
+    if (!visible || !rfq) return
+    const latestOffer = rfq.conversation?.offers?.[rfq.conversation.offers.length - 1]
+    setOfferPrice(String(latestOffer?.unitPrice ?? rfq.targetUnitPrice ?? 0))
+    setQuantity(String(latestOffer?.quantity ?? (rfq.quantity ? Number(rfq.quantity) : 0)))
+  }, [visible, rfq])
 
   if (!rfq) return null
 

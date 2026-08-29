@@ -1280,13 +1280,10 @@ export async function acceptNegotiation(input: AcceptNegotiationInput): Promise<
 
 export async function createPurchaseOrder(
   rfqId: string,
-  deliveryDate: string,
-  driverName?: string | null,
-  driverContact?: string | null,
 ): Promise<{ success: boolean; poNumber: string; purchaseOrder: { id: string; poNumber: string; status: string; totalAmount: number; vatAmount: number } }> {
   const MUTATION = gql`
-    mutation CreatePurchaseOrder($rfqId: String!, $deliveryDate: DateTime!, $driverName: String, $driverContact: String) {
-      createPurchaseOrder(rfqId: $rfqId, deliveryDate: $deliveryDate, driverName: $driverName, driverContact: $driverContact) {
+    mutation CreatePurchaseOrder($rfqId: String!) {
+      createPurchaseOrder(rfqId: $rfqId) {
         success
         poNumber
         purchaseOrder {
@@ -1299,7 +1296,7 @@ export async function createPurchaseOrder(
       }
     }
   `
-  const res = await graphQLRequest<{ createPurchaseOrder: { success: boolean; poNumber: string; purchaseOrder: { id: string; poNumber: string; status: string; totalAmount: number; vatAmount: number } } }>(MUTATION, { rfqId, deliveryDate, driverName, driverContact })
+  const res = await graphQLRequest<{ createPurchaseOrder: { success: boolean; poNumber: string; purchaseOrder: { id: string; poNumber: string; status: string; totalAmount: number; vatAmount: number } } }>(MUTATION, { rfqId })
   return res.createPurchaseOrder
 }
 

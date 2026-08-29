@@ -31,6 +31,7 @@ import {
   replyToRFQ,
   counterOfferRFQ,
   acceptNegotiation,
+  createPurchaseOrder,
   rejectNegotiation,
 } from '@/services/supplierService/supplierService'
 import { ConversationMessageList } from '@/components/supplier/rfq/ConversationMessageList'
@@ -120,6 +121,9 @@ export function RFQDetailScreen({ rfqId, onPOCreated, onBack }: Props) {
         })
       } else if (event === 'purchaseOrder:created') {
         const { po } = payload
+        setCounterModalVisible(false)
+        setAcceptModalVisible(false)
+        void loadRfq()
         onPOCreated?.(po.id, po.poNumber)
         showToast(`Purchase Order ${po.poNumber} created`, 'success')
       }
@@ -208,8 +212,22 @@ export function RFQDetailScreen({ rfqId, onPOCreated, onBack }: Props) {
   const handleAcceptNegotiation = async (input: AcceptNegotiationInput) => {
     const confirmed = await acceptNegotiation(input)
     setAcceptModalVisible(false)
-    showToast('Offer confirmed. Purchase Order creation is now enabled.', 'success')
+    showToast('Buyer offer accepted. You can now create the Purchase Order.', 'success')
     if (confirmed) await loadRfq()
+  }
+
+  const handleCreatePurchaseOrder = async () => {
+    if (!rfq) return
+    try {
+      const result = await createPurchaseOrder(rfq.id)
+      setCounterModalVisible(false)
+      setAcceptModalVisible(false)
+      showToast(`Purchase Order ${result.poNumber} created`, 'success')
+      onPOCreated?.(result.purchaseOrder.id, result.poNumber)
+      await loadRfq()
+    } catch (e: any) {
+      showToast(e.message ?? 'Failed to create Purchase Order', 'error')
+    }
   }
 
   const handleRejectNegotiation = async (input: RejectNegotiationInput) => {
@@ -242,6 +260,8 @@ export function RFQDetailScreen({ rfqId, onPOCreated, onBack }: Props) {
   const currentSellingPrice = supplierItem?.unitPrice ?? 0
   const supplierOffer = latestOffer?.unitPrice ?? currentSellingPrice
   const hasSupplierOffer = !!latestOffer
+  const negotiationLocked = rfq.status === 'PO_CREATED'
+  const canCreatePurchaseOrder = rfq.status === 'WAITING_SUPPLIER_CONFIRMATION' && !negotiationLocked
 
   // ─── Info panels: shared between desktop's left rail and mobile's stacked layout ───
   const buyerInfoCard = (
@@ -485,7 +505,7 @@ export function RFQDetailScreen({ rfqId, onPOCreated, onBack }: Props) {
               )}
             </TouchableOpacity>
           )}
-          <TouchableOpacity
+          {!negotiationLocked && !canCreatePurchaseOrder && <TouchableOpacity
             onPress={() => setCounterModalVisible(true)}
             style={{
               backgroundColor: colors.surface,
@@ -497,8 +517,8 @@ export function RFQDetailScreen({ rfqId, onPOCreated, onBack }: Props) {
             }}
           >
             <Text style={{ fontSize: 12, fontWeight: '600', color: colors.text }}>Counter Offer</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
+          </TouchableOpacity>}
+          {!negotiationLocked && !canCreatePurchaseOrder && <TouchableOpacity
             onPress={() => setAcceptModalVisible(true)}
             style={{
               backgroundColor: '#22C55E',
@@ -507,9 +527,18 @@ export function RFQDetailScreen({ rfqId, onPOCreated, onBack }: Props) {
               paddingVertical: 8,
             }}
           >
-            <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>Confirm Offer</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
+            <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>Accept</Text>
+          </TouchableOpacity>}
+          {canCreatePurchaseOrder && <TouchableOpacity
+            onPress={handleCreatePurchaseOrder}
+            style={{
+              backgroundColor: '#22C55E', borderRadius: 10,
+              paddingHorizontal: 12, paddingVertical: 8,
+            }}
+          >
+            <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>Create PO</Text>
+          </TouchableOpacity>}
+          {!negotiationLocked && !canCreatePurchaseOrder && <TouchableOpacity
             onPress={handleReject}
             style={{
               backgroundColor: '#EF4444',
@@ -519,7 +548,8 @@ export function RFQDetailScreen({ rfqId, onPOCreated, onBack }: Props) {
             }}
           >
             <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>Reject</Text>
-          </TouchableOpacity>
+          </TouchableOpacity>}
+          {negotiationLocked && <Text style={{ fontSize: 13, fontWeight: '700', color: '#16A34A' }}>PO Created</Text>}
         </View>
       </KeyboardAvoidingView>
 
@@ -535,9 +565,6 @@ export function RFQDetailScreen({ rfqId, onPOCreated, onBack }: Props) {
         rfq={rfq}
         onClose={() => setAcceptModalVisible(false)}
         onAccept={handleAcceptNegotiation}
-        onPOCreated={() => {
-          showToast('Purchase Order created successfully', 'success')
-        }}
       />
     </View>
   )

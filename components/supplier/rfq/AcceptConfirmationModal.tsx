@@ -3,17 +3,14 @@ import {
   Modal,
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   ActivityIndicator,
   ScrollView,
   useWindowDimensions,
 } from 'react-native'
-import { X, Package, Tag, Calendar as CalendarIcon, Info } from 'lucide-react-native'
+import { X, Package, Tag, Info } from 'lucide-react-native'
 import { useTheme } from '@/contexts/ThemeContext'
-import DateTimePicker from '@/components/DateTimePicker'
 import type { AcceptNegotiationInput, RequestForQuotationDetail } from '@/types'
-import type { PurchaseOrder as POSupplierOrder } from '@/services/supplierService/supplierService'
 import { logDev } from '@/utils/logDev'
 import { ErrorModal } from '@/components/ErrorModal'
 
@@ -21,8 +18,7 @@ interface Props {
   visible: boolean
   rfq: RequestForQuotationDetail | null
   onClose: () => void
-  onAccept: (input: AcceptNegotiationInput) => Promise<POSupplierOrder>
-  onPOCreated: (po: POSupplierOrder) => void
+  onAccept: (input: AcceptNegotiationInput) => Promise<unknown>
 }
 
 const LARGE_SCREEN_BREAKPOINT = 768
@@ -31,18 +27,11 @@ const MODAL_MAX_WIDTH = 520
 const formatPHP = (amount: number) =>
   new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount)
 
-const formatDate = (iso: string) =>
-  new Date(iso).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })
-
-export function AcceptConfirmationModal({ visible, rfq, onClose, onAccept, onPOCreated }: Props) {
+export function AcceptConfirmationModal({ visible, rfq, onClose, onAccept }: Props) {
   const { colors } = useTheme()
   const { width: windowWidth, height: windowHeight } = useWindowDimensions()
   const isLargeScreen = windowWidth >= LARGE_SCREEN_BREAKPOINT
 
-  const [deliveryDate, setDeliveryDate] = useState<Date | null>(null)
-  const [driverName, setDriverName] = useState('')
-  const [driverContact, setDriverContact] = useState('')
-  const [showDatePicker, setShowDatePicker] = useState(false)
   const [accepting, setAccepting] = useState(false)
 
   const [errorModalVisible, setErrorModalVisible] = useState(false)
@@ -59,7 +48,6 @@ export function AcceptConfirmationModal({ visible, rfq, onClose, onAccept, onPOC
 
   // Determine the final offer details
   const latestOffer = rfq.conversation?.offers?.[rfq.conversation.offers.length - 1]
-  const latestMessage = rfq.conversation?.messages?.[rfq.conversation.messages.length - 1]
 
   const acceptedPrice = rfq.acceptedPrice ?? latestOffer?.unitPrice ?? rfq.targetUnitPrice ?? rfq.supplierItem?.unitPrice ?? 0
   const acceptedQty = rfq.acceptedQuantity ?? latestOffer?.quantity ?? (rfq.quantity ? Number(rfq.quantity) : 0)
@@ -69,37 +57,11 @@ export function AcceptConfirmationModal({ visible, rfq, onClose, onAccept, onPOC
   const vatAmount = isVatExempt ? 0 : subtotal * vatRate
   const total = subtotal + vatAmount
 
-  // Default delivery date: use expected delivery date or 7 days from now
-  const defaultDate = rfq.expectedDeliveryDate
-    ? new Date(rfq.expectedDeliveryDate)
-    : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-
-  const handleDateChange = (_: any, selectedDate?: Date) => {
-    setShowDatePicker(false)
-    if (selectedDate) setDeliveryDate(selectedDate)
-  }
-
   const handleAccept = async () => {
-    if (!deliveryDate) {
-      logDev('AcceptConfirmationModal validation error: missing delivery date')
-      showError('Delivery Date Required', 'Please select a delivery date.')
-      return
-    }
-
     setAccepting(true)
     try {
-      const po = await onAccept({
-        rfqId: rfq.id,
-        deliveryDate: deliveryDate.toISOString(),
-        driverName: driverName || null,
-        driverContact: driverContact || null,
-      })
-      onPOCreated(po)
+      await onAccept({ rfqId: rfq.id })
       onClose()
-      // Reset form
-      setDeliveryDate(null)
-      setDriverName('')
-      setDriverContact('')
     } catch (e: any) {
       logDev('AcceptConfirmationModal handleAccept error:', e)
       showError('Error', e.message ?? 'Failed to create purchase order.')
@@ -175,74 +137,11 @@ export function AcceptConfirmationModal({ visible, rfq, onClose, onAccept, onPOC
           </View>
         </View>
 
-        {/* Delivery Info */}
-        <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 16, gap: 12 }}>
-          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-            <CalendarIcon size={16} color={colors.textSecondary} />
-            <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>Delivery Schedule</Text>
-          </View>
-
-          <View>
-            <Text style={labelStyle}>Scheduled Delivery Date *</Text>
-            <TouchableOpacity
-              onPress={() => setShowDatePicker(true)}
-              style={{
-                flexDirection: 'row', alignItems: 'center', gap: 8,
-                backgroundColor: colors.background, borderRadius: 10,
-                borderWidth: 1, borderColor: colors.border, padding: 12,
-              }}
-            >
-              <CalendarIcon size={18} color={colors.textSecondary} />
-              <Text style={{ fontSize: 14, color: deliveryDate ? colors.text : colors.textSecondary, flex: 1 }}>
-                {deliveryDate ? formatDate(deliveryDate.toISOString()) : formatDate(defaultDate.toISOString())}
-              </Text>
-            </TouchableOpacity>
-            {!deliveryDate && (
-              <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 4 }}>
-                Default: {formatDate(defaultDate.toISOString())}
-              </Text>
-            )}
-          </View>
-
-          {showDatePicker && (
-            <DateTimePicker
-              value={deliveryDate ?? defaultDate}
-              mode="date"
-              display="default"
-              onChange={handleDateChange}
-              minimumDate={new Date()}
-            />
-          )}
-
-          <View>
-            <Text style={labelStyle}>Driver Name (optional)</Text>
-            <TextInput
-              value={driverName}
-              onChangeText={setDriverName}
-              placeholder="e.g. Juan dela Cruz"
-              placeholderTextColor={colors.textSecondary}
-              style={inputStyle}
-            />
-          </View>
-
-          <View>
-            <Text style={labelStyle}>Driver Contact (optional)</Text>
-            <TextInput
-              value={driverContact}
-              onChangeText={setDriverContact}
-              placeholder="e.g. 09171234567"
-              placeholderTextColor={colors.textSecondary}
-              style={inputStyle}
-              keyboardType="phone-pad"
-            />
-          </View>
-        </View>
-
         {/* Info note */}
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start', backgroundColor: colors.surface, borderRadius: 10, padding: 12 }}>
           <Info size={16} color={colors.primary} style={{ marginTop: 2 }} />
           <Text style={{ fontSize: 12, color: colors.textSecondary, flex: 1, lineHeight: 16 }}>
-            Accepting will create a Purchase Order (PO-{new Date().getFullYear()}-XXXX) and schedule delivery. The buyer will be notified.
+            You are accepting the buyer's displayed terms exactly. Delivery and driver details are set later during fulfilment.
           </Text>
         </View>
       </ScrollView>
@@ -268,7 +167,7 @@ export function AcceptConfirmationModal({ visible, rfq, onClose, onAccept, onPOC
           }}
         >
           {accepting ? <ActivityIndicator color="#fff" /> : (
-            <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}>Create Purchase Order</Text>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}>Accept Offer</Text>
           )}
         </TouchableOpacity>
       </View>
@@ -332,9 +231,3 @@ function qtyDisplay(qty: number): string {
   return qty % 1 === 0 ? String(qty) : qty.toFixed(2)
 }
 
-const labelStyle = { fontSize: 12, fontWeight: '600' as const, color: '#64748B' as const, marginBottom: 4 }
-
-const inputStyle = {
-  borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 12,
-  backgroundColor: '#F8fafc', color: '#0F172A', fontSize: 14,
-}
