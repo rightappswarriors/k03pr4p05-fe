@@ -895,9 +895,6 @@ export interface CounterOfferInput {
 
 export interface AcceptNegotiationInput {
   rfqId: string;
-  deliveryDate: string;
-  driverName?: string | null;
-  driverContact?: string | null;
 }
 
 export interface RejectNegotiationInput {
