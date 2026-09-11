@@ -55,6 +55,7 @@ import { MediaBuilder } from './builders/MediaBuilder'
 import { MediaService } from '@/services/mediaService'
 import { validateInventoryField } from '@/utils/catalogValidator'
 import { useOverlayEntry } from '@/contexts/OverlayHostContext'
+import { GlobalCategoryPicker } from '@/components/GlobalCategoryPicker'
 import {
   updateSupplierItem, archiveSupplierItem, reactivateSupplierItem,
   fetchSupplierItemReviews,
@@ -107,13 +108,15 @@ interface Props {
   item: SupplierItem | null
   visible: boolean
   startInEditMode?: boolean
+  canEdit?: boolean
+  canDelete?: boolean
   onClose: () => void
-  onUpdated: (item: SupplierItem) => void
+  onUpdated: (item: SupplierItem) => void | Promise<void>
 }
 
 interface Fields {
   name: string; description: string; sku: string
-  unit: string; unitPrice: string; isVatExempt: boolean
+  unit: string; unitPrice: string; isVatExempt: boolean; vatInclusive: boolean
   moq: string; availableQty: string
 }
 
@@ -122,7 +125,7 @@ function snap(item: SupplierItem): Fields {
   return {
     name: item.name, description: item.description ?? '',
     sku: item.sku ?? '', unit: item.unit,
-    unitPrice: String(item.unitPrice), isVatExempt: item.isVatExempt,
+    unitPrice: String(item.unitPrice), isVatExempt: item.isVatExempt, vatInclusive: item.vatInclusive ?? false,
     moq: String(item.moq), availableQty: String(item.availableQty),
   }
 }
@@ -188,7 +191,7 @@ function SavingOverlay({ visible }: { visible: boolean }) {
   return null
 }
 
-export function ProductDetailsModal({ item, visible, startInEditMode, onClose, onUpdated }: Props) {
+export function ProductDetailsModal({ item, visible, startInEditMode, canEdit = true, canDelete = true, onClose, onUpdated }: Props) {
   const { colors, theme } = useTheme()
   const { user } = useAuth()
   const confirm = useConfirm()
@@ -204,6 +207,8 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
   const [reviewsLoading, setReviewsLoading] = useState(false)
   const [pendingImageAsset, setPendingImageAsset] = useState<ImagePicker.ImagePickerAsset | null>(null)
   const [marketplaceOpen, setMarketplaceOpen] = useState(false)
+  const [globalCategory, setGlobalCategory] = useState<{ id: string; name: string; breadcrumb: string } | null>(null)
+  const [globalCategorySnapshot, setGlobalCategorySnapshot] = useState<{ id: string; name: string; breadcrumb: string } | null>(null)
 
   // Sub-resource state for staged editing
   const [pricingTiers, setPricingTiers] = useState<PriceTier[]>([])
@@ -238,12 +243,16 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
     const s = snap(item)
     setFields(s)
     setSnapshot(s)
-    setEditing(!!startInEditMode)
+    setEditing(canEdit && !!startInEditMode)
     setTab('overview')
     setReviews(null)
     setPendingImageAsset(null)
     setSaveError('')
     setFieldErrors({})
+    const existingCategory = (item as any).globalCategory
+    const categoryValue = existingCategory ? { id: existingCategory.id, name: existingCategory.name, breadcrumb: existingCategory.name } : null
+    setGlobalCategory(categoryValue)
+    setGlobalCategorySnapshot(categoryValue)
 
     // Initialize sub-resource state
     setPricingTiers(item.priceTiers || [])
@@ -276,13 +285,14 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
     })
     setCapabilities(initialCaps)
     setCapabilitiesSnapshot({ ...initialCaps })
-  }, [item?.id, startInEditMode])
+  }, [canEdit, item?.id, startInEditMode])
 
 
   // Dirty = any field differs from the snapshot, OR a new image was picked, OR any sub-resource changed.
   const isDirty = useMemo(() => {
     if (!fields || !snapshot) return false
     if (pendingImageAsset) return true
+    if (globalCategory?.id !== globalCategorySnapshot?.id) return true
 
     // Check core fields
     if ((Object.keys(fields) as Array<keyof Fields>).some(
@@ -314,7 +324,7 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
     if (stableStringify(images) !== stableStringify(imagesSnapshot)) return true
 
     return false
-  }, [fields, snapshot, pendingImageAsset, pricingTiers, pricingTiersSnapshot, packaging, packagingSnapshot, shipping, shippingSnapshot, documents, documentsSnapshot, specifications, specificationsSnapshot, wholesaleSettings, wholesaleSettingsSnapshot, capabilities, capabilitiesSnapshot, images, imagesSnapshot])
+  }, [fields, snapshot, pendingImageAsset, globalCategory, globalCategorySnapshot, pricingTiers, pricingTiersSnapshot, packaging, packagingSnapshot, shipping, shippingSnapshot, documents, documentsSnapshot, specifications, specificationsSnapshot, wholesaleSettings, wholesaleSettingsSnapshot, capabilities, capabilitiesSnapshot, images, imagesSnapshot])
 
   if (!item || !fields) return null
 
@@ -384,6 +394,7 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
       setWholesaleSettings(wholesaleSettingsSnapshot)
       setImages(imagesSnapshot)
       setCapabilities(capabilitiesSnapshot)
+      setGlobalCategory(globalCategorySnapshot)
     }
     setSaveError('')
     setEditing(false)
@@ -405,6 +416,7 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
     setWholesaleSettings(wholesaleSettingsSnapshot)
     setImages(imagesSnapshot)
     setCapabilities(capabilitiesSnapshot)
+    setGlobalCategory(globalCategorySnapshot)
     setEditing(false)
   }
 
@@ -535,9 +547,11 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
         unit: fields.unit.trim(),
         unitPrice: price,
         isVatExempt: fields.isVatExempt,
+        vatInclusive: fields.isVatExempt ? false : fields.vatInclusive,
         vatRate: fields.isVatExempt ? 0 : 0.12,
         moq: parseInt(fields.moq, 10) || 1,
         availableQty: parseInt(fields.availableQty, 10) || 0,
+        globalCategoryId: globalCategory?.id,
         image: overviewImageUrl ?? item.image ?? '',
         // Pricing tiers were previously never sent — the schema accepts them
         // directly on this mutation, so bundle them in here.
@@ -787,7 +801,6 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
         wholesaleShipping: shipping,
       } as SupplierItem
 
-      onUpdated(fullyUpdated)
       const newSnap = snap(updated)
       setSnapshot(newSnap)
       setFields(newSnap)
@@ -811,8 +824,10 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
 
       // Only exit edit mode if no errors
       if (errors.length === 0) {
+        await onUpdated(fullyUpdated)
         setEditing(false)
         toast.show('Changes saved successfully.', 'success')
+        onClose()
       }
     } catch (e: any) {
       setSaveError(e?.message ?? 'Failed to save changes.')
@@ -885,7 +900,7 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
             </View>
           </View>
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            {!editing && (
+            {canEdit && !editing && (
               <TouchableOpacity
                 onPress={() => setEditing(true)}
                 style={{ padding: 8, borderRadius: 8, backgroundColor: `${colors.primary}18` }}
@@ -893,13 +908,13 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
                 <Pencil size={16} color={colors.primary} />
               </TouchableOpacity>
             )}
-            <TouchableOpacity
+            {canDelete ? <TouchableOpacity
               onPress={handleArchiveToggle}
               disabled={saving}
               style={{ padding: 8, borderRadius: 8, backgroundColor: '#EF444415' }}
             >
               <Trash2 size={16} color="#EF4444" />
-            </TouchableOpacity>
+            </TouchableOpacity> : null}
             <TouchableOpacity onPress={handleClose} disabled={saving} style={{ padding: 8 }}>
               <X size={20} color={colors.text} />
             </TouchableOpacity>
@@ -931,7 +946,7 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
               </TouchableOpacity>
             )
           })}
-          <TouchableOpacity
+          {canEdit ? <TouchableOpacity
             onPress={() => setMarketplaceOpen(true)}
             style={{
               flexDirection: 'row', alignItems: 'center', gap: 6,
@@ -942,7 +957,7 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
             <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary }}>
               Marketplace
             </Text>
-          </TouchableOpacity>
+          </TouchableOpacity> : null}
         </ScrollView>
 
         {/* ── Body ── */}
@@ -1009,6 +1024,7 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
                     <Text style={lbl}>Description</Text>
                     <TextInput value={fields.description} onChangeText={(v) => set('description', v)} style={[inp, { minHeight: 72 }]} multiline placeholderTextColor={colors.textSecondary} />
                   </View>
+                  <GlobalCategoryPicker selectedCategoryId={globalCategory?.id} onSelect={setGlobalCategory} leafOnly />
                   {/* MOQ and Available Qty moved here from orphaned 'inventory' tab */}
                   <View style={{ flexDirection: 'row', gap: 12 }}>
                     <View style={{ flex: 1 }}>
@@ -1057,6 +1073,10 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
                     </Text>
                   </View>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Text style={{ fontSize: 12, color: colors.textSecondary }}>Category</Text>
+                    <Text style={{ flex: 1, textAlign: 'right', fontSize: 12, fontWeight: '600', color: colors.text }}>{globalCategory?.breadcrumb ?? ((item as any).category?.name ? `Legacy: ${(item as any).category.name}` : 'Not assigned')}</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                     <Text style={{ fontSize: 12, color: colors.textSecondary }}>Last Updated</Text>
                     <Text style={{ fontSize: 12, fontWeight: '600', color: colors.text }}>
                       {new Date(item.updatedAt).toLocaleString('en-PH')}
@@ -1075,6 +1095,11 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
                 priceTiers={pricingTiers}
                 moq={parseInt(fields.moq, 10) || 1}
                 unit={fields.unit}
+                basePrice={Number(fields.unitPrice) || 0}
+                vatRate={item.vatRate ?? 0.12}
+                vatInclusive={fields.vatInclusive}
+                isVatExempt={fields.isVatExempt}
+                onVatInclusiveChange={(value) => set('vatInclusive', value)}
                 onChange={setPricingTiers}
                 editable={editing}
               />
@@ -1161,7 +1186,7 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
               />
             </View>
           )}
-          {tab === 'variants' && <VariantsTab item={item} />}
+          {tab === 'variants' && <VariantsTab item={item} canCreate={canEdit} canEdit={canEdit} canDelete={canDelete} />}
           {tab === 'reviews' && <ReviewList payload={reviews} loading={reviewsLoading} />}
         </ScrollView>
 
@@ -1196,7 +1221,7 @@ export function ProductDetailsModal({ item, visible, startInEditMode, onClose, o
         )}
       </FadeDialogModal>
       <MarketplaceReadinessModal
-        visible={marketplaceOpen}
+        visible={canEdit && marketplaceOpen}
         supplierItemId={item.id}
         itemName={item.name}
         currentListing={(item as any).marketplaceListing}

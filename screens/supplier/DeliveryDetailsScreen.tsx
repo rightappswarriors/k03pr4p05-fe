@@ -28,9 +28,10 @@ interface Props {
   poId: string
   onBack: () => void
   onUpdated?: () => void
+  canEdit?: boolean
 }
 
-export default function DeliveryDetailsScreen({ poId, onBack, onUpdated }: Props) {
+export default function DeliveryDetailsScreen({ poId, onBack, onUpdated, canEdit = false }: Props) {
   const { colors } = useTheme()
   const [delivery, setDelivery] = useState<DeliveryItem | null>(null)
   const [loading, setLoading] = useState(true)
@@ -116,12 +117,12 @@ export default function DeliveryDetailsScreen({ poId, onBack, onUpdated }: Props
         <Text style={{ fontSize: 12, color: colors.textSecondary }}>Not yet available.</Text>
       </View>
 
-      {delivery.status === 'SCHEDULED' && (
+      {canEdit && delivery.status === 'SCHEDULED' && (
         <TouchableOpacity onPress={handleMarkInTransit} disabled={busy} style={{ backgroundColor: '#3B82F6', padding: 15, borderRadius: 10, alignItems: 'center', opacity: busy ? 0.6 : 1 }}>
           {busy ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '700' }}>Mark In Transit</Text>}
         </TouchableOpacity>
       )}
-      {delivery.status === 'IN_TRANSIT' && (
+      {canEdit && delivery.status === 'IN_TRANSIT' && (
         <TouchableOpacity onPress={handleMarkDelivered} disabled={busy} style={{ backgroundColor: '#22C55E', padding: 15, borderRadius: 10, alignItems: 'center', opacity: busy ? 0.6 : 1 }}>
           {busy ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '700' }}>Mark Delivered</Text>}
         </TouchableOpacity>

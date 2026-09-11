@@ -1,5 +1,5 @@
 // components/DateRangePickerModal.tsx
-import React, { useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import {
   Modal, View, Text, TouchableOpacity,
   StyleSheet, Platform, TextInput
@@ -79,12 +79,19 @@ function WebDateInput({
 export default function DateRangePickerModal({
   visible, onClose, onApply, initialStart, initialEnd
 }: Props) {
-  const today = new Date()
+  const today = useMemo(() => new Date(), [])
 
   const [startDate, setStartDate] = useState<Date>(initialStart ?? today)
   const [endDate, setEndDate] = useState<Date>(initialEnd ?? today)
   // Only used on native (controls which picker is open)
   const [pickingFor, setPickingFor] = useState<'start' | 'end' | null>(null)
+
+  useEffect(() => {
+    if (!visible) return
+    setStartDate(initialStart ?? today)
+    setEndDate(initialEnd ?? today)
+    setPickingFor(null)
+  }, [visible, initialStart, initialEnd, today])
 
   const handleApply = () => {
     if (startDate > endDate) {

@@ -45,7 +45,10 @@ import {
   fetchPOConversation,
   sendPoMessage,
   acceptPO,
+  proposePurchaseOrderDeliveryDate,
   rejectPO,
+  preparePurchaseOrder,
+  advancePurchaseOrderFulfillment,
   startPOConversation,
   sendPoReceipt,
   type PurchaseOrder,
@@ -59,6 +62,9 @@ import { MediaService } from '@/services/mediaService'
 import { useImagePicker, type PickedFile } from '@/hooks/useImagePicker'
 import { ConversationMessageList } from '@/components/supplier/rfq/ConversationMessageList'
 import { RfqStatusBadge } from '@/components/supplier/rfq/RfqStatusBadge'
+import { DeliveryDetailsModal } from '@/components/supplier/purchase-order/DeliveryDetailsModal'
+import DateTimePicker, { type DateTimePickerChangeEvent } from '@/components/DateTimePicker'
+import { usePermissions } from '@/hooks/usePermissions'
 
 const formatPHP = (amount: number) =>
   new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount)
@@ -66,23 +72,45 @@ const formatPHP = (amount: number) =>
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })
 
+const toDateOnly = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+
+const toPickerDate = (value: string) => {
+  const [year, month, day] = value.slice(0, 10).split('-').map(Number)
+  return year && month && day ? new Date(year, month - 1, day) : new Date()
+}
+
+const deliveryAgreementLabel = (status?: string) => {
+  if (status === 'AGREED') return 'Agreed'
+  if (status === 'PENDING_BUYER') return 'Awaiting buyer approval'
+  return 'Waiting for supplier confirmation'
+}
+
 const BREAKPOINTS = { tablet: 768, desktop: 1100 }
 
 const STATUS_COLORS: Record<POStatus, string> = {
   PENDING: '#F59E0B',
+  SUPPLIER_ACCEPTED: '#10B981',
+  PREPARING: '#3B82F6',
+  READY_FOR_DISPATCH: '#6366F1',
   ACCEPTED: '#10B981',
   REJECTED: '#EF4444',
   IN_TRANSIT: '#3B82F6',
   DELIVERED: '#22C55E',
+  COMPLETED: '#16A34A',
   CANCELLED: '#6B7280',
 }
 
 const STATUS_LABELS: Record<POStatus, string> = {
   PENDING: 'Pending Review',
+  SUPPLIER_ACCEPTED: 'Accepted',
+  PREPARING: 'Preparing Order',
+  READY_FOR_DISPATCH: 'Ready for Dispatch',
   ACCEPTED: 'Accepted',
   REJECTED: 'Rejected',
   IN_TRANSIT: 'In Transit',
   DELIVERED: 'Delivered',
+  COMPLETED: 'Completed',
   CANCELLED: 'Cancelled',
 }
 
@@ -143,6 +171,9 @@ interface PODetailScreenProps {
 export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }: PODetailScreenProps) {
   const { colors } = useTheme()
   const { user } = useAuth()
+  const { can } = usePermissions()
+  const canEditOrder = can('supplierPurchaseOrderPage', 'canEdit')
+  const canSendMessage = can('supplierPurchaseOrderPage', 'canCreate')
   const { show: showToast } = useToast()
   const { width } = useWindowDimensions()
 
@@ -158,6 +189,15 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
   const [deliveryDate, setDeliveryDate] = useState('')
   const [driverName, setDriverName] = useState('')
   const [driverContact, setDriverContact] = useState('')
+  const [supplierNote, setSupplierNote] = useState('')
+  const [rejectionReason, setRejectionReason] = useState('')
+  const [showAcceptModal, setShowAcceptModal] = useState(false)
+  const [showRejectModal, setShowRejectModal] = useState(false)
+  const [showPrepareModal, setShowPrepareModal] = useState(false)
+  const [showDeliveryDetails, setShowDeliveryDetails] = useState(false)
+  const [proposedDeliveryDate, setProposedDeliveryDate] = useState('')
+  const [proposingDeliveryDate, setProposingDeliveryDate] = useState(false)
+  const [preparingOrder, setPreparingOrder] = useState(false)
 
   const [activeTab, setActiveTab] = useState<'details' | 'conversation'>('details')
   const [poConv, setPoConv] = useState<POConversationDetail | null>(null)
@@ -187,6 +227,9 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
     try {
       const data = await fetchPurchaseOrder(poId)
       setPo(data)
+      if ((data?.supplierConfirmation === 'REVIEW_REQUIRED' || (data?.supplierConfirmation === 'CONFIRMED' && !data.supplierExpectedDeliveryAt && data.paymentStatus === 'PENDING')) && (data.requestedDate || data.delivery?.scheduledDate)) {
+        setDeliveryDate((data.requestedDate ?? data.delivery?.scheduledDate ?? '').slice(0, 10))
+      }
     } catch (e: any) {
       if (__DEV__) console.error('fetchPurchaseOrder error', e)
     } finally {
@@ -234,6 +277,7 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
       const { event, payload } = ev
       if (event === 'conversation:newMessage') {
         const msg = payload as ConversationMessage
+        if (msg.type === 'PAYMENT_RECEIVED' || msg.type === 'ORDER_PREPARING' || msg.type === 'DELIVERY_SCHEDULED') void loadPo()
         setPoConv((prev) => {
           if (!prev) return prev
           const replaceIdx = prev.messages?.findIndex(
@@ -249,7 +293,7 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
         })
       }
     }
-  }, [wsEvents, po?.conversationId])
+  }, [wsEvents, po?.conversationId, loadPo])
 
   if (loading) {
     return <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={colors.primary} size="large" /></View>
@@ -263,23 +307,53 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
     )
   }
 
-  const isPending = po.status === 'PENDING'
+  const isPending = (po.status === 'PENDING' && po.supplierConfirmation === 'REVIEW_REQUIRED') || (po.supplierConfirmation === 'CONFIRMED' && !po.supplierExpectedDeliveryAt && po.paymentStatus === 'PENDING')
   const statusColor = STATUS_COLORS[po.status]
   const paymentStatus = po.paymentStatus ?? 'PENDING'
+  const paymentAwaitingReconciliation = po.paymentAttemptStatus === 'RECONCILIATION_REQUIRED'
+  const paymentConfirmed = po.paymentAttemptStatus === 'SUCCEEDED'
+  const orderReadyForPreparation = po.supplierConfirmation === 'CONFIRMED' && paymentConfirmed && po.status !== 'PREPARING'
   const paymentColor = PAYMENT_STATUS_COLORS[paymentStatus]
   const receipt = po.receiptSnapshot
   const conversation = po.conversation ?? poConv
+  const deliveryAgreement = (po as any).deliveryDateAgreementStatus as string | undefined
+  const handleProposeDeliveryDate = async () => {
+    const proposedDate = proposedDeliveryDate || (po.supplierExpectedDeliveryAt ?? po.requestedDate ?? '').slice(0, 10)
+    if (!proposedDate) {
+      Alert.alert('Delivery Date Required', 'Please select a delivery date.')
+      return
+    }
+    setProposingDeliveryDate(true)
+    try {
+      const updated = await proposePurchaseOrderDeliveryDate(po.id, new Date(`${proposedDate}T00:00:00.000Z`).toISOString())
+      setPo(updated)
+      showToast('Delivery date proposal sent to the buyer', 'success')
+    } catch (e: any) {
+      Alert.alert('Unable to Propose Delivery Date', e.message ?? 'Please try again.')
+    } finally {
+      setProposingDeliveryDate(false)
+    }
+  }
+  const deliveryDetailsAction = po.delivery ? (
+    <TouchableOpacity
+      onPress={() => setShowDeliveryDetails(true)}
+      style={{ alignSelf: 'flex-start', marginTop: 2 }}
+    >
+      <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>View delivery location & details</Text>
+    </TouchableOpacity>
+  ) : null
 
   const handleAccept = async () => {
     if (!deliveryDate.trim()) {
       Alert.alert('Delivery Date Required', 'Please enter a delivery date (YYYY-MM-DD).')
       return
     }
-    const isoDate = new Date(deliveryDate).toISOString()
+    const isoDate = new Date(`${deliveryDate}T00:00:00.000Z`).toISOString()
     setAccepting(true)
     try {
-      const updated = await acceptPO(po.id, isoDate, driverName || undefined, driverContact || undefined)
+      const updated = await acceptPO(po.id, isoDate, driverName || undefined, driverContact || undefined, supplierNote || undefined)
       setPo(updated)
+      setShowAcceptModal(false)
       onAccepted?.()
     } catch (e: any) {
       Alert.alert('Error', e.message ?? 'Failed to accept PO.')
@@ -288,30 +362,41 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
     }
   }
 
-  const handleReject = () => {
-    Alert.alert(
-      'Reject Purchase Order',
-      `Are you sure you want to reject ${po.poNumber}? This cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reject',
-          style: 'destructive',
-          onPress: async () => {
-            setRejecting(true)
-            try {
-              const updated = await rejectPO(po.id)
-              setPo(updated)
-              onRejected?.()
-            } catch (e: any) {
-              Alert.alert('Error', e.message ?? 'Failed to reject PO.')
-            } finally {
-              setRejecting(false)
-            }
-          },
-        },
-      ]
-    )
+  const handleReject = async () => {
+    if (!rejectionReason.trim()) {
+      Alert.alert('Rejection Reason Required', 'Please provide a reason for rejecting this PO.')
+      return
+    }
+    setRejecting(true)
+    try {
+      const updated = await rejectPO(po.id, rejectionReason.trim())
+      setPo(updated)
+      setShowRejectModal(false)
+      onRejected?.()
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'Failed to reject PO.')
+    } finally {
+      setRejecting(false)
+    }
+  }
+
+  const handlePrepareOrder = async () => {
+    setPreparingOrder(true)
+    try {
+      const updated = await preparePurchaseOrder(po.id)
+      setPo(updated)
+      setShowPrepareModal(false)
+      showToast('Order preparation started', 'success')
+    } catch (e: any) {
+      Alert.alert('Unable to Prepare Order', e.message ?? 'Failed to start preparing this order.')
+    } finally {
+      setPreparingOrder(false)
+    }
+  }
+
+  const handleFulfillmentAction = async () => {
+    const action = po.status === 'PREPARING' ? 'markPurchaseOrderReadyForDispatch' : po.status === 'READY_FOR_DISPATCH' ? 'dispatchPurchaseOrder' : 'markPurchaseOrderDelivered'
+    try { setPreparingOrder(true); setPo(await advancePurchaseOrderFulfillment(action, po.id)); showToast('Order status updated', 'success') } catch (e: any) { Alert.alert('Unable to update order', e.message ?? 'Please try again.') } finally { setPreparingOrder(false) }
   }
 
   const openReceiptPdf = () => {
@@ -492,10 +577,29 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
         <InfoRow label="Outlet" value={po.outlet?.name ?? '—'} />
         <InfoRow label="Address" value={po.outlet?.address ?? '—'} />
         <InfoRow label="Order Date" value={formatDate(po.createdAt)} />
-        {po.requestedDate && <InfoRow label="Requested Date" value={formatDate(po.requestedDate)} />}
+        {po.requestedDate && <InfoRow label="Agent Requested Delivery" value={formatDate(po.requestedDate)} />}
+        {po.supplierExpectedDeliveryAt && <InfoRow label="Supplier Committed Delivery" value={formatDate(po.supplierExpectedDeliveryAt)} />}
+        <InfoRow label="Date Agreement" value={deliveryAgreementLabel(deliveryAgreement)} />
       </View>
     </Panel>
   )
+
+  const supplierDateCoordinationCard = po.status === 'PREPARING' ? (
+    <Panel title="Delivery Date Agreement" icon={Calendar}>
+      <View style={{ gap: 10 }}>
+        <InfoRow label="Agent Requested Date" value={po.requestedDate ? formatDate(po.requestedDate) : 'Not specified'} />
+        <InfoRow label="Your Current Commitment" value={po.supplierExpectedDeliveryAt ? formatDate(po.supplierExpectedDeliveryAt) : 'Not set'} />
+        <InfoRow label="Agreement" value={deliveryAgreementLabel(deliveryAgreement)} />
+        {canEditOrder ? <View>
+          <Text style={labelStyle}>Confirm or propose delivery date</Text>
+          <DateTimePicker value={toPickerDate(proposedDeliveryDate || po.supplierExpectedDeliveryAt || po.requestedDate || '')} mode="date" minimumDate={new Date()} onChange={(_event: DateTimePickerChangeEvent, selectedDate?: Date) => { if (selectedDate) setProposedDeliveryDate(toDateOnly(selectedDate)) }} />
+        </View> : null}
+        {canEditOrder ? <TouchableOpacity onPress={handleProposeDeliveryDate} disabled={proposingDeliveryDate} style={{ backgroundColor: colors.primary, paddingVertical: 12, borderRadius: 10, alignItems: 'center', opacity: proposingDeliveryDate ? 0.6 : 1 }}>
+          {proposingDeliveryDate ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '700' }}>Confirm / Propose Date</Text>}
+        </TouchableOpacity> : null}
+      </View>
+    </Panel>
+  ) : null
 
   const paymentCard = (
     <Panel title="Payment" icon={Banknote}>
@@ -511,6 +615,36 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
             <Text style={{ fontSize: 12, fontWeight: '600', color: paymentColor }}>{PAYMENT_STATUS_LABELS[paymentStatus]}</Text>
           </View>
         </View>
+        {po.status === 'PREPARING' ? (
+          <View style={{ backgroundColor: '#DBEAFE', borderRadius: 10, padding: 12 }}>
+            <Text style={{ color: '#1D4ED8', fontWeight: '700', fontSize: 13 }}>Preparing Order</Text>
+            {po.preparingAt && <Text style={{ color: '#1D4ED8', fontSize: 12, marginTop: 3 }}>Started {formatDate(po.preparingAt)}</Text>}
+          </View>
+        ) : paymentAwaitingReconciliation ? (
+          <Text style={{ color: '#B45309', fontSize: 13 }}>Payment received and awaiting reconciliation.</Text>
+        ) : paymentConfirmed ? (
+          <>
+            <Text style={{ color: '#15803D', fontSize: 13, fontWeight: '600' }}>Payment Confirmed</Text>
+            {canEditOrder ? <TouchableOpacity onPress={() => setShowPrepareModal(true)} disabled={!orderReadyForPreparation} style={{ paddingVertical: 11, borderRadius: 10, alignItems: 'center', backgroundColor: colors.primary, opacity: orderReadyForPreparation ? 1 : 0.5 }}>
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>Prepare Order</Text>
+            </TouchableOpacity> : null}
+          </>
+        ) : (
+          <>
+            <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Preparation becomes available after payment is confirmed.</Text>
+            {canEditOrder ? <TouchableOpacity disabled style={{ paddingVertical: 11, borderRadius: 10, alignItems: 'center', backgroundColor: colors.border }}><Text style={{ color: colors.textSecondary, fontWeight: '700', fontSize: 13 }}>Prepare Order</Text></TouchableOpacity> : null}
+          </>
+        )}
+        {canEditOrder && (['PREPARING', 'READY_FOR_DISPATCH', 'IN_TRANSIT'] as POStatus[]).includes(po.status) && (
+          <>
+          {po.status === 'PREPARING' && deliveryAgreement !== 'AGREED' && <Text style={{ color: '#B45309', fontSize: 13 }}>Delivery Date Confirmation Required — {deliveryAgreement === 'PENDING_BUYER' ? 'waiting for buyer confirmation.' : 'confirm the buyer requested date or propose another date.'}</Text>}
+          <TouchableOpacity onPress={handleFulfillmentAction} disabled={preparingOrder || (po.status === 'PREPARING' && deliveryAgreement !== 'AGREED')} style={{ paddingVertical: 11, borderRadius: 10, alignItems: 'center', backgroundColor: colors.primary, opacity: preparingOrder || (po.status === 'PREPARING' && deliveryAgreement !== 'AGREED') ? 0.6 : 1 }}>
+            {preparingOrder ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>{po.status === 'PREPARING' ? 'Mark Ready for Dispatch' : po.status === 'READY_FOR_DISPATCH' ? 'Dispatch Order' : 'Mark Delivered'}</Text>}
+          </TouchableOpacity>
+          </>
+        )}
+        {po.status === 'DELIVERED' && <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Waiting for buyer confirmation.</Text>}
+        {po.status === 'COMPLETED' && <Text style={{ color: '#15803D', fontSize: 13, fontWeight: '600' }}>Order completed.</Text>}
         <InfoRow label="Merchandise Subtotal" value={formatPHP(po.subtotalAmount)} />
         {po.vatAmount > 0 && <InfoRow label="VAT" value={formatPHP(po.vatAmount)} />}
         <InfoRow label="Additional Charges" value={formatPHP(po.extraChargesTotal)} />
@@ -575,7 +709,7 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
           <Text style={{ fontSize: 13, color: colors.textSecondary }}>
             This PO has no conversation yet. Start a conversation to upload receipts.
           </Text>
-          <TouchableOpacity
+          {canSendMessage ? <TouchableOpacity
             onPress={handleStartConversation}
             style={{
               flexDirection: 'row',
@@ -590,10 +724,10 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
           >
             <MessageCircle size={16} color="#fff" />
             <Text style={{ fontSize: 13, fontWeight: '600', color: '#fff' }}>Start Conversation</Text>
-          </TouchableOpacity>
+          </TouchableOpacity> : null}
         </View>
       ) : (
-        <TouchableOpacity
+        canEditOrder ? <TouchableOpacity
           onPress={() => {
             setReceiptAmount(String(po.totalAmount))
             setPaymentMethod('Cash')
@@ -611,7 +745,7 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
         >
           <Receipt size={16} color={colors.primary} />
           <Text style={{ fontSize: 13, fontWeight: '600', color: colors.primary }}>Prepare & Send Receipt</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> : <Text style={{ fontSize: 13, color: colors.textSecondary }}>No receipt has been sent.</Text>
       )}
     </Panel>
   )
@@ -688,7 +822,7 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
       </View>
 
       {/* Composer — modern pill-shaped, iMessage-style */}
-      {conversation && (
+      {conversation && canSendMessage && (
         <View style={{
           flexDirection: 'row',
           alignItems: 'flex-end',
@@ -785,7 +919,7 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
   // ─── Prepare & Send Receipt Modal ──────────────────────────────────────────────
   const receiptModal = (
     <Modal
-      visible={showReceiptModal}
+      visible={canEditOrder && showReceiptModal}
       transparent
       animationType="fade"
       onRequestClose={() => setShowReceiptModal(false)}
@@ -891,6 +1025,56 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
       </View>
     </Modal>
   )
+
+  const supplierConfirmationModals = (
+    <>
+      <Modal visible={canEditOrder && showAcceptModal} transparent animationType="fade" onRequestClose={() => setShowAcceptModal(false)}>
+        <View style={{ flex: 1, backgroundColor: '#00000040', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <View style={{ backgroundColor: colors.surface, borderRadius: 16, padding: 20, width: '100%', maxWidth: 420, gap: 14 }}>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text }}>Accept Purchase Order</Text>
+            <Text style={{ fontSize: 13, color: colors.textSecondary }}>Confirm your delivery commitment for {po.poNumber}.</Text>
+            {po.requestedDate && <Text style={{ fontSize: 13, color: colors.textSecondary }}>Buyer requested delivery: {formatDate(po.requestedDate)}</Text>}
+            <View><Text style={labelStyle}>Final Delivery Date *</Text><DateTimePicker value={toPickerDate(deliveryDate)} mode="date" minimumDate={new Date()} onChange={(_event: DateTimePickerChangeEvent, selectedDate?: Date) => { if (selectedDate) setDeliveryDate(toDateOnly(selectedDate)) }} /></View>
+            <View><Text style={labelStyle}>Driver Name (optional)</Text><TextInput value={driverName} onChangeText={setDriverName} placeholder="e.g. Juan dela Cruz" placeholderTextColor={colors.textSecondary} style={inputStyle} /></View>
+            <View><Text style={labelStyle}>Driver Contact (optional)</Text><TextInput value={driverContact} onChangeText={setDriverContact} placeholder="e.g. 09171234567" placeholderTextColor={colors.textSecondary} style={inputStyle} keyboardType="phone-pad" /></View>
+            <View><Text style={labelStyle}>Supplier Note (optional)</Text><TextInput value={supplierNote} onChangeText={setSupplierNote} placeholder="Add a note for the buyer" placeholderTextColor={colors.textSecondary} style={[inputStyle, { minHeight: 72, textAlignVertical: 'top' }]} multiline /></View>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <TouchableOpacity onPress={() => setShowAcceptModal(false)} disabled={accepting} style={{ flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', backgroundColor: colors.background }}><Text style={{ color: colors.textSecondary, fontWeight: '600' }}>Cancel</Text></TouchableOpacity>
+              <TouchableOpacity onPress={handleAccept} disabled={accepting} style={{ flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', backgroundColor: '#22C55E', opacity: accepting ? 0.6 : 1 }}>{accepting ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '700' }}>Accept PO</Text>}</TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal visible={canEditOrder && showRejectModal} transparent animationType="fade" onRequestClose={() => setShowRejectModal(false)}>
+        <View style={{ flex: 1, backgroundColor: '#00000040', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <View style={{ backgroundColor: colors.surface, borderRadius: 16, padding: 20, width: '100%', maxWidth: 420, gap: 14 }}>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text }}>Reject Purchase Order</Text>
+            <Text style={{ fontSize: 13, color: colors.textSecondary }}>A rejection reason is required and will be shared with the buyer.</Text>
+            <View><Text style={labelStyle}>Rejection Reason *</Text><TextInput value={rejectionReason} onChangeText={setRejectionReason} placeholder="Why are you unable to fulfill this order?" placeholderTextColor={colors.textSecondary} style={[inputStyle, { minHeight: 96, textAlignVertical: 'top' }]} multiline /></View>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <TouchableOpacity onPress={() => setShowRejectModal(false)} disabled={rejecting} style={{ flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', backgroundColor: colors.background }}><Text style={{ color: colors.textSecondary, fontWeight: '600' }}>Cancel</Text></TouchableOpacity>
+              <TouchableOpacity onPress={handleReject} disabled={rejecting || !rejectionReason.trim()} style={{ flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', backgroundColor: '#EF4444', opacity: rejecting || !rejectionReason.trim() ? 0.6 : 1 }}>{rejecting ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '700' }}>Reject PO</Text>}</TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal visible={canEditOrder && showPrepareModal} transparent animationType="fade" onRequestClose={() => setShowPrepareModal(false)}>
+        <View style={{ flex: 1, backgroundColor: '#00000040', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <View style={{ backgroundColor: colors.surface, borderRadius: 16, padding: 20, width: '100%', maxWidth: 400, gap: 12 }}>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text }}>Prepare this order?</Text>
+            <InfoRow label="PO" value={po.poNumber} />
+            <InfoRow label="Total" value={formatPHP(po.totalAmount)} />
+            <InfoRow label="Expected delivery" value={po.supplierExpectedDeliveryAt ? formatDate(po.supplierExpectedDeliveryAt) : 'Not committed'} />
+            <Text style={{ color: colors.textSecondary, fontSize: 13 }}>The supplier delivery commitment will be preserved.</Text>
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 6 }}>
+              <TouchableOpacity onPress={() => setShowPrepareModal(false)} disabled={preparingOrder} style={{ flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', backgroundColor: colors.background }}><Text style={{ color: colors.textSecondary, fontWeight: '600' }}>Cancel</Text></TouchableOpacity>
+              <TouchableOpacity onPress={handlePrepareOrder} disabled={preparingOrder} style={{ flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', backgroundColor: colors.primary, opacity: preparingOrder ? 0.6 : 1 }}>{preparingOrder ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '700' }}>Start Preparing</Text>}</TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </>
+  )
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       {/* Header — always visible, never scrolls or gets pushed out */}
@@ -962,6 +1146,7 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
                   </Panel>
                 )}
                 {buyerInfoCard}
+                {supplierDateCoordinationCard}
                 {paymentCard}
                 {receiptCard}
 
@@ -1011,18 +1196,19 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
                     <InfoRow label="Status" value={po.delivery.status} />
                     {po.delivery.address && <InfoRow label="Address" value={po.delivery.address} />}
                     {po.delivery.notes && <InfoRow label="Instructions" value={po.delivery.notes} />}
-                    {po.delivery.latitude != null && po.delivery.longitude != null && <TouchableOpacity onPress={() => Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${po.delivery!.latitude},${po.delivery!.longitude}`)}><Text style={{ color: colors.primary, fontWeight: '600', fontSize: 13 }}>View on Map</Text></TouchableOpacity>}
+                    {deliveryDetailsAction}
                   </Panel>
                 )}
 
                 {/* Accept / Reject */}
-                {isPending && (
+                {canEditOrder && isPending && (
                   <View style={{ gap: 10 }}>
                     <View style={{ backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 16, gap: 12 }}>
                       <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>Accept Details</Text>
                       <View>
-                        <Text style={labelStyle}>Delivery Date * (YYYY-MM-DD)</Text>
-                        <TextInput value={deliveryDate} onChangeText={setDeliveryDate} placeholder="e.g. 2026-07-15" placeholderTextColor={colors.textSecondary} style={inputStyle} />
+                        <Text style={labelStyle}>Final Delivery Date *</Text>
+                        {po.requestedDate && <Text style={{ marginBottom: 6, fontSize: 13, color: colors.textSecondary }}>Buyer requested: {formatDate(po.requestedDate)}</Text>}
+                        <DateTimePicker value={toPickerDate(deliveryDate)} mode="date" minimumDate={new Date()} onChange={(_event: DateTimePickerChangeEvent, selectedDate?: Date) => { if (selectedDate) setDeliveryDate(toDateOnly(selectedDate)) }} />
                       </View>
                       <View>
                         <Text style={labelStyle}>Driver Name (optional)</Text>
@@ -1035,12 +1221,12 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
                     </View>
 
                     <View style={{ flexDirection: 'row', gap: 10 }}>
-                      <TouchableOpacity onPress={handleAccept} disabled={accepting || rejecting}
+                      <TouchableOpacity onPress={() => setShowAcceptModal(true)} disabled={accepting || rejecting}
                         style={{ flex: 1, backgroundColor: '#22C55E', paddingVertical: 13, borderRadius: 10, alignItems: 'center', opacity: accepting || rejecting ? 0.6 : 1 }}>
                         {accepting ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>✓ Accept</Text>}
                       </TouchableOpacity>
 
-                      <TouchableOpacity onPress={handleReject} disabled={accepting || rejecting}
+                      <TouchableOpacity onPress={() => setShowRejectModal(true)} disabled={accepting || rejecting}
                         style={{ flex: 1, backgroundColor: '#EF444420', borderWidth: 1, borderColor: '#EF4444', paddingVertical: 13, borderRadius: 10, alignItems: 'center', opacity: accepting || rejecting ? 0.6 : 1 }}>
                         {rejecting ? <ActivityIndicator color="#EF4444" /> : <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 14 }}>✗ Reject</Text>}
                       </TouchableOpacity>
@@ -1063,6 +1249,7 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
                 </Panel>
               )}
               {buyerInfoCard}
+              {supplierDateCoordinationCard}
               {paymentCard}
               {receiptCard}
               <View style={{ backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 16, gap: 10 }}>
@@ -1106,16 +1293,17 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
                   <InfoRow label="Status" value={po.delivery.status} />
                   {po.delivery.address && <InfoRow label="Address" value={po.delivery.address} />}
                   {po.delivery.notes && <InfoRow label="Instructions" value={po.delivery.notes} />}
-                  {po.delivery.latitude != null && po.delivery.longitude != null && <TouchableOpacity onPress={() => Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${po.delivery!.latitude},${po.delivery!.longitude}`)}><Text style={{ color: colors.primary, fontWeight: '600', fontSize: 13 }}>View on Map</Text></TouchableOpacity>}
+                  {deliveryDetailsAction}
                 </Panel>
               )}
-              {isPending && (
+              {canEditOrder && isPending && (
                 <View style={{ gap: 10 }}>
                   <View style={{ backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 16, gap: 12 }}>
                     <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>Accept Details</Text>
                     <View>
-                      <Text style={labelStyle}>Delivery Date * (YYYY-MM-DD)</Text>
-                      <TextInput value={deliveryDate} onChangeText={setDeliveryDate} placeholder="e.g. 2026-07-15" placeholderTextColor={colors.textSecondary} style={inputStyle} />
+                      <Text style={labelStyle}>Final Delivery Date *</Text>
+                      {po.requestedDate && <Text style={{ marginBottom: 6, fontSize: 13, color: colors.textSecondary }}>Buyer requested: {formatDate(po.requestedDate)}</Text>}
+                      <DateTimePicker value={toPickerDate(deliveryDate)} mode="date" minimumDate={new Date()} onChange={(_event: DateTimePickerChangeEvent, selectedDate?: Date) => { if (selectedDate) setDeliveryDate(toDateOnly(selectedDate)) }} />
                     </View>
                     <View>
                       <Text style={labelStyle}>Driver Name (optional)</Text>
@@ -1126,11 +1314,11 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
                       <TextInput value={driverContact} onChangeText={setDriverContact} placeholder="e.g. 09171234567" placeholderTextColor={colors.textSecondary} style={inputStyle} keyboardType="phone-pad" />
                     </View>
                   </View>
-                  <TouchableOpacity onPress={handleAccept} disabled={accepting || rejecting}
+                  <TouchableOpacity onPress={() => setShowAcceptModal(true)} disabled={accepting || rejecting}
                     style={{ backgroundColor: '#22C55E', padding: 15, borderRadius: 10, alignItems: 'center', opacity: accepting || rejecting ? 0.6 : 1 }}>
                     {accepting ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>✓ Accept PO</Text>}
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={handleReject} disabled={accepting || rejecting}
+                  <TouchableOpacity onPress={() => setShowRejectModal(true)} disabled={accepting || rejecting}
                     style={{ backgroundColor: '#EF444420', borderWidth: 1, borderColor: '#EF4444', padding: 15, borderRadius: 10, alignItems: 'center', opacity: accepting || rejecting ? 0.6 : 1 }}>
                     {rejecting ? <ActivityIndicator color="#EF4444" /> : <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 15 }}>✗ Reject PO</Text>}
                   </TouchableOpacity>
@@ -1152,6 +1340,17 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
       )}
 
       {receiptModal}
+      {supplierConfirmationModals}
+      {po.delivery && (
+        <DeliveryDetailsModal
+          visible={showDeliveryDetails}
+          onClose={() => setShowDeliveryDetails(false)}
+          delivery={po.delivery}
+          requestedDate={po.requestedDate}
+          supplierExpectedDeliveryAt={po.supplierExpectedDeliveryAt}
+          deliveryDateAgreementStatus={deliveryAgreement}
+        />
+      )}
     </View>
   )
 }

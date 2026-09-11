@@ -2,7 +2,7 @@
 // Super Admin panel — manages global ItemCategories and ItemGroups.
 // Responsive: sidebar on web/tablet, drawer on mobile.
 
-import React, { memo, useCallback, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import {
   CreditCard,
-  FolderOpen,
+  FolderTree,
   LayoutDashboard,
   Layers,
   Menu,
@@ -26,7 +26,9 @@ import {
   Shield,
   Users,
 } from 'lucide-react-native';
+import { usePathname, useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useAuth } from '@/contexts/AuthContext';
 import AdminDashboardScreen from '@/screens/admin/AdminDashboardScreen';
 import GlobalCategoriesScreen from '@/screens/admin/GlobalCategoriesScreen';
 import UserManagementScreen from '@/screens/admin/users/UserManagementScreen';
@@ -36,10 +38,15 @@ import FeeConfigScreen from '@/screens/admin/FeeConfigScreen';
 import GovernanceScreen from '@/screens/admin/GovernanceScreen';
 import PayoutVerificationScreen from './payout-verification';
 import PaymentReconciliationScreen from '@/screens/admin/PaymentReconciliationScreen';
+import SettlementScreen from '@/screens/admin/SettlementScreen';
+import WithdrawalReviewScreen from '@/screens/admin/WithdrawalReviewScreen';
+import PayoutReconciliationScreen from '@/screens/admin/PayoutReconciliationScreen';
+import { CategoryGovernancePanel } from '@/screens/admin/CategoryGovernancePanel';
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 type AdminRoute =
   | 'Dashboard'
+  | 'SupplierCategories'
   | 'GlobalCategories'
   | 'GlobalGroups'
   | 'Subscriptions'
@@ -48,7 +55,10 @@ type AdminRoute =
   | 'FeeConfig'
   | 'Governance'
   | 'PayoutVerification'
-  | 'PaymentReconciliation';
+  | 'PaymentReconciliation'
+  | 'Settlements'
+  | 'Withdrawals'
+  | 'PayoutReconciliation';
 
 const DRAWER_WIDTH = 250;   // ← matches ERP sidebar
 const SIDEBAR_WIDTH = 250;  // ← same value, persistent on tablet
@@ -75,7 +85,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { key: 'Dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { key: 'GlobalCategories', label: 'Item Categories', icon: FolderOpen },
+  { key: 'SupplierCategories', label: 'Categories', icon: FolderTree },
   { key: 'UserManagement', label: 'User Management', icon: Users },
   { key: 'GlobalGroups', label: 'Item Groups', icon: Layers },
   { key: 'Subscriptions', label: 'Subscriptions', icon: CreditCard },
@@ -83,6 +93,9 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'Governance', label: 'Governance', icon: Shield },
   { key: 'PayoutVerification', label: 'Payout Verification', icon: CreditCard },
   { key: 'PaymentReconciliation', label: 'Payment Reconciliation', icon: CreditCard },
+  { key: 'Settlements', label: 'Settlements', icon: CreditCard },
+  { key: 'Withdrawals', label: 'Withdrawals', icon: CreditCard },
+  { key: 'PayoutReconciliation', label: 'Payout Reconciliation', icon: CreditCard },
   { key: 'Settings', label: 'Settings', icon: Settings },
 ];
 
@@ -280,6 +293,7 @@ const SidebarContent = memo(function SidebarContent({
 function buildScreenMap(): Record<AdminRoute, React.ReactElement> {
   return {
     Dashboard: <AdminDashboardScreen />,
+    SupplierCategories: <CategoryGovernancePanel />,
     GlobalCategories: <GlobalCategoriesScreen />,
     UserManagement: <UserManagementScreen />,
     GlobalGroups: <PlaceholderScreen title="Item Groups" />,
@@ -288,6 +302,9 @@ function buildScreenMap(): Record<AdminRoute, React.ReactElement> {
     Governance: <GovernanceScreen />,
     PayoutVerification: <PayoutVerificationScreen />,
     PaymentReconciliation: <PaymentReconciliationScreen />,
+    Settlements: <SettlementScreen />,
+    Withdrawals: <WithdrawalReviewScreen />,
+    PayoutReconciliation: <PayoutReconciliationScreen />,
     Settings: <SettingsScreen />,
   };
 }
@@ -296,10 +313,13 @@ function buildScreenMap(): Record<AdminRoute, React.ReactElement> {
 
 export default function AdminLayout() {
   const { colors, theme } = useTheme();
+  const { user, isLoading } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
   const { width } = Dimensions.get('window');
   const isTablet = width >= 768;
 
-  const [activeRoute, setActiveRoute] = useState<AdminRoute>('Dashboard');
+  const [activeRoute, setActiveRoute] = useState<AdminRoute>(() => pathname.endsWith('/supplierCategories') ? 'SupplierCategories' : 'Dashboard');
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const drawerAnim = useRef(new Animated.Value(0)).current;
@@ -318,12 +338,22 @@ export default function AdminLayout() {
     );
   }, [drawerAnim]);
 
+  useEffect(() => {
+    if (pathname.endsWith('/supplierCategories')) setActiveRoute('SupplierCategories');
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!isLoading && user?.role !== 'ADMIN') router.replace('/login');
+  }, [isLoading, router, user?.role]);
+
   const navigate = useCallback(
     (route: AdminRoute) => {
       setActiveRoute(route);
+      if (route === 'SupplierCategories') router.push('/(admin)/supplierCategories' as any);
+      else if (pathname.endsWith('/supplierCategories')) router.replace('/(admin)' as any);
       if (!isTablet) closeDrawer();
     },
-    [isTablet, closeDrawer],
+    [isTablet, closeDrawer, pathname, router],
   );
 
   const drawerTranslate = drawerAnim.interpolate({
@@ -338,6 +368,8 @@ export default function AdminLayout() {
   const activeNav = NAV_ITEMS.find((i) => i.key === activeRoute)!;
   const ActiveIcon = activeNav.icon;
   const sidebarProps: SidebarProps = { activeRoute, navigate, colors, styles };
+
+  if (isLoading || user?.role !== 'ADMIN') return null;
 
   return (
     <SafeAreaView style={styles.root}>

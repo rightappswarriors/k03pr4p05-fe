@@ -40,7 +40,7 @@ interface Props {
   onLayoutChange: (v: CatalogLayout) => void
   showLayoutToggle: boolean
   onRefresh: () => void
-  onAddItem: () => void
+  onAddItem?: () => void
 }
 
 export function CatalogToolbar({
@@ -126,9 +126,9 @@ export function CatalogToolbar({
           </View>
         )}
 
-        <TouchableOpacity onPress={onAddItem} style={{ backgroundColor: colors.primary, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 }}>
+        {onAddItem ? <TouchableOpacity onPress={onAddItem} style={{ backgroundColor: colors.primary, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 }}>
           <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>+ Add Product</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> : null}
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>

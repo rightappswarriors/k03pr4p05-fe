@@ -1,3 +1,3 @@
-import PlaceholderScreen from '@/components/Placeholder'
+import SupplierCategoriesScreen from '@/screens/supplier/SupplierCategoriesScreen'
 
-export default PlaceholderScreen
+export default SupplierCategoriesScreen

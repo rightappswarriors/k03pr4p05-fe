@@ -51,6 +51,10 @@ export default function SplashScreen() {
         router.replace('/(erp)');
         return;
       }
+      if (user.role === 'SUPPLIER' && user.org.roles?.includes('SUPPLIER')) {
+        router.replace('/(supplier)');
+        return;
+      }
       if (user.org.roles?.includes('SELLER')) {
         router.replace('/(erp)');
         return;

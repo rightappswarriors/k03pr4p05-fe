@@ -1,6 +1,6 @@
 import React from 'react'
 import { View, Text, TouchableOpacity } from 'react-native'
-import { Info, Calendar, CreditCard, Receipt, Truck, ExternalLink } from 'lucide-react-native'
+import { Info, Calendar, CreditCard, Receipt, Truck, Package, ExternalLink } from 'lucide-react-native'
 import { useTheme } from '@/contexts/ThemeContext'
 import { formatDateSafe, formatPHP, formatTimeSafe } from '@/utils/financial'
 import type { ConversationMessage, MessageType } from '@/types'
@@ -23,6 +23,7 @@ const EVENT_ICONS: Record<MessageType, React.ReactNode> = {
   RECEIPT_UPLOADED: <Receipt size={16} color="#10b981" />,
   DELIVERY_UPDATED: <Truck size={16} color="#6366f1" />,
   PAYMENT_RECEIVED: <CreditCard size={16} color="#10b981" />,
+  ORDER_PREPARING: <Package size={16} color="#3b82f6" />,
   DELIVERY_SCHEDULED: <Calendar size={16} color="#3b82f6" />,
   SHIPMENT_DISPATCHED: <Truck size={16} color="#6366f1" />,
   REFUND_ISSUED: <CreditCard size={16} color="#f59e0b" />,
@@ -115,6 +116,11 @@ export function SystemEventCard({ message, onViewPO, supplierName = 'Supplier' }
           </Text>
         )
       }
+      break
+
+    case 'ORDER_PREPARING':
+      title = 'Order Preparation Started'
+      details = <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 4 }}>The supplier has started preparing this order.</Text>
       break
 
     case 'DELIVERY_SCHEDULED':

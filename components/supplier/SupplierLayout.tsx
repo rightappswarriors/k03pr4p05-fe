@@ -17,7 +17,6 @@ import {
 } from 'react-native';
 import { Slot, usePathname, useRouter } from 'expo-router';
 import {
-  Award,
   BarChart2,
   Bell,
   Boxes,
@@ -31,14 +30,12 @@ import {
   Menu,
   Moon,
   Package,
-  Package2,
   Receipt,
   ShieldCheck,
   ShoppingCart,
   Star,
   Sun,
   Tag,
-  TrendingUp,
   Truck,
   Users,
   Wallet,
@@ -50,6 +47,9 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useActiveRole } from '@/contexts/ActiveRoleContext';
 import { MasterFileProvider } from '@/contexts/MasterFileContext';
+import PermissionDenied from '@/components/PermissionDenied';
+import { SkeletonBox } from '@/components/LoadingSkeleton';
+import { usePermissions } from '@/hooks/usePermissions';
 
 // ─── DEV: Plan Toggle FAB ─────────────────────────────────────────────────────
 
@@ -102,9 +102,6 @@ type SupplierRoute =
   | 'SupplierLinks' // supplier-links.tsx
   | 'Notifications' // notifications.tsx
   | 'Analytics' // analytics.tsx
-  | 'Revenue' // revenue.tsx
-  | 'TopCustomers' // top-customers.tsx
-  | 'TopProducts' // top-products.tsx
   | 'Verification' // verification.tsx
   | 'Security' // security.tsx
   | 'Settings'; // settings.tsx
@@ -122,28 +119,35 @@ const themeAwareShadow = (colors: any) => (colors.background === '#F4F7FB' ? 0.0
 // NOTE: these key strings are a best guess based on your route names — swap in
 // whatever `page.key` values actually exist in your permissions table.
 const ROUTE_TO_PAGE_KEY: Partial<Record<SupplierRoute, string>> = {
-  PurchaseOrders: 'purchaseOrderPage',
-  Deliveries: 'deliveriesPage',
-  OrderTimeline: 'orderTimelinePage',
-  Products: 'productsPage',
-  Categories: 'categoryPage',
-  Pricing: 'pricingPage',
-  Inventory: 'inventoryPage',
-  Wallet: 'walletPage',
-  Transactions: 'transactionsPage',
-  Withdrawals: 'withdrawalsPage',
-  PayoutMethods: 'payoutMethodsPage',
-  FeeHistory: 'feeHistoryPage',
-  Employees: 'employeesPage',
-  Branches: 'branchesPage',
+  Dashboard: 'supplierDashboardPage',
+  PurchaseOrders: 'supplierPurchaseOrderPage',
+  Deliveries: 'supplierDeliveriesPage',
+  OrderTimeline: 'supplierOrderTimelinePage',
+  Products: 'supplierProductsPage',
+  Categories: 'supplierCategoriesPage',
+  Pricing: 'supplierPricingPage',
+  Inventory: 'supplierInventoryPage',
+  Wallet: 'supplierWalletPage',
+  Transactions: 'supplierTransactionsPage',
+  Withdrawals: 'supplierWithdrawalsPage',
+  PayoutMethods: 'supplierPayoutMethodsPage',
+  FeeHistory: 'supplierFeeHistoryPage',
+  Employees: 'supplierEmployeesPage',
+  Branches: 'supplierBranchesPage',
   SupplierLinks: 'supplierLinksPage',
-  Notifications: 'notificationsPage',
-  Analytics: 'analyticsPage',
-  Revenue: 'revenuePage',
-  TopCustomers: 'topCustomersPage',
-  TopProducts: 'topProductsPage',
+  Notifications: 'supplierNotificationsPage',
+  Analytics: 'supplierAnalyticsPage',
   Verification: 'verificationPage',
-  Security: 'securityPage',
+  Security: 'supplierSecurityPage',
+  Settings: 'supplierSettingsPage',
+};
+
+const canViewSupplierRoute = (can: (pageKey: string, action: 'canView') => boolean, route: SupplierRoute) => {
+  if (route === 'PurchaseOrders') {
+    return can('supplierRFQPage', 'canView') || can('supplierPurchaseOrderPage', 'canView');
+  }
+  const pageKey = ROUTE_TO_PAGE_KEY[route];
+  return Boolean(pageKey && can(pageKey, 'canView'));
 };
 
 // ─── URL path ↔ SupplierRoute maps ─────────────────────────────────────────────
@@ -168,12 +172,10 @@ const PATH_TO_ROUTE: Record<string, SupplierRoute> = {
   '/branches': 'Branches',
   '/supplier-links': 'SupplierLinks',
   '/notifications': 'Notifications',
-  '/(supplier)/analytics': 'Analytics',
-  '/revenue': 'Revenue',
-  '/top-customers': 'TopCustomers',
-  '/top-products': 'TopProducts',
+  '/analytics': 'Analytics',
   '/verification': 'Verification',
   '/security': 'Security',
+  '/settings': 'Settings',
 };
 
 const ROUTE_TO_PATH: Record<SupplierRoute, string> = {
@@ -195,9 +197,6 @@ const ROUTE_TO_PATH: Record<SupplierRoute, string> = {
   SupplierLinks: '/(supplier)/supplier-links',
   Notifications: '/(supplier)/notifications',
   Analytics: '/(supplier)/analytics',
-  Revenue: '/(supplier)/revenue',
-  TopCustomers: '/(supplier)/top-customers',
-  TopProducts: '/(supplier)/top-products',
   Verification: '/(supplier)/verification',
   Security: '/(supplier)/security',
   Settings: '/(supplier)/settings',
@@ -223,9 +222,6 @@ const NAV_ICON_MAP: Record<SupplierRoute, React.FC<{ size: number; color: string
   SupplierLinks: Link2,
   Notifications: Bell,
   Analytics: BarChart2,
-  Revenue: TrendingUp,
-  TopCustomers: Award,
-  TopProducts: Package2,
   Verification: ShieldCheck,
   Security: Lock,
   Settings: Settings,
@@ -262,11 +258,8 @@ const ORGANIZATION_NAV: NavItem[] = [
   { key: 'Notifications', label: 'Notifications' },
 ];
 
-const INSIGHTS_NAV: NavItem[] = [
+const ANALYTICS_NAV: NavItem[] = [
   { key: 'Analytics', label: 'Analytics' },
-  { key: 'Revenue', label: 'Revenue' },
-  { key: 'TopCustomers', label: 'Top Customers' },
-  { key: 'TopProducts', label: 'Top Products' },
 ];
 
 const ADMINISTRATION_NAV: NavItem[] = [
@@ -281,7 +274,7 @@ const ALL_NAV: NavItem[] = [
   ...CATALOG_NAV,
   ...FINANCE_NAV,
   ...ORGANIZATION_NAV,
-  ...INSIGHTS_NAV,
+  ...ANALYTICS_NAV,
   ...ADMINISTRATION_NAV,
 ];
 
@@ -454,24 +447,14 @@ interface SidebarProps {
 
 const SidebarContent = memo(function SidebarContent({ activeRoute, navigate, colors, styles }: SidebarProps) {
   const { user } = useAuth();
+  const { can } = usePermissions();
 
   if (!user) return null;
 
   const organizationName = user.org?.name || 'Right ERP';
 
-  // OWNER and MANAGER always see everything.
-  // STAFF with a position: hide routes where canView === false.
-  // STAFF with no position set: show everything (fail-open).
   const canViewPage = (routeKey: SupplierRoute): boolean => {
-    if (user?.role === 'OWNER' || user?.role === 'MANAGER') return true;
-    if (!user?.position?.permissions?.length) return true;
-
-    const pageKey = ROUTE_TO_PAGE_KEY[routeKey];
-    if (!pageKey) return true;
-
-    const perm = user.position.permissions.find((p) => p.page?.key === pageKey);
-    if (!perm) return true;
-    return perm.canView;
+    return canViewSupplierRoute(can, routeKey);
   };
 
   const renderNavItem = (item: NavItem) => {
@@ -522,13 +505,13 @@ const SidebarContent = memo(function SidebarContent({ activeRoute, navigate, col
       </View>
 
       <Text style={styles.navSectionLabel}>Workspace</Text>
-      {PRIMARY_NAV.map(renderNavItem)}
+      {PRIMARY_NAV.filter((item) => canViewPage(item.key)).map(renderNavItem)}
 
       {renderSection('Operations', OPERATIONS_NAV)}
       {renderSection('Catalog', CATALOG_NAV)}
       {renderSection('Finance', FINANCE_NAV)}
       {renderSection('Organization', ORGANIZATION_NAV)}
-      {renderSection('Insights', INSIGHTS_NAV)}
+      {renderSection('Analytics', ANALYTICS_NAV)}
       {renderSection('Administration', ADMINISTRATION_NAV)}
     </>
   );
@@ -543,20 +526,21 @@ export default function ERPLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   const { isAuthenticated, isLoading, user } = useAuth()
+  const { can } = usePermissions();
 
   const { activeRole, roleLoaded } = useActiveRole()
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   // ── Auth / role guard — same behavior as before ────────────────────────────
-  /*useEffect(() => {
+  useEffect(() => {
     if (!isLoading && !isAuthenticated) {
       router.replace('/login')
       return
     }
     if (!isLoading && isAuthenticated && roleLoaded && activeRole !== 'SUPPLIER') {
-      router.replace('/(s)')
+      router.replace('/(erp)')
     }
-  }, [isAuthenticated, isLoading, activeRole, roleLoaded])*/
+  }, [isAuthenticated, isLoading, activeRole, roleLoaded, router])
 
   // Memoize styles — only recalculate when colors or isTablet changes
   const drawerAnim = useRef(new Animated.Value(0)).current;
@@ -565,6 +549,7 @@ export default function ERPLayout({ children }: { children: React.ReactNode }) {
 
   // Keep Supplier Links highlighted while viewing a deep-linked relationship workspace.
   const activeRoute: SupplierRoute = pathname.startsWith('/supplier-links/') ? 'SupplierLinks' : (PATH_TO_ROUTE[pathname] ?? 'Dashboard');
+  const routeAllowed = pathname === '/pending' || canViewSupplierRoute(can, activeRoute);
 
   const openDrawer = useCallback(() => {
     setDrawerOpen(true);
@@ -620,7 +605,18 @@ export default function ERPLayout({ children }: { children: React.ReactNode }) {
         )}
 
         {/* Render whatever Expo Router's <Stack> resolved, not an internal SCREEN_MAP */}
-        <View style={styles.content}><Slot /></View>
+        <View style={styles.content}>
+          {isLoading || !roleLoaded ? (
+            <View style={{ padding: 24, gap: 12 }}>
+              <SkeletonBox style={{ height: 40, width: '35%' }} />
+              <SkeletonBox style={{ height: 180, width: '100%' }} />
+            </View>
+          ) : isAuthenticated && activeRole === 'SUPPLIER' && routeAllowed ? (
+            <Slot />
+          ) : isAuthenticated && activeRole === 'SUPPLIER' ? (
+            <PermissionDenied />
+          ) : null}
+        </View>
 
         {!isTablet && drawerOpen && (
           <>

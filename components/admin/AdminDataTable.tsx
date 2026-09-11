@@ -1,23 +1,24 @@
-import React from 'react'
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
-import { useTheme } from '@/contexts/ThemeContext'
+// @/components/admin/AdminDataTable.tsx
+import React from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useTheme } from '@/contexts/ThemeContext';
 
 export interface AdminDataTableColumn<T> {
-  key: string
-  label: string
-  width?: number
-  flex?: number
-  render: (row: T) => React.ReactNode
+  key: string;
+  label: string;
+  width?: number;
+  flex?: number;
+  render: (row: T) => React.ReactNode;
 }
 
 interface AdminDataTableProps<T> {
-  columns: AdminDataTableColumn<T>[]
-  data: T[]
-  keyExtractor: (row: T) => string
-  loading?: boolean
-  emptyState: string
-  onRowPress?: (row: T) => void
-  minWidth?: number
+  columns: AdminDataTableColumn<T>[];
+  data: T[];
+  keyExtractor: (row: T) => string;
+  loading?: boolean;
+  emptyState: string;
+  onRowPress?: (row: T) => void;
+  minWidth?: number;
 }
 
 export function AdminDataTable<T>({
@@ -29,8 +30,8 @@ export function AdminDataTable<T>({
   onRowPress,
   minWidth = 900,
 }: AdminDataTableProps<T>) {
-  const { colors } = useTheme()
-  const styles = makeStyles(colors)
+  const { colors } = useTheme();
+  const styles = makeStyles(colors);
 
   if (loading) {
     return (
@@ -38,7 +39,7 @@ export function AdminDataTable<T>({
         <ActivityIndicator color={colors.primary} />
         <Text style={styles.muted}>Loading records…</Text>
       </View>
-    )
+    );
   }
 
   if (!data.length) {
@@ -46,7 +47,7 @@ export function AdminDataTable<T>({
       <View style={styles.state}>
         <Text style={styles.muted}>{emptyState}</Text>
       </View>
-    )
+    );
   }
 
   return (
@@ -63,7 +64,9 @@ export function AdminDataTable<T>({
               key={column.key}
               style={[
                 styles.cell,
-                column.width ? { width: column.width, flexGrow: 0, flexShrink: 0 } : { flex: column.flex ?? 1 },
+                column.width
+                  ? { width: column.width, flexGrow: 0, flexShrink: 0 }
+                  : { flex: column.flex ?? 1 },
               ]}
             >
               <Text style={styles.headerText}>{column.label}</Text>
@@ -71,33 +74,38 @@ export function AdminDataTable<T>({
           ))}
         </View>
 
-        {data.map((row) => (
-          <Pressable
-            key={keyExtractor(row)}
-            onPress={() => onRowPress?.(row)}
-            style={({ pressed }) => [styles.row, pressed && onRowPress && styles.rowPressed]}
-          >
-            {columns.map((column) => (
-              <View
-                key={column.key}
-                style={[
-                  styles.cell,
-                  column.width ? { width: column.width, flexGrow: 0, flexShrink: 0 } : { flex: column.flex ?? 1 },
-                ]}
-              >
-                {column.render(row)}
-              </View>
-            ))}
-          </Pressable>
-        ))}
+        <ScrollView style={styles.body}>
+          {data.map((row) => (
+            <Pressable
+              key={keyExtractor(row)}
+              onPress={() => onRowPress?.(row)}
+              style={({ pressed }) => [styles.row, pressed && onRowPress && styles.rowPressed]}
+            >
+              {columns.map((column) => (
+                <View
+                  key={column.key}
+                  style={[
+                    styles.cell,
+                    column.width
+                      ? { width: column.width, flexGrow: 0, flexShrink: 0 }
+                      : { flex: column.flex ?? 1 },
+                  ]}
+                >
+                  {column.render(row)}
+                </View>
+              ))}
+            </Pressable>
+          ))}
+        </ScrollView>
       </View>
     </ScrollView>
-  )
+  );
 }
 
 const makeStyles = (colors: any) =>
   StyleSheet.create({
     scroll: {
+      flex: 1,
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: 12,
@@ -106,13 +114,17 @@ const makeStyles = (colors: any) =>
     scrollContent: {
       flexGrow: 1,
     },
+    body: {
+      flex: 1,
+    },
     row: {
       minHeight: 58,
       flexDirection: 'row',
       alignItems: 'center',
+      gap: 12,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: colors.border,
-      paddingHorizontal: 8,
+      paddingHorizontal: 12,
     },
     header: {
       minHeight: 42,
@@ -124,7 +136,6 @@ const makeStyles = (colors: any) =>
       backgroundColor: colors.background,
     },
     cell: {
-      paddingHorizontal: 8,
       justifyContent: 'center',
     },
     headerText: {
@@ -135,6 +146,7 @@ const makeStyles = (colors: any) =>
       textTransform: 'uppercase',
     },
     state: {
+      flex: 1,
       minHeight: 180,
       alignItems: 'center',
       justifyContent: 'center',
@@ -147,4 +159,4 @@ const makeStyles = (colors: any) =>
       color: colors.textSecondary,
       fontSize: 13,
     },
-  })
+  });

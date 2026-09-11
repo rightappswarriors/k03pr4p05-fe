@@ -49,7 +49,21 @@ export interface SupplierInventoryMovement {
   referenceId?: string | null
   reason?: string | null
   createdAt: string
+  supplierItem?: { id: string; name: string; sku?: string | null; unit: string }
 }
+
+export interface SupplierInventoryMovementPage {
+  items: SupplierInventoryMovement[]
+  total: number
+  page: number
+  limit: number
+  totalPages: number
+}
+
+export interface SupplierInventoryBatchListItem { id: string; supplierItemId: string; itemName: string; sku?: string | null; unit: string; batchNumber?: string | null; quantity: number; remainingQty: number; unitCost: number; inventoryValue: number; receivedAt: string; expiryDate?: string | null; status: string }
+export interface SupplierInventoryBatchPage { items: SupplierInventoryBatchListItem[]; total: number; page: number; limit: number; totalPages: number }
+export interface SupplierInventoryAlert { id: string; kind: string; severity: string; title: string; message: string; supplierItemId: string; itemName: string; sku?: string | null; availableQty?: number | null; reorderLevel?: number | null; reorderQty?: number | null; batchId?: string | null; expiryDate?: string | null }
+export interface SupplierInventoryAlertPage { items: SupplierInventoryAlert[]; total: number; page: number; limit: number; totalPages: number }
 
 export interface SupplierItemCostHistoryEntry {
   id: string
@@ -120,16 +134,16 @@ export interface SupplierInventoryDashboard {
 
 // ─── Dashboard & list ───────────────────────────────────────────────────────
 
-export async function fetchSupplierInventoryDashboard(orgId: number): Promise<SupplierInventoryDashboard> {
+export async function fetchSupplierInventoryDashboard(): Promise<SupplierInventoryDashboard> {
   const QUERY = gql`
-    query SupplierInventoryDashboard($orgId: Int!) {
-      supplierInventoryDashboard(orgId: $orgId) {
+    query SupplierInventoryDashboard {
+      supplierInventoryDashboard {
         totalInventory inventoryValue availableStock reservedStock incomingStock
         lowStockCount outOfStockCount expiringSoonCount averageInventoryCost averageMargin
       }
     }
   `
-  const res = await graphQLRequest<{ supplierInventoryDashboard: SupplierInventoryDashboard }>(QUERY, { orgId })
+  const res = await graphQLRequest<{ supplierInventoryDashboard: SupplierInventoryDashboard }>(QUERY)
   return res.supplierInventoryDashboard
 }
 
@@ -140,15 +154,15 @@ const INVENTORY_ITEM_FIELDS = `
   createdAt updatedAt
 `
 
-export async function fetchSupplierInventoryList(orgId: number, warehouseId?: string | null): Promise<SupplierItem[]> {
+export async function fetchSupplierInventoryList(warehouseId?: string | null): Promise<SupplierItem[]> {
   const QUERY = gql`
-    query SupplierInventoryList($orgId: Int!, $warehouseId: String) {
-      supplierInventoryList(orgId: $orgId, warehouseId: $warehouseId) {
+    query SupplierInventoryList($warehouseId: String) {
+      supplierInventoryList(warehouseId: $warehouseId) {
         ${INVENTORY_ITEM_FIELDS}
       }
     }
   `
-  const res = await graphQLRequest<{ supplierInventoryList: SupplierItem[] }>(QUERY, { orgId, warehouseId: warehouseId ?? null })
+  const res = await graphQLRequest<{ supplierInventoryList: SupplierItem[] }>(QUERY, { warehouseId: warehouseId ?? null })
   return res.supplierInventoryList
 }
 
@@ -410,4 +424,29 @@ export async function receiveIncomingStock(input: {
   `
   const res = await graphQLRequest<{ receiveIncomingStock: SupplierStockBatch }>(MUTATION, input)
   return res.receiveIncomingStock
+}
+
+export async function fetchSupplierInventoryMovementPage(input: { search?: string; type?: SupplierInventoryMovementType; page?: number; limit?: number } = {}): Promise<SupplierInventoryMovementPage> {
+  const QUERY = gql`
+    query SupplierInventoryMovementPage($search: String, $type: String, $page: Int, $limit: Int) {
+      supplierInventoryMovementPage(search: $search, type: $type, page: $page, limit: $limit) {
+        items { id supplierItemId type quantity quantityBefore quantityAfter unitCost referenceType referenceId reason createdAt supplierItem { id name sku unit } }
+        total page limit totalPages
+      }
+    }
+  `
+  const res = await graphQLRequest<{ supplierInventoryMovementPage: SupplierInventoryMovementPage }>(QUERY, input)
+  return res.supplierInventoryMovementPage
+}
+
+export async function fetchSupplierInventoryBatchPage(input: { search?: string; status?: string; page?: number; limit?: number } = {}): Promise<SupplierInventoryBatchPage> {
+  const QUERY = gql`query SupplierInventoryBatchPage($search: String, $status: String, $page: Int, $limit: Int) { supplierInventoryBatchPage(search: $search, status: $status, page: $page, limit: $limit) { items { id supplierItemId itemName sku unit batchNumber quantity remainingQty unitCost inventoryValue receivedAt expiryDate status } total page limit totalPages } }`
+  const res = await graphQLRequest<{ supplierInventoryBatchPage: SupplierInventoryBatchPage }>(QUERY, input)
+  return res.supplierInventoryBatchPage
+}
+
+export async function fetchSupplierInventoryAlertPage(input: { search?: string; filter?: string; page?: number; limit?: number } = {}): Promise<SupplierInventoryAlertPage> {
+  const QUERY = gql`query SupplierInventoryAlertPage($search: String, $filter: String, $page: Int, $limit: Int) { supplierInventoryAlertPage(search: $search, filter: $filter, page: $page, limit: $limit) { items { id kind severity title message supplierItemId itemName sku availableQty reorderLevel reorderQty batchId expiryDate } total page limit totalPages } }`
+  const res = await graphQLRequest<{ supplierInventoryAlertPage: SupplierInventoryAlertPage }>(QUERY, input)
+  return res.supplierInventoryAlertPage
 }

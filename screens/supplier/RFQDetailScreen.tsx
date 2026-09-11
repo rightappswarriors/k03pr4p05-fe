@@ -39,6 +39,7 @@ import { CounterOfferModal } from '@/components/supplier/rfq/CounterOfferModal'
 import { AcceptConfirmationModal } from '@/components/supplier/rfq/AcceptConfirmationModal'
 import { RfqStatusBadge } from '@/components/supplier/rfq/RfqStatusBadge'
 import type { AcceptNegotiationInput, CounterOfferInput, RejectNegotiationInput, RequestForQuotationDetail, RfqStatus } from '@/types'
+import { usePermissions } from '@/hooks/usePermissions'
 
 const formatPHP = (amount: number) =>
   new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount)
@@ -57,6 +58,10 @@ interface Props {
 export function RFQDetailScreen({ rfqId, onPOCreated, onBack }: Props) {
   const { colors } = useTheme()
   const { user } = useAuth()
+  const { can } = usePermissions()
+  const canSendMessage = can('supplierRFQPage', 'canCreate')
+  const canManageNegotiation = can('supplierRFQPage', 'canEdit')
+  const canCreateOrder = can('supplierPurchaseOrderPage', 'canCreate')
   const { show: showToast } = useToast()
   const { width } = useWindowDimensions()
 
@@ -261,7 +266,7 @@ export function RFQDetailScreen({ rfqId, onPOCreated, onBack }: Props) {
   const supplierOffer = latestOffer?.unitPrice ?? currentSellingPrice
   const hasSupplierOffer = !!latestOffer
   const negotiationLocked = rfq.status === 'PO_CREATED'
-  const canCreatePurchaseOrder = rfq.status === 'WAITING_SUPPLIER_CONFIRMATION' && !negotiationLocked
+  const purchaseOrderReady = rfq.status === 'WAITING_SUPPLIER_CONFIRMATION' && !negotiationLocked
 
   // ─── Info panels: shared between desktop's left rail and mobile's stacked layout ───
   const buyerInfoCard = (
@@ -385,9 +390,9 @@ export function RFQDetailScreen({ rfqId, onPOCreated, onBack }: Props) {
           vatRate={supplierItem?.vatRate ?? 0.12}
           isVatExempt={supplierItem?.isVatExempt ?? false}
           unit={supplierItem?.unit ?? 'pcs'}
-          onAcceptOffer={() => setAcceptModalVisible(true)}
-          onCounterOffer={() => setCounterModalVisible(true)}
-          onRejectOffer={() => handleReject()}
+          onAcceptOffer={canManageNegotiation ? () => setAcceptModalVisible(true) : undefined}
+          onCounterOffer={canManageNegotiation ? () => setCounterModalVisible(true) : undefined}
+          onRejectOffer={canManageNegotiation ? () => handleReject() : undefined}
         />
       </View>
     </View>
@@ -469,7 +474,7 @@ export function RFQDetailScreen({ rfqId, onPOCreated, onBack }: Props) {
         }}
       >
         <View style={{ flex: 1, maxWidth: contentMaxWidth, width: '100%', alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <TextInput
+          {canSendMessage ? <TextInput
             value={replyText}
             onChangeText={setReplyText}
             placeholder="Type a reply..."
@@ -485,8 +490,8 @@ export function RFQDetailScreen({ rfqId, onPOCreated, onBack }: Props) {
             }}
             multiline
             maxLength={500}
-          />
-          {replyText.trim() && (
+          /> : null}
+          {canSendMessage && replyText.trim() && (
             <TouchableOpacity
               onPress={handleReply}
               disabled={sending}
@@ -505,7 +510,7 @@ export function RFQDetailScreen({ rfqId, onPOCreated, onBack }: Props) {
               )}
             </TouchableOpacity>
           )}
-          {!negotiationLocked && !canCreatePurchaseOrder && <TouchableOpacity
+          {canManageNegotiation && !negotiationLocked && !purchaseOrderReady && <TouchableOpacity
             onPress={() => setCounterModalVisible(true)}
             style={{
               backgroundColor: colors.surface,
@@ -518,7 +523,7 @@ export function RFQDetailScreen({ rfqId, onPOCreated, onBack }: Props) {
           >
             <Text style={{ fontSize: 12, fontWeight: '600', color: colors.text }}>Counter Offer</Text>
           </TouchableOpacity>}
-          {!negotiationLocked && !canCreatePurchaseOrder && <TouchableOpacity
+          {canManageNegotiation && !negotiationLocked && !purchaseOrderReady && <TouchableOpacity
             onPress={() => setAcceptModalVisible(true)}
             style={{
               backgroundColor: '#22C55E',
@@ -529,7 +534,7 @@ export function RFQDetailScreen({ rfqId, onPOCreated, onBack }: Props) {
           >
             <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>Accept</Text>
           </TouchableOpacity>}
-          {canCreatePurchaseOrder && <TouchableOpacity
+          {canCreateOrder && purchaseOrderReady && <TouchableOpacity
             onPress={handleCreatePurchaseOrder}
             style={{
               backgroundColor: '#22C55E', borderRadius: 10,
@@ -538,7 +543,7 @@ export function RFQDetailScreen({ rfqId, onPOCreated, onBack }: Props) {
           >
             <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>Create PO</Text>
           </TouchableOpacity>}
-          {!negotiationLocked && !canCreatePurchaseOrder && <TouchableOpacity
+          {canManageNegotiation && !negotiationLocked && !purchaseOrderReady && <TouchableOpacity
             onPress={handleReject}
             style={{
               backgroundColor: '#EF4444',
@@ -555,13 +560,13 @@ export function RFQDetailScreen({ rfqId, onPOCreated, onBack }: Props) {
 
       {/* Modals */}
       <CounterOfferModal
-        visible={counterModalVisible}
+        visible={canManageNegotiation && counterModalVisible}
         rfq={rfq}
         onClose={() => setCounterModalVisible(false)}
         onSubmit={handleCounterOffer}
       />
       <AcceptConfirmationModal
-        visible={acceptModalVisible}
+        visible={canManageNegotiation && acceptModalVisible}
         rfq={rfq}
         onClose={() => setAcceptModalVisible(false)}
         onAccept={handleAcceptNegotiation}

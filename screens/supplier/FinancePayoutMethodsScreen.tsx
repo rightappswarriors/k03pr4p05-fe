@@ -23,9 +23,12 @@ import {
   type SupplierPayoutMethod,
   type SupplierWalletSummary,
 } from '@/services/supplierService/financeService'
+import { usePermissions } from '@/hooks/usePermissions'
 
 export default function FinancePayoutMethodsScreen() {
   const { colors } = useTheme()
+  const { can } = usePermissions()
+  const canCreateMethod = can('supplierPayoutMethodsPage', 'canCreate')
   const [wallet, setWallet] = useState<SupplierWalletSummary | null>(null)
   const [methods, setMethods] = useState<SupplierPayoutMethod[]>([])
   const [entries, setEntries] = useState<SupplierLedgerEntry[]>([])
@@ -122,12 +125,12 @@ export default function FinancePayoutMethodsScreen() {
         <FinanceStatCard title="Total withdrawals" value={formatPHP(totalWithdrawals)} hint="Cash-outs recorded" accent="#8B5CF6" icon={CreditCard} />
       </FinanceStatGrid>
 
-      <FinanceSectionCard title="Payout destinations" subtitle="Add a new destination to replace an account; account numbers cannot be edited.">
+      {canCreateMethod ? <FinanceSectionCard title="Payout destinations" subtitle="Add a new destination to replace an account; account numbers cannot be edited.">
         <Pressable onPress={() => setModalVisible(true)} style={{ backgroundColor: colors.primary, borderRadius: 10, paddingVertical: 10, alignItems: 'center' }}><Text style={{ color: '#fff', fontWeight: '800' }}>+ Add payout method</Text></Pressable>
-      </FinanceSectionCard>
+      </FinanceSectionCard> : null}
 
       <Modal
-        visible={modalVisible}
+        visible={canCreateMethod && modalVisible}
         transparent
         animationType="fade"
         onRequestClose={() => {

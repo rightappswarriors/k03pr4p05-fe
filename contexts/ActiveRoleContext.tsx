@@ -20,7 +20,8 @@ const ActiveRoleContext = createContext<ActiveRoleContextType | undefined>(undef
 
 export function ActiveRoleProvider({ children }: { children: React.ReactNode }) {
     const { user } = useAuth()
-    const getDefaultRole = (roles: AppRole[]): AppRole => {
+    const getDefaultRole = (roles: AppRole[], userRole?: string): AppRole => {
+        if (userRole === 'SUPPLIER' && roles.includes('SUPPLIER')) return 'SUPPLIER';
         if (roles.includes('SELLER')) return 'SELLER';
         if (roles.includes('SUPPLIER')) return 'SUPPLIER';
 
@@ -29,30 +30,35 @@ export function ActiveRoleProvider({ children }: { children: React.ReactNode }) 
 
     const orgRoles: AppRole[] =
         ((user?.org?.roles ?? []) as AppRole[]);
+    const roleSignature = orgRoles.join('|');
+    const userKey = user?.id != null ? String(user.id) : 'anonymous';
 
     const [activeRole, setActiveRoleState] = useState<AppRole>(
-        getDefaultRole(orgRoles)
+        getDefaultRole(orgRoles, user?.role)
     );
-    const [roleLoaded, setRoleLoaded] = useState(false)
+    const [loadedUserKey, setLoadedUserKey] = useState<string | null>(null)
+    const roleLoaded = loadedUserKey === userKey
     const availableRoles: AppRole[] =
         orgRoles.length > 0 ? orgRoles : ['SELLER']
     const canSwitchToSupplier = availableRoles.includes('SUPPLIER')
 
     useEffect(() => {
-        const defaultRole = getDefaultRole(orgRoles);
-
         const load = async () => {
+            const currentOrgRoles = roleSignature ? roleSignature.split('|') as AppRole[] : [];
+            const defaultRole = getDefaultRole(currentOrgRoles, user?.role);
             try {
                 const stored = await AsyncStorage.getItem(STORAGE_KEY)
 
-                if (
+                if (user?.role === 'SUPPLIER' && currentOrgRoles.includes('SUPPLIER')) {
+                    setActiveRoleState('SUPPLIER');
+                } else if (
                     stored === 'SELLER' &&
-                    orgRoles.includes('SELLER')
+                    currentOrgRoles.includes('SELLER')
                 ) {
                     setActiveRoleState('SELLER');
                 } else if (
                     stored === 'SUPPLIER' &&
-                    orgRoles.includes('SUPPLIER')
+                    currentOrgRoles.includes('SUPPLIER')
                 ) {
                     setActiveRoleState('SUPPLIER');
                 } else {
@@ -62,11 +68,11 @@ export function ActiveRoleProvider({ children }: { children: React.ReactNode }) 
             } catch {
                 setActiveRoleState(defaultRole);
             } finally {
-                setRoleLoaded(true);
+                setLoadedUserKey(userKey);
             }
         }
         load()
-    }, [user?.org?.roles])
+    }, [roleSignature, user?.role, userKey])
 
     const switchRole = async (role: AppRole) => {
         if (!availableRoles.includes(role)) return

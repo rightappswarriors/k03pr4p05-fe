@@ -26,8 +26,8 @@ export function DeliveryTable({
 }: {
   deliveries: DeliveryItem[]
   onSelect: (poId: string) => void
-  onMarkInTransit: (d: DeliveryItem) => void
-  onMarkDelivered: (d: DeliveryItem) => void
+  onMarkInTransit?: (d: DeliveryItem) => void
+  onMarkDelivered?: (d: DeliveryItem) => void
 }) {
   const { colors } = useTheme()
   const [hovered, setHovered] = useState<string | null>(null)
@@ -68,12 +68,12 @@ export function DeliveryTable({
             <Text style={{ flex: 0.9, fontSize: 14, fontWeight: '700', color: colors.text, textAlign: 'right' }}>{formatPHP(d.totalAmount)}</Text>
             <View style={{ flex: 1 }}><DeliveryStatusBadge status={d.status} size="sm" /></View>
             <View style={{ width: 130, alignItems: 'flex-end' }}>
-              {d.status === 'SCHEDULED' && (
+              {d.status === 'SCHEDULED' && onMarkInTransit && (
                 <TouchableOpacity onPress={() => onMarkInTransit(d)} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: '#3B82F615' }}>
                   <Text style={{ fontSize: 11, fontWeight: '700', color: '#3B82F6' }}>In Transit</Text>
                 </TouchableOpacity>
               )}
-              {d.status === 'IN_TRANSIT' && (
+              {d.status === 'IN_TRANSIT' && onMarkDelivered && (
                 <TouchableOpacity onPress={() => onMarkDelivered(d)} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: '#22C55E15' }}>
                   <Text style={{ fontSize: 11, fontWeight: '700', color: '#22C55E' }}>Delivered</Text>
                 </TouchableOpacity>

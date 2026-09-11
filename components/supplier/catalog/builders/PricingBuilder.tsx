@@ -9,7 +9,7 @@
  * - Price preview table
  */
 import React, { useRef, useState, useCallback, useMemo, useEffect } from 'react'
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native'
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Switch } from 'react-native'
 import { useTheme } from '@/contexts/ThemeContext'
 import { Plus, Trash2, ChevronDown, ChevronRight } from 'lucide-react-native'
 import type { PriceTier } from '@/types'
@@ -19,6 +19,11 @@ interface Props {
   priceTiers: PriceTier[]
   moq: number
   unit: string
+  basePrice: number
+  vatRate: number
+  vatInclusive: boolean
+  isVatExempt: boolean
+  onVatInclusiveChange: (value: boolean) => void
   currency?: string
   onChange: (tiers: PriceTier[]) => void
   onValidityChange?: (isValid: boolean) => void
@@ -32,7 +37,7 @@ interface EditingTier extends Omit<PriceTier, 'id' | 'createdAt' | 'updatedAt'> 
   supplierItemId?: string
 }
 
-export function PricingBuilder({ supplierItemId, priceTiers, moq, unit, currency = 'PHP', onChange, onValidityChange, editable = true }: Props) {
+export function PricingBuilder({ supplierItemId, priceTiers, moq, unit, basePrice, vatRate, vatInclusive, isVatExempt, onVatInclusiveChange, currency = 'PHP', onChange, onValidityChange, editable = true }: Props) {
   const { colors } = useTheme()
   const [tiers, setTiers] = useState<EditingTier[]>(() =>
     priceTiers.map(t => ({
@@ -184,6 +189,12 @@ export function PricingBuilder({ supplierItemId, priceTiers, moq, unit, currency
 
   const fmt = (n: number | string) =>
     new Intl.NumberFormat('en-PH', { style: 'currency', currency }).format(Number(n))
+  const breakdown = (entered: number) => {
+    const cents = (value: number) => Math.round((Number.isFinite(value) ? value : 0) * 100) / 100
+    if (isVatExempt || vatRate <= 0) return { net: cents(entered), vat: 0, final: cents(entered) }
+    if (vatInclusive) { const final = cents(entered); const net = cents(final / (1 + vatRate)); return { net, vat: cents(final - net), final } }
+    const net = cents(entered); const vat = cents(net * vatRate); return { net, vat, final: cents(net + vat) }
+  }
 
   return (
     <View style={styles.container}>
@@ -194,6 +205,13 @@ export function PricingBuilder({ supplierItemId, priceTiers, moq, unit, currency
           {errors.map((err, i) => (
             <Text key={i} style={[styles.errorText, { color: '#EF4444' }]}>• {err}</Text>
           ))}
+        </View>
+      )}
+
+      {editable && (
+        <View style={[styles.editorSection, { backgroundColor: colors.card }]}>
+          <Text style={[styles.sectionTitle, { color: colors.text, borderBottomColor: colors.border }]}>Tax Settings</Text>
+          {isVatExempt ? <View style={{ gap: 3, paddingTop: 8 }}><Text style={{ color: colors.text, fontWeight: '700' }}>VAT Exempt</Text><Text style={{ color: colors.textSecondary, fontSize: 12 }}>No VAT is charged for this item.</Text></View> : <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8 }}><View style={{ flex: 1, gap: 3 }}><Text style={{ color: colors.text, fontWeight: '700' }}>VAT Inclusive</Text><Text style={{ color: colors.textSecondary, fontSize: 12 }}>{vatInclusive ? 'The price entered already includes VAT.' : 'VAT will be added on top of the entered price.'}</Text><Text style={{ color: colors.textSecondary, fontSize: 12 }}>VAT Rate: {(vatRate * 100).toFixed(0)}%</Text></View><Switch value={vatInclusive} onValueChange={onVatInclusiveChange} trackColor={{ false: colors.border, true: colors.primary }} thumbColor="#fff" /></View>}
         </View>
       )}
 
@@ -246,7 +264,7 @@ export function PricingBuilder({ supplierItemId, priceTiers, moq, unit, currency
           <View style={styles.previewTable}>
             <View style={[styles.previewHeaderRow, { borderBottomColor: colors.border }]}>
               <Text style={[styles.previewHeaderCell, { color: colors.textSecondary, flex: 2 }]}>Quantity Range</Text>
-              <Text style={[styles.previewHeaderCell, { color: colors.textSecondary, flex: 1.5 }]}>Unit Price</Text>
+              <Text style={[styles.previewHeaderCell, { color: colors.textSecondary, flex: 1.5 }]}>Entered / VAT</Text>
               <Text style={[styles.previewHeaderCell, { color: colors.textSecondary, flex: 1 }]}>Min Order</Text>
             </View>
 
@@ -257,6 +275,7 @@ export function PricingBuilder({ supplierItemId, priceTiers, moq, unit, currency
                 </Text>
                 <Text style={[styles.previewCell, { color: colors.text, fontWeight: '600', flex: 1.5 }]}>
                   {fmt(tier.price)}
+                  {isVatExempt ? ' · Exempt' : `\nNet ${fmt(breakdown(tier.price).net)} · VAT ${fmt(breakdown(tier.price).vat)}\nFinal ${fmt(breakdown(tier.price).final)}`}
                 </Text>
                 <Text style={[styles.previewCell, { color: tier.minQty <= moq ? colors.primary : colors.textSecondary, flex: 1 }]}>
                   {tier.minQty <= moq ? 'MOQ ✓' : tier.minQty}
@@ -265,9 +284,7 @@ export function PricingBuilder({ supplierItemId, priceTiers, moq, unit, currency
             ))}
 
             {sortedTiers.length === 0 && (
-              <Text style={[styles.emptyPreview, { color: colors.textSecondary }]}>
-                No pricing tiers configured. Base price applies.
-              </Text>
+              <View style={{ padding: 12, gap: 3 }}><Text style={[styles.previewCell, { color: colors.text, fontWeight: '700' }]}>Base price: {fmt(basePrice)}</Text><Text style={[styles.previewCell, { color: colors.textSecondary }]}>{isVatExempt ? 'VAT Exempt' : `Net ${fmt(breakdown(basePrice).net)} · VAT ${fmt(breakdown(basePrice).vat)} · Final ${fmt(breakdown(basePrice).final)}`}</Text></View>
             )}
           </View>
         )}

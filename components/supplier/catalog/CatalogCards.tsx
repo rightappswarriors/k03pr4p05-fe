@@ -20,10 +20,10 @@ function CatalogCard({
 }: {
   item: SupplierItem
   onView: () => void
-  onEdit: () => void
+  onEdit?: () => void
   onPublish: () => void
   onUnpublish: () => void
-  onValidate: () => void
+  onValidate?: () => void
 }) {
   const { colors } = useTheme()
   const listing = item.marketplaceListing
@@ -90,16 +90,16 @@ function CatalogCard({
           <Text style={{ fontSize: 12, fontWeight: '600', color: colors.text }}>View</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
+        {onEdit ? <TouchableOpacity
           onPress={onEdit}
           style={{ flex: 1, flexDirection: 'row', gap: 4, justifyContent: 'center', alignItems: 'center', paddingVertical: 7, borderRadius: 8, backgroundColor: colors.primary + '15' }}
         >
           <Pencil size={13} color={colors.primary} />
           <Text style={{ fontSize: 12, fontWeight: '600', color: colors.primary }}>Edit</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> : null}
 
         {/* Marketplace: validate opens readiness modal */}
-        <TouchableOpacity
+        {onValidate ? <TouchableOpacity
           onPress={onValidate}
           style={{ flex: 1, flexDirection: 'row', gap: 4, justifyContent: 'center', alignItems: 'center', paddingVertical: 7, borderRadius: 8, backgroundColor: '#EFF6FF' }}
         >
@@ -107,7 +107,7 @@ function CatalogCard({
           <Text style={{ fontSize: 12, fontWeight: '600', color: '#2563EB' }}>
             {isPublished ? 'Listed' : 'Publish'}
           </Text>
-        </TouchableOpacity>
+        </TouchableOpacity> : null}
       </View>
     </TouchableOpacity>
   )
@@ -123,9 +123,9 @@ export function CatalogCards({
   items: SupplierItem[]
   columns: number
   onView: (item: SupplierItem) => void
-  onEdit: (item: SupplierItem) => void
+  onEdit?: (item: SupplierItem) => void
   // Opens the readiness modal — handles both publish and unpublish from inside.
-  onValidate: (item: SupplierItem) => void
+  onValidate?: (item: SupplierItem) => void
 }) {
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
@@ -134,10 +134,10 @@ export function CatalogCards({
           <CatalogCard
             item={item}
             onView={() => onView(item)}
-            onEdit={() => onEdit(item)}
-            onPublish={() => onValidate(item)}
-            onUnpublish={() => onValidate(item)}
-            onValidate={() => onValidate(item)}
+            onEdit={onEdit ? () => onEdit(item) : undefined}
+            onPublish={() => onValidate?.(item)}
+            onUnpublish={() => onValidate?.(item)}
+            onValidate={onValidate ? () => onValidate(item) : undefined}
           />
         </View>
       ))}

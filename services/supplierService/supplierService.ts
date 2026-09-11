@@ -39,6 +39,7 @@ const SUPPLIER_ITEM_FIELDS = `
   unit
   unitPrice
   isVatExempt
+  vatInclusive
   vatRate
   moq
   availableQty
@@ -48,6 +49,7 @@ const SUPPLIER_ITEM_FIELDS = `
   reviewCount
   createdAt
   updatedAt
+  globalCategory { id name slug parentId }
   priceTiers { ${PRICE_TIER_FIELDS} }
 
     reviews {
@@ -159,6 +161,8 @@ const DELIVERY_FIELDS = `
   latitude
   longitude
   address
+  recipientName
+  recipientContact
 `
 
 const CONVERSATION_PARTICIPANT_FIELDS = `
@@ -204,6 +208,8 @@ const PURCHASE_ORDER_FIELDS = `
   supplierConfirmation
   supplierConfirmedAt
   supplierExpectedDeliveryAt
+  deliveryDateAgreementStatus
+  deliveryDateAgreedAt
   supplierNote
   rejectionReason
   subtotalAmount
@@ -224,6 +230,8 @@ const PURCHASE_ORDER_FIELDS = `
   delivery { ${DELIVERY_FIELDS} }
   conversationId
   paymentStatus
+  paymentAttemptStatus
+  preparingAt
   receiptSnapshot
   conversation { ${PO_CONVERSATION_FIELDS} }
 `
@@ -265,6 +273,31 @@ export interface SupplierDashboardStats {
   catalogItemCount: number
   walletBalance: number
   walletHeldBalance: number
+  totalRevenue: number
+  purchaseOrderCount: number
+  purchaseOrdersInProgress: number
+  deliveryCount: number
+  deliveriesInProgress: number
+  activeCatalogItemCount: number
+  inactiveCatalogItemCount: number
+  orderActivity: Array<{ period: string; orderCount: number; deliveryCount: number }>
+  recentPurchaseOrders: Array<{
+    id: string
+    poNumber: string
+    buyerName: string
+    totalAmount: number
+    status: string
+    deliveryDate?: string | null
+  }>
+  recentDeliveries: Array<{
+    id: string
+    poNumber: string
+    buyerName: string
+    status: string
+    scheduledDate: string
+    driverName?: string | null
+  }>
+  notifications: Array<{ id: number; title: string; message: string; createdAt: string; isRead: boolean }>
 }
 
 // New: archive wrapper — the "deleteSupplierItem" mutation is a soft-delete
@@ -283,11 +316,11 @@ export async function reactivateSupplierItem(id: string): Promise<SupplierItem> 
   return updateSupplierItem({ id, isActive: true })
 }
 export async function fetchSupplierDashboard(
-  supplierOrgId: number
+  period: '30D' | '3M' | '6M' | '12M' = '6M',
 ): Promise<SupplierDashboardStats> {
   const QUERY = gql`
-    query SupplierDashboard($supplierOrgId: Int!) {
-      supplierDashboard(supplierOrgId: $supplierOrgId) {
+    query SupplierDashboard($period: String) {
+      supplierDashboard(period: $period) {
         newPOs
         pendingDeliveries
         fulfilledToday
@@ -298,13 +331,34 @@ export async function fetchSupplierDashboard(
         catalogItemCount
         walletBalance
         walletHeldBalance
+        totalRevenue
+        purchaseOrderCount
+        purchaseOrdersInProgress
+        deliveryCount
+        deliveriesInProgress
+        activeCatalogItemCount
+        inactiveCatalogItemCount
+        orderActivity { period orderCount deliveryCount }
+        recentPurchaseOrders { id poNumber buyerName totalAmount status deliveryDate }
+        recentDeliveries { id poNumber buyerName status scheduledDate driverName }
+        notifications { id title message createdAt isRead }
       }
     }
   `
-  const res = await graphQLRequest<{ supplierDashboard: SupplierDashboardStats }>(QUERY, {
-    supplierOrgId,
-  })
-  return res.supplierDashboard
+  if (__DEV__) console.info('[DASH-1] query start', { period })
+  try {
+    const res = await graphQLRequest<{ supplierDashboard: SupplierDashboardStats }>(QUERY, { period })
+    if (__DEV__) console.info('[DASH-3] result received')
+    if (__DEV__) console.info('[DASH-5] mapped dashboard model', {
+      purchaseOrders: res.supplierDashboard.purchaseOrderCount,
+      deliveries: res.supplierDashboard.deliveryCount,
+      catalogItems: res.supplierDashboard.activeCatalogItemCount,
+    })
+    return res.supplierDashboard
+  } catch (error) {
+    if (__DEV__) console.error('[DASH-4] GraphQL error', error)
+    throw error
+  }
 }
 // ─── Purchase Orders ─────────────────────────────────────────────────────────
 
@@ -443,34 +497,64 @@ export async function startPOConversation(poId: string): Promise<{ success: bool
 
 export async function acceptPO(
   id: string,
-  expectedDeliveryDate?: string,
+  expectedDeliveryDate: string,
+  driverName?: string,
+  driverContact?: string,
   supplierNote?: string,
 ): Promise<PurchaseOrder> {
   const MUTATION = gql`
-    mutation AcceptPO($id: String!, $expectedDeliveryDate: DateTime, $supplierNote: String) {
-      acceptPO(id: $id, expectedDeliveryDate: $expectedDeliveryDate, supplierNote: $supplierNote) {
+    mutation AcceptPurchaseOrder($input: AcceptPurchaseOrderInput!) {
+      acceptPurchaseOrder(input: $input) {
         ${PURCHASE_ORDER_FIELDS}
       }
     }
   `
-  const res = await graphQLRequest<{ acceptPO: PurchaseOrder }>(MUTATION, {
-    id,
-    expectedDeliveryDate: expectedDeliveryDate ?? null,
-    supplierNote: supplierNote ?? null,
+  const res = await graphQLRequest<{ acceptPurchaseOrder: PurchaseOrder }>(MUTATION, {
+    input: { purchaseOrderId: id, expectedDeliveryDate, driverName: driverName ?? null, driverContact: driverContact ?? null, supplierNote: supplierNote ?? null },
   })
-  return res.acceptPO
+  return res.acceptPurchaseOrder
 }
 
-export async function rejectPO(id: string, reason = 'Supplier declined purchase order.'): Promise<PurchaseOrder> {
+export async function proposePurchaseOrderDeliveryDate(purchaseOrderId: string, expectedDeliveryDate: string): Promise<PurchaseOrder> {
   const MUTATION = gql`
-    mutation RejectPO($id: String!, $reason: String!) {
-      rejectPO(id: $id, reason: $reason) {
+    mutation ProposePurchaseOrderDeliveryDate($purchaseOrderId: String!, $expectedDeliveryDate: DateTime!) {
+      proposePurchaseOrderDeliveryDate(purchaseOrderId: $purchaseOrderId, expectedDeliveryDate: $expectedDeliveryDate) {
         ${PURCHASE_ORDER_FIELDS}
       }
     }
   `
-  const res = await graphQLRequest<{ rejectPO: PurchaseOrder }>(MUTATION, { id, reason })
-  return res.rejectPO
+  const res = await graphQLRequest<{ proposePurchaseOrderDeliveryDate: PurchaseOrder }>(MUTATION, { purchaseOrderId, expectedDeliveryDate })
+  return res.proposePurchaseOrderDeliveryDate
+}
+
+export async function rejectPO(id: string, rejectionReason: string): Promise<PurchaseOrder> {
+  const MUTATION = gql`
+    mutation RejectPurchaseOrder($input: RejectPurchaseOrderInput!) {
+      rejectPurchaseOrder(input: $input) {
+        ${PURCHASE_ORDER_FIELDS}
+      }
+    }
+  `
+  const res = await graphQLRequest<{ rejectPurchaseOrder: PurchaseOrder }>(MUTATION, { input: { purchaseOrderId: id, rejectionReason } })
+  return res.rejectPurchaseOrder
+}
+
+export async function preparePurchaseOrder(purchaseOrderId: string): Promise<PurchaseOrder> {
+  const MUTATION = gql`
+    mutation PreparePurchaseOrder($purchaseOrderId: String!) {
+      preparePurchaseOrder(purchaseOrderId: $purchaseOrderId) {
+        ${PURCHASE_ORDER_FIELDS}
+      }
+    }
+  `
+  const res = await graphQLRequest<{ preparePurchaseOrder: PurchaseOrder }>(MUTATION, { purchaseOrderId })
+  return res.preparePurchaseOrder
+}
+
+export async function advancePurchaseOrderFulfillment(action: 'markPurchaseOrderReadyForDispatch' | 'dispatchPurchaseOrder' | 'markPurchaseOrderDelivered', purchaseOrderId: string): Promise<PurchaseOrder> {
+  const MUTATION = gql`mutation AdvancePurchaseOrder($purchaseOrderId: String!) { ${action}(purchaseOrderId: $purchaseOrderId) { ${PURCHASE_ORDER_FIELDS} } }`
+  const res = await graphQLRequest<Record<string, PurchaseOrder>>(MUTATION, { purchaseOrderId })
+  return res[action]
 }
 
 // ─── Consolidated PO Creation ───────────────────────────────────────────────────
@@ -563,6 +647,7 @@ export interface SupplierItem {
   unit: string
   unitPrice: number
   isVatExempt: boolean
+  vatInclusive: boolean
   vatRate: number
   moq: number
   availableQty: number
@@ -577,6 +662,7 @@ export interface SupplierItem {
   incomingQty: number
   damagedQty: number
   returnedQty: number
+  globalCategory?: { id: string; name: string; slug: string; parentId?: string | null } | null
   reorderLevel?: number | null
   reorderQty?: number | null
   // Marketplace listing — null when the item has never been published.
@@ -895,10 +981,12 @@ export interface CreateSupplierItemInput {
   unit: string
   unitPrice: number
   isVatExempt: boolean
+  vatInclusive: boolean
   vatRate: number
   moq: number
   image?: string
   availableQty: number
+  globalCategoryId?: string
   priceTiers?: Array<{ minQty: number; price: number }>
 }
 
@@ -912,10 +1000,12 @@ export async function createSupplierItem(input: CreateSupplierItemInput): Promis
       $unit: String!
       $unitPrice: Float!
       $isVatExempt: Boolean!
+      $vatInclusive: Boolean!
       $vatRate: Float!
       $moq: Int!
       $image: String
       $availableQty: Int!
+      $globalCategoryId: String
       $priceTiers: [PriceTierInput!]
     ) {
       createSupplierItem(
@@ -926,10 +1016,12 @@ export async function createSupplierItem(input: CreateSupplierItemInput): Promis
         unit: $unit
         unitPrice: $unitPrice
         isVatExempt: $isVatExempt
+        vatInclusive: $vatInclusive
         vatRate: $vatRate
         moq: $moq
         image: $image
         availableQty: $availableQty
+        globalCategoryId: $globalCategoryId
         priceTiers: $priceTiers
       ) { ${SUPPLIER_ITEM_FIELDS} }
     }
@@ -946,10 +1038,12 @@ export interface UpdateSupplierItemInput {
   unit?: string
   unitPrice?: number
   isVatExempt?: boolean
+  vatInclusive?: boolean
   vatRate?: number
   moq?: number
   image?: string
   availableQty?: number
+  globalCategoryId?: string
   isActive?: boolean
   priceTiers?: Array<{ minQty: number; price: number }>
 }
@@ -965,10 +1059,12 @@ export async function updateSupplierItem(input: UpdateSupplierItemInput): Promis
       $unit: String
       $unitPrice: Float
       $isVatExempt: Boolean
+      $vatInclusive: Boolean
       $vatRate: Float
       $moq: Int
       $image: String!
       $availableQty: Int
+      $globalCategoryId: String
       $isActive: Boolean
       $priceTiers: [PriceTierInput!]
     ) {
@@ -980,10 +1076,12 @@ export async function updateSupplierItem(input: UpdateSupplierItemInput): Promis
         unit: $unit
         unitPrice: $unitPrice
         isVatExempt: $isVatExempt
+        vatInclusive: $vatInclusive
         vatRate: $vatRate
         moq: $moq
         image: $image
         availableQty: $availableQty
+        globalCategoryId: $globalCategoryId
         isActive: $isActive
         priceTiers: $priceTiers
       ) { ${SUPPLIER_ITEM_FIELDS} }

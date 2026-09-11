@@ -9,7 +9,6 @@ import {
   Animated,
   Dimensions,
   Modal,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -26,6 +25,8 @@ import {
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { AdminCategoryService } from '@/services/admincategoryService';
+import { DataTable, EmptyState } from '@/components/DataTable';
+import { AdminPagination } from '@/components/admin/AdminPagination';
 
 const ACCENT = '#7C3AED';
 
@@ -411,6 +412,8 @@ export default function GlobalCategoriesScreen() {
   const [query, setQuery] = useState('');
   const [search, setSearch] = useState('');
   const [searching, setSearching] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(30);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingItem, setEditingItem] = useState<GlobalCategory | null>(null);
@@ -446,6 +449,7 @@ export default function GlobalCategoriesScreen() {
     setSearching(true);
     const t = setTimeout(() => {
       setSearch(query.trim());
+      setPage(1);
       setSearching(false);
     }, 600);
     return () => clearTimeout(t);
@@ -453,6 +457,7 @@ export default function GlobalCategoriesScreen() {
 
   const handleClear = () => {
     setQuery('');
+    setPage(1);
     if (search !== '') {
       setSearching(true);
       setTimeout(() => {
@@ -466,6 +471,11 @@ export default function GlobalCategoriesScreen() {
     const q = search.toLowerCase();
     return q ? items.filter((i) => i.label.toLowerCase().includes(q)) : items;
   }, [items, search]);
+
+  const paginatedItems = useMemo(
+    () => filtered.slice((page - 1) * pageSize, page * pageSize),
+    [filtered, page, pageSize],
+  );
 
   // ── Save ──────────────────────────────────────────────────────────────────
 
@@ -626,6 +636,40 @@ export default function GlobalCategoriesScreen() {
     skeletonWrap: { paddingHorizontal: isWide ? 0 : 12, paddingTop: 4 },
   });
 
+  const tableRows = paginatedItems.map((item) => ({
+    key: item.id,
+    cells: [
+      <View key="category" style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <View style={s.itemIcon}>
+          <FolderOpen size={16} color={ACCENT} strokeWidth={2} />
+        </View>
+        <Text style={s.itemLabel} numberOfLines={1}>{item.label}</Text>
+      </View>,
+      <Text key="created" style={s.itemDate}>
+        {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '—'}
+      </Text>,
+      <View key="actions" style={s.actions}>
+        <TouchableOpacity
+          style={s.actionBtn}
+          onPress={() => {
+            setEditingItem(item);
+            setModalVisible(true);
+          }}
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+        >
+          <Edit2 size={13} color={ACCENT} strokeWidth={2} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={s.actionBtn}
+          onPress={() => setDeleteTarget(item)}
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+        >
+          <Trash2 size={13} color={colors.error ?? '#EF4444'} strokeWidth={2} />
+        </TouchableOpacity>
+      </View>,
+    ],
+  }));
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -721,51 +765,34 @@ export default function GlobalCategoriesScreen() {
             )}
           </View>
         ) : (
-          <ScrollView
-            contentContainerStyle={s.listContent}
-            showsVerticalScrollIndicator={false}
-          >
-            {filtered.map((item) => (
-              <View key={item.id} style={s.itemRow}>
-                <View style={s.itemIcon}>
-                  <FolderOpen size={16} color={ACCENT} strokeWidth={2} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.itemLabel} numberOfLines={1}>
-                    {item.label}
-                  </Text>
-                  {item.createdAt && (
-                    <Text style={s.itemDate}>
-                      Created {new Date(item.createdAt).toLocaleDateString()}
-                    </Text>
-                  )}
-                </View>
-                <View style={s.actions}>
-                  <TouchableOpacity
-                    style={s.actionBtn}
-                    onPress={() => {
-                      setEditingItem(item);
-                      setModalVisible(true);
-                    }}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                  >
-                    <Edit2 size={13} color={ACCENT} strokeWidth={2} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={s.actionBtn}
-                    onPress={() => setDeleteTarget(item)}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                  >
-                    <Trash2
-                      size={13}
-                      color={colors.error ?? '#EF4444'}
-                      strokeWidth={2}
-                    />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
-          </ScrollView>
+          <View style={s.listContent}>
+            <DataTable
+              columns={[
+                { label: 'Category', width: 2 },
+                { label: 'Created', width: 1 },
+                { label: 'Actions', width: 0.7, align: 'right' },
+              ]}
+              rows={tableRows}
+              emptyState={
+                <EmptyState
+                  title="No categories on this page"
+                  message="Choose another page or adjust the search."
+                />
+              }
+            />
+            <View style={{ marginTop: 12 }}>
+              <AdminPagination
+                page={page}
+                total={filtered.length}
+                pageSize={pageSize}
+                onPageChange={setPage}
+                onPageSizeChange={(size) => {
+                  setPageSize(size);
+                  setPage(1);
+                }}
+              />
+            </View>
+          </View>
         )}
       </View>
 

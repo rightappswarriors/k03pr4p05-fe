@@ -31,6 +31,7 @@ interface FormData {
   unit: string
   unitPrice: string
   isVatExempt: boolean
+  vatInclusive: boolean
   moq: string
   availableQty: string
   priceTiers: PriceTierInput[]
@@ -64,7 +65,7 @@ export default function SupplierItemFormScreen({
 
   const [form, setForm] = useState<FormData>({
     name: '', description: '', sku: '', unit: 'piraso', unitPrice: '',
-    isVatExempt: false, moq: '1', availableQty: '0', priceTiers: [],
+    isVatExempt: false, vatInclusive: false, moq: '1', availableQty: '0', priceTiers: [],
   })
 
   useEffect(() => {
@@ -110,6 +111,7 @@ export default function SupplierItemFormScreen({
           unit: form.unit,
           unitPrice: parseFloat(form.unitPrice),
           isVatExempt: form.isVatExempt,
+          vatInclusive: form.isVatExempt ? false : form.vatInclusive,
           vatRate: form.isVatExempt ? 0 : 0.12,
           moq: parseInt(form.moq) || 1,
           availableQty: parseInt(form.availableQty) || 0,
@@ -124,6 +126,7 @@ export default function SupplierItemFormScreen({
           unit: form.unit,
           unitPrice: parseFloat(form.unitPrice),
           isVatExempt: form.isVatExempt,
+          vatInclusive: form.isVatExempt ? false : form.vatInclusive,
           vatRate: form.isVatExempt ? 0 : 0.12,
           moq: parseInt(form.moq) || 1,
           availableQty: parseInt(form.availableQty) || 0,
