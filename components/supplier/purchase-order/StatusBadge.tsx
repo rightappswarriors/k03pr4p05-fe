@@ -4,6 +4,8 @@ import type { POStatus } from '@/services/supplierService/supplierService'
 
 export const STATUS_COLORS: Record<POStatus, string> = {
   PENDING: '#F59E0B',
+  SUPPLIER_ACCEPTED: '#3B82F6',
+  PREPARING: '#3B82F6',
   ACCEPTED: '#3B82F6',
   REJECTED: '#EF4444',
   IN_TRANSIT: '#8B5CF6',
@@ -13,6 +15,8 @@ export const STATUS_COLORS: Record<POStatus, string> = {
 
 export const STATUS_LABELS: Record<POStatus, string> = {
   PENDING: 'Pending Review',
+  SUPPLIER_ACCEPTED: 'Accepted',
+  PREPARING: 'Preparing Order',
   ACCEPTED: 'Accepted',
   REJECTED: 'Rejected',
   IN_TRANSIT: 'In Transit',

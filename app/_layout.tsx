@@ -97,6 +97,7 @@ export default function RootLayout() {
                   <ProtectedRoute>
                     <Stack screenOptions={{ headerShown: false }}>
                       <Stack.Screen name="(supplier)" />
+                      <Stack.Screen name="(admin)" />
                       <Stack.Screen name="(public)" />
                       <Stack.Screen name="login" />
                       <Stack.Screen name="onboarding" />

@@ -23,11 +23,15 @@ export function LocationMapPreview({
   lng,
   address,
   colors,
+  height = 180,
+  interactive = false,
 }: {
   lat?: number;
   lng?: number;
   address?: string;
   colors: ReturnType<typeof useTheme>['colors'];
+  height?: number;
+  interactive?: boolean;
 }) {
   const validCoords =
     lat != null && lng != null && isFinite(lat) && isFinite(lng) && lat !== 0 && lng !== 0;
@@ -44,12 +48,12 @@ export function LocationMapPreview({
 
   if (MapView && Marker) {
     return (
-      <View style={{ backgroundColor: colors.surface, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: colors.border, height: 180 }}>
+      <View style={{ backgroundColor: colors.surface, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: colors.border, height }}>
         <MapView
           style={{ flex: 1 }}
           initialRegion={{ latitude: lat!, longitude: lng!, latitudeDelta: 0.01, longitudeDelta: 0.01 }}
-          scrollEnabled={false}
-          zoomEnabled={false}
+          scrollEnabled={interactive}
+          zoomEnabled={interactive}
         >
           <Marker coordinate={{ latitude: lat!, longitude: lng! }} />
         </MapView>

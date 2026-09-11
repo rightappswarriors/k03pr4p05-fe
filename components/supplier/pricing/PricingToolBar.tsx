@@ -77,9 +77,9 @@ interface Props {
   visibleColumns: PricingColumnKey[]
   onVisibleColumnsChange: (cols: PricingColumnKey[]) => void
   selectedCount: number
-  onBulkUpdatePress: () => void
+  onBulkUpdatePress?: () => void
   onRefresh: () => void
-  onNewPrice: () => void
+  onNewPrice?: () => void
   onResetFilters: () => void
   categories: PricingCategory[]
 }
@@ -451,7 +451,7 @@ export function PricingToolbar({
           </View>
         )}
 
-        {selectedCount > 0 && (
+        {selectedCount > 0 && onBulkUpdatePress && (
           <TouchableOpacity
             onPress={onBulkUpdatePress}
             style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.primary, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 }}
@@ -460,9 +460,11 @@ export function PricingToolbar({
           </TouchableOpacity>
         )}
 
-        <TouchableOpacity onPress={onNewPrice} style={{ backgroundColor: colors.primary, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 }}>
-          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>+ New Price</Text>
-        </TouchableOpacity>
+        {onNewPrice && (
+          <TouchableOpacity onPress={onNewPrice} style={{ backgroundColor: colors.primary, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 }}>
+            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>+ New Price</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   )

@@ -19,14 +19,16 @@ function getPageNumbers(current: number, total: number): Array<number | '...'> {
     return result
 }
 
-export function CatalogPagination({
-    page, pageSize, totalItems, onPageChange, onPageSizeChange,
+export function Pagination({
+    page, pageSize, totalItems, onPageChange, onPageSizeChange, pageSizeOptions = ROWS_PER_PAGE_OPTIONS, showSummary = false,
 }: {
     page: number
     pageSize: number
     totalItems: number
     onPageChange: (p: number) => void
     onPageSizeChange: (s: number) => void
+    pageSizeOptions?: number[]
+    showSummary?: boolean
 }) {
     const { colors } = useTheme()
     const [sizeMenuOpen, setSizeMenuOpen] = useState(false)
@@ -35,7 +37,8 @@ export function CatalogPagination({
 
     return (
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, flexWrap: 'wrap', gap: 10 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                {showSummary ? <Text style={{ fontSize: 13, color: colors.textSecondary }}>Showing {totalItems === 0 ? 0 : (page - 1) * pageSize + 1}–{Math.min(page * pageSize, totalItems)} of {totalItems}</Text> : null}
                 <Text style={{ fontSize: 13, color: colors.textSecondary }}>Rows per page</Text>
                 <View>
                     <TouchableOpacity onPress={() => setSizeMenuOpen((v) => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
@@ -44,7 +47,7 @@ export function CatalogPagination({
                     </TouchableOpacity>
                     {sizeMenuOpen && (
                         <View style={{ position: 'absolute', bottom: 36, left: 0, backgroundColor: colors.surface, borderRadius: 8, borderWidth: 1, borderColor: colors.border, zIndex: 10 }}>
-                            {ROWS_PER_PAGE_OPTIONS.map((opt) => (
+                            {pageSizeOptions.map((opt) => (
                                 <TouchableOpacity key={opt} onPress={() => { onPageSizeChange(opt); setSizeMenuOpen(false) }} style={{ paddingHorizontal: 14, paddingVertical: 8 }}>
                                     <Text style={{ fontSize: 13, color: colors.text }}>{opt}</Text>
                                 </TouchableOpacity>
@@ -74,3 +77,6 @@ export function CatalogPagination({
         </View>
     )
 }
+
+/** Backward-compatible catalog name; Pagination is reusable across server-paginated lists. */
+export const CatalogPagination = Pagination

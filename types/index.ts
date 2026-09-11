@@ -98,6 +98,7 @@ export interface User {
   createdAt: string;
   profilePhoto?: string;
   position?: Position | null;
+  resolvedPermissions?: ResolvedPagePermission[];
   approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
 }
 export interface Position {
@@ -688,6 +689,7 @@ export interface SupplierItem {
   unit: string;
   unitPrice: number;
   isVatExempt: boolean;
+  vatInclusive: boolean;
   vatRate: number;
   moq: number;
   availableQty: number;
@@ -896,6 +898,13 @@ export interface CounterOfferInput {
 export interface AcceptNegotiationInput {
   rfqId: string;
 }
+export interface ResolvedPagePermission {
+  key: string;
+  canView: boolean;
+  canCreate: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+}
 
 export interface RejectNegotiationInput {
   rfqId: string;
@@ -961,7 +970,7 @@ export const ELIGIBLE_RFQ_STATUSES: RfqStatus[] = [
 
 // ─── Purchase Order Types ──────────────────────────────────────────────────────
 
-export type POStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'IN_TRANSIT' | 'DELIVERED' | 'CANCELLED'
+export type POStatus = 'PENDING' | 'SUPPLIER_ACCEPTED' | 'PREPARING' | 'READY_FOR_DISPATCH' | 'ACCEPTED' | 'REJECTED' | 'IN_TRANSIT' | 'DELIVERED' | 'COMPLETED' | 'CANCELLED'
 
 export type PaymentStatus = 'PENDING' | 'PREPARING' | 'PARTIAL' | 'PAID' | 'REFUNDED'
 
@@ -1047,6 +1056,8 @@ export interface PurchaseOrder {
   delivery?: Delivery | null
   conversationId?: string | null
   paymentStatus?: PaymentStatus
+  paymentAttemptStatus?: string | null
+  preparingAt?: string | null
   receiptSnapshot?: ReceiptSnapshot | null
   conversation?: POConversation | null
 }

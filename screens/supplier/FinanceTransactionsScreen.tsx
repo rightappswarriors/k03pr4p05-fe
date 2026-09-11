@@ -10,9 +10,9 @@ import {
   FinanceStatGrid,
 } from '@/components/supplier/finance/FinanceScreenShell'
 import {
-  getSupplierFinanceTransactions,
+  getSupplierTransactionPage,
   getSupplierWalletSummary,
-  type SupplierLedgerEntry,
+  type SupplierTransactionPageItem,
   type SupplierWalletSummary,
 } from '@/services/supplierService/financeService'
 import { useTheme } from '@/contexts/ThemeContext'
@@ -30,7 +30,7 @@ function formatDate(value: string): string {
 export default function FinanceTransactionsScreen() {
   const { colors } = useTheme()
   const [wallet, setWallet] = useState<SupplierWalletSummary | null>(null)
-  const [entries, setEntries] = useState<SupplierLedgerEntry[]>([])
+  const [entries, setEntries] = useState<SupplierTransactionPageItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -39,10 +39,10 @@ export default function FinanceTransactionsScreen() {
       try {
         const [walletData, transactionData] = await Promise.all([
           getSupplierWalletSummary(),
-          getSupplierFinanceTransactions(),
+          getSupplierTransactionPage({ page: 1, limit: 20 }),
         ])
         setWallet(walletData)
-        setEntries(transactionData)
+        setEntries(transactionData.items)
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Unable to load transactions')
       } finally {
@@ -53,10 +53,7 @@ export default function FinanceTransactionsScreen() {
     load()
   }, [])
 
-  const available = useMemo(() => (wallet ? wallet.balance - wallet.heldBalance : 0), [wallet])
-  const positiveEntries = useMemo(() => entries.filter((entry) => entry.amount > 0).reduce((sum, entry) => sum + entry.amount, 0), [entries])
-  const feesPaid = useMemo(() => entries.filter((entry) => entry.amount < 0).reduce((sum, entry) => sum + Math.abs(entry.amount), 0), [entries])
-  const totalWithdrawals = useMemo(() => entries.filter((entry) => entry.sourceType === 'WITHDRAWAL').reduce((sum, entry) => sum + Math.abs(entry.amount), 0), [entries])
+  const available = useMemo(() => wallet?.balance ?? 0, [wallet])
 
   return (
     <FinanceScreenShell title="Transactions" subtitle="A complete ledger of supplier credits, debits, and fees" loading={loading}>
@@ -81,9 +78,9 @@ export default function FinanceTransactionsScreen() {
         <FinanceStatCard title="Available balance" value={wallet ? formatPHP(available) : '—'} hint="Funds ready for withdrawal" accent="#16A34A" icon={ReceiptText} />
         <FinanceStatCard title="Pending balance" value={wallet ? formatPHP(wallet.heldBalance) : '—'} hint="Reserved or pending clearance" accent="#F59E0B" icon={ReceiptText} />
         <FinanceStatCard title="Withdrawable" value={wallet ? formatPHP(available) : '—'} hint="Net cash available now" accent="#0EA5E9" icon={ReceiptText} />
-        <FinanceStatCard title="Lifetime earnings" value={formatPHP(positiveEntries)} hint="All credits posted" accent="#22C55E" icon={ReceiptText} />
-        <FinanceStatCard title="Fees paid" value={formatPHP(feesPaid)} hint="Platform charges posted" accent="#DC2626" icon={ReceiptText} />
-        <FinanceStatCard title="Total withdrawals" value={formatPHP(totalWithdrawals)} hint="Cash-outs recorded" accent="#8B5CF6" icon={ReceiptText} />
+        <FinanceStatCard title="Lifetime earnings" value={formatPHP(wallet?.lifetimeEarnings ?? 0)} hint="Settlement net credits" accent="#22C55E" icon={ReceiptText} />
+        <FinanceStatCard title="Fees paid" value={formatPHP(wallet?.feesPaid ?? 0)} hint="Settlement platform fees" accent="#DC2626" icon={ReceiptText} />
+        <FinanceStatCard title="Total withdrawals" value={formatPHP(wallet?.totalWithdrawn ?? 0)} hint="Completed cash-outs only" accent="#8B5CF6" icon={ReceiptText} />
       </FinanceStatGrid>
       <FinanceSectionCard title="Recent transactions" subtitle="Sorted by most recent posting">
         {entries.length === 0 ? (
@@ -100,12 +97,12 @@ export default function FinanceTransactionsScreen() {
               key: entry.id,
               cells: [
                 <View key="entry" style={{ gap: 2 }}>
-                  <Text style={{ color: colors.text, fontWeight: '700' }}>{entry.sourceType.replace(/_/g, ' ')}</Text>
-                  <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{entry.referenceId ?? 'No reference'}</Text>
+                  <Text style={{ color: colors.text, fontWeight: '700' }}>{entry.label}</Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{entry.linkedPoNumber ?? entry.reference ?? 'No reference'}</Text>
                 </View>,
                 <Text key="date" style={{ color: colors.textSecondary, fontSize: 12 }}>{formatDate(entry.createdAt)}</Text>,
                 <Text key="amount" style={{ color: entry.amount >= 0 ? colors.success : colors.error, fontWeight: '800' }}>{formatPHP(entry.amount)}</Text>,
-                <Text key="status" style={{ color: colors.textSecondary, fontSize: 12 }}>{entry.status}</Text>,
+                <Text key="status" style={{ color: colors.textSecondary, fontSize: 12 }}>{entry.statusLabel}</Text>,
               ],
             }))}
             emptyState={<EmptyState title="No transactions yet" message="Transactions will appear after payouts, fees, or orders are posted." />}

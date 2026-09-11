@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { FadeDialogModal } from './FadeDialogModal'
 import { MediaService } from '@/services/mediaService'
 import { createSupplierItem, type SupplierItem } from '@/services/supplierService/supplierService'
+import { GlobalCategoryPicker } from '@/components/GlobalCategoryPicker'
 
 const COMMON_UNITS = ['piraso', 'kahon', 'kilo', 'boteng', 'lata', 'bag', 'dozen', 'pack', 'set', 'litter', 'gallon']
 
@@ -26,15 +27,17 @@ export function AddSupplierItemModal({ visible, catalogId, onClose, onCreated }:
   const [unit, setUnit] = useState('piraso')
   const [unitPrice, setUnitPrice] = useState('')
   const [isVatExempt, setIsVatExempt] = useState(false)
+  const [vatInclusive] = useState(false)
   const [moq, setMoq] = useState('1')
   const [availableQty, setAvailableQty] = useState('0')
+  const [globalCategory, setGlobalCategory] = useState<{ id: string; name: string; breadcrumb: string } | null>(null)
   const [imageAsset, setImageAsset] = useState<ImagePicker.ImagePickerAsset | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   const reset = () => {
     setName(''); setSku(''); setDescription(''); setUnit('piraso'); setUnitPrice('')
-    setIsVatExempt(false); setMoq('1'); setAvailableQty('0'); setImageAsset(null); setError('')
+    setIsVatExempt(false); setMoq('1'); setAvailableQty('0'); setGlobalCategory(null); setImageAsset(null); setError('')
   }
   const handleClose = () => { reset(); onClose() }
 
@@ -58,6 +61,7 @@ export function AddSupplierItemModal({ visible, catalogId, onClose, onCreated }:
     if (!name.trim()) return setError('Product name is required.')
     if (!unit.trim()) return setError('Unit is required.')
     if (!unitPrice || isNaN(Number(unitPrice)) || Number(unitPrice) <= 0) return setError('A valid unit price is required.')
+    if (!globalCategory) return setError('Please choose a product category.')
     if (!imageAsset) return setError('A product image is required.')
     if (!user?.orgId) return setError('Organization not found.')
 
@@ -79,9 +83,11 @@ export function AddSupplierItemModal({ visible, catalogId, onClose, onCreated }:
         unit,
         unitPrice: parseFloat(unitPrice),
         isVatExempt,
+        vatInclusive: isVatExempt ? false : vatInclusive,
         vatRate: isVatExempt ? 0 : 0.12,
         moq: parseInt(moq) || 1,
         availableQty: parseInt(availableQty) || 0,
+        globalCategoryId: globalCategory.id,
         image: publicUrl,
       })
       onCreated(created)
@@ -130,6 +136,7 @@ export function AddSupplierItemModal({ visible, catalogId, onClose, onCreated }:
         <View><Text style={labelStyle}>Product Name *</Text><TextInput value={name} onChangeText={setName} style={inputStyle} placeholderTextColor={colors.textSecondary} placeholder="e.g. Coffee Beans" /></View>
         <View><Text style={labelStyle}>SKU</Text><TextInput value={sku} onChangeText={setSku} style={inputStyle} placeholderTextColor={colors.textSecondary} placeholder="e.g. COF-001" autoCapitalize="characters" /></View>
         <View><Text style={labelStyle}>Description</Text><TextInput value={description} onChangeText={setDescription} style={[inputStyle, { minHeight: 64 }]} multiline placeholderTextColor={colors.textSecondary} /></View>
+        <GlobalCategoryPicker selectedCategoryId={globalCategory?.id} onSelect={setGlobalCategory} leafOnly />
 
         <View>
           <Text style={labelStyle}>Unit *</Text>

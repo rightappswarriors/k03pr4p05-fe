@@ -7,11 +7,13 @@ export function LocationMapPreview({
     lng,
     address,
     colors,
+    height = 160,
 }: {
     lat?: number;
     lng?: number;
     address?: string;
     colors: ReturnType<typeof useTheme>['colors'];
+    height?: number;
 }) {
     const [mapError, setMapError] = useState(false);
     const googleMapsApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
@@ -37,13 +39,13 @@ export function LocationMapPreview({
                 <iframe
                     src={mapUrl}
                     width="100%"
-                    height="160"
+                    height={height}
                     style={{ border: 0, display: 'block' }}
                     onError={() => setMapError(true)}
                     title="Delivery Location"
                 />
             ) : (
-                <View style={{ height: 80, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}>
+                <View style={{ height: Math.min(height, 160), alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}>
                     <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
                         📍 {address ?? `${lat.toFixed(4)}, ${lng.toFixed(4)}`}
                     </Text>

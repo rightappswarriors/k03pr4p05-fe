@@ -9,7 +9,7 @@ import type { InventoryRowData } from './InventoryTable'
 
 export function InventoryCard({
     item, onView, onReceive, onAdjust, onHistory,
-}: { item: InventoryRowData; onView: () => void; onReceive: () => void; onAdjust: () => void; onHistory: () => void }) {
+}: { item: InventoryRowData; onView: () => void; onReceive?: () => void; onAdjust?: () => void; onHistory: () => void }) {
     const { colors } = useTheme()
     return (
         <TouchableOpacity onPress={onView} activeOpacity={0.85} style={{
@@ -45,12 +45,12 @@ export function InventoryCard({
                 <TouchableOpacity onPress={onView} style={{ flex: 1, flexDirection: 'row', gap: 4, justifyContent: 'center', alignItems: 'center', paddingVertical: 8, borderRadius: 8, backgroundColor: colors.background }}>
                     <Eye size={12} color={colors.text} /><Text style={{ fontSize: 11, fontWeight: '600', color: colors.text }}>Manage</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={onReceive} style={{ flex: 1, flexDirection: 'row', gap: 4, justifyContent: 'center', alignItems: 'center', paddingVertical: 8, borderRadius: 8, backgroundColor: colors.primary + '15' }}>
+                {onReceive ? <TouchableOpacity onPress={onReceive} style={{ flex: 1, flexDirection: 'row', gap: 4, justifyContent: 'center', alignItems: 'center', paddingVertical: 8, borderRadius: 8, backgroundColor: colors.primary + '15' }}>
                     <PlusCircle size={12} color={colors.primary} /><Text style={{ fontSize: 11, fontWeight: '600', color: colors.primary }}>Receive</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={onAdjust} style={{ flex: 1, flexDirection: 'row', gap: 4, justifyContent: 'center', alignItems: 'center', paddingVertical: 8, borderRadius: 8, backgroundColor: '#F59E0B15' }}>
+                </TouchableOpacity> : null}
+                {onAdjust ? <TouchableOpacity onPress={onAdjust} style={{ flex: 1, flexDirection: 'row', gap: 4, justifyContent: 'center', alignItems: 'center', paddingVertical: 8, borderRadius: 8, backgroundColor: '#F59E0B15' }}>
                     <ClipboardEdit size={12} color="#F59E0B" /><Text style={{ fontSize: 11, fontWeight: '600', color: '#F59E0B' }}>Adjust</Text>
-                </TouchableOpacity>
+                </TouchableOpacity> : null}
                 <TouchableOpacity onPress={onHistory} style={{ flex: 1, flexDirection: 'row', gap: 4, justifyContent: 'center', alignItems: 'center', paddingVertical: 8, borderRadius: 8, backgroundColor: colors.background }}>
                     <History size={12} color={colors.text} /><Text style={{ fontSize: 11, fontWeight: '600', color: colors.text }}>History</Text>
                 </TouchableOpacity>

@@ -60,6 +60,7 @@ import {
 } from '@/components/supplier/pricing/PricingToolBar'
 import { CatalogPagination } from '@/components/supplier/catalog/CatalogPagination'
 import { OrderCardSkeletonList } from '@/components/LoadingSkeleton'
+import { usePermissions } from '@/hooks/usePermissions'
 
 const BREAKPOINTS = { tablet: 768, desktop: 1100 }
 const PAGE_SIZE = 18
@@ -115,8 +116,8 @@ interface PricingCardProps {
   item: PricingListItem
   columns: number
   onDetail: (item: PricingListItem, section?: 'overview' | 'history') => void
-  onEdit: (item: PricingListItem) => void
-  onSchedule: (item: PricingListItem) => void
+  onEdit?: (item: PricingListItem) => void
+  onSchedule?: (item: PricingListItem) => void
 }
 
 function PricingCard({ item, columns, onDetail, onEdit, onSchedule }: PricingCardProps) {
@@ -177,9 +178,9 @@ function PricingCard({ item, columns, onDetail, onEdit, onSchedule }: PricingCar
       <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Updated {formatDate(item.updatedAt)}</Text>
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        <CardAction icon={<Pencil size={13} color={colors.primary} />} label="Edit Price" onPress={() => onEdit(item)} />
+        {onEdit && <CardAction icon={<Pencil size={13} color={colors.primary} />} label="Edit Price" onPress={() => onEdit(item)} />}
         <CardAction icon={<Search size={13} color={colors.primary} />} label="View Details" onPress={() => onDetail(item, 'overview')} />
-        <CardAction icon={<CalendarClock size={13} color={colors.primary} />} label="Schedule Price" onPress={() => onSchedule(item)} />
+        {onSchedule && <CardAction icon={<CalendarClock size={13} color={colors.primary} />} label="Schedule Price" onPress={() => onSchedule(item)} />}
         <CardAction icon={<History size={13} color={colors.primary} />} label="View History" onPress={() => onDetail(item, 'history')} />
       </View>
     </TouchableOpacity>
@@ -635,11 +636,11 @@ interface DetailModalProps {
   item: PricingListItem | null
   visible: boolean
   onClose: () => void
-  onEditPrice: (item: PricingListItem) => void
-  onSchedulePrice: (item: PricingListItem) => void
-  onEditScheduledPrice: (item: PricingListItem, schedule: ScheduledPrice) => void
-  onCancelScheduled: (id: string) => Promise<void>
-  onDeleteScheduled: (id: string) => Promise<void>
+  onEditPrice?: (item: PricingListItem) => void
+  onSchedulePrice?: (item: PricingListItem) => void
+  onEditScheduledPrice?: (item: PricingListItem, schedule: ScheduledPrice) => void
+  onCancelScheduled?: (id: string) => Promise<void>
+  onDeleteScheduled?: (id: string) => Promise<void>
   section: 'overview' | 'history'
   refreshKey: number
 }
@@ -728,14 +729,20 @@ function PricingDetailModal({ item, visible, onClose, onEditPrice, onSchedulePri
                   <Metric label="Profit / Unit" value={formatPHP(detail?.profitPerUnit ?? 0)} />
                 </View>
 
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <TouchableOpacity onPress={() => onEditPrice(item!)} style={{ backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}>
-                    <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>Edit Price</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => onSchedulePrice(item!)} style={{ borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}>
-                    <Text style={{ color: colors.text, fontSize: 12, fontWeight: '700' }}>Schedule Price</Text>
-                  </TouchableOpacity>
-                </View>
+                {(onEditPrice || onSchedulePrice) && (
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    {onEditPrice && (
+                      <TouchableOpacity onPress={() => onEditPrice(item!)} style={{ backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}>
+                        <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>Edit Price</Text>
+                      </TouchableOpacity>
+                    )}
+                    {onSchedulePrice && (
+                      <TouchableOpacity onPress={() => onSchedulePrice(item!)} style={{ borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}>
+                        <Text style={{ color: colors.text, fontSize: 12, fontWeight: '700' }}>Schedule Price</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
 
                 <Section title="Product Summary">
                   <Row label="Product" value={supplierItem?.name ?? item?.name ?? '—'} />
@@ -766,17 +773,25 @@ function PricingDetailModal({ item, visible, onClose, onEditPrice, onSchedulePri
                             <Text style={{ color: colors.text, fontSize: 13, fontWeight: '800' }}>{formatPHP(price.price)}</Text>
                           </View>
                           <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{price.expiresAt ? `Expires ${formatDate(price.expiresAt)}` : 'No expiration'}</Text>
-                          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-                            <TouchableOpacity onPress={() => item && onEditScheduledPrice(item, price)} style={{ borderWidth: 1, borderColor: colors.border, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
-                              <Text style={{ color: colors.text, fontSize: 12, fontWeight: '700' }}>Edit</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity onPress={() => handleAction(onCancelScheduled, price.id)} style={{ borderWidth: 1, borderColor: colors.border, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
-                              <Text style={{ color: colors.text, fontSize: 12, fontWeight: '700' }}>Cancel</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity onPress={() => handleAction(onDeleteScheduled, price.id)} style={{ borderWidth: 1, borderColor: colors.border, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
-                              <Text style={{ color: colors.text, fontSize: 12, fontWeight: '700' }}>Delete</Text>
-                            </TouchableOpacity>
-                          </View>
+                          {(onEditScheduledPrice || onCancelScheduled || onDeleteScheduled) && (
+                            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                              {onEditScheduledPrice && (
+                                <TouchableOpacity onPress={() => item && onEditScheduledPrice(item, price)} style={{ borderWidth: 1, borderColor: colors.border, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
+                                  <Text style={{ color: colors.text, fontSize: 12, fontWeight: '700' }}>Edit</Text>
+                                </TouchableOpacity>
+                              )}
+                              {onCancelScheduled && (
+                                <TouchableOpacity onPress={() => handleAction(onCancelScheduled, price.id)} style={{ borderWidth: 1, borderColor: colors.border, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
+                                  <Text style={{ color: colors.text, fontSize: 12, fontWeight: '700' }}>Cancel</Text>
+                                </TouchableOpacity>
+                              )}
+                              {onDeleteScheduled && (
+                                <TouchableOpacity onPress={() => handleAction(onDeleteScheduled, price.id)} style={{ borderWidth: 1, borderColor: colors.border, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
+                                  <Text style={{ color: colors.text, fontSize: 12, fontWeight: '700' }}>Delete</Text>
+                                </TouchableOpacity>
+                              )}
+                            </View>
+                          )}
                         </View>
                       ))}
                       {activeSchedules.map((price) => (
@@ -838,6 +853,8 @@ function EmptyText({ text }: { text: string }) {
 export default function PricingScreen() {
   const { colors } = useTheme()
   const { user } = useAuth()
+  const { permissionFor } = usePermissions()
+  const pricingPermission = permissionFor('supplierPricingPage')
   const { width } = useWindowDimensions()
   const isTablet = width >= BREAKPOINTS.tablet
   const isDesktop = width >= BREAKPOINTS.desktop
@@ -1070,9 +1087,9 @@ export default function PricingScreen() {
             visibleColumns={visibleColumns}
             onVisibleColumnsChange={setVisibleColumns}
             selectedCount={0}
-            onBulkUpdatePress={() => undefined}
+            onBulkUpdatePress={pricingPermission.canEdit ? () => undefined : undefined}
             onRefresh={onRefresh}
-            onNewPrice={openNewPrice}
+            onNewPrice={pricingPermission.canEdit ? openNewPrice : undefined}
             onResetFilters={resetFilters}
             categories={categories}
           />
@@ -1166,8 +1183,8 @@ export default function PricingScreen() {
                       )}
                       <Cell style={{ width: 250 }}>
                         <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
-                          <TinyAction label="Edit" onPress={() => openEditPrice(item)} />
-                          <TinyAction label="Schedule" onPress={() => openSchedulePrice(item)} />
+                          {pricingPermission.canEdit && <TinyAction label="Edit" onPress={() => openEditPrice(item)} />}
+                          {pricingPermission.canEdit && <TinyAction label="Schedule" onPress={() => openSchedulePrice(item)} />}
                           <TinyAction label="Details" onPress={() => openDetail(item, 'overview')} />
                           <TinyAction label="History" onPress={() => openDetail(item, 'history')} />
                         </View>
@@ -1181,7 +1198,14 @@ export default function PricingScreen() {
             <>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>
                 {sortedItems.map((item) => (
-                  <PricingCard key={item.id} item={item} columns={cardColumns} onDetail={openDetail} onEdit={openEditPrice} onSchedule={openSchedulePrice} />
+                  <PricingCard
+                    key={item.id}
+                    item={item}
+                    columns={cardColumns}
+                    onDetail={openDetail}
+                    onEdit={pricingPermission.canEdit ? openEditPrice : undefined}
+                    onSchedule={pricingPermission.canEdit ? openSchedulePrice : undefined}
+                  />
                 ))}
               </View>
               <CatalogPagination page={page} pageSize={PAGE_SIZE} totalItems={total} onPageChange={setPage} onPageSizeChange={() => undefined} />
@@ -1194,17 +1218,17 @@ export default function PricingScreen() {
         item={selectedItem}
         visible={detailOpen}
         onClose={() => setDetailOpen(false)}
-        onEditPrice={openEditPrice}
-        onSchedulePrice={openSchedulePrice}
-        onEditScheduledPrice={openSchedulePrice}
-        onCancelScheduled={handleCancelSchedule}
-        onDeleteScheduled={handleDeleteSchedule}
+        onEditPrice={pricingPermission.canEdit ? openEditPrice : undefined}
+        onSchedulePrice={pricingPermission.canEdit ? openSchedulePrice : undefined}
+        onEditScheduledPrice={pricingPermission.canEdit ? openSchedulePrice : undefined}
+        onCancelScheduled={pricingPermission.canEdit ? handleCancelSchedule : undefined}
+        onDeleteScheduled={pricingPermission.canDelete ? handleDeleteSchedule : undefined}
         section={detailSection}
         refreshKey={detailRefreshKey}
       />
 
-      <PriceEditorModal visible={priceModalOpen} mode={priceModalMode} item={selectedItem} loading={submitting} catalogItems={items} onClose={() => setPriceModalOpen(false)} onSubmit={handlePriceSubmit} />
-      <ScheduleEditorModal visible={scheduleModalOpen} mode={scheduleModalMode} item={selectedItem} schedule={selectedSchedule} loading={submitting} onClose={() => setScheduleModalOpen(false)} onSubmit={handleScheduleSubmit} />
+      <PriceEditorModal visible={priceModalOpen && pricingPermission.canEdit} mode={priceModalMode} item={selectedItem} loading={submitting} catalogItems={items} onClose={() => setPriceModalOpen(false)} onSubmit={handlePriceSubmit} />
+      <ScheduleEditorModal visible={scheduleModalOpen && pricingPermission.canEdit} mode={scheduleModalMode} item={selectedItem} schedule={selectedSchedule} loading={submitting} onClose={() => setScheduleModalOpen(false)} onSubmit={handleScheduleSubmit} />
     </View>
   )
 }

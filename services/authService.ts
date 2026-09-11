@@ -128,6 +128,13 @@ export class AuthService {
                 }
               }
             }
+            resolvedPermissions {
+              key
+              canView
+              canCreate
+              canEdit
+              canDelete
+            }
             org {
               id
               name
@@ -188,6 +195,19 @@ export class AuthService {
           email
           isVerified
           orgId
+          approvalStatus
+          position {
+            name
+            description
+            id
+          }
+          resolvedPermissions {
+            key
+            canView
+            canCreate
+            canEdit
+            canDelete
+          }
         }
       }
     `;
@@ -542,11 +562,6 @@ export class AuthService {
 
   static async initializeAuth(): Promise<AuthState> {
     try {
-      const storedAuthState = await this.getStoredAuthState();
-      if (storedAuthState) {
-        return storedAuthState;
-      }
-
       const user = await this.fetchCurrentUser();
       const { accessToken, refreshToken } = await this.getTokens();
 
@@ -666,7 +681,7 @@ export class AuthService {
     const token = await this.silentRefresh();
     if (!token) return null;
 
-    const user = await this.getCurrentUser();
+    const user = await this.fetchCurrentUser();
     if (!user) return null;
 
     const { refreshToken } = await this.getTokens();

@@ -21,6 +21,7 @@ import {
   type SupplierWalletSummary,
 } from '@/services/supplierService/financeService'
 import { DataTable, EmptyState } from '@/components/DataTable'
+import { usePermissions } from '@/hooks/usePermissions'
 
 function formatPHP(value: number): string {
   return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(value)
@@ -30,8 +31,17 @@ function formatDate(value: string): string {
   return new Date(value).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+const withdrawalStatusNote = (status: string) => ({
+  APPROVED: 'Approved and awaiting payout.',
+  PROCESSING: 'Payout processing.',
+  COMPLETED: 'Payout completed.',
+  FAILED: 'Payout failed. Reserved funds were returned.',
+}[status]);
+
 export default function FinanceWithdrawalsScreen() {
   const { colors } = useTheme()
+  const { can } = usePermissions()
+  const canRequestWithdrawal = can('supplierWithdrawalsPage', 'canCreate')
   const [wallet, setWallet] = useState<SupplierWalletSummary | null>(null)
   const [payoutMethods, setPayoutMethods] = useState<SupplierPayoutMethod[]>([])
   const [withdrawals, setWithdrawals] = useState<SupplierWithdrawalRecord[]>([])
@@ -158,7 +168,7 @@ export default function FinanceWithdrawalsScreen() {
         <FinanceStatCard title="Total requests" value={withdrawals.length.toString()} hint="Historical submissions" accent="#0EA5E9" icon={Banknote} />
       </FinanceStatGrid>
 
-      <FinanceSectionCard title="Request withdrawal" subtitle="Choose a payout method and enter an amount">
+      {canRequestWithdrawal ? <FinanceSectionCard title="Request withdrawal" subtitle="Choose a payout method and enter an amount">
         <FinanceFormGrid>
           <View style={{ flex: 1, minWidth: 220 }}>
             <TextInput
@@ -217,7 +227,7 @@ export default function FinanceWithdrawalsScreen() {
             </View>
           </View>
         ) : null}
-      </FinanceSectionCard>
+      </FinanceSectionCard> : null}
 
       <FinanceSectionCard title="Withdrawal history" subtitle="Your recent payout requests">
         <View style={styles.tableToolbar}>
@@ -256,7 +266,7 @@ export default function FinanceWithdrawalsScreen() {
                   <Text key="amount" style={{ color: colors.text, fontWeight: '700' }}>{formatPHP(entry.amount)}</Text>,
                   <Text key="method" style={{ color: colors.textSecondary, fontSize: 12 }}>{entry.payoutMethod.accountName}</Text>,
                   <Text key="date" style={{ color: colors.textSecondary, fontSize: 12 }}>{formatDate(entry.requestedAt)}</Text>,
-                  <Text key="status" style={{ color: colors.textSecondary, fontSize: 12 }}>{entry.status}</Text>,
+                  <View key="status"><Text style={{ color: colors.textSecondary, fontSize: 12 }}>{entry.status}</Text>{withdrawalStatusNote(entry.status) ? <Text style={{ color: colors.textSecondary, fontSize: 10, marginTop: 2 }}>{withdrawalStatusNote(entry.status)}</Text> : null}</View>,
                   <Pressable key="action" style={[styles.actionButton, { borderColor: colors.border }]}> 
                     <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>View</Text>
                   </Pressable>,

@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react'
 import { View, Text, ScrollView, RefreshControl, useWindowDimensions } from 'react-native'
+import { useLocalSearchParams } from 'expo-router'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Package, PackageX, Star, Eye, AlertTriangle, MessageSquare } from 'lucide-react-native'
 import { useTheme } from '@/contexts/ThemeContext'
@@ -16,6 +17,7 @@ import { AddSupplierItemModal } from '@/components/supplier/catalog/AddSupplierI
 import { CatalogPagination } from '@/components/supplier/catalog/CatalogPagination'
 import { MarketplaceReadinessModal } from '@/components/supplier/catalog/MarketplaceReadinessModal'
 import type { MarketplaceListing } from '@/services/marketplaceService'
+import { usePermissions } from '@/hooks/usePermissions'
 
 
 const BREAKPOINTS = { tablet: 768, desktop: 1100 }
@@ -35,7 +37,12 @@ interface CatalogScreenProps {
 
 export default function CatalogScreen({ onAddItem }: CatalogScreenProps) {
   const { colors } = useTheme()
+  const { globalCategoryId } = useLocalSearchParams<{ globalCategoryId?: string }>()
   const { user } = useAuth()
+  const { can } = usePermissions()
+  const canCreate = can('supplierProductsPage', 'canCreate')
+  const canEdit = can('supplierProductsPage', 'canEdit')
+  const canDelete = can('supplierProductsPage', 'canDelete')
   const [addModalVisible, setAddModalVisible] = useState(false)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
@@ -124,6 +131,7 @@ export default function CatalogScreen({ onAddItem }: CatalogScreenProps) {
 
   const filtered = useMemo(() => {
     let result = items
+    if (globalCategoryId) result = result.filter((item) => item.globalCategory?.id === globalCategoryId)
     if (status !== 'ALL') result = result.filter((i) => getProductStatus(i) === status)
     if (minRating > 0) result = result.filter((i) => i.averageRating >= minRating)
     if (search.trim()) {
@@ -141,10 +149,11 @@ export default function CatalogScreen({ onAddItem }: CatalogScreenProps) {
       case 'STOCK_LOW': sorted.sort((a, b) => a.availableQty - b.availableQty); break
     }
     return sorted
-  }, [items, status, minRating, search, sort])
+  }, [items, globalCategoryId, status, minRating, search, sort])
 
   const openView = (item: SupplierItem) => { setSelectedItem(item); setModalEditMode(false); setModalVisible(true) }
   const openEdit = (item: SupplierItem) => { setSelectedItem(item); setModalEditMode(true); setModalVisible(true) }
+  const closeProductModal = () => { setModalVisible(false); setModalEditMode(false); setSelectedItem(null) }
   useEffect(() => { setPage(1) }, [search, status, minRating, sort])
 
   // Slice for display:
@@ -197,7 +206,7 @@ export default function CatalogScreen({ onAddItem }: CatalogScreenProps) {
             layout={layout} onLayoutChange={(v) => { setLayout(v); persist(STORAGE_KEYS.layout, v) }}
             showLayoutToggle={isDesktop}
             onRefresh={onRefresh}
-            onAddItem={() => setAddModalVisible(true)}
+            onAddItem={canCreate ? () => setAddModalVisible(true) : undefined}
           />
         </View>
         <View style={{ position: 'relative', zIndex: 1 }}>
@@ -218,9 +227,9 @@ export default function CatalogScreen({ onAddItem }: CatalogScreenProps) {
           ) : (
             <>
               {isDesktop && layout === 'table' ? (
-                <CatalogTable items={paginatedItems} onView={openView} onEdit={openEdit} onValidate={openMarketplaceModal} />
+                <CatalogTable items={paginatedItems} onView={openView} onEdit={canEdit ? openEdit : undefined} onValidate={canEdit ? openMarketplaceModal : undefined} />
               ) : (
-                <CatalogCards items={paginatedItems} columns={cardColumns} onView={openView} onEdit={openEdit} onValidate={openMarketplaceModal} />
+                <CatalogCards items={paginatedItems} columns={cardColumns} onView={openView} onEdit={canEdit ? openEdit : undefined} onValidate={canEdit ? openMarketplaceModal : undefined} />
               )}
               <CatalogPagination
                 page={page}
@@ -238,14 +247,17 @@ export default function CatalogScreen({ onAddItem }: CatalogScreenProps) {
         item={selectedItem}
         visible={modalVisible}
         startInEditMode={modalEditMode}
-        onClose={() => setModalVisible(false)}
-        onUpdated={(updated) => {
+        canEdit={canEdit}
+        canDelete={canDelete}
+        onClose={closeProductModal}
+        onUpdated={async (updated) => {
           setCatalog((prev) => prev ? { ...prev, items: prev.items.map((i) => (i.id === updated.id ? updated : i)) } : prev)
           setSelectedItem(updated)
+          await load()
         }}
       />
       <AddSupplierItemModal
-        visible={addModalVisible}
+        visible={canCreate && addModalVisible}
         catalogId={catalog?.id ?? ''}
         onClose={() => setAddModalVisible(false)}
         onCreated={(created) => {
@@ -255,7 +267,7 @@ export default function CatalogScreen({ onAddItem }: CatalogScreenProps) {
       {/* Marketplace readiness / publish / unpublish modal */}
       {marketplaceItem && (
         <MarketplaceReadinessModal
-          visible={marketplaceModalVisible}
+          visible={canEdit && marketplaceModalVisible}
           supplierItemId={marketplaceItem.id}
           itemName={marketplaceItem.name}
           currentListing={marketplaceItem.marketplaceListing}

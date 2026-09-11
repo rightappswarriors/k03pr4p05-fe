@@ -15,6 +15,7 @@ const formatDate = (iso: string) =>
 
 const COLUMNS = [
   { key: 'product',     label: 'Product',         flex: 2.4 },
+  { key: 'category',    label: 'Category',         flex: 1.1 },
   { key: 'sku',         label: 'SKU',              flex: 0.9 },
   { key: 'rating',      label: 'Rating',           flex: 1.1 },
   { key: 'price',       label: 'Price',            flex: 1 },
@@ -32,9 +33,9 @@ export function CatalogTable({
 }: {
   items: SupplierItem[]
   onView: (item: SupplierItem) => void
-  onEdit: (item: SupplierItem) => void
+  onEdit?: (item: SupplierItem) => void
   // Opens the readiness modal for publish / unpublish / validate.
-  onValidate: (item: SupplierItem) => void
+  onValidate?: (item: SupplierItem) => void
 }) {
   const { colors } = useTheme()
 
@@ -85,6 +86,10 @@ export function CatalogTable({
               </View>
             </View>
 
+            <Text style={{ flex: 1.1, fontSize: 12, color: colors.textSecondary }} numberOfLines={1}>
+              {item.globalCategory?.name ?? (item as any).category?.name ?? '—'}
+            </Text>
+
             <Text style={{ flex: 0.9, fontSize: 12, color: colors.textSecondary }}>{item.sku ?? '—'}</Text>
 
             <View style={{ flex: 1.1 }}>
@@ -106,13 +111,13 @@ export function CatalogTable({
             {/* Marketplace status + quick action */}
             <View style={{ flex: 1.1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <MarketplaceBadge status={listing?.status} size="xs" />
-              <TouchableOpacity
+              {onValidate ? <TouchableOpacity
                 onPress={(e) => { e.stopPropagation?.(); onValidate(item) }}
                 style={{ padding: 4 }}
                 hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
               >
                 <Globe size={14} color="#2563EB" />
-              </TouchableOpacity>
+              </TouchableOpacity> : null}
             </View>
 
             <Text style={{ flex: 0.8, fontSize: 11, color: colors.textSecondary }}>
@@ -127,12 +132,12 @@ export function CatalogTable({
               >
                 <Eye size={15} color={colors.textSecondary} />
               </TouchableOpacity>
-              <TouchableOpacity
+              {onEdit ? <TouchableOpacity
                 onPress={(e) => { e.stopPropagation?.(); onEdit(item) }}
                 style={{ padding: 6 }}
               >
                 <Pencil size={15} color={colors.textSecondary} />
-              </TouchableOpacity>
+              </TouchableOpacity> : null}
             </View>
           </TouchableOpacity>
         )

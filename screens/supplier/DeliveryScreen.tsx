@@ -25,6 +25,7 @@ import { FadeInView } from '@/components/FadeInView'
 import { KpiSkeletonRow, OrderCardSkeletonList } from '@/components/LoadingSkeleton'
 import DeliveryDetailsScreen from './DeliveryDetailsScreen'
 import { getCardWidthPct, getKpiColumns } from './SupplierDashboardScreen'
+import { usePermissions } from '@/hooks/usePermissions'
 
 const BREAKPOINTS = { tablet: 768, desktop: 1100 }
 
@@ -43,6 +44,8 @@ const formatPHP = (amount: number) =>
 export default function DeliveryScreen() {
   const { colors } = useTheme()
   const { user } = useAuth()
+  const { permissionFor } = usePermissions()
+  const deliveryPermission = permissionFor('supplierDeliveriesPage')
   const { width } = useWindowDimensions()
 
   const isTablet = width >= BREAKPOINTS.tablet
@@ -173,6 +176,7 @@ export default function DeliveryScreen() {
         poId={selectedPOId}
         onBack={() => setSelectedPOId(null)}
         onUpdated={load}
+        canEdit={deliveryPermission.canEdit}
       />
     )
   }
@@ -252,8 +256,8 @@ export default function DeliveryScreen() {
         <DeliveryTable
           deliveries={filtered}
           onSelect={setSelectedPOId}
-          onMarkInTransit={handleMarkInTransit}
-          onMarkDelivered={handleMarkDelivered}
+          onMarkInTransit={deliveryPermission.canEdit ? handleMarkInTransit : undefined}
+          onMarkDelivered={deliveryPermission.canEdit ? handleMarkDelivered : undefined}
         />
       ) : (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>
@@ -262,8 +266,8 @@ export default function DeliveryScreen() {
               <DeliveryCard
                 delivery={d}
                 onPress={() => setSelectedPOId(d.poId)}
-                onMarkInTransit={() => handleMarkInTransit(d)}
-                onMarkDelivered={() => handleMarkDelivered(d)}
+                onMarkInTransit={deliveryPermission.canEdit ? () => handleMarkInTransit(d) : undefined}
+                onMarkDelivered={deliveryPermission.canEdit ? () => handleMarkDelivered(d) : undefined}
               />
             </FadeInView>
           ))}

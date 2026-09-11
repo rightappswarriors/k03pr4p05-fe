@@ -12,9 +12,9 @@ import {
 } from '@/components/supplier/finance/FinanceScreenShell'
 import { DataTable, EmptyState } from '@/components/DataTable'
 import {
-  getSupplierFinanceFeeHistory,
+  getSupplierFeeHistoryPage,
   getSupplierWalletSummary,
-  type SupplierLedgerEntry,
+  type SupplierFeeHistoryItem,
   type SupplierWalletSummary,
 } from '@/services/supplierService/financeService'
 import { styles } from './FinancePayoutMethodsScreen'
@@ -30,7 +30,7 @@ function formatDate(value: string): string {
 export default function FinanceFeeHistoryScreen() {
   const { colors } = useTheme()
   const [wallet, setWallet] = useState<SupplierWalletSummary | null>(null)
-  const [entries, setEntries] = useState<SupplierLedgerEntry[]>([])
+  const [entries, setEntries] = useState<SupplierFeeHistoryItem[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -38,10 +38,10 @@ export default function FinanceFeeHistoryScreen() {
       try {
         const [walletData, feeData] = await Promise.all([
           getSupplierWalletSummary(),
-          getSupplierFinanceFeeHistory(),
+          getSupplierFeeHistoryPage({ page: 1, limit: 20 }),
         ])
         setWallet(walletData)
-        setEntries(feeData)
+        setEntries(feeData.items)
       } finally {
         setLoading(false)
       }
@@ -50,8 +50,8 @@ export default function FinanceFeeHistoryScreen() {
     load()
   }, [])
 
-  const totalFees = entries.reduce((sum, entry) => sum + Math.abs(entry.amount), 0)
-  const available = useMemo(() => (wallet ? wallet.balance - wallet.heldBalance : 0), [wallet])
+  const totalFees = entries.reduce((sum, entry) => sum + entry.platformFee, 0)
+  const available = useMemo(() => wallet?.balance ?? 0, [wallet])
   const lifetimeEarnings = useMemo(() => (wallet ? wallet.balance + totalFees : 0), [wallet, totalFees])
 
   return (
@@ -93,9 +93,9 @@ export default function FinanceFeeHistoryScreen() {
             rows={entries.map((entry) => ({
               key: entry.id,
               cells: [
-                <Text key="fee" style={{ color: colors.text, fontWeight: '700' }}>{entry.sourceType.replace(/_/g, ' ')}</Text>,
-                <Text key="date" style={{ color: colors.textSecondary, fontSize: 12 }}>{formatDate(entry.createdAt)}</Text>,
-                <Text key="amount" style={{ color: colors.error, fontWeight: '800' }}>{formatPHP(entry.amount)}</Text>,
+                <Text key="fee" style={{ color: colors.text, fontWeight: '700' }}>{entry.poNumber ?? entry.poId}</Text>,
+                <Text key="date" style={{ color: colors.textSecondary, fontSize: 12 }}>{formatDate(entry.settledAt)}</Text>,
+                <Text key="amount" style={{ color: colors.error, fontWeight: '800' }}>{formatPHP(entry.platformFee)}</Text>,
               ],
             }))}
             emptyState={<EmptyState title="No fee history yet" message="Fee activity will appear after charges are posted to your wallet." />}

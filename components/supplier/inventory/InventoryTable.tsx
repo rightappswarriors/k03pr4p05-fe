@@ -36,8 +36,8 @@ export function InventoryTable({
 }: {
   items: InventoryRowData[]
   onView: (item: InventoryRowData) => void
-  onReceive: (item: InventoryRowData) => void
-  onAdjust: (item: InventoryRowData) => void
+  onReceive?: (item: InventoryRowData) => void
+  onAdjust?: (item: InventoryRowData) => void
 }) {
   const { colors } = useTheme()
 
@@ -84,8 +84,8 @@ export function InventoryTable({
           <Text style={{ flex: 0.9, fontSize: 11, color: colors.textSecondary }}>{formatDate(item.updatedAt)}</Text>
           <View style={{ width: 110, flexDirection: 'row', gap: 4, justifyContent: 'flex-end' }}>
             <TouchableOpacity onPress={() => onView(item)} style={{ padding: 6 }}><Eye size={15} color={colors.textSecondary} /></TouchableOpacity>
-            <TouchableOpacity onPress={() => onReceive(item)} style={{ padding: 6 }}><PlusCircle size={15} color={colors.textSecondary} /></TouchableOpacity>
-            <TouchableOpacity onPress={() => onAdjust(item)} style={{ padding: 6 }}><ClipboardEdit size={15} color={colors.textSecondary} /></TouchableOpacity>
+            {onReceive ? <TouchableOpacity onPress={() => onReceive(item)} style={{ padding: 6 }}><PlusCircle size={15} color={colors.textSecondary} /></TouchableOpacity> : null}
+            {onAdjust ? <TouchableOpacity onPress={() => onAdjust(item)} style={{ padding: 6 }}><ClipboardEdit size={15} color={colors.textSecondary} /></TouchableOpacity> : null}
           </View>
         </TouchableOpacity>
       ))}

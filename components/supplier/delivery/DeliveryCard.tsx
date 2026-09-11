@@ -13,8 +13,8 @@ const formatDate = (iso: string) =>
 interface Props {
   delivery: DeliveryItem
   onPress: () => void
-  onMarkInTransit: () => void
-  onMarkDelivered: () => void
+  onMarkInTransit?: () => void
+  onMarkDelivered?: () => void
 }
 
 export function DeliveryCard({ delivery, onPress, onMarkInTransit, onMarkDelivered }: Props) {
@@ -70,12 +70,12 @@ export function DeliveryCard({ delivery, onPress, onMarkInTransit, onMarkDeliver
 
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border }}>
         <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>{formatPHP(delivery.totalAmount)}</Text>
-        {delivery.status === 'SCHEDULED' && (
+        {delivery.status === 'SCHEDULED' && onMarkInTransit && (
           <TouchableOpacity onPress={onMarkInTransit} style={{ backgroundColor: '#3B82F615', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8 }}>
             <Text style={{ fontSize: 12, fontWeight: '700', color: '#3B82F6' }}>Mark In Transit</Text>
           </TouchableOpacity>
         )}
-        {delivery.status === 'IN_TRANSIT' && (
+        {delivery.status === 'IN_TRANSIT' && onMarkDelivered && (
           <TouchableOpacity onPress={onMarkDelivered} style={{ backgroundColor: '#22C55E15', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8 }}>
             <Text style={{ fontSize: 12, fontWeight: '700', color: '#22C55E' }}>Mark Delivered</Text>
           </TouchableOpacity>

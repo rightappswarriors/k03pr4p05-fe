@@ -25,7 +25,7 @@ interface Props {
 export function PurchaseOrderCard({ po, selected, selectionMode, onPress, onToggleSelect, onAccept, onReject }: Props) {
   const { colors } = useTheme()
   const scale = useRef(new Animated.Value(1)).current
-  const statusColor = { PENDING: '#F59E0B', ACCEPTED: '#3B82F6', REJECTED: '#EF4444', IN_TRANSIT: '#8B5CF6', DELIVERED: '#22C55E', CANCELLED: '#6B7280' }[po.status]
+  const statusColor = { PENDING: '#F59E0B', SUPPLIER_ACCEPTED: '#3B82F6', PREPARING: '#3B82F6', ACCEPTED: '#3B82F6', REJECTED: '#EF4444', IN_TRANSIT: '#8B5CF6', DELIVERED: '#22C55E', CANCELLED: '#6B7280' }[po.status]
   const priority = getOrderPriority(po)
   const expectedDelivery = po.delivery?.scheduledDate ?? po.requestedDate
 

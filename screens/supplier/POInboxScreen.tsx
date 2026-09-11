@@ -29,6 +29,7 @@ import type {
   POStatus,
 } from '@/types'
 import { ELIGIBLE_RFQ_STATUSES } from '@/types'
+import { usePermissions } from '@/hooks/usePermissions'
 
 const BREAKPOINTS = { tablet: 768, desktop: 1100 }
 
@@ -36,25 +37,35 @@ const BREAKPOINTS = { tablet: 768, desktop: 1100 }
 
 const PO_STATUS_COLORS: Record<POStatus, string> = {
   PENDING: '#F59E0B',
+  SUPPLIER_ACCEPTED: '#10B981',
+  PREPARING: '#3B82F6',
   ACCEPTED: '#10B981',
+  READY_FOR_DISPATCH: '#3B82F6',
   REJECTED: '#EF4444',
   IN_TRANSIT: '#3B82F6',
   DELIVERED: '#06B6D4',
+  COMPLETED: '#06B6D4',
   CANCELLED: '#94A3B8',
 }
 
 const PO_STATUS_LABELS: Record<POStatus, string> = {
   PENDING: 'Pending',
+  SUPPLIER_ACCEPTED: 'Supplier Accepted',
+  PREPARING: 'Preparing',
   ACCEPTED: 'Accepted',
   REJECTED: 'Rejected',
+  READY_FOR_DISPATCH: 'Ready for Dispatch',
   IN_TRANSIT: 'In Transit',
   DELIVERED: 'Delivered',
+  COMPLETED: 'Completed',
   CANCELLED: 'Cancelled',
 }
 
 const PO_STATUS_FILTERS: Array<{ key: POStatus | 'ALL'; label: string }> = [
   { key: 'ALL', label: 'All POs' },
   { key: 'PENDING', label: 'Pending' },
+  { key: 'SUPPLIER_ACCEPTED', label: 'Accepted' },
+  { key: 'PREPARING', label: 'Preparing' },
   { key: 'ACCEPTED', label: 'Accepted' },
   { key: 'IN_TRANSIT', label: 'In Transit' },
   { key: 'DELIVERED', label: 'Delivered' },
@@ -877,6 +888,10 @@ interface POInboxScreenProps {
 export default function POInboxScreen({ onRfqPress, onPoPress }: POInboxScreenProps) {
   const { colors } = useTheme()
   const { user } = useAuth()
+  const { can } = usePermissions()
+  const canViewRfqs = can('supplierRFQPage', 'canView')
+  const canViewPurchaseOrders = can('supplierPurchaseOrderPage', 'canView')
+  const canCreatePurchaseOrder = can('supplierPurchaseOrderPage', 'canCreate')
   const { width } = useWindowDimensions()
 
   const kpiColumns = getKpiColumns(width)
@@ -888,7 +903,7 @@ export default function POInboxScreen({ onRfqPress, onPoPress }: POInboxScreenPr
   const gridGap = 10
   const gridAvailableWidth = (contentMaxWidth ? Math.min(width, contentMaxWidth) : width) - horizontalPadding * 2
   const gridCardWidth = (gridAvailableWidth - gridGap * (gridColumns - 1)) / gridColumns
-  const [activeTab, setActiveTab] = useState<ActiveTab>('RFQ')
+  const [activeTab, setActiveTab] = useState<ActiveTab>(canViewRfqs ? 'RFQ' : 'PO')
   const [rfqs, setRfqs] = useState<SupplierRfqInboxItem[]>([])
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([])
   const [loading, setLoading] = useState(true)
@@ -911,10 +926,15 @@ export default function POInboxScreen({ onRfqPress, onPoPress }: POInboxScreenPr
 
   const isDesktop = width >= BREAKPOINTS.desktop
 
+  useEffect(() => {
+    if (activeTab === 'RFQ' && !canViewRfqs && canViewPurchaseOrders) setActiveTab('PO')
+    if (activeTab === 'PO' && !canViewPurchaseOrders && canViewRfqs) setActiveTab('RFQ')
+  }, [activeTab, canViewPurchaseOrders, canViewRfqs])
+
   // ─── Fetch RFQs ────────────────────────────────────────────────────────────────
 
   const loadRfqs = useCallback(async () => {
-    if (!user?.orgId) return
+    if (!user?.orgId || !canViewRfqs) { setLoading(false); return }
 
     let dateFrom: string | null = null
     let dateTo: string | null = null
@@ -957,12 +977,12 @@ export default function POInboxScreen({ onRfqPress, onPoPress }: POInboxScreenPr
     } finally {
       setLoading(false)
     }
-  }, [user?.orgId, dateFilter, customRange])
+  }, [canViewRfqs, user?.orgId, dateFilter, customRange])
 
   // ─── Fetch Purchase Orders ─────────────────────────────────────────────────────
 
   const loadPos = useCallback(async () => {
-    if (!user?.orgId) return
+    if (!user?.orgId || !canViewPurchaseOrders) { setPoLoading(false); return }
     setPoLoading(true)
     try {
       const data = await fetchPurchaseOrdersForSupplier(user.orgId, poStatusFilter)
@@ -973,7 +993,7 @@ export default function POInboxScreen({ onRfqPress, onPoPress }: POInboxScreenPr
     } finally {
       setPoLoading(false)
     }
-  }, [user?.orgId, poStatusFilter])
+  }, [canViewPurchaseOrders, user?.orgId, poStatusFilter])
 
   useEffect(() => {
     loadRfqs()
@@ -1277,7 +1297,7 @@ export default function POInboxScreen({ onRfqPress, onPoPress }: POInboxScreenPr
           <StatCard title="Pending" value={purchaseOrders.filter(p => p.status === 'PENDING').length} accent={PO_STATUS_COLORS.PENDING} icon={Clock} width="100%" />
         </FadeInView>
         <FadeInView delay={80} style={{ flexGrow: 1, flexBasis: kpiMinWidth, minWidth: kpiMinWidth }}>
-          <StatCard title="Accepted" value={purchaseOrders.filter(p => p.status === 'ACCEPTED').length} accent={PO_STATUS_COLORS.ACCEPTED} icon={CheckCircle2} width="100%" />
+          <StatCard title="Accepted" value={purchaseOrders.filter(p => p.status === 'SUPPLIER_ACCEPTED' || p.status === 'ACCEPTED').length} accent={PO_STATUS_COLORS.SUPPLIER_ACCEPTED} icon={CheckCircle2} width="100%" />
         </FadeInView>
         <FadeInView delay={120} style={{ flexGrow: 1, flexBasis: kpiMinWidth, minWidth: kpiMinWidth }}>
           <StatCard title="Delivered" value={purchaseOrders.filter(p => p.status === 'DELIVERED').length} accent={PO_STATUS_COLORS.DELIVERED} icon={Package} width="100%" />
@@ -1294,7 +1314,7 @@ export default function POInboxScreen({ onRfqPress, onPoPress }: POInboxScreenPr
         <>
           <CompactStatCard title="Total POs" value={purchaseOrders.length} accent={PO_STATUS_COLORS.PENDING} icon={FileText} width="48.5%" />
           <CompactStatCard title="Pending" value={purchaseOrders.filter(p => p.status === 'PENDING').length} accent={RFQ_STATUS_COLORS.NEGOTIATING} icon={Clock} width="48.5%" />
-          <CompactStatCard title="Accepted" value={purchaseOrders.filter(p => p.status === 'ACCEPTED').length} accent={PO_STATUS_COLORS.ACCEPTED} icon={CheckCircle2} width="48.5%" />
+          <CompactStatCard title="Accepted" value={purchaseOrders.filter(p => p.status === 'SUPPLIER_ACCEPTED' || p.status === 'ACCEPTED').length} accent={PO_STATUS_COLORS.SUPPLIER_ACCEPTED} icon={CheckCircle2} width="48.5%" />
           <CompactStatCard title="Closed" value={purchaseOrders.filter(p => p.status === 'DELIVERED').length} accent={PO_STATUS_COLORS.DELIVERED} icon={Package} width="48.5%" />
         </>
       )}
@@ -1372,13 +1392,13 @@ export default function POInboxScreen({ onRfqPress, onPoPress }: POInboxScreenPr
                   borderColor: colors.border,
                   overflow: 'hidden',
                 }}>
-                  <TabButton label="RFQ Inbox" isActive={activeTab === 'RFQ'} onPress={() => setActiveTab('RFQ')} count={rfqs.length} />
-                  <TabButton label="Purchase Orders" isActive={activeTab === 'PO'} onPress={() => setActiveTab('PO')} count={purchaseOrders.length} />
+                  {canViewRfqs ? <TabButton label="RFQ Inbox" isActive={activeTab === 'RFQ'} onPress={() => setActiveTab('RFQ')} count={rfqs.length} /> : null}
+                  {canViewPurchaseOrders ? <TabButton label="Purchase Orders" isActive={activeTab === 'PO'} onPress={() => setActiveTab('PO')} count={purchaseOrders.length} /> : null}
                 </View>
                 <TouchableOpacity onPress={onRefresh} style={{ padding: 8, borderRadius: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}>
                   <RefreshCcw size={16} color={colors.text} />
                 </TouchableOpacity>
-                {!selectionMode && activeTab === 'RFQ' && (
+                {canCreatePurchaseOrder && !selectionMode && activeTab === 'RFQ' && (
                   <TouchableOpacity onPress={() => setSelectionMode(true)} style={{ padding: 8, borderRadius: 8, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' }}>
                     <Plus size={16} color="#fff" />
                   </TouchableOpacity>
@@ -1515,7 +1535,7 @@ export default function POInboxScreen({ onRfqPress, onPoPress }: POInboxScreenPr
         </View>
 
         <CreateConsolidatedPoModal
-          visible={createPoModalVisible}
+          visible={canCreatePurchaseOrder && createPoModalVisible}
           selectedRfqs={rfqs.filter((r) => selectedRfqs.has(r.id))}
           onClose={() => setCreatePoModalVisible(false)}
           onCancel={handleExitSelectionMode}
@@ -1557,23 +1577,23 @@ export default function POInboxScreen({ onRfqPress, onPoPress }: POInboxScreenPr
                 borderColor: colors.border,
                 overflow: 'hidden',
               }}>
-                <TabButton
+                {canViewRfqs ? <TabButton
                   label="RFQ Inbox"
                   isActive={activeTab === 'RFQ'}
                   onPress={() => setActiveTab('RFQ')}
                   count={rfqs.length}
-                />
-                <TabButton
+                /> : null}
+                {canViewPurchaseOrders ? <TabButton
                   label="Purchase Orders"
                   isActive={activeTab === 'PO'}
                   onPress={() => setActiveTab('PO')}
                   count={purchaseOrders.length}
-                />
+                /> : null}
               </View>
               <TouchableOpacity onPress={onRefresh} style={{ padding: 8, borderRadius: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}>
                 <RefreshCcw size={16} color={colors.text} />
               </TouchableOpacity>
-              {!selectionMode && activeTab === 'RFQ' && (
+              {canCreatePurchaseOrder && !selectionMode && activeTab === 'RFQ' && (
                 <TouchableOpacity
                   onPress={() => setSelectionMode(true)}
                   style={{ padding: 8, borderRadius: 8, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' }}
@@ -1723,7 +1743,7 @@ export default function POInboxScreen({ onRfqPress, onPoPress }: POInboxScreenPr
       </ScrollView>
 
       <CreateConsolidatedPoModal
-        visible={createPoModalVisible}
+        visible={canCreatePurchaseOrder && createPoModalVisible}
         selectedRfqs={rfqs.filter((r) => selectedRfqs.has(r.id))}
         onClose={() => setCreatePoModalVisible(false)}
         onCancel={handleExitSelectionMode}

@@ -6,6 +6,10 @@ export interface SupplierWalletSummary {
   orgId: number
   balance: number
   heldBalance: number
+  pendingWithdrawalTotal: number
+  totalWithdrawn: number
+  lifetimeEarnings: number
+  feesPaid: number
   currency: string
   createdAt: string
   updatedAt: string
@@ -22,6 +26,21 @@ export interface SupplierLedgerEntry {
   status: string
   environment: string
   createdAt: string
+}
+
+export interface SupplierTransactionPageItem { id: number; label: string; direction: string; statusLabel: string; referenceType: string; reference?: string | null; amount: number; balanceAfter: number; sourceType: string; environment: string; createdAt: string; linkedPoNumber?: string | null; linkedWithdrawalId?: number | null }
+export interface SupplierTransactionPage { items: SupplierTransactionPageItem[]; total: number; page: number; limit: number; totalPages: number }
+export interface SupplierFeeHistoryItem { settlementId: string; poId: string; poNumber?: string | null; grossAmount: number; platformFee: number; supplierNet: number; feeRuleId: string; feeRateType: string; feeRate?: number | null; environment: string; settledAt: string; walletPostedAt?: string | null; status: string }
+export interface SupplierFeeHistoryPage { items: SupplierFeeHistoryItem[]; total: number; page: number; limit: number; totalPages: number }
+
+export async function getSupplierTransactionPage(input: { page?: number; limit?: number; search?: string; sourceType?: string; status?: string; from?: string; to?: string } = {}): Promise<SupplierTransactionPage> {
+  const QUERY = gql`query SupplierTransactionPage($page: Int, $limit: Int, $search: String, $sourceType: String, $status: String, $from: DateTime, $to: DateTime) { supplierTransactionPage(page: $page, limit: $limit, search: $search, sourceType: $sourceType, status: $status, from: $from, to: $to) { items { id label direction statusLabel referenceType reference amount balanceAfter sourceType environment createdAt linkedPoNumber linkedWithdrawalId } total page limit totalPages } }`
+  return (await graphQLRequest<{ supplierTransactionPage: SupplierTransactionPage }>(QUERY, input)).supplierTransactionPage
+}
+
+export async function getSupplierFeeHistoryPage(input: { page?: number; limit?: number; environment?: string; from?: string; to?: string } = {}): Promise<SupplierFeeHistoryPage> {
+  const QUERY = gql`query SupplierFeeHistoryPage($page: Int, $limit: Int, $environment: Environment, $from: DateTime, $to: DateTime) { supplierFeeHistoryPage(page: $page, limit: $limit, environment: $environment, from: $from, to: $to) { items { settlementId poId poNumber grossAmount platformFee supplierNet feeRuleId feeRateType feeRate environment settledAt walletPostedAt status } total page limit totalPages } }`
+  return (await graphQLRequest<{ supplierFeeHistoryPage: SupplierFeeHistoryPage }>(QUERY, input)).supplierFeeHistoryPage
 }
 
 export interface SupplierWithdrawalRecord {
@@ -66,6 +85,10 @@ export async function getSupplierWalletSummary(): Promise<SupplierWalletSummary>
         orgId
         balance
         heldBalance
+        pendingWithdrawalTotal
+        totalWithdrawn
+        lifetimeEarnings
+        feesPaid
         currency
         createdAt
         updatedAt

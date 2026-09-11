@@ -14,9 +14,12 @@ import type { SupplierItem } from '@/services/supplierService/supplierService'
 
 interface Props {
   item: SupplierItem
+  canCreate?: boolean
+  canEdit?: boolean
+  canDelete?: boolean
 }
 
-export function VariantsTab({ item }: Props) {
+export function VariantsTab({ item, canCreate = true, canEdit = true, canDelete = true }: Props) {
   const { colors } = useTheme()
   const [variants, setVariants] = useState<SupplierItemVariant[]>([])
   const [groups, setGroups] = useState<VariantGroup[]>([])
@@ -105,19 +108,19 @@ export function VariantsTab({ item }: Props) {
 
       {/* Action bar */}
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-        <TouchableOpacity
+        {canCreate ? <TouchableOpacity
           onPress={() => { setEditingVariant(null); setCreateOpen(true) }}
           style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, backgroundColor: colors.primary }}>
           <Plus size={14} color="#fff" />
           <Text style={{ fontSize: 13, fontWeight: '700', color: '#fff' }}>Add Variant</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> : null}
 
-        <TouchableOpacity
+        {canCreate ? <TouchableOpacity
           onPress={() => setGeneratorOpen(true)}
           style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#BFDBFE' }}>
           <Zap size={14} color="#2563EB" />
           <Text style={{ fontSize: 13, fontWeight: '700', color: '#2563EB' }}>Generator</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> : null}
 
         <TouchableOpacity
           onPress={load}
@@ -141,7 +144,7 @@ export function VariantsTab({ item }: Props) {
           <Text style={{ fontSize: 13, color: colors.textSecondary, textAlign: 'center', maxWidth: 280 }}>
             Use the Generator to auto-create all combinations, or add variants manually.
           </Text>
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+          {canCreate ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
             <TouchableOpacity onPress={() => setGeneratorOpen(true)}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10, backgroundColor: colors.primary }}>
               <Zap size={14} color="#fff" />
@@ -152,7 +155,7 @@ export function VariantsTab({ item }: Props) {
               <Plus size={14} color={colors.text} />
               <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Add Manually</Text>
             </TouchableOpacity>
-          </View>
+          </View> : null}
         </View>
       ) : (
         <ScrollView
@@ -163,15 +166,15 @@ export function VariantsTab({ item }: Props) {
         >
           <VariantTable
             variants={variants}
-            onEdit={handleEdit}
-            onDelete={handleDelete}
+            onEdit={canEdit ? handleEdit : undefined}
+            onDelete={canDelete ? handleDelete : undefined}
           />
         </ScrollView>
       )}
 
       {/* Modals */}
       <VariantGeneratorModal
-        visible={generatorOpen}
+        visible={canCreate && generatorOpen}
         supplierItemId={item.id}
         existingGroups={groups}
         onClose={() => setGeneratorOpen(false)}
@@ -182,7 +185,7 @@ export function VariantsTab({ item }: Props) {
       />
 
       <CreateVariantModal
-        visible={createOpen}
+        visible={(canCreate || canEdit) && createOpen}
         supplierItemId={item.id}
         variantGroups={groups}
         editing={editingVariant}
