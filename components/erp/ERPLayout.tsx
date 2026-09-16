@@ -35,11 +35,15 @@ import {
   Star,
   BadgePercent,
   Link2,
+  ClipboardList,
+  Bell,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { LockedNavItem } from '@/components/LockedFeature';
 import { useAuth } from '@/contexts/AuthContext';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
+import { usePermissions } from '@/hooks/usePermissions';
 
 // ─── DEV: Plan Toggle FAB ─────────────────────────────────────────────────────
 function PlanToggleFAB() {
@@ -119,6 +123,8 @@ type ERPRoute =
   | 'RestockScheduling'
   | 'AuditLog'
   | 'SupplierLinks'
+  | 'PurchaseOrders'
+  | 'Notifications'
   | 'Settings';
 
 const DRAWER_WIDTH = 264; // for mobile drawer
@@ -136,6 +142,8 @@ const ROUTE_TO_PAGE_KEY: Partial<Record<ERPRoute, string>> = {
   DiscountTracking: 'discountPage',
   AuditLog: 'auditLogPage',
   SupplierLinks: 'supplierLinksPage',
+  PurchaseOrders: 'supplierLinksPage',
+  Notifications: 'notificationsPage',
   HR: 'hrPage',
   SalesAnalytics: 'salesAnalyticsPage',
   MasterFile: 'masterFilePage',
@@ -163,6 +171,8 @@ const PATH_TO_ROUTE: Record<string, ERPRoute> = {
   '/restock': 'RestockScheduling',
   '/audit': 'AuditLog',
   '/supplier-links': 'SupplierLinks',
+  '/purchase-orders': 'PurchaseOrders',
+  '/notifications': 'Notifications',
   '/settings': 'Settings',
 };
 
@@ -180,6 +190,8 @@ const ROUTE_TO_PATH: Record<ERPRoute, string> = {
   RestockScheduling: '/(erp)/restock',
   AuditLog: '/(erp)/audit',
   SupplierLinks: '/(erp)/supplier-links',
+  PurchaseOrders: '/(erp)/purchase-orders',
+  Notifications: '/(erp)/notifications',
   Settings: '/(erp)/settings',
 };
 
@@ -198,6 +210,8 @@ const NAV_ICON_MAP: Record<ERPRoute, React.FC<{ size: number; color: string; str
   DiscountTracking: BadgePercent,
   AuditLog: ShieldCheck,
   SupplierLinks: Link2,
+  PurchaseOrders: ClipboardList,
+  Notifications: Bell,
   Settings,
 };
 
@@ -216,6 +230,8 @@ const FREE_NAV: NavItem[] = [
   { key: 'DiscountTracking', label: 'Discounts' },
   { key: 'AuditLog', label: 'Audit Log' },
   { key: 'SupplierLinks', label: 'Supplier Links' },
+  { key: 'PurchaseOrders', label: 'Purchase Orders' },
+  { key: 'Notifications', label: 'Notifications' },
 ];
 
 const GATED_NAV: (NavItem & { featureName: string })[] = [
@@ -568,6 +584,7 @@ export default function ERPLayout({ children }: { children: React.ReactNode }) {
   const { limits } = useSubscription();
   const router = useRouter();
   const pathname = usePathname();
+  const { can } = usePermissions();
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [mfOpen, setMFOpen] = useState(false);
@@ -578,7 +595,11 @@ export default function ERPLayout({ children }: { children: React.ReactNode }) {
   const styles = React.useMemo(() => makeStyles(colors, isTablet), [colors, isTablet]);
 
   // Keep Supplier Links highlighted while viewing a deep-linked relationship workspace.
-  const activeRoute: ERPRoute = pathname.startsWith('/supplier-links/') ? 'SupplierLinks' : (PATH_TO_ROUTE[pathname] ?? 'Dashboard');
+  const activeRoute: ERPRoute = pathname.startsWith('/supplier-links/')
+    ? 'SupplierLinks'
+    : pathname.startsWith('/purchase-orders/')
+      ? 'PurchaseOrders'
+      : (PATH_TO_ROUTE[pathname] ?? 'Dashboard');
 
   const openDrawer = useCallback(() => {
     setDrawerOpen(true);
@@ -632,6 +653,7 @@ export default function ERPLayout({ children }: { children: React.ReactNode }) {
         <View style={styles.headerBadge}>
           <Building2 size={12} color="#fff" strokeWidth={2} />
         </View>
+        <NotificationBell accountContext="RETAIL" enabled={can('notificationsPage', 'canView')} color={colors.text} onPress={() => navigate('Notifications')} />
         {__DEV__ && (<>
           <ThemeToggleButton />
           <PlanToggleFAB />

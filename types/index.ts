@@ -984,7 +984,7 @@ export interface ExtraCharge {
 
 export interface Delivery {
   id: string
-  status: 'SCHEDULED' | 'IN_TRANSIT' | 'DELIVERED' | 'FAILED'
+  status: 'SCHEDULED' | 'IN_TRANSIT' | 'DELIVERED' | 'FAILED' | 'CANCELLED'
   scheduledDate: string
   deliveredAt?: string | null
   driverName?: string | null
@@ -1036,6 +1036,11 @@ export interface PurchaseOrder {
   supplierConfirmation?: 'REVIEW_REQUIRED' | 'CONFIRMED' | 'DECLINED'
   supplierConfirmedAt?: string | null
   supplierExpectedDeliveryAt?: string | null
+  deliveryDateAgreementStatus?: 'PENDING_SUPPLIER' | 'PENDING_BUYER' | 'AGREED'
+  deliveryDateAgreedAt?: string | null
+  deliveryDateResponseDeadlineAt?: string | null
+  deliveryDateProposalVersion?: number
+  deliveryDateAgreementMethod?: 'BUYER_ACCEPTED' | 'SUPPLIER_ACCEPTED' | 'AUTO_BUYER_TIMEOUT' | null
   supplierNote?: string | null
   rejectionReason?: string | null
   subtotalAmount: number
@@ -1057,6 +1062,7 @@ export interface PurchaseOrder {
   conversationId?: string | null
   paymentStatus?: PaymentStatus
   paymentAttemptStatus?: string | null
+  cancellationStatus?: string | null
   preparingAt?: string | null
   receiptSnapshot?: ReceiptSnapshot | null
   conversation?: POConversation | null

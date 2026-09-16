@@ -20,6 +20,7 @@ import {
   CreditCard,
   FolderTree,
   LayoutDashboard,
+  Bell,
   Layers,
   Menu,
   Settings,
@@ -42,6 +43,8 @@ import SettlementScreen from '@/screens/admin/SettlementScreen';
 import WithdrawalReviewScreen from '@/screens/admin/WithdrawalReviewScreen';
 import PayoutReconciliationScreen from '@/screens/admin/PayoutReconciliationScreen';
 import { CategoryGovernancePanel } from '@/screens/admin/CategoryGovernancePanel';
+import NotificationsScreen from '@/screens/shared/NotificationsScreen';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 type AdminRoute =
@@ -58,7 +61,8 @@ type AdminRoute =
   | 'PaymentReconciliation'
   | 'Settlements'
   | 'Withdrawals'
-  | 'PayoutReconciliation';
+  | 'PayoutReconciliation'
+  | 'Notifications';
 
 const DRAWER_WIDTH = 250;   // ← matches ERP sidebar
 const SIDEBAR_WIDTH = 250;  // ← same value, persistent on tablet
@@ -95,6 +99,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'PaymentReconciliation', label: 'Payment Reconciliation', icon: CreditCard },
   { key: 'Settlements', label: 'Settlements', icon: CreditCard },
   { key: 'Withdrawals', label: 'Withdrawals', icon: CreditCard },
+  { key: 'Notifications', label: 'Notifications', icon: Bell },
   { key: 'PayoutReconciliation', label: 'Payout Reconciliation', icon: CreditCard },
   { key: 'Settings', label: 'Settings', icon: Settings },
 ];
@@ -304,6 +309,7 @@ function buildScreenMap(): Record<AdminRoute, React.ReactElement> {
     PaymentReconciliation: <PaymentReconciliationScreen />,
     Settlements: <SettlementScreen />,
     Withdrawals: <WithdrawalReviewScreen />,
+    Notifications: <NotificationsScreen accountContext="ADMIN" />,
     PayoutReconciliation: <PayoutReconciliationScreen />,
     Settings: <SettingsScreen />,
   };
@@ -319,7 +325,7 @@ export default function AdminLayout() {
   const { width } = Dimensions.get('window');
   const isTablet = width >= 768;
 
-  const [activeRoute, setActiveRoute] = useState<AdminRoute>(() => pathname.endsWith('/supplierCategories') ? 'SupplierCategories' : 'Dashboard');
+  const [activeRoute, setActiveRoute] = useState<AdminRoute>(() => pathname.endsWith('/notifications') ? 'Notifications' : pathname.endsWith('/supplierCategories') ? 'SupplierCategories' : 'Dashboard');
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const drawerAnim = useRef(new Animated.Value(0)).current;
@@ -339,7 +345,8 @@ export default function AdminLayout() {
   }, [drawerAnim]);
 
   useEffect(() => {
-    if (pathname.endsWith('/supplierCategories')) setActiveRoute('SupplierCategories');
+    if (pathname.endsWith('/notifications')) setActiveRoute('Notifications');
+    else if (pathname.endsWith('/supplierCategories')) setActiveRoute('SupplierCategories');
   }, [pathname]);
 
   useEffect(() => {
@@ -350,7 +357,9 @@ export default function AdminLayout() {
     (route: AdminRoute) => {
       setActiveRoute(route);
       if (route === 'SupplierCategories') router.push('/(admin)/supplierCategories' as any);
+      else if (route === 'Notifications') router.push('/(admin)/notifications' as any);
       else if (pathname.endsWith('/supplierCategories')) router.replace('/(admin)' as any);
+      else if (pathname.endsWith('/notifications')) router.replace('/(admin)' as any);
       if (!isTablet) closeDrawer();
     },
     [isTablet, closeDrawer, pathname, router],
@@ -393,6 +402,7 @@ export default function AdminLayout() {
           <Shield size={12} color="#fff" strokeWidth={2} />
           <Text style={styles.adminBadgeTx}>SUPER ADMIN</Text>
         </View>
+        <NotificationBell accountContext="ADMIN" enabled color={colors.text} onPress={() => navigate('Notifications')} />
       </View>
 
       <View style={styles.body}>

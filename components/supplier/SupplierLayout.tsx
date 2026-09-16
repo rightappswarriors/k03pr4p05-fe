@@ -50,6 +50,7 @@ import { MasterFileProvider } from '@/contexts/MasterFileContext';
 import PermissionDenied from '@/components/PermissionDenied';
 import { SkeletonBox } from '@/components/LoadingSkeleton';
 import { usePermissions } from '@/hooks/usePermissions';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 
 // ─── DEV: Plan Toggle FAB ─────────────────────────────────────────────────────
 
@@ -548,7 +549,11 @@ export default function ERPLayout({ children }: { children: React.ReactNode }) {
   const styles = React.useMemo(() => makeStyles(colors, isTablet), [colors, isTablet]);
 
   // Keep Supplier Links highlighted while viewing a deep-linked relationship workspace.
-  const activeRoute: SupplierRoute = pathname.startsWith('/supplier-links/') ? 'SupplierLinks' : (PATH_TO_ROUTE[pathname] ?? 'Dashboard');
+  const activeRoute: SupplierRoute = pathname.startsWith('/supplier-links/')
+    ? 'SupplierLinks'
+    : pathname.startsWith('/po-inbox/')
+      ? 'PurchaseOrders'
+      : (PATH_TO_ROUTE[pathname] ?? 'Dashboard');
   const routeAllowed = pathname === '/pending' || canViewSupplierRoute(can, activeRoute);
 
   const openDrawer = useCallback(() => {
@@ -594,6 +599,7 @@ export default function ERPLayout({ children }: { children: React.ReactNode }) {
         <View style={styles.headerBadge}>
           <Building2 size={12} color="#fff" strokeWidth={2} />
         </View>
+        <NotificationBell accountContext="SUPPLIER" enabled={can('supplierNotificationsPage', 'canView')} color={colors.text} onPress={() => navigate('Notifications')} />
 
       </View>
 

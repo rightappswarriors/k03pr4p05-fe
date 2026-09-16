@@ -1,11 +1,13 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react'
 import { View, Text, ScrollView, RefreshControl, useWindowDimensions, TouchableOpacity, Alert } from 'react-native'
+import { useRouter } from 'expo-router'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Truck, Clock, CheckCircle2, AlertTriangle, LayoutGrid, List } from 'lucide-react-native'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   fetchDeliveries,
+  fetchDeliveryByPOId,
   startDelivery,
   markDelivered,
   applyDeliveryFilters,
@@ -26,6 +28,7 @@ import { KpiSkeletonRow, OrderCardSkeletonList } from '@/components/LoadingSkele
 import DeliveryDetailsScreen from './DeliveryDetailsScreen'
 import { getCardWidthPct, getKpiColumns } from './SupplierDashboardScreen'
 import { usePermissions } from '@/hooks/usePermissions'
+import { useSocket } from '@/contexts/SocketContext'
 
 const BREAKPOINTS = { tablet: 768, desktop: 1100 }
 
@@ -44,15 +47,17 @@ const formatPHP = (amount: number) =>
 export default function DeliveryScreen() {
   const { colors } = useTheme()
   const { user } = useAuth()
+  const router = useRouter()
   const { permissionFor } = usePermissions()
   const deliveryPermission = permissionFor('supplierDeliveriesPage')
+  const { subscribe } = useSocket()
   const { width } = useWindowDimensions()
 
   const isTablet = width >= BREAKPOINTS.tablet
   const isDesktop = width >= BREAKPOINTS.desktop
   const horizontalPadding = isDesktop ? 32 : isTablet ? 24 : 16
   const contentMaxWidth = isDesktop ? 1680 : undefined
-  
+
   const cardColumns = getKpiColumns(width)
   const cardWidthPct = getCardWidthPct(cardColumns)
 
@@ -74,6 +79,7 @@ export default function DeliveryScreen() {
   const [sort, setSort] = useState<DeliverySort>('NEWEST')
 
   const [selectedPOId, setSelectedPOId] = useState<string | null>(null)
+  const [actionPOId, setActionPOId] = useState<string | null>(null)
 
   // ── Load persisted preferences once ───────────────────────────────────
   useEffect(() => {
@@ -137,6 +143,33 @@ export default function DeliveryScreen() {
 
   useEffect(() => { load() }, [load])
 
+  const syncDelivery = useCallback(async (poId: string) => {
+    if (!user?.orgId) return null
+    const [nextList, nextDetail] = await Promise.all([fetchDeliveries(user.orgId), fetchDeliveryByPOId(poId)])
+    setDeliveries(nextList)
+    return nextDetail
+  }, [user?.orgId])
+
+  const openPurchaseOrder = useCallback((poId: string) => {
+    const exactPoId = poId.trim()
+    if (!exactPoId) {
+      Alert.alert('Purchase order unavailable', 'Purchase order details are unavailable.')
+      return
+    }
+    router.push({ pathname: '/(supplier)/po-inbox/[id]', params: { id: exactPoId } } as any)
+  }, [router])
+
+  useEffect(() => {
+    const unsubscribe = subscribe((message) => {
+      if (!message.event?.startsWith('purchaseOrder:')) return
+      const changedPOId = String(message.payload?.poId ?? '')
+      if (!changedPOId) return
+      if (changedPOId === selectedPOId) void syncDelivery(changedPOId)
+      else void load()
+    })
+    return () => { unsubscribe() }
+  }, [load, selectedPOId, subscribe, syncDelivery])
+
   const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false) }
 
   // Tablet always renders cards per spec, regardless of the persisted preference
@@ -159,14 +192,14 @@ export default function DeliveryScreen() {
   const handleMarkInTransit = (d: DeliveryItem) => {
     Alert.alert('Mark as In Transit', `Mark delivery for ${d.poNumber} as in transit?`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Confirm', onPress: async () => { try { await startDelivery(d.poId); await load() } catch (e: any) { Alert.alert('Error', e.message ?? 'Failed.') } } },
+      { text: 'Confirm', onPress: async () => { try { setActionPOId(d.poId); await startDelivery(d.poId); await syncDelivery(d.poId) } catch (e: any) { Alert.alert('Unable to start delivery', e.message ?? 'No delivery state was changed.') } finally { setActionPOId(null) } } },
     ])
   }
 
   const handleMarkDelivered = (d: DeliveryItem) => {
     Alert.alert('Confirm Delivery', `Mark ${d.poNumber} as delivered?`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delivered', onPress: async () => { try { await markDelivered(d.poId); await load() } catch (e: any) { Alert.alert('Error', e.message ?? 'Failed.') } } },
+      { text: 'Delivered', onPress: async () => { try { setActionPOId(d.poId); await markDelivered(d.poId); await syncDelivery(d.poId) } catch (e: any) { Alert.alert('Unable to complete delivery', e.message ?? 'No delivery or inventory state was changed.') } finally { setActionPOId(null) } } },
     ])
   }
 
@@ -174,8 +207,10 @@ export default function DeliveryScreen() {
     return (
       <DeliveryDetailsScreen
         poId={selectedPOId}
+        initialDelivery={deliveries.find((delivery) => delivery.poId === selectedPOId) ?? null}
         onBack={() => setSelectedPOId(null)}
-        onUpdated={load}
+        onRefreshCanonical={syncDelivery}
+        onViewPurchaseOrder={openPurchaseOrder}
         canEdit={deliveryPermission.canEdit}
       />
     )
@@ -258,6 +293,7 @@ export default function DeliveryScreen() {
           onSelect={setSelectedPOId}
           onMarkInTransit={deliveryPermission.canEdit ? handleMarkInTransit : undefined}
           onMarkDelivered={deliveryPermission.canEdit ? handleMarkDelivered : undefined}
+          busyPOId={actionPOId}
         />
       ) : (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>
@@ -268,6 +304,7 @@ export default function DeliveryScreen() {
                 onPress={() => setSelectedPOId(d.poId)}
                 onMarkInTransit={deliveryPermission.canEdit ? () => handleMarkInTransit(d) : undefined}
                 onMarkDelivered={deliveryPermission.canEdit ? () => handleMarkDelivered(d) : undefined}
+                busy={actionPOId === d.poId}
               />
             </FadeInView>
           ))}

@@ -1,1 +1,1 @@
-export { default } from '@/screens/supplier/RelationshipWorkspaceScreen'
+export { default } from '@/screens/retailer/RetailerSupplierCatalogScreen'

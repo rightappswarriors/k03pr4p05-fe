@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useTheme } from '@/contexts/ThemeContext'
 import { confirmSandboxPaymentReconciliation, getSandboxPaymentReconciliations, type SandboxPaymentReconciliation } from '@/services/adminCommerceService'
@@ -12,6 +12,7 @@ export default function PaymentReconciliationScreen() {
   const [selected, setSelected] = useState<SandboxPaymentReconciliation | null>(null)
   const [reason, setReason] = useState('Verified successful sandbox payment in Maya Checkout.')
   const [confirming, setConfirming] = useState(false)
+  const confirmationInFlight = useRef(false)
   const [confirmationError, setConfirmationError] = useState<string | null>(null)
   const load = useCallback(async () => {
     try { setLoading(true); const data = await getSandboxPaymentReconciliations(); setPayments(data.adminSandboxPaymentReconciliations) }
@@ -20,7 +21,8 @@ export default function PaymentReconciliationScreen() {
   }, [])
   useEffect(() => { void load() }, [load])
   const confirm = async () => {
-    if (!selected || !reason.trim()) return
+    if (!selected || !reason.trim() || confirmationInFlight.current) return
+    confirmationInFlight.current = true
     try {
       setConfirmationError(null)
       if (__DEV__) console.info('[RECON-FE-2] mutation started', { transactionId: selected.id })
@@ -29,14 +31,14 @@ export default function PaymentReconciliationScreen() {
       if (__DEV__) console.info('[RECON-FE-3] success', { transactionId: selected.id })
       setSelected(null)
       await load()
-      Alert.alert('Sandbox payment confirmed', 'The central payment confirmation workflow completed.')
+      Alert.alert('Sandbox payment confirmed', 'Payment confirmation completed. The payment and purchase-order state have been refreshed.')
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Confirmation was rejected.'
       if (__DEV__) console.warn('[RECON-FE-3] error', { message })
       setConfirmationError(message)
       Alert.alert('Sandbox payment confirmation', message)
     }
-    finally { setConfirming(false) }
+    finally { confirmationInFlight.current = false; setConfirming(false) }
   }
   return <ScrollView style={[styles.root, { backgroundColor: colors.background }]} contentContainerStyle={styles.content}>
     <View style={styles.header}><View><Text style={[styles.title, { color: colors.text }]}>Payment Reconciliation</Text><Text style={{ color: colors.textSecondary }}>Sandbox-only review for Maya payments blocked from independent verification.</Text></View><Pressable onPress={() => void load()} style={[styles.refresh, { backgroundColor: colors.primary }]}><Text style={styles.refreshText}>Refresh</Text></Pressable></View>
@@ -50,7 +52,7 @@ export default function PaymentReconciliationScreen() {
       <Text style={styles.detail}>Provider verification: {payment.verificationResult ?? 'Not available'}</Text>
       {payment.environment === 'SANDBOX' && payment.status === 'RECONCILIATION_REQUIRED' && payment.webhookStatus === 'PAYMENT_SUCCESS' ? <Pressable onPress={() => { if (__DEV__) console.info('[RECON-FE-1] confirm clicked', { transactionId: payment.id }); setConfirmationError(null); setSelected(payment) }} style={[styles.confirm, { backgroundColor: colors.primary }]}><Text style={styles.refreshText}>Confirm Sandbox Payment</Text></Pressable> : <Text style={[styles.blocked, { color: colors.textSecondary }]}>Confirmation is unavailable until complete matching sandbox webhook evidence is persisted.</Text>}
     </View>)}
-    <Modal visible={Boolean(selected)} transparent animationType="fade" onRequestClose={() => setSelected(null)}><View style={styles.overlay}><View style={[styles.modal, { backgroundColor: colors.surface }]}><Text style={[styles.modalTitle, { color: colors.text }]}>Confirm Sandbox Payment</Text><Text style={{ color: colors.textSecondary, marginTop: 8 }}>{selected?.poNumber} · Maya Sandbox · {selected ? money(selected.amount) : ''}</Text><Text style={{ color: colors.textSecondary, marginTop: 8 }}>Maya Status: PAYMENT_SUCCESS{`\n`}Verification: {selected?.verificationResult ?? 'Blocked by K007'}</Text><Text style={[styles.warning, { color: colors.textSecondary }]}>This action is available only for local/sandbox testing. It does not replace production provider verification.</Text><Text style={[styles.reasonLabel, { color: colors.text }]}>Reason *</Text><TextInput value={reason} onChangeText={setReason} multiline style={[styles.input, { borderColor: colors.border, color: colors.text }]} placeholder="Why is this sandbox payment being confirmed?" placeholderTextColor={colors.textSecondary} />{confirmationError && <Text style={styles.error}>{confirmationError}</Text>}<View style={styles.actions}><Pressable onPress={() => setSelected(null)} disabled={confirming}><Text style={{ color: colors.textSecondary, fontWeight: '800' }}>Cancel</Text></Pressable><Pressable onPress={() => void confirm()} disabled={confirming || !reason.trim()} style={[styles.confirm, { backgroundColor: colors.primary, opacity: confirming || !reason.trim() ? 0.55 : 1 }]}><Text style={styles.refreshText}>{confirming ? 'Confirming…' : 'Confirm Sandbox Payment'}</Text></Pressable></View></View></View></Modal>
+    <Modal visible={Boolean(selected)} transparent animationType="fade" onRequestClose={() => { if (!confirming) setSelected(null) }}><View style={styles.overlay}><View style={[styles.modal, { backgroundColor: colors.surface }]}><Text style={[styles.modalTitle, { color: colors.text }]}>Confirm Sandbox Payment</Text><Text style={{ color: colors.textSecondary, marginTop: 8 }}>{selected?.poNumber} · Maya Sandbox · {selected ? money(selected.amount) : ''}</Text><Text style={{ color: colors.textSecondary, marginTop: 8 }}>Maya Status: PAYMENT_SUCCESS{`\n`}Verification: {selected?.verificationResult ?? 'Blocked by K007'}</Text><Text style={[styles.warning, { color: colors.textSecondary }]}>This action is available only for local/sandbox testing. It does not replace production provider verification.</Text><Text style={[styles.reasonLabel, { color: colors.text }]}>Reason *</Text><TextInput value={reason} onChangeText={setReason} editable={!confirming} multiline style={[styles.input, { borderColor: colors.border, color: colors.text }]} placeholder="Why is this sandbox payment being confirmed?" placeholderTextColor={colors.textSecondary} />{confirmationError && <Text style={styles.error}>{confirmationError}</Text>}<View style={styles.actions}><Pressable onPress={() => setSelected(null)} disabled={confirming}><Text style={{ color: colors.textSecondary, fontWeight: '800' }}>Cancel</Text></Pressable><Pressable onPress={() => void confirm()} disabled={confirming || !reason.trim()} style={[styles.confirm, { backgroundColor: colors.primary, opacity: confirming || !reason.trim() ? 0.55 : 1 }]}><Text style={styles.refreshText}>{confirming ? 'Confirming payment...' : 'Confirm Sandbox Payment'}</Text></Pressable></View></View></View></Modal>
   </ScrollView>
 }
 

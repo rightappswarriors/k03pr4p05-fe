@@ -26,6 +26,7 @@ export function MapPinPicker({
     colors,
     initialLatitude,
     initialLongitude,
+    title = 'Pin Outlet Location',
 }: {
     visible: boolean;
     onClose: () => void;
@@ -33,6 +34,7 @@ export function MapPinPicker({
     colors: any;
     initialLatitude?: number;
     initialLongitude?: number;
+    title?: string;
 }) {
     const { isLoaded } = useJsApiLoader({
         id: 'google-map-script',
@@ -181,7 +183,7 @@ export function MapPinPicker({
                         <X size={18} color={colors.text} strokeWidth={2.5} />
                     </TouchableOpacity>
                     <View style={{ flex: 1 }}>
-                        <Text style={[styles.title, { color: colors.text }]}>Pin Outlet Location</Text>
+                        <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
                         <Text style={[styles.hint, { color: colors.textSecondary }]}>
                             {locationError
                                 ? locationError

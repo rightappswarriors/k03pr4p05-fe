@@ -1,3 +1,4 @@
+import React from 'react';
 import { ShieldX } from 'lucide-react-native';
 import { StyleSheet, Text, View } from 'react-native';
 

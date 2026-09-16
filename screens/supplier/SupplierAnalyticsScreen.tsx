@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl, TextInput, Platform } from 'react-native'
+import { useRouter } from 'expo-router'
 import { BarChart3, Wallet, ShoppingCart, Receipt, Package, Users, Calendar, Download, RefreshCw, Search, LayoutGrid, List, ChevronRight, ChevronDown } from 'lucide-react-native'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useToast } from '@/contexts/ToastContext'
@@ -9,7 +10,6 @@ import DateRangePickerModal from '@/components/DateRangePickerModal'
 import { AnalyticsDonut, RevenueTrendChart } from '@/components/supplier/analytics/AnalyticsCharts'
 import { dateKey, presetRange, useSupplierAnalytics, validAnalyticsRange } from '@/hooks/useSupplierAnalytics'
 import { analyticsCSV, comparisonLabel, type AnalyticsOrder } from '@/services/supplierService/supplierAnalyticsService'
-import PODetailScreen from './PODetailScreen'
 import SalesRevenue from '@/components/supplier/analytics/SalesRevenue'
 import ProductsAnalytics from '@/components/supplier/analytics/ProductsAnalytics'
 import CustomersAnalytics from '@/components/supplier/analytics/CustomersAnalytics'
@@ -72,13 +72,13 @@ function RecentOrders({ rows, table, onView }: { rows: AnalyticsOrder[]; table: 
 export default function SupplierAnalyticsScreen() {
   const { colors } = useTheme()
   const toast = useToast()
+  const router = useRouter()
   const state = useSupplierAnalytics()
   const { data, range } = state
   const [width, setWidth] = useState(0)
   const [tab, setTab] = useState('Overview')
   const [dateOpen, setDateOpen] = useState(false)
   const [allMetrics, setAllMetrics] = useState(false)
-  const [selectedPo, setSelectedPo] = useState<string | null>(null)
   const mobile = width < 680
   const wide = width >= 1050
   const columns = width >= 1120 ? 6 : width >= 720 ? 3 : width >= 480 ? 2 : 1
@@ -105,7 +105,10 @@ export default function SupplierAnalyticsScreen() {
     }
   }
 
-  if (selectedPo) return <PODetailScreen poId={selectedPo} onBack={() => setSelectedPo(null)} />
+  const openPurchaseOrder = (purchaseOrderId: string) => {
+    const id = purchaseOrderId.trim()
+    if (id) router.push({ pathname: '/(supplier)/po-inbox/[id]', params: { id } } as never)
+  }
 
   return <View style={{ flex: 1, backgroundColor: colors.background }} onLayout={e => setWidth(e.nativeEvent.layout.width)}>
     <ScrollView refreshControl={<RefreshControl refreshing={state.refreshing} onRefresh={state.refresh} tintColor={colors.primary} />}
@@ -147,7 +150,7 @@ export default function SupplierAnalyticsScreen() {
 
       {state.error && <Panel title="Unable to load analytics"><Text style={body}>We couldn't load your analytics right now.{data ? ' The previous results remain below.' : ''}</Text><TouchableOpacity onPress={state.retry} style={{ ...actionStyle, alignSelf: 'flex-start' }}><Text style={{ color: colors.primary }}>Try Again</Text></TouchableOpacity></Panel>}
 
-      {tab === 'Payouts' ? <PayoutsAnalytics data={data} loading={state.loading} busy={state.refreshing} width={width} options={state.payoutOptions} onOptionsChange={state.setPayoutOptions} /> : tab === 'Fees' ? <FeesAnalytics data={data} loading={state.loading} busy={state.refreshing} width={width} options={state.feeOptions} onOptionsChange={state.setFeeOptions} /> : tab === 'Orders' ? <OrdersAnalytics data={data} loading={state.loading} busy={state.refreshing} width={width} options={state.orderOptions} onOptionsChange={state.setOrderOptions} onView={setSelectedPo} /> : tab === 'Customers' ? <CustomersAnalytics data={data} loading={state.loading} busy={state.refreshing} width={width} options={state.customerOptions} onOptionsChange={state.setCustomerOptions} /> : tab === 'Products' ? <ProductsAnalytics data={data} loading={state.loading} busy={state.refreshing} width={width} options={state.productOptions} onOptionsChange={state.setProductOptions} /> : tab === 'Sales & Revenue' ? <SalesRevenue data={data} loading={state.loading} width={width} recentOrders={data ? <RecentOrders rows={data.recentOrders} table={wide && state.viewMode === 'table'} onView={setSelectedPo} /> : null} /> : tab !== 'Overview' ? <Panel title={tab}><View style={{ paddingVertical: 40, alignItems: 'center', gap: 14 }}><BarChart3 size={34} color={colors.primary} /><Text style={{ color: colors.text, textAlign: 'center', fontSize: 16, fontWeight: '700' }}>Detailed analytics coming in the next increment</Text><Text style={{ ...body, textAlign: 'center' }}>Your selected dates and filters will be preserved. Explore the Overview for current insights.</Text><TouchableOpacity onPress={() => setTab('Overview')} style={actionStyle}><Text style={{ color: colors.primary }}>Back to Overview</Text></TouchableOpacity></View></Panel>
+      {tab === 'Payouts' ? <PayoutsAnalytics data={data} loading={state.loading} busy={state.refreshing} width={width} options={state.payoutOptions} onOptionsChange={state.setPayoutOptions} /> : tab === 'Fees' ? <FeesAnalytics data={data} loading={state.loading} busy={state.refreshing} width={width} options={state.feeOptions} onOptionsChange={state.setFeeOptions} /> : tab === 'Orders' ? <OrdersAnalytics data={data} loading={state.loading} busy={state.refreshing} width={width} options={state.orderOptions} onOptionsChange={state.setOrderOptions} onView={openPurchaseOrder} /> : tab === 'Customers' ? <CustomersAnalytics data={data} loading={state.loading} busy={state.refreshing} width={width} options={state.customerOptions} onOptionsChange={state.setCustomerOptions} /> : tab === 'Products' ? <ProductsAnalytics data={data} loading={state.loading} busy={state.refreshing} width={width} options={state.productOptions} onOptionsChange={state.setProductOptions} /> : tab === 'Sales & Revenue' ? <SalesRevenue data={data} loading={state.loading} width={width} recentOrders={data ? <RecentOrders rows={data.recentOrders} table={wide && state.viewMode === 'table'} onView={openPurchaseOrder} /> : null} /> : tab !== 'Overview' ? <Panel title={tab}><View style={{ paddingVertical: 40, alignItems: 'center', gap: 14 }}><BarChart3 size={34} color={colors.primary} /><Text style={{ color: colors.text, textAlign: 'center', fontSize: 16, fontWeight: '700' }}>Detailed analytics coming in the next increment</Text><Text style={{ ...body, textAlign: 'center' }}>Your selected dates and filters will be preserved. Explore the Overview for current insights.</Text><TouchableOpacity onPress={() => setTab('Overview')} style={actionStyle}><Text style={{ color: colors.primary }}>Back to Overview</Text></TouchableOpacity></View></Panel>
         : state.loading ? <>
           <KpiGrid>{METRICS.map(metric => <SkeletonBox key={metric.key} style={{ width: metricWidth, height: 154 }} />)}</KpiGrid>
           <View style={{ flexDirection: wide ? 'row' : 'column', gap: 14 }}><SkeletonBox style={{ flex: wide ? 3 : undefined, height: 310 }} /><SkeletonBox style={{ flex: wide ? 2 : undefined, height: 310 }} /></View>
@@ -199,7 +202,7 @@ export default function SupplierAnalyticsScreen() {
             </View>
           </Panel>
           <Panel title="Recent Orders" subtitle="Latest 5 settled orders in the selected period" collapsible={mobile}>
-            <RecentOrders rows={data.recentOrders} table={wide && state.viewMode === 'table'} onView={setSelectedPo} />
+            <RecentOrders rows={data.recentOrders} table={wide && state.viewMode === 'table'} onView={openPurchaseOrder} />
           </Panel>
         </>}
     </ScrollView>

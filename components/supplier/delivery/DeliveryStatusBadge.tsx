@@ -7,6 +7,7 @@ export const DELIVERY_STATUS_COLORS: Record<DeliveryStatus, string> = {
     IN_TRANSIT: '#3B82F6',
     DELIVERED: '#22C55E',
     FAILED: '#EF4444',
+    CANCELLED: '#6B7280',
 }
 
 export const DELIVERY_STATUS_LABELS: Record<DeliveryStatus, string> = {
@@ -14,6 +15,7 @@ export const DELIVERY_STATUS_LABELS: Record<DeliveryStatus, string> = {
     IN_TRANSIT: 'In Transit',
     DELIVERED: 'Delivered',
     FAILED: 'Failed',
+    CANCELLED: 'Cancelled',
 }
 
 export function DeliveryStatusBadge({ status, size = 'md' }: { status: DeliveryStatus; size?: 'sm' | 'md' }) {

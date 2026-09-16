@@ -1,9 +1,10 @@
 import React from 'react'
-import { View, Text, TouchableOpacity } from 'react-native'
+import { ActivityIndicator, View, Text, TouchableOpacity } from 'react-native'
 import { MapPin, User, Calendar, Package } from 'lucide-react-native'
 import { useTheme } from '@/contexts/ThemeContext'
 import { DeliveryStatusBadge, DELIVERY_STATUS_COLORS } from './DeliveryStatusBadge'
 import { isOverdue, type DeliveryItem } from '@/services/supplierService/deliveryService'
+import { DeliveryAgreementCountdown } from '@/components/DeliveryAgreementCountdown'
 
 const formatPHP = (amount: number) =>
   new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount)
@@ -15,9 +16,10 @@ interface Props {
   onPress: () => void
   onMarkInTransit?: () => void
   onMarkDelivered?: () => void
+  busy?: boolean
 }
 
-export function DeliveryCard({ delivery, onPress, onMarkInTransit, onMarkDelivered }: Props) {
+export function DeliveryCard({ delivery, onPress, onMarkInTransit, onMarkDelivered, busy = false }: Props) {
   const { colors } = useTheme()
   const color = DELIVERY_STATUS_COLORS[delivery.status]
   const overdue = isOverdue(delivery)
@@ -46,6 +48,9 @@ export function DeliveryCard({ delivery, onPress, onMarkInTransit, onMarkDeliver
           )}
         </View>
       </View>
+      {delivery.cancellationStatus === 'REQUESTED' ? <View style={{ backgroundColor: '#FEF3C7', borderRadius: 8, padding: 8 }}><Text style={{ color: '#92400E', fontSize: 12, fontWeight: '700' }}>Cancellation requested · Fulfillment paused</Text></View> : null}
+      {delivery.status === 'SCHEDULED' && delivery.deliveryDateAgreementStatus === 'PENDING_BUYER' ? <View style={{ backgroundColor: '#FEF3C7', borderRadius: 8, padding: 8, gap: 3 }}><Text style={{ color: '#92400E', fontSize: 12, fontWeight: '700' }}>Awaiting Buyer delivery confirmation</Text>{delivery.deliveryDateResponseDeadlineAt ? <DeliveryAgreementCountdown deadline={delivery.deliveryDateResponseDeadlineAt} audience="DELIVERY" color="#92400E" /> : <Text style={{ color: '#92400E', fontSize: 11 }}>Legacy agreement requires response or review.</Text>}</View> : null}
+      {delivery.deliveryDateAgreementStatus === 'AGREED' && delivery.deliveryDateAgreementMethod === 'AUTO_BUYER_TIMEOUT' ? <Text style={{ color: '#15803D', fontSize: 12, fontWeight: '700' }}>Delivery schedule agreed automatically</Text> : null}
 
       <View style={{ gap: 6 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
@@ -70,14 +75,14 @@ export function DeliveryCard({ delivery, onPress, onMarkInTransit, onMarkDeliver
 
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border }}>
         <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>{formatPHP(delivery.totalAmount)}</Text>
-        {delivery.status === 'SCHEDULED' && onMarkInTransit && (
-          <TouchableOpacity onPress={onMarkInTransit} style={{ backgroundColor: '#3B82F615', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8 }}>
-            <Text style={{ fontSize: 12, fontWeight: '700', color: '#3B82F6' }}>Mark In Transit</Text>
+        {delivery.status === 'SCHEDULED' && delivery.poStatus === 'READY_FOR_DISPATCH' && delivery.deliveryDateAgreementStatus === 'AGREED' && delivery.cancellationStatus !== 'REQUESTED' && onMarkInTransit && (
+          <TouchableOpacity disabled={busy} onPress={onMarkInTransit} style={{ backgroundColor: '#3B82F615', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, opacity: busy ? .6 : 1 }}>
+            {busy ? <ActivityIndicator size="small" color="#3B82F6" /> : <Text style={{ fontSize: 12, fontWeight: '700', color: '#3B82F6' }}>Mark In Transit</Text>}
           </TouchableOpacity>
         )}
         {delivery.status === 'IN_TRANSIT' && onMarkDelivered && (
-          <TouchableOpacity onPress={onMarkDelivered} style={{ backgroundColor: '#22C55E15', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8 }}>
-            <Text style={{ fontSize: 12, fontWeight: '700', color: '#22C55E' }}>Mark Delivered</Text>
+          <TouchableOpacity disabled={busy} onPress={onMarkDelivered} style={{ backgroundColor: '#22C55E15', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, opacity: busy ? .6 : 1 }}>
+            {busy ? <ActivityIndicator size="small" color="#22C55E" /> : <Text style={{ fontSize: 12, fontWeight: '700', color: '#22C55E' }}>Mark Delivered</Text>}
           </TouchableOpacity>
         )}
         {(delivery.status === 'DELIVERED' || delivery.status === 'FAILED') && (

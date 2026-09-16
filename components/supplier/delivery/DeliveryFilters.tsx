@@ -7,7 +7,7 @@ import type { DeliveryStatus, DeliveryDateRange, DeliverySort } from '@/services
 // ASSUMPTION: adjust this import + prop names to match your actual component.
 import DateRangePickerModal from '@/components/DateRangePickerModal'
 
-const STATUS_CHIP_OPTIONS: Array<DeliveryStatus | 'ALL'> = ['ALL', 'SCHEDULED', 'IN_TRANSIT', 'DELIVERED', 'FAILED']
+const STATUS_CHIP_OPTIONS: Array<DeliveryStatus | 'ALL'> = ['ALL', 'SCHEDULED', 'IN_TRANSIT', 'DELIVERED', 'FAILED', 'CANCELLED']
 
 const SORT_OPTIONS: Array<{ key: DeliverySort; label: string }> = [
   { key: 'NEWEST', label: 'Newest' },
