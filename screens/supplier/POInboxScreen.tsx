@@ -1,11 +1,12 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react'
-import { View, Text, ScrollView, TouchableOpacity, RefreshControl, useWindowDimensions, Alert, StyleSheet, DimensionValue } from 'react-native'
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react'
+import { View, Text, ScrollView, TouchableOpacity, RefreshControl, useWindowDimensions, Alert, StyleSheet, DimensionValue, ActivityIndicator } from 'react-native'
 import { RefreshCcw, Clock, CheckCircle2, XCircle, Package, Bell, Eye, FileText, Plus, ShieldCheck, CircleCheck as CircleCheckIcon, Circle as CircleOutlineIcon, ShoppingCart } from 'lucide-react-native'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   fetchSupplierRFQs,
-  fetchPurchaseOrdersForSupplier,
+  fetchPurchaseOrder,
+  fetchSupplierPurchaseOrderPage,
 } from '@/services/supplierService/supplierService'
 import { SectionHeader } from '@/components/supplier/purchase-order/SectionHeader'
 import { RfqCard } from '@/components/supplier/rfq/RfqCard'
@@ -30,8 +31,10 @@ import type {
 } from '@/types'
 import { ELIGIBLE_RFQ_STATUSES } from '@/types'
 import { usePermissions } from '@/hooks/usePermissions'
+import { useSocket } from '@/contexts/SocketContext'
 
 const BREAKPOINTS = { tablet: 768, desktop: 1100 }
+const PO_PAGE_SIZE = 20
 
 // ─── PO Status helpers ──────────────────────────────────────────────────────────
 
@@ -64,13 +67,28 @@ const PO_STATUS_LABELS: Record<POStatus, string> = {
 const PO_STATUS_FILTERS: Array<{ key: POStatus | 'ALL'; label: string }> = [
   { key: 'ALL', label: 'All POs' },
   { key: 'PENDING', label: 'Pending' },
-  { key: 'SUPPLIER_ACCEPTED', label: 'Accepted' },
+  { key: 'SUPPLIER_ACCEPTED', label: 'Supplier Accepted' },
   { key: 'PREPARING', label: 'Preparing' },
   { key: 'ACCEPTED', label: 'Accepted' },
   { key: 'IN_TRANSIT', label: 'In Transit' },
   { key: 'DELIVERED', label: 'Delivered' },
   { key: 'CANCELLED', label: 'Cancelled' },
 ]
+
+function mergePurchaseOrderPages(existing: PurchaseOrder[], incoming: PurchaseOrder[]) {
+  const merged = [...existing]
+  const indexById = new Map(existing.map((po, index) => [po.id, index]))
+  for (const po of incoming) {
+    const existingIndex = indexById.get(po.id)
+    if (existingIndex === undefined) {
+      indexById.set(po.id, merged.length)
+      merged.push(po)
+    } else {
+      merged[existingIndex] = po
+    }
+  }
+  return merged
+}
 
 // ─── Layout helpers ─────────────────────────────────────────────────────────────
 
@@ -892,6 +910,7 @@ export default function POInboxScreen({ onRfqPress, onPoPress }: POInboxScreenPr
   const canViewRfqs = can('supplierRFQPage', 'canView')
   const canViewPurchaseOrders = can('supplierPurchaseOrderPage', 'canView')
   const canCreatePurchaseOrder = can('supplierPurchaseOrderPage', 'canCreate')
+  const { subscribe } = useSocket()
   const { width } = useWindowDimensions()
 
   const kpiColumns = getKpiColumns(width)
@@ -908,7 +927,13 @@ export default function POInboxScreen({ onRfqPress, onPoPress }: POInboxScreenPr
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [poLoading, setPoLoading] = useState(false)
+  const [poLoadingMore, setPoLoadingMore] = useState(false)
+  const [poPage, setPoPage] = useState(1)
+  const [poTotal, setPoTotal] = useState(0)
+  const [poHasNextPage, setPoHasNextPage] = useState(false)
+  const [poSummary, setPoSummary] = useState({ total: 0, pending: 0, accepted: 0, delivered: 0 })
   const [refreshing, setRefreshing] = useState(false)
+  const poRequestVersion = useRef(0)
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<RfqStatusGroup>('ALL')
@@ -981,19 +1006,43 @@ export default function POInboxScreen({ onRfqPress, onPoPress }: POInboxScreenPr
 
   // ─── Fetch Purchase Orders ─────────────────────────────────────────────────────
 
-  const loadPos = useCallback(async () => {
-    if (!user?.orgId || !canViewPurchaseOrders) { setPoLoading(false); return }
-    setPoLoading(true)
-    try {
-      const data = await fetchPurchaseOrdersForSupplier(user.orgId, poStatusFilter)
-      setPurchaseOrders(data)
-    } catch (e: any) {
-      if (__DEV__) console.error('fetchPurchaseOrdersForSupplier error', e)
-      Alert.alert('Error', e.message ?? 'Failed to load purchase orders.')
-    } finally {
+  const loadPos = useCallback(async (targetPage = 1, append = false) => {
+    if (!user?.orgId || !canViewPurchaseOrders) {
       setPoLoading(false)
+      setPoLoadingMore(false)
+      return
+    }
+    const requestVersion = ++poRequestVersion.current
+    if (append) setPoLoadingMore(true)
+    else setPoLoading(true)
+    try {
+      const data = await fetchSupplierPurchaseOrderPage(user.orgId, {
+        status: poStatusFilter,
+        page: targetPage,
+        pageSize: PO_PAGE_SIZE,
+      })
+      if (requestVersion !== poRequestVersion.current) return
+      setPurchaseOrders((current) => append ? mergePurchaseOrderPages(current, data.items) : data.items)
+      setPoPage(data.page)
+      setPoTotal(data.total)
+      setPoHasNextPage(data.hasNextPage)
+      setPoSummary(data.summary)
+    } catch (e: any) {
+      if (requestVersion !== poRequestVersion.current) return
+      if (__DEV__) console.error('fetchSupplierPurchaseOrderPage error', e)
+      Alert.alert('Unable to load purchase orders', e.message ?? 'Your existing purchase orders remain visible. Try again.')
+    } finally {
+      if (requestVersion === poRequestVersion.current) {
+        setPoLoading(false)
+        setPoLoadingMore(false)
+      }
     }
   }, [canViewPurchaseOrders, user?.orgId, poStatusFilter])
+
+  const loadMorePos = useCallback(() => {
+    if (poLoading || poLoadingMore || !poHasNextPage) return
+    void loadPos(poPage + 1, true)
+  }, [loadPos, poHasNextPage, poLoading, poLoadingMore, poPage])
 
   useEffect(() => {
     loadRfqs()
@@ -1004,6 +1053,33 @@ export default function POInboxScreen({ onRfqPress, onPoPress }: POInboxScreenPr
       loadPos()
     }
   }, [activeTab, loadPos])
+
+  useEffect(() => {
+    const unsubscribe = subscribe((message) => {
+      if (!message.event?.startsWith('purchaseOrder:')) return
+      const poId = String(message.payload?.poId ?? '')
+      if (!poId) return
+
+      void fetchPurchaseOrder(poId)
+        .then((freshPo) => {
+          if (!freshPo || Number(freshPo.supplierOrg?.id) !== Number(user?.orgId)) return
+          setPurchaseOrders((current) => {
+            const index = current.findIndex((po) => po.id === freshPo.id)
+            if (index < 0) return current
+            if (poStatusFilter && freshPo.status !== poStatusFilter) {
+              return current.filter((po) => po.id !== freshPo.id)
+            }
+            const next = [...current]
+            next[index] = freshPo
+            return next
+          })
+        })
+        .catch((error) => {
+          if (__DEV__) console.error('purchase-order realtime refresh error', error)
+        })
+    })
+    return unsubscribe
+  }, [poStatusFilter, subscribe, user?.orgId])
 
   const onRefresh = async () => {
     setRefreshing(true)
@@ -1291,31 +1367,31 @@ export default function POInboxScreen({ onRfqPress, onPoPress }: POInboxScreenPr
     ) : (
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap }}>
         <FadeInView delay={0} style={{ flexGrow: 1, flexBasis: kpiMinWidth, minWidth: kpiMinWidth }}>
-          <StatCard title="Total POs" value={purchaseOrders.length} accent={PO_STATUS_COLORS.PENDING} icon={FileText} width="100%" />
+          <StatCard title="Total POs" value={poSummary.total} accent={PO_STATUS_COLORS.PENDING} icon={FileText} width="100%" />
         </FadeInView>
         <FadeInView delay={40} style={{ flexGrow: 1, flexBasis: kpiMinWidth, minWidth: kpiMinWidth }}>
-          <StatCard title="Pending" value={purchaseOrders.filter(p => p.status === 'PENDING').length} accent={PO_STATUS_COLORS.PENDING} icon={Clock} width="100%" />
+          <StatCard title="Pending" value={poSummary.pending} accent={PO_STATUS_COLORS.PENDING} icon={Clock} width="100%" />
         </FadeInView>
         <FadeInView delay={80} style={{ flexGrow: 1, flexBasis: kpiMinWidth, minWidth: kpiMinWidth }}>
-          <StatCard title="Accepted" value={purchaseOrders.filter(p => p.status === 'SUPPLIER_ACCEPTED' || p.status === 'ACCEPTED').length} accent={PO_STATUS_COLORS.SUPPLIER_ACCEPTED} icon={CheckCircle2} width="100%" />
+          <StatCard title="Accepted" value={poSummary.accepted} accent={PO_STATUS_COLORS.SUPPLIER_ACCEPTED} icon={CheckCircle2} width="100%" />
         </FadeInView>
         <FadeInView delay={120} style={{ flexGrow: 1, flexBasis: kpiMinWidth, minWidth: kpiMinWidth }}>
-          <StatCard title="Delivered" value={purchaseOrders.filter(p => p.status === 'DELIVERED').length} accent={PO_STATUS_COLORS.DELIVERED} icon={Package} width="100%" />
+          <StatCard title="Delivered" value={poSummary.delivered} accent={PO_STATUS_COLORS.DELIVERED} icon={Package} width="100%" />
         </FadeInView>
       </View>
     )
   ) : (// ─── Mobile: compact horizontal scroll strip ───────────────────────────
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-      {loading ? (
+      {poLoading ? (
         [0, 1, 2, 3].map((i) => (
           <SkeletonCompactStatCard key={i} width="48.5%" />
         ))
       ) : (
         <>
-          <CompactStatCard title="Total POs" value={purchaseOrders.length} accent={PO_STATUS_COLORS.PENDING} icon={FileText} width="48.5%" />
-          <CompactStatCard title="Pending" value={purchaseOrders.filter(p => p.status === 'PENDING').length} accent={RFQ_STATUS_COLORS.NEGOTIATING} icon={Clock} width="48.5%" />
-          <CompactStatCard title="Accepted" value={purchaseOrders.filter(p => p.status === 'SUPPLIER_ACCEPTED' || p.status === 'ACCEPTED').length} accent={PO_STATUS_COLORS.SUPPLIER_ACCEPTED} icon={CheckCircle2} width="48.5%" />
-          <CompactStatCard title="Closed" value={purchaseOrders.filter(p => p.status === 'DELIVERED').length} accent={PO_STATUS_COLORS.DELIVERED} icon={Package} width="48.5%" />
+          <CompactStatCard title="Total POs" value={poSummary.total} accent={PO_STATUS_COLORS.PENDING} icon={FileText} width="48.5%" />
+          <CompactStatCard title="Pending" value={poSummary.pending} accent={RFQ_STATUS_COLORS.NEGOTIATING} icon={Clock} width="48.5%" />
+          <CompactStatCard title="Accepted" value={poSummary.accepted} accent={PO_STATUS_COLORS.SUPPLIER_ACCEPTED} icon={CheckCircle2} width="48.5%" />
+          <CompactStatCard title="Delivered" value={poSummary.delivered} accent={PO_STATUS_COLORS.DELIVERED} icon={Package} width="48.5%" />
         </>
       )}
     </View>
@@ -1361,20 +1437,60 @@ export default function POInboxScreen({ onRfqPress, onPoPress }: POInboxScreenPr
     }
   }
 
+  const PoAppendFooter = () => {
+    if (poLoading || poTotal === 0) return null
+    const allLoaded = !poHasNextPage || purchaseOrders.length >= poTotal
+    return (
+      <View style={{ alignItems: 'center', gap: 10, paddingVertical: 14 }}>
+        <Text style={{ fontSize: 13, color: colors.textSecondary }}>
+          Loaded {purchaseOrders.length} of {poTotal} purchase orders
+        </Text>
+        {allLoaded ? (
+          <Text style={{ fontSize: 12, color: colors.textSecondary }}>All purchase orders are loaded.</Text>
+        ) : (
+          <TouchableOpacity
+            onPress={loadMorePos}
+            disabled={poLoadingMore}
+            style={{
+              minHeight: 40,
+              paddingHorizontal: 18,
+              borderRadius: 8,
+              backgroundColor: poLoadingMore ? colors.surface : colors.primary,
+              borderWidth: poLoadingMore ? 1 : 0,
+              borderColor: colors.border,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            {poLoadingMore ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Text style={{ fontSize: 13, fontWeight: '700', color: '#fff' }}>Load More</Text>
+            )}
+          </TouchableOpacity>
+        )}
+      </View>
+    )
+  }
+
   // ─── Render ────────────────────────────────────────────────────────────────────
 
   if (isDesktop) {
     // ─── Desktop: tabbed view ─────────────────────────────────────────────────────
     return (
       <View style={{ flex: 1, backgroundColor: colors.background }}>
-        <View style={{
-          paddingHorizontal: horizontalPadding,
-          paddingVertical: 16,
-          gap: 18,
-          maxWidth: contentMaxWidth,
-          alignSelf: 'center',
-          width: '100%',
-        }}>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{
+            paddingHorizontal: horizontalPadding,
+            paddingVertical: 16,
+            gap: 18,
+            maxWidth: contentMaxWidth,
+            alignSelf: 'center',
+            width: '100%',
+          }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        >
           <SectionHeader
             title={activeTab === 'RFQ' ? 'RFQ Inbox' : 'Purchase Orders'}
             subtitle={
@@ -1393,7 +1509,7 @@ export default function POInboxScreen({ onRfqPress, onPoPress }: POInboxScreenPr
                   overflow: 'hidden',
                 }}>
                   {canViewRfqs ? <TabButton label="RFQ Inbox" isActive={activeTab === 'RFQ'} onPress={() => setActiveTab('RFQ')} count={rfqs.length} /> : null}
-                  {canViewPurchaseOrders ? <TabButton label="Purchase Orders" isActive={activeTab === 'PO'} onPress={() => setActiveTab('PO')} count={purchaseOrders.length} /> : null}
+                  {canViewPurchaseOrders ? <TabButton label="Purchase Orders" isActive={activeTab === 'PO'} onPress={() => setActiveTab('PO')} count={poSummary.total} /> : null}
                 </View>
                 <TouchableOpacity onPress={onRefresh} style={{ padding: 8, borderRadius: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}>
                   <RefreshCcw size={16} color={colors.text} />
@@ -1526,13 +1642,16 @@ export default function POInboxScreen({ onRfqPress, onPoPress }: POInboxScreenPr
                   <Text style={{ fontSize: 13, color: colors.textSecondary }}>No POs match your selected filters.</Text>
                 </View>
               ) : (
-                <View style={{ backgroundColor: colors.surface, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
-                  <PoDesktopTable purchaseOrders={purchaseOrders} onPoPress={handlePoPress} />
-                </View>
+                <>
+                  <View style={{ backgroundColor: colors.surface, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
+                    <PoDesktopTable purchaseOrders={purchaseOrders} onPoPress={handlePoPress} />
+                  </View>
+                  <PoAppendFooter />
+                </>
               )}
             </>
           )}
-        </View>
+        </ScrollView>
 
         <CreateConsolidatedPoModal
           visible={canCreatePurchaseOrder && createPoModalVisible}
@@ -1587,7 +1706,7 @@ export default function POInboxScreen({ onRfqPress, onPoPress }: POInboxScreenPr
                   label="Purchase Orders"
                   isActive={activeTab === 'PO'}
                   onPress={() => setActiveTab('PO')}
-                  count={purchaseOrders.length}
+                  count={poSummary.total}
                 /> : null}
               </View>
               <TouchableOpacity onPress={onRefresh} style={{ padding: 8, borderRadius: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}>
@@ -1730,13 +1849,16 @@ export default function POInboxScreen({ onRfqPress, onPoPress }: POInboxScreenPr
                 <Text style={{ fontSize: 13, color: colors.textSecondary }}>No POs match your selected filters.</Text>
               </View>
             ) : (
-              <View style={{ gap: 14 }}>
-                {purchaseOrders.map((po, idx) => (
-                  <FadeInView key={po.id} delay={Math.min(idx, 6) * 30}>
-                    <PoMobileCard po={po} onPress={() => handlePoPress(po)} />
-                  </FadeInView>
-                ))}
-              </View>
+              <>
+                <View style={{ gap: 14 }}>
+                  {purchaseOrders.map((po, idx) => (
+                    <FadeInView key={po.id} delay={Math.min(idx, 6) * 30}>
+                      <PoMobileCard po={po} onPress={() => handlePoPress(po)} />
+                    </FadeInView>
+                  ))}
+                </View>
+                <PoAppendFooter />
+              </>
             )}
           </>
         )}

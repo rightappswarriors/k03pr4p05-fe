@@ -6,6 +6,9 @@ export interface SupplierWalletSummary {
   orgId: number
   balance: number
   heldBalance: number
+  totalFunds: number
+  paymentEscrowBalance: number
+  paymentEscrowOrderCount: number
   pendingWithdrawalTotal: number
   totalWithdrawn: number
   lifetimeEarnings: number
@@ -85,6 +88,9 @@ export async function getSupplierWalletSummary(): Promise<SupplierWalletSummary>
         orgId
         balance
         heldBalance
+        totalFunds
+        paymentEscrowBalance
+        paymentEscrowOrderCount
         pendingWithdrawalTotal
         totalWithdrawn
         lifetimeEarnings

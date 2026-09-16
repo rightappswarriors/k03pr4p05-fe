@@ -5,13 +5,14 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { Kpis } from '@/components/Kpi';
 import { adminGovernanceService, GovernanceTab } from '@/services/adminGovernanceService';
 import { GovernanceManagementPanel } from './GovernanceManagementPanel';
+import { PlatformFinancePanel } from './PlatformFinancePanel';
 
 const php = (value: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(value ?? 0);
 
 export default function GovernanceScreen() {
   const { colors } = useTheme();
-  const [tab, setTab] = useState<GovernanceTab>('overview'); const [dashboard, setDashboard] = useState<any>(); const [wallet, setWallet] = useState<any>(); const [loading, setLoading] = useState(true); const [error, setError] = useState<string>();
-  const load = useCallback(async () => { setLoading(true); setError(undefined); try { const [d, w] = await Promise.all([adminGovernanceService.dashboard(), adminGovernanceService.wallet({ page: 1, limit: 30 })]); setDashboard(d.adminGovernanceDashboard); setWallet(w.platformWallet); } catch (requestError: any) { setError(requestError.message ?? 'Unable to load platform governance data.'); } finally { setLoading(false); } }, []);
+  const [tab, setTab] = useState<GovernanceTab>('overview'); const [dashboard, setDashboard] = useState<any>(); const [loading, setLoading] = useState(true); const [error, setError] = useState<string>();
+  const load = useCallback(async () => { setLoading(true); setError(undefined); try { const d = await adminGovernanceService.dashboard(); setDashboard(d.adminGovernanceDashboard); } catch (requestError: any) { setError(requestError.message ?? 'Unable to load platform governance data.'); } finally { setLoading(false); } }, []);
   useEffect(() => { void load(); }, [load]);
   const styles = makeStyles(colors);
   const tabs: Array<[GovernanceTab, string]> = [['overview', 'Overview'], ['organizations', 'Organizations'], ['wallet', 'Platform Wallet']];
@@ -21,7 +22,7 @@ export default function GovernanceScreen() {
     {loading ? <View style={styles.state}><ActivityIndicator color="#7C3AED" /><Text style={styles.muted}>Loading governance data…</Text></View> : error ? <View style={styles.state}><Text style={styles.error}>{error}</Text><Pressable onPress={() => void load()} style={styles.retry}><Text style={styles.retryText}>Retry</Text></Pressable></View> : <>
       {tab === 'overview' && dashboard && <><Kpis items={[{ title: 'Organizations', value: String(dashboard.totalOrganizations), subtitle: `${dashboard.pendingOrganizations} pending reviews`, icon: Building2, accent: '#2563EB' }, { title: 'Standalone Agents', value: String(dashboard.totalStandaloneAgents), subtitle: `${dashboard.verifiedStandaloneAgents} verified`, icon: UsersRound, accent: '#0F766E' }, { title: 'Platform Wallet', value: php(dashboard.platformWalletBalance), subtitle: `${php(dashboard.platformFees30Days)} / 30 days`, icon: WalletCards, accent: '#7C3AED' }, { title: 'Successful Payments', value: String(dashboard.successfulPaymentCount), subtitle: `${php(dashboard.platformFeesToday)} fees today`, icon: ShieldCheck, accent: '#D97706' }]} /><View style={styles.summary}><Text style={styles.sectionTitle}>Review queue</Text><Text style={styles.summaryText}>{dashboard.pendingOrganizations} organizations and {dashboard.pendingStandaloneAgents} standalone agents are awaiting verification.</Text></View></>}
       {tab === 'organizations' && <GovernanceManagementPanel type="organizations" onChanged={() => void load()} />}
-      {tab === 'wallet' && <><Kpis items={[{ title: 'Available Platform Revenue', value: php(wallet?.balance), icon: WalletCards, accent: '#7C3AED' }]} /><Text style={styles.sectionTitle}>Platform wallet ledger</Text><GovernanceManagementPanel type="wallet" onChanged={() => void load()} /></>}
+      {tab === 'wallet' && <PlatformFinancePanel />}
     </>}
   </ScrollView>;
 }

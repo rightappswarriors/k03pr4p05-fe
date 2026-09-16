@@ -40,11 +40,13 @@ import { useTheme } from '@/contexts/ThemeContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
 import { useConversation } from '@/contexts/ConversationContext'
+import { useSocket } from '@/contexts/SocketContext'
 import {
   fetchPurchaseOrder,
   fetchPOConversation,
   sendPoMessage,
   acceptPO,
+  acceptRetailerPurchaseOrderDeliveryDate,
   proposePurchaseOrderDeliveryDate,
   rejectPO,
   preparePurchaseOrder,
@@ -65,6 +67,8 @@ import { RfqStatusBadge } from '@/components/supplier/rfq/RfqStatusBadge'
 import { DeliveryDetailsModal } from '@/components/supplier/purchase-order/DeliveryDetailsModal'
 import DateTimePicker, { type DateTimePickerChangeEvent } from '@/components/DateTimePicker'
 import { usePermissions } from '@/hooks/usePermissions'
+import { approvePurchaseOrderCancellation, getPurchaseOrderCancellationState, rejectPurchaseOrderCancellation, type PurchaseOrderCancellationState } from '@/services/retailerOrderingService'
+import { DeliveryAgreementCountdown } from '@/components/DeliveryAgreementCountdown'
 
 const formatPHP = (amount: number) =>
   new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount)
@@ -176,6 +180,7 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
   const canSendMessage = can('supplierPurchaseOrderPage', 'canCreate')
   const { show: showToast } = useToast()
   const { width } = useWindowDimensions()
+  const { subscribe } = useSocket()
 
   const isTablet = width >= BREAKPOINTS.tablet
   const isDesktop = width >= BREAKPOINTS.desktop
@@ -197,7 +202,12 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
   const [showDeliveryDetails, setShowDeliveryDetails] = useState(false)
   const [proposedDeliveryDate, setProposedDeliveryDate] = useState('')
   const [proposingDeliveryDate, setProposingDeliveryDate] = useState(false)
+  const [acceptingDeliveryDate, setAcceptingDeliveryDate] = useState(false)
   const [preparingOrder, setPreparingOrder] = useState(false)
+  const [cancellation, setCancellation] = useState<PurchaseOrderCancellationState | null>(null)
+  const [cancellationDecision, setCancellationDecision] = useState<'approve' | 'reject' | null>(null)
+  const [cancellationDecisionReason, setCancellationDecisionReason] = useState('')
+  const [decidingCancellation, setDecidingCancellation] = useState(false)
 
   const [activeTab, setActiveTab] = useState<'details' | 'conversation'>('details')
   const [poConv, setPoConv] = useState<POConversationDetail | null>(null)
@@ -225,8 +235,9 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
     if (!poId) return
     setLoading(true)
     try {
-      const data = await fetchPurchaseOrder(poId)
+      const [data, nextCancellation] = await Promise.all([fetchPurchaseOrder(poId), getPurchaseOrderCancellationState(poId).catch(() => null)])
       setPo(data)
+      setCancellation(nextCancellation)
       if ((data?.supplierConfirmation === 'REVIEW_REQUIRED' || (data?.supplierConfirmation === 'CONFIRMED' && !data.supplierExpectedDeliveryAt && data.paymentStatus === 'PENDING')) && (data.requestedDate || data.delivery?.scheduledDate)) {
         setDeliveryDate((data.requestedDate ?? data.delivery?.scheduledDate ?? '').slice(0, 10))
       }
@@ -253,6 +264,13 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
   useEffect(() => {
     loadPo()
   }, [loadPo])
+
+  useEffect(() => {
+    const unsubscribe = subscribe((event) => {
+      if (event.event?.startsWith('purchaseOrder:') && event.payload?.poId === poId) void loadPo()
+    })
+    return () => { unsubscribe() }
+  }, [loadPo, poId, subscribe])
 
   useEffect(() => {
     if (isDesktop || activeTab === 'conversation') {
@@ -301,22 +319,38 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
 
   if (!po) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ color: colors.textSecondary }}>Select a purchase order to view details.</Text>
+      <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 8 }}>
+        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Purchase order unavailable</Text>
+        <Text style={{ color: colors.textSecondary, textAlign: 'center' }}>This purchase order could not be found or you no longer have access to it.</Text>
+        {onBack ? <TouchableOpacity accessibilityLabel="Back to Purchase Orders" onPress={onBack} style={{ minHeight: 44, justifyContent: 'center', marginTop: 8 }}><Text style={{ color: colors.primary, fontWeight: '800' }}>Back to Purchase Orders</Text></TouchableOpacity> : null}
       </View>
     )
   }
 
-  const isPending = (po.status === 'PENDING' && po.supplierConfirmation === 'REVIEW_REQUIRED') || (po.supplierConfirmation === 'CONFIRMED' && !po.supplierExpectedDeliveryAt && po.paymentStatus === 'PENDING')
+  const isPending = ((po.status === 'PENDING' || po.status === 'ACCEPTED') && po.supplierConfirmation === 'REVIEW_REQUIRED') || (po.supplierConfirmation === 'CONFIRMED' && !po.supplierExpectedDeliveryAt && po.paymentStatus === 'PENDING')
   const statusColor = STATUS_COLORS[po.status]
   const paymentStatus = po.paymentStatus ?? 'PENDING'
   const paymentAwaitingReconciliation = po.paymentAttemptStatus === 'RECONCILIATION_REQUIRED'
   const paymentConfirmed = po.paymentAttemptStatus === 'SUCCEEDED'
-  const orderReadyForPreparation = po.supplierConfirmation === 'CONFIRMED' && paymentConfirmed && po.status !== 'PREPARING'
+  const selectedPaymentMethod = (po as PurchaseOrder & { paymentMethod?: 'CASH' | 'E_WALLET' | 'CARD' | null }).paymentMethod
+  const deliveryLocationConfirmed = Boolean(po.delivery?.address?.trim() && typeof po.delivery?.latitude === 'number' && Number.isFinite(po.delivery.latitude) && typeof po.delivery?.longitude === 'number' && Number.isFinite(po.delivery.longitude))
+  const codReady = selectedPaymentMethod === 'CASH' && po.totalAmount <= 25_000
+  const deliveryAgreement = (po as any).deliveryDateAgreementStatus as string | undefined
+  const agreementMethod = po.deliveryDateAgreementMethod
+  const responseDeadline = po.deliveryDateResponseDeadlineAt
+  const agreementIdentityInvalid = po.buyerOrg?.id == null || po.buyerOrg.id === po.supplierOrg?.id
+  const deliveryAgreementReady = po.source !== 'DIRECT_ORDER' || deliveryAgreement === 'AGREED'
+  const deliveryAgreementPreparationHelper = responseDeadline && deliveryAgreement === 'PENDING_BUYER'
+    ? 'Available after Buyer acceptance or response deadline.'
+    : deliveryAgreement === 'PENDING_SUPPLIER'
+      ? 'Available after the Supplier explicitly accepts the Buyer proposal or sends a counter-proposal that the Buyer accepts.'
+      : agreementIdentityInvalid
+        ? 'Preparation remains blocked while the delivery agreement requires account review.'
+        : 'Available after explicit Buyer acceptance.'
+  const orderReadyForPreparation = po.supplierConfirmation === 'CONFIRMED' && deliveryLocationConfirmed && deliveryAgreementReady && (paymentConfirmed || codReady) && po.status !== 'PREPARING'
   const paymentColor = PAYMENT_STATUS_COLORS[paymentStatus]
   const receipt = po.receiptSnapshot
   const conversation = po.conversation ?? poConv
-  const deliveryAgreement = (po as any).deliveryDateAgreementStatus as string | undefined
   const handleProposeDeliveryDate = async () => {
     const proposedDate = proposedDeliveryDate || (po.supplierExpectedDeliveryAt ?? po.requestedDate ?? '').slice(0, 10)
     if (!proposedDate) {
@@ -332,6 +366,18 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
       Alert.alert('Unable to Propose Delivery Date', e.message ?? 'Please try again.')
     } finally {
       setProposingDeliveryDate(false)
+    }
+  }
+  const handleAcceptRetailerDeliveryDate = async () => {
+    setAcceptingDeliveryDate(true)
+    try {
+      const updated = await acceptRetailerPurchaseOrderDeliveryDate(po.id)
+      setPo(updated)
+      showToast('Delivery schedule accepted', 'success')
+    } catch (e: any) {
+      Alert.alert('Unable to Accept Delivery Date', e.message ?? 'No delivery schedule was changed.')
+    } finally {
+      setAcceptingDeliveryDate(false)
     }
   }
   const deliveryDetailsAction = po.delivery ? (
@@ -397,6 +443,26 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
   const handleFulfillmentAction = async () => {
     const action = po.status === 'PREPARING' ? 'markPurchaseOrderReadyForDispatch' : po.status === 'READY_FOR_DISPATCH' ? 'dispatchPurchaseOrder' : 'markPurchaseOrderDelivered'
     try { setPreparingOrder(true); setPo(await advancePurchaseOrderFulfillment(action, po.id)); showToast('Order status updated', 'success') } catch (e: any) { Alert.alert('Unable to update order', e.message ?? 'Please try again.') } finally { setPreparingOrder(false) }
+  }
+
+  const handleCancellationDecision = async () => {
+    if (!po || !cancellationDecision || decidingCancellation) return
+    if (cancellationDecision === 'reject' && cancellationDecisionReason.trim().length < 5) return
+    try {
+      setDecidingCancellation(true)
+      const next = cancellationDecision === 'approve'
+        ? await approvePurchaseOrderCancellation(po.id)
+        : await rejectPurchaseOrderCancellation(po.id, cancellationDecisionReason.trim())
+      setCancellation(next)
+      await loadPo()
+      setCancellationDecision(null)
+      setCancellationDecisionReason('')
+      showToast(cancellationDecision === 'approve' ? 'Cancellation approved.' : 'Cancellation request declined.', 'success')
+    } catch (e: any) {
+      Alert.alert('Unable to review cancellation', e.message ?? 'No order or payment state was changed.')
+    } finally {
+      setDecidingCancellation(false)
+    }
   }
 
   const openReceiptPdf = () => {
@@ -584,18 +650,27 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
     </Panel>
   )
 
-  const supplierDateCoordinationCard = po.status === 'PREPARING' ? (
+  const supplierDateCoordinationCard = po.supplierConfirmation === 'CONFIRMED' && (['SUPPLIER_ACCEPTED', 'ACCEPTED', 'PREPARING', 'READY_FOR_DISPATCH'] as POStatus[]).includes(po.status) ? (
     <Panel title="Delivery Date Agreement" icon={Calendar}>
       <View style={{ gap: 10 }}>
-        <InfoRow label="Agent Requested Date" value={po.requestedDate ? formatDate(po.requestedDate) : 'Not specified'} />
+        <InfoRow label="Retailer Requested Date" value={po.requestedDate ? formatDate(po.requestedDate) : 'Not specified'} />
         <InfoRow label="Your Current Commitment" value={po.supplierExpectedDeliveryAt ? formatDate(po.supplierExpectedDeliveryAt) : 'Not set'} />
         <InfoRow label="Agreement" value={deliveryAgreementLabel(deliveryAgreement)} />
+        {deliveryAgreement === 'PENDING_BUYER' ? <Text style={{ color: '#B45309', fontSize: 13, lineHeight: 19 }}>Awaiting Buyer confirmation. The Buyer may accept your proposed date or request another date.</Text> : null}
+        {deliveryAgreement === 'PENDING_BUYER' && responseDeadline ? <DeliveryAgreementCountdown deadline={responseDeadline} audience="SUPPLIER" color="#B45309" onExpired={() => void loadPo()} /> : null}
+        {deliveryAgreement === 'PENDING_BUYER' && !responseDeadline ? <Text style={{ color: '#B91C1C', fontSize: 13, lineHeight: 19 }}>{agreementIdentityInvalid ? 'Delivery agreement requires account review.' : ['PREPARING', 'READY_FOR_DISPATCH'].includes(po.status) ? 'This schedule requires explicit Buyer response at the current fulfillment stage.' : 'This legacy delivery agreement requires Buyer response or review; no historical timeout was inferred.'}</Text> : null}
+        {deliveryAgreement === 'PENDING_SUPPLIER' ? <Text style={{ color: '#B45309', fontSize: 13, lineHeight: 19 }}>The Retailer requested {po.requestedDate ? formatDate(po.requestedDate) : 'a different date'}. Accept it or propose another date.</Text> : null}
+        {deliveryAgreement === 'AGREED' ? <><Text style={{ color: '#15803D', fontSize: 13, fontWeight: '700' }}>{agreementMethod === 'AUTO_BUYER_TIMEOUT' ? '✓ Agreed automatically' : 'Delivery schedule agreed ✓'}</Text>{agreementMethod === 'AUTO_BUYER_TIMEOUT' ? <Text style={{ color: colors.textSecondary, fontSize: 13, lineHeight: 19 }}>The Buyer did not respond within the 24-hour confirmation period. The proposed delivery schedule was automatically accepted.</Text> : null}</> : null}
+        {paymentConfirmed && deliveryAgreement !== 'AGREED' ? <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Payment received · Confirmed prepaid funds remain held in escrow. {deliveryAgreementPreparationHelper}</Text> : null}
+        {canEditOrder && deliveryAgreement === 'PENDING_SUPPLIER' && po.requestedDate ? <TouchableOpacity onPress={handleAcceptRetailerDeliveryDate} disabled={acceptingDeliveryDate || cancellation?.cancellation?.status === 'REQUESTED'} style={{ backgroundColor: '#16A34A', paddingVertical: 12, borderRadius: 10, alignItems: 'center', opacity: acceptingDeliveryDate ? 0.6 : 1 }}>
+          {acceptingDeliveryDate ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '700' }}>Accept {formatDate(po.requestedDate)}</Text>}
+        </TouchableOpacity> : null}
         {canEditOrder ? <View>
-          <Text style={labelStyle}>Confirm or propose delivery date</Text>
+          <Text style={labelStyle}>{deliveryAgreement === 'AGREED' ? 'Propose a changed date' : 'Propose another delivery date'}</Text>
           <DateTimePicker value={toPickerDate(proposedDeliveryDate || po.supplierExpectedDeliveryAt || po.requestedDate || '')} mode="date" minimumDate={new Date()} onChange={(_event: DateTimePickerChangeEvent, selectedDate?: Date) => { if (selectedDate) setProposedDeliveryDate(toDateOnly(selectedDate)) }} />
         </View> : null}
-        {canEditOrder ? <TouchableOpacity onPress={handleProposeDeliveryDate} disabled={proposingDeliveryDate} style={{ backgroundColor: colors.primary, paddingVertical: 12, borderRadius: 10, alignItems: 'center', opacity: proposingDeliveryDate ? 0.6 : 1 }}>
-          {proposingDeliveryDate ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '700' }}>Confirm / Propose Date</Text>}
+        {canEditOrder ? <TouchableOpacity onPress={handleProposeDeliveryDate} disabled={proposingDeliveryDate || cancellation?.cancellation?.status === 'REQUESTED'} style={{ backgroundColor: colors.primary, paddingVertical: 12, borderRadius: 10, alignItems: 'center', opacity: proposingDeliveryDate || cancellation?.cancellation?.status === 'REQUESTED' ? 0.6 : 1 }}>
+          {proposingDeliveryDate ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '700' }}>{deliveryAgreement === 'AGREED' ? 'Propose Changed Date' : 'Propose Another Date'}</Text>}
         </TouchableOpacity> : null}
       </View>
     </Panel>
@@ -615,6 +690,7 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
             <Text style={{ fontSize: 12, fontWeight: '600', color: paymentColor }}>{PAYMENT_STATUS_LABELS[paymentStatus]}</Text>
           </View>
         </View>
+        <InfoRow label="Method" value={selectedPaymentMethod === 'CASH' ? 'Cash on Delivery' : selectedPaymentMethod === 'E_WALLET' ? 'Maya' : 'Not selected'} />
         {po.status === 'PREPARING' ? (
           <View style={{ backgroundColor: '#DBEAFE', borderRadius: 10, padding: 12 }}>
             <Text style={{ color: '#1D4ED8', fontWeight: '700', fontSize: 13 }}>Preparing Order</Text>
@@ -622,27 +698,30 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
           </View>
         ) : paymentAwaitingReconciliation ? (
           <Text style={{ color: '#B45309', fontSize: 13 }}>Payment received and awaiting reconciliation.</Text>
-        ) : paymentConfirmed ? (
+        ) : paymentConfirmed || codReady ? (
           <>
-            <Text style={{ color: '#15803D', fontSize: 13, fontWeight: '600' }}>Payment Confirmed</Text>
+            <Text style={{ color: '#15803D', fontSize: 13, fontWeight: '600' }}>{paymentConfirmed ? 'Payment Confirmed' : 'Cash on Delivery selected'}</Text>
+            {!deliveryAgreementReady ? <Text style={{ color: '#B45309', fontSize: 13 }}>{deliveryAgreementPreparationHelper} Confirmed prepaid funds remain held in escrow.</Text> : null}
+            {!deliveryLocationConfirmed ? <Text style={{ color: '#B45309', fontSize: 13 }}>The Buyer must confirm the delivery location before preparation can begin.</Text> : null}
             {canEditOrder ? <TouchableOpacity onPress={() => setShowPrepareModal(true)} disabled={!orderReadyForPreparation} style={{ paddingVertical: 11, borderRadius: 10, alignItems: 'center', backgroundColor: colors.primary, opacity: orderReadyForPreparation ? 1 : 0.5 }}>
               <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>Prepare Order</Text>
             </TouchableOpacity> : null}
           </>
         ) : (
           <>
-            <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Preparation becomes available after payment is confirmed.</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{!deliveryAgreementReady ? deliveryAgreementPreparationHelper : deliveryLocationConfirmed ? 'Preparation becomes available after an eligible COD selection or confirmed prepaid payment.' : 'Preparation becomes available after the buyer confirms a delivery location and satisfies payment requirements.'}</Text>
             {canEditOrder ? <TouchableOpacity disabled style={{ paddingVertical: 11, borderRadius: 10, alignItems: 'center', backgroundColor: colors.border }}><Text style={{ color: colors.textSecondary, fontWeight: '700', fontSize: 13 }}>Prepare Order</Text></TouchableOpacity> : null}
           </>
         )}
-        {canEditOrder && (['PREPARING', 'READY_FOR_DISPATCH', 'IN_TRANSIT'] as POStatus[]).includes(po.status) && (
+        {canEditOrder && cancellation?.cancellation?.status !== 'REQUESTED' && (['PREPARING', 'READY_FOR_DISPATCH', 'IN_TRANSIT'] as POStatus[]).includes(po.status) && (
           <>
-          {po.status === 'PREPARING' && deliveryAgreement !== 'AGREED' && <Text style={{ color: '#B45309', fontSize: 13 }}>Delivery Date Confirmation Required — {deliveryAgreement === 'PENDING_BUYER' ? 'waiting for buyer confirmation.' : 'confirm the buyer requested date or propose another date.'}</Text>}
-          <TouchableOpacity onPress={handleFulfillmentAction} disabled={preparingOrder || (po.status === 'PREPARING' && deliveryAgreement !== 'AGREED')} style={{ paddingVertical: 11, borderRadius: 10, alignItems: 'center', backgroundColor: colors.primary, opacity: preparingOrder || (po.status === 'PREPARING' && deliveryAgreement !== 'AGREED') ? 0.6 : 1 }}>
+          {po.source === 'DIRECT_ORDER' && ['PREPARING', 'READY_FOR_DISPATCH'].includes(po.status) && deliveryAgreement !== 'AGREED' && <Text style={{ color: '#B45309', fontSize: 13 }}>Delivery Date Confirmation Required — {deliveryAgreement === 'PENDING_BUYER' ? 'waiting for Buyer confirmation.' : 'accept the Retailer requested date or propose another date.'}</Text>}
+          <TouchableOpacity onPress={handleFulfillmentAction} disabled={preparingOrder || (po.source === 'DIRECT_ORDER' && ['PREPARING', 'READY_FOR_DISPATCH'].includes(po.status) && deliveryAgreement !== 'AGREED')} style={{ paddingVertical: 11, borderRadius: 10, alignItems: 'center', backgroundColor: colors.primary, opacity: preparingOrder || (po.source === 'DIRECT_ORDER' && ['PREPARING', 'READY_FOR_DISPATCH'].includes(po.status) && deliveryAgreement !== 'AGREED') ? 0.6 : 1 }}>
             {preparingOrder ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>{po.status === 'PREPARING' ? 'Mark Ready for Dispatch' : po.status === 'READY_FOR_DISPATCH' ? 'Dispatch Order' : 'Mark Delivered'}</Text>}
           </TouchableOpacity>
           </>
         )}
+        {cancellation?.cancellation?.status === 'REQUESTED' && <Text style={{ color: '#B45309', fontSize: 13 }}>Fulfillment is paused until the cancellation request is approved or declined.</Text>}
         {po.status === 'DELIVERED' && <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Waiting for buyer confirmation.</Text>}
         {po.status === 'COMPLETED' && <Text style={{ color: '#15803D', fontSize: 13, fontWeight: '600' }}>Order completed.</Text>}
         <InfoRow label="Merchandise Subtotal" value={formatPHP(po.subtotalAmount)} />
@@ -655,6 +734,17 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
       </View>
     </Panel>
   )
+
+  const cancellationCard = cancellation?.cancellation ? (
+    <Panel title="Cancellation & Refund" icon={Clock}>
+      <View style={{ gap: 10 }}>
+        <InfoRow label="Cancellation" value={cancellation.cancellation.status.replaceAll('_', ' ')} />
+        <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{cancellation.cancellation.reason}</Text>
+        {cancellation.refund ? <><InfoRow label="Refund" value={cancellation.refund.status.replaceAll('_', ' ')} /><InfoRow label="Refund amount" value={formatPHP(cancellation.refund.amount)} /><Text style={{ color: '#B45309', fontSize: 13 }}>The successful payment remains immutable and Supplier escrow stays held until an authoritative refund completes.</Text></> : null}
+        {canEditOrder && cancellation.cancellation.status === 'REQUESTED' ? <View style={{ flexDirection: width < 420 ? 'column' : 'row', gap: 10 }}><TouchableOpacity disabled={decidingCancellation} onPress={() => setCancellationDecision('approve')} style={{ flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: '#16A34A' }}><Text style={{ color: '#fff', fontWeight: '800' }}>Approve Cancellation</Text></TouchableOpacity><TouchableOpacity disabled={decidingCancellation} onPress={() => setCancellationDecision('reject')} style={{ flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 10, borderWidth: 1, borderColor: '#DC2626' }}><Text style={{ color: '#DC2626', fontWeight: '800' }}>Decline Request</Text></TouchableOpacity></View> : null}
+      </View>
+    </Panel>
+  ) : null
 
   const receiptCard = receipt ? (
     <Panel title="Receipt" icon={Receipt}>
@@ -1073,6 +1163,16 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
           </View>
         </View>
       </Modal>
+      <Modal visible={canEditOrder && Boolean(cancellationDecision)} transparent animationType="fade" onRequestClose={() => !decidingCancellation && setCancellationDecision(null)}>
+        <View style={{ flex: 1, backgroundColor: '#00000040', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <View style={{ backgroundColor: colors.surface, borderRadius: 16, padding: 20, width: '100%', maxWidth: 420, gap: 14 }}>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text }}>{cancellationDecision === 'approve' ? 'Approve cancellation?' : 'Decline cancellation request?'}</Text>
+            <Text style={{ fontSize: 13, color: colors.textSecondary }}>{cancellationDecision === 'approve' ? 'The order will stop. A confirmed payment creates a refund liability without releasing escrow early.' : 'The order will remain active and fulfillment can continue.'}</Text>
+            {cancellationDecision === 'reject' ? <View><Text style={labelStyle}>Decision reason *</Text><TextInput editable={!decidingCancellation} value={cancellationDecisionReason} onChangeText={setCancellationDecisionReason} placeholder="Explain why the order will continue" placeholderTextColor={colors.textSecondary} style={[inputStyle, { minHeight: 90, textAlignVertical: 'top' }]} multiline maxLength={500} /></View> : null}
+            <View style={{ flexDirection: 'row', gap: 12 }}><TouchableOpacity disabled={decidingCancellation} onPress={() => setCancellationDecision(null)} style={{ flex: 1, minHeight: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}><Text style={{ color: colors.text }}>Back</Text></TouchableOpacity><TouchableOpacity disabled={decidingCancellation || (cancellationDecision === 'reject' && cancellationDecisionReason.trim().length < 5)} onPress={handleCancellationDecision} style={{ flex: 1, minHeight: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: cancellationDecision === 'approve' ? '#16A34A' : '#DC2626', opacity: decidingCancellation || (cancellationDecision === 'reject' && cancellationDecisionReason.trim().length < 5) ? .5 : 1 }}>{decidingCancellation ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '800' }}>Confirm</Text>}</TouchableOpacity></View>
+          </View>
+        </View>
+      </Modal>
     </>
   )
   return (
@@ -1148,6 +1248,7 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
                 {buyerInfoCard}
                 {supplierDateCoordinationCard}
                 {paymentCard}
+                {cancellationCard}
                 {receiptCard}
 
                 {/* Line Items */}
@@ -1204,7 +1305,8 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
                 {canEditOrder && isPending && (
                   <View style={{ gap: 10 }}>
                     <View style={{ backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 16, gap: 12 }}>
-                      <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>Accept Details</Text>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>{po.status === 'ACCEPTED' && po.supplierConfirmation === 'REVIEW_REQUIRED' ? 'Supplier confirmation required' : 'Accept Details'}</Text>
+                      {po.status === 'ACCEPTED' && po.supplierConfirmation === 'REVIEW_REQUIRED' ? <Text style={{ color: '#B45309', fontSize: 13 }}>This legacy Accepted status is not Supplier approval. Explicitly accept the order and propose a delivery date.</Text> : null}
                       <View>
                         <Text style={labelStyle}>Final Delivery Date *</Text>
                         {po.requestedDate && <Text style={{ marginBottom: 6, fontSize: 13, color: colors.textSecondary }}>Buyer requested: {formatDate(po.requestedDate)}</Text>}
@@ -1251,6 +1353,7 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
               {buyerInfoCard}
               {supplierDateCoordinationCard}
               {paymentCard}
+              {cancellationCard}
               {receiptCard}
               <View style={{ backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 16, gap: 10 }}>
                 <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 4 }}>
@@ -1299,7 +1402,8 @@ export default function PODetailScreen({ poId, onBack, onAccepted, onRejected }:
               {canEditOrder && isPending && (
                 <View style={{ gap: 10 }}>
                   <View style={{ backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 16, gap: 12 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>Accept Details</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>{po.status === 'ACCEPTED' && po.supplierConfirmation === 'REVIEW_REQUIRED' ? 'Supplier confirmation required' : 'Accept Details'}</Text>
+                    {po.status === 'ACCEPTED' && po.supplierConfirmation === 'REVIEW_REQUIRED' ? <Text style={{ color: '#B45309', fontSize: 13 }}>This legacy Accepted status is not Supplier approval. Explicitly accept the order and propose a delivery date.</Text> : null}
                     <View>
                       <Text style={labelStyle}>Final Delivery Date *</Text>
                       {po.requestedDate && <Text style={{ marginBottom: 6, fontSize: 13, color: colors.textSecondary }}>Buyer requested: {formatDate(po.requestedDate)}</Text>}

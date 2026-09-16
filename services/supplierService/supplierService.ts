@@ -210,6 +210,9 @@ const PURCHASE_ORDER_FIELDS = `
   supplierExpectedDeliveryAt
   deliveryDateAgreementStatus
   deliveryDateAgreedAt
+  deliveryDateResponseDeadlineAt
+  deliveryDateProposalVersion
+  deliveryDateAgreementMethod
   supplierNote
   rejectionReason
   subtotalAmount
@@ -229,6 +232,7 @@ const PURCHASE_ORDER_FIELDS = `
   lineItems { ${PO_LINE_ITEM_FIELDS} }
   delivery { ${DELIVERY_FIELDS} }
   conversationId
+  paymentMethod
   paymentStatus
   paymentAttemptStatus
   preparingAt
@@ -380,6 +384,45 @@ export async function fetchPurchaseOrdersForSupplier(
   return res.purchaseOrdersForSupplier
 }
 
+export interface SupplierPurchaseOrderPage {
+  items: PurchaseOrder[]
+  total: number
+  page: number
+  pageSize: number
+  hasNextPage: boolean
+  summary: {
+    total: number
+    pending: number
+    accepted: number
+    delivered: number
+  }
+}
+
+export async function fetchSupplierPurchaseOrderPage(
+  supplierOrgId: number,
+  input: { status?: POStatus | null; page?: number; pageSize?: number } = {},
+): Promise<SupplierPurchaseOrderPage> {
+  const QUERY = gql`
+    query SupplierPurchaseOrderPage($supplierOrgId: Int!, $status: POStatus, $page: Int, $pageSize: Int) {
+      supplierPurchaseOrderPage(supplierOrgId: $supplierOrgId, status: $status, page: $page, pageSize: $pageSize) {
+        items { ${PURCHASE_ORDER_FIELDS} }
+        total
+        page
+        pageSize
+        hasNextPage
+        summary { total pending accepted delivered }
+      }
+    }
+  `
+  const res = await graphQLRequest<{ supplierPurchaseOrderPage: SupplierPurchaseOrderPage }>(QUERY, {
+    supplierOrgId,
+    status: input.status ?? null,
+    page: input.page ?? 1,
+    pageSize: input.pageSize ?? 20,
+  })
+  return res.supplierPurchaseOrderPage
+}
+
 export async function fetchPurchaseOrder(id: string): Promise<PurchaseOrder | null> {
   const QUERY = gql`
     query PurchaseOrder($id: String!) {
@@ -525,6 +568,18 @@ export async function proposePurchaseOrderDeliveryDate(purchaseOrderId: string, 
   `
   const res = await graphQLRequest<{ proposePurchaseOrderDeliveryDate: PurchaseOrder }>(MUTATION, { purchaseOrderId, expectedDeliveryDate })
   return res.proposePurchaseOrderDeliveryDate
+}
+
+export async function acceptRetailerPurchaseOrderDeliveryDate(purchaseOrderId: string): Promise<PurchaseOrder> {
+  const MUTATION = gql`
+    mutation AcceptRetailerPurchaseOrderDeliveryDate($purchaseOrderId: String!) {
+      acceptRetailerPurchaseOrderDeliveryDate(purchaseOrderId: $purchaseOrderId) {
+        ${PURCHASE_ORDER_FIELDS}
+      }
+    }
+  `
+  const res = await graphQLRequest<{ acceptRetailerPurchaseOrderDeliveryDate: PurchaseOrder }>(MUTATION, { purchaseOrderId })
+  return res.acceptRetailerPurchaseOrderDeliveryDate
 }
 
 export async function rejectPO(id: string, rejectionReason: string): Promise<PurchaseOrder> {

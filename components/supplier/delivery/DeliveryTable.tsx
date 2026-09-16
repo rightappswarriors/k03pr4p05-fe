@@ -1,8 +1,9 @@
 import React, { useState } from 'react'
-import { View, Text, TouchableOpacity } from 'react-native'
+import { ActivityIndicator, View, Text, TouchableOpacity } from 'react-native'
 import { useTheme } from '@/contexts/ThemeContext'
 import { DeliveryStatusBadge, DELIVERY_STATUS_COLORS } from './DeliveryStatusBadge'
 import { isOverdue, type DeliveryItem } from '@/services/supplierService/deliveryService'
+import { DeliveryAgreementCountdown } from '@/components/DeliveryAgreementCountdown'
 
 const formatPHP = (amount: number) =>
   new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount)
@@ -23,11 +24,13 @@ export function DeliveryTable({
   onSelect,
   onMarkInTransit,
   onMarkDelivered,
+  busyPOId,
 }: {
   deliveries: DeliveryItem[]
   onSelect: (poId: string) => void
   onMarkInTransit?: (d: DeliveryItem) => void
   onMarkDelivered?: (d: DeliveryItem) => void
+  busyPOId?: string | null
 }) {
   const { colors } = useTheme()
   const [hovered, setHovered] = useState<string | null>(null)
@@ -63,19 +66,20 @@ export function DeliveryTable({
           >
             <Text style={{ flex: 1.2, fontSize: 14, fontWeight: '700', color: colors.text }}>{d.poNumber}</Text>
             <Text style={{ flex: 1.5, fontSize: 13, color: colors.text }} numberOfLines={1}>{d.buyerName}</Text>
-            <Text style={{ flex: 1, fontSize: 13, color: colors.textSecondary }}>{formatDate(d.scheduledDate)}</Text>
+            <View style={{ flex: 1, gap: 2 }}><Text style={{ fontSize: 13, color: colors.textSecondary }}>{formatDate(d.scheduledDate)}</Text>{d.deliveryDateAgreementStatus === 'PENDING_BUYER' && d.deliveryDateResponseDeadlineAt ? <DeliveryAgreementCountdown deadline={d.deliveryDateResponseDeadlineAt} audience="DELIVERY" color="#B45309" /> : d.deliveryDateAgreementMethod === 'AUTO_BUYER_TIMEOUT' ? <Text style={{ color: '#15803D', fontSize: 10, fontWeight: '700' }}>Auto-agreed</Text> : null}</View>
             <Text style={{ flex: 1.3, fontSize: 13, color: colors.textSecondary }} numberOfLines={1}>{d.driverName ?? '—'}</Text>
             <Text style={{ flex: 0.9, fontSize: 14, fontWeight: '700', color: colors.text, textAlign: 'right' }}>{formatPHP(d.totalAmount)}</Text>
             <View style={{ flex: 1 }}><DeliveryStatusBadge status={d.status} size="sm" /></View>
             <View style={{ width: 130, alignItems: 'flex-end' }}>
-              {d.status === 'SCHEDULED' && onMarkInTransit && (
-                <TouchableOpacity onPress={() => onMarkInTransit(d)} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: '#3B82F615' }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#3B82F6' }}>In Transit</Text>
+              {d.status === 'SCHEDULED' && d.poStatus === 'READY_FOR_DISPATCH' && d.deliveryDateAgreementStatus === 'AGREED' && d.cancellationStatus !== 'REQUESTED' && onMarkInTransit && (
+                <TouchableOpacity disabled={busyPOId === d.poId} onPress={() => onMarkInTransit(d)} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: '#3B82F615' }}>
+                  {busyPOId === d.poId ? <ActivityIndicator size="small" color="#3B82F6" /> : <Text style={{ fontSize: 11, fontWeight: '700', color: '#3B82F6' }}>In Transit</Text>}
                 </TouchableOpacity>
               )}
+              {d.cancellationStatus === 'REQUESTED' ? <Text style={{ color: '#B45309', fontSize: 10, fontWeight: '700', textAlign: 'right' }}>Cancellation requested</Text> : null}
               {d.status === 'IN_TRANSIT' && onMarkDelivered && (
-                <TouchableOpacity onPress={() => onMarkDelivered(d)} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: '#22C55E15' }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#22C55E' }}>Delivered</Text>
+                <TouchableOpacity disabled={busyPOId === d.poId} onPress={() => onMarkDelivered(d)} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: '#22C55E15' }}>
+                  {busyPOId === d.poId ? <ActivityIndicator size="small" color="#22C55E" /> : <Text style={{ fontSize: 11, fontWeight: '700', color: '#22C55E' }}>Delivered</Text>}
                 </TouchableOpacity>
               )}
             </View>

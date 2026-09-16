@@ -1,3 +1,4 @@
+// supplier/catalog/CatalogPagination.tsx
 import React, { useState } from 'react'
 import { View, Text, TouchableOpacity } from 'react-native'
 import { ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react-native'

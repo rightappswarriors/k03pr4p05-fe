@@ -12,6 +12,7 @@ import { OrganizationService } from './organizationService';
 import { SubscriptionService } from './subscriptionService';
 import { gqlErrorMessage } from '@/utils/gqlErrorMessage';
 import { formatGraphQLError } from '@/utils/errorFormatter';
+import { clearSessionActivity } from './sessionInactivity';
 interface AuthPayload {
   user: User;
   token: string;
@@ -298,7 +299,7 @@ export class AuthService {
     if(__DEV__)  console.log(`[AuthService] ✅ Email verified successfully for:`, user.email)
       return user;
     } catch (error) {
-      const errorMessage = 
+      const errorMessage = formatGraphQLError(error)
       console.error(`[AuthService] ❌ Email verification error:`, errorMessage)
       throw error
     }
@@ -357,7 +358,10 @@ export class AuthService {
       await secureStorage.setItemAsync(REFRESH_TOKEN_KEY, newRefreshToken);
       return token;
     } catch (error) {
-      await this.removeUser();
+      const message = `${gqlErrorMessage(error) ?? ''} ${error instanceof Error ? error.message : ''}`.toUpperCase();
+      if (message.includes('REFRESH_TOKEN_EXPIRED') || message.includes('REFRESH_TOKEN_INVALID')) {
+        await this.removeUser();
+      }
       throw error;
     }
   }
@@ -367,6 +371,7 @@ export class AuthService {
     await secureStorage.deleteItemAsync(AUTH_TOKEN_KEY);
     await secureStorage.deleteItemAsync(REFRESH_TOKEN_KEY);
     await AsyncStorage.removeItem(BIOMETRIC_ENABLED_KEY);
+    await clearSessionActivity();
   } // Delete the token
   static async logout(outletId?: number): Promise<void> {
     if (outletId) {
@@ -401,9 +406,35 @@ export class AuthService {
           role
           isVerified
           orgId
+          approvalStatus
+          position {
+            name
+            description
+            id
+            permissions {
+              canView
+              canCreate
+              canEdit
+              canDelete
+              page {
+                label
+                key
+                access
+              }
+            }
+          }
+          resolvedPermissions {
+            key
+            canView
+            canCreate
+            canEdit
+            canDelete
+          }
           org {
             id
             name
+            profileImg
+            roles
             subscription {
               id
               plan
@@ -684,12 +715,12 @@ export class AuthService {
     const user = await this.fetchCurrentUser();
     if (!user) return null;
 
-    const { refreshToken } = await this.getTokens();
+    const { accessToken, refreshToken } = await this.getTokens();
     return {
       user,
       isLoading: false,
       isAuthenticated: true,
-      accessToken: token,
+      accessToken: accessToken ?? token,
       refreshToken: refreshToken ?? null,
     };
   }

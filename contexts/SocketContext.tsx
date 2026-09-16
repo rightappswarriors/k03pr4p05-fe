@@ -50,7 +50,6 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       ws.onclose = () => {
         if (!active) return;
         setConnected(false);
-        joinedConversations.current.clear();
         retry.current = setTimeout(connect, 1000);
       };
     };

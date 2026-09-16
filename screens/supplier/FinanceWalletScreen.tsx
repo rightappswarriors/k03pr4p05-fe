@@ -93,44 +93,56 @@ export default function FinanceWalletScreen() {
   return (
     <FinanceScreenShell
       title="Wallet"
-      subtitle="Manage your available balance and recent ledger activity"
+      subtitle="Track withdrawable funds separately from payments held in escrow"
       loading={loading}
     >
       {error ? <Text style={{ color: colors.error, fontSize: 13 }}>{error}</Text> : null}
 
-      <FinanceSectionCard title="Wallet summary" subtitle="A polished overview of your supplier balance">
+      <FinanceSectionCard title="Wallet summary" subtitle="Available funds and protected order payments have different release rules">
         <FinanceSplitLayout>
           <FinanceHeroCard
-            title="Available balance"
-            value={wallet ? formatPHP(available) : '—'}
-            subtitle="Ready for your next payout"
-            description="Track cleared funds, held balances, fees, and recent activity from one place."
+            title="Total wallet funds"
+            value={wallet ? formatPHP(wallet.totalFunds) : '—'}
+            subtitle="Available balance plus all held funds"
+            description="Payment received is included here immediately, while only completed-order settlements become available for withdrawal."
             accent="#16A34A"
             icon={Wallet2}
           />
           <View style={[styles.sidePanel, { borderColor: colors.border, backgroundColor: colors.background }]}> 
-            <Text style={[styles.sideTitle, { color: colors.text }]}>What matters now</Text>
-            <Text style={[styles.sideText, { color: colors.textSecondary }]}>Use this view to review where your funds stand and what is ready to move out of the wallet.</Text>
+            <Text style={[styles.sideTitle, { color: colors.text }]}>Where your funds are</Text>
+            <Text style={[styles.sideText, { color: colors.textSecondary }]}>Available funds can be withdrawn. Payment escrow remains protected until the order is completed.</Text>
             <View style={styles.sideList}>
               <View style={styles.sideItem}>
-                <Text style={[styles.sideItemLabel, { color: colors.textSecondary }]}>Held balance</Text>
-                <Text style={[styles.sideItemValue, { color: colors.text }]}>{wallet ? formatPHP(wallet.heldBalance) : '—'}</Text>
-                <Text style={[styles.sideItemLabel, { color: colors.textSecondary }]}>Escrow and reserved funds</Text>
+                <Text style={[styles.sideItemLabel, { color: colors.textSecondary }]}>Available for withdrawal</Text>
+                <Text style={[styles.sideItemValue, { color: colors.success }]}>{wallet ? formatPHP(wallet.balance) : '—'}</Text>
+                <Text style={[styles.sideItemLabel, { color: colors.textSecondary }]}>Cleared Supplier settlement credits</Text>
               </View>
               <View style={styles.sideItem}>
-                <Text style={[styles.sideItemLabel, { color: colors.textSecondary }]}>Fees paid</Text>
-                <Text style={[styles.sideItemValue, { color: colors.text }]}>{formatPHP(wallet?.feesPaid ?? 0)}</Text>
+                <Text style={[styles.sideItemLabel, { color: colors.textSecondary }]}>Payment escrow</Text>
+                <Text style={[styles.sideItemValue, { color: '#D97706' }]}>{wallet ? formatPHP(wallet.paymentEscrowBalance) : '—'}</Text>
+                <Text style={[styles.sideItemLabel, { color: colors.textSecondary }]}>{wallet?.paymentEscrowOrderCount ?? 0} paid {wallet?.paymentEscrowOrderCount === 1 ? 'order' : 'orders'} awaiting completion</Text>
+              </View>
+              <View style={styles.sideItem}>
+                <Text style={[styles.sideItemLabel, { color: colors.textSecondary }]}>Withdrawal reservations</Text>
+                <Text style={[styles.sideItemValue, { color: colors.text }]}>{formatPHP(wallet?.pendingWithdrawalTotal ?? 0)}</Text>
+                <Text style={[styles.sideItemLabel, { color: colors.textSecondary }]}>Requested payouts awaiting completion</Text>
               </View>
             </View>
           </View>
         </FinanceSplitLayout>
       </FinanceSectionCard>
 
+      <View style={[styles.escrowNotice, { borderColor: '#F59E0B', backgroundColor: colors.surface }]}>
+        <Text style={[styles.escrowNoticeTitle, { color: colors.text }]}>Payment received — held safely in escrow</Text>
+        <Text style={[styles.escrowNoticeText, { color: colors.textSecondary }]}>Maya-confirmed Supplier net enters Payment Escrow first. Fulfill the order through dispatch, delivery, and buyer receipt confirmation. When the PO becomes Completed, settlement moves the exact amount from Held to Available for withdrawal.</Text>
+      </View>
+
       <Pressable disabled={!available} onPress={() => setWithdrawModal(true)} style={[styles.withdrawButton, { backgroundColor: colors.primary, opacity: available ? 1 : 0.5 }]}><Text style={styles.withdrawButtonText}>Withdraw Funds</Text></Pressable>
 
       <FinanceStatGrid>
         <FinanceStatCard title="Available balance" value={wallet ? formatPHP(available) : '—'} hint="Funds ready for withdrawal" accent="#16A34A" icon={Wallet2} />
-        <FinanceStatCard title="Held balance" value={wallet ? formatPHP(wallet.heldBalance) : '—'} hint="Escrow and reserved funds" accent="#F59E0B" icon={Banknote} />
+        <FinanceStatCard title="Payment escrow" value={wallet ? formatPHP(wallet.paymentEscrowBalance) : '—'} hint="Paid orders awaiting completion" accent="#F59E0B" icon={Banknote} />
+        <FinanceStatCard title="Total held" value={wallet ? formatPHP(wallet.heldBalance) : '—'} hint="Escrow plus payout reservations" accent="#EA580C" icon={Banknote} />
         <FinanceStatCard title="Withdrawable" value={wallet ? formatPHP(available) : '—'} hint="Net cash available now" accent="#0EA5E9" icon={Banknote} />
         <FinanceStatCard title="Lifetime earnings" value={formatPHP(wallet?.lifetimeEarnings ?? 0)} hint="Supplier settlement net credits" accent="#22C55E" icon={Banknote} />
         <FinanceStatCard title="Fees paid" value={formatPHP(wallet?.feesPaid ?? 0)} hint="Platform charges posted" accent="#DC2626" icon={Banknote} />
@@ -152,12 +164,12 @@ export default function FinanceWalletScreen() {
             rows={entries.map((entry) => ({
               key: entry.id,
               cells: [
-                <Text key="entry" style={{ color: colors.text, fontWeight: '700' }}>{entry.sourceType === 'PURCHASE_ORDER_SETTLEMENT' ? 'Order settlement · Net credited' : entry.sourceType === 'WITHDRAWAL' ? withdrawalLedgerPresentation(entry).label : entry.sourceType.replace(/_/g, ' ').toLowerCase()}</Text>,
+                <Text key="entry" style={{ color: colors.text, fontWeight: '700' }}>{entry.sourceType === 'PURCHASE_ORDER_SETTLEMENT' ? 'Order completed · Funds available' : entry.sourceType === 'ESCROW_HOLD' ? 'Payment received · Held in escrow' : entry.sourceType === 'WITHDRAWAL' ? withdrawalLedgerPresentation(entry).label : entry.sourceType.replace(/_/g, ' ').toLowerCase()}</Text>,
                 <Text key="date" style={{ color: colors.textSecondary, fontSize: 12 }}>{formatDate(entry.createdAt)}</Text>,
-                <Text key="amount" style={{ color: entry.amount >= 0 ? colors.success : colors.error, fontWeight: '800' }}>
+                <Text key="amount" style={{ color: entry.sourceType === 'ESCROW_HOLD' ? '#D97706' : entry.amount >= 0 ? colors.success : colors.error, fontWeight: '800' }}>
                   {entry.amount >= 0 ? '+' : ''}{formatPHP(entry.amount)}
                 </Text>,
-                <Text key="status" style={{ color: colors.textSecondary, fontSize: 12 }}>{entry.sourceType === 'WITHDRAWAL' ? withdrawalLedgerPresentation(entry).status : entry.status}</Text>,
+                <Text key="status" style={{ color: entry.sourceType === 'ESCROW_HOLD' ? '#D97706' : colors.textSecondary, fontSize: 12, fontWeight: entry.sourceType === 'ESCROW_HOLD' ? '700' : '400' }}>{entry.sourceType === 'ESCROW_HOLD' ? 'HELD · Awaiting order completion' : entry.sourceType === 'WITHDRAWAL' ? withdrawalLedgerPresentation(entry).status : entry.status}</Text>,
               ],
             }))}
             emptyState={<EmptyState title="No activity yet" message="Ledger entries will appear here once orders, fees, or withdrawals are posted." />}
@@ -182,5 +194,8 @@ const styles = StyleSheet.create({
   sideItem: { paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: 'transparent' },
   sideItemLabel: { fontSize: 12, fontWeight: '700' },
   sideItemValue: { fontSize: 14, fontWeight: '800', marginTop: 2 },
+  escrowNotice: { borderWidth: 1, borderRadius: 12, padding: 14 },
+  escrowNoticeTitle: { fontSize: 14, fontWeight: '900' },
+  escrowNoticeText: { fontSize: 12, lineHeight: 18, marginTop: 5 },
   withdrawButton: { alignSelf: 'flex-start', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 12 }, withdrawButtonText: { color: '#fff', fontWeight: '800' }, withdrawalRow: { borderTopWidth: 1, paddingVertical: 11, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, modalBackdrop: { flex: 1, backgroundColor: '#00000066', alignItems: 'center', justifyContent: 'center', padding: 20 }, modal: { width: '100%', maxWidth: 440, borderRadius: 16, padding: 20 }, input: { borderWidth: 1, borderRadius: 9, padding: 12, marginTop: 16 }, method: { borderWidth: 1, borderRadius: 9, padding: 12, marginTop: 8 }, modalActions: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 18, marginTop: 20 }, submit: { borderRadius: 8, paddingHorizontal: 13, paddingVertical: 10 },
 })

@@ -7,13 +7,13 @@ import type { DeliveryItem } from '@/services/supplierService/deliveryService'
 export function DeliveryTimeline({ delivery }: { delivery: DeliveryItem }) {
   const { colors } = useTheme()
 
-  if (delivery.status === 'FAILED') {
+  if (delivery.status === 'FAILED' || delivery.status === 'CANCELLED') {
     return (
       <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
         <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center' }}>
           <X size={12} color="#fff" />
         </View>
-        <Text style={{ fontSize: 13, fontWeight: '700', color: '#EF4444' }}>Delivery failed</Text>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: delivery.status === 'FAILED' ? '#EF4444' : '#6B7280' }}>{delivery.status === 'FAILED' ? 'Delivery failed' : 'Delivery cancelled before completion'}</Text>
       </View>
     )
   }

@@ -9,6 +9,7 @@ declare module '@/components/MapPinPicker' {
         colors: any;
         initialLatitude?: number;
         initialLongitude?: number;
+        title?: string;
     }
 
     export const MapPinPicker: ComponentType<MapPinPickerProps>;

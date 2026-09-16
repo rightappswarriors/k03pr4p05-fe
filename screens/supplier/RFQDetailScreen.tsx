@@ -72,6 +72,7 @@ export function RFQDetailScreen({ rfqId, onPOCreated, onBack }: Props) {
 
   const [rfq, setRfq] = useState<RequestForQuotationDetail | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [replyText, setReplyText] = useState('')
   const [sending, setSending] = useState(false)
   const [counterModalVisible, setCounterModalVisible] = useState(false)
@@ -144,11 +145,15 @@ export function RFQDetailScreen({ rfqId, onPOCreated, onBack }: Props) {
 
   const loadRfq = useCallback(async () => {
     if (!rfqId) return
+    setLoading(true)
+    setLoadError(null)
     try {
       const data = await fetchSupplierRfqDetail(rfqId)
       setRfq(data)
     } catch (e: any) {
       if (__DEV__) console.error('fetchSupplierRfqDetail error', e)
+      setRfq(null)
+      setLoadError('Related record is no longer available.')
     } finally {
       setLoading(false)
     }
@@ -246,10 +251,20 @@ export function RFQDetailScreen({ rfqId, onPOCreated, onBack }: Props) {
     handleRejectNegotiation({ rfqId: rfq.id })
   }
 
-  if (loading || !rfq) {
+  if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' }}>
         <ActivityIndicator color={colors.primary} size="large" />
+      </View>
+    )
+  }
+
+  if (!rfq) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 10 }}>
+        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>RFQ unavailable</Text>
+        <Text style={{ color: colors.textSecondary, textAlign: 'center' }}>{loadError ?? 'Related record is no longer available.'}</Text>
+        {onBack ? <TouchableOpacity onPress={onBack} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={{ color: colors.primary, fontWeight: '800' }}>Back to Inbox</Text></TouchableOpacity> : null}
       </View>
     )
   }

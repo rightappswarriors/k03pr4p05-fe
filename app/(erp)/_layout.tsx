@@ -124,6 +124,7 @@ export default function ErpLayout() {
             <Stack.Screen name="outlets" />
             <Stack.Screen name="add-inventory-item" />
             <Stack.Screen name="settings" />
+            <Stack.Screen name="notifications" />
             <Stack.Screen name="outlet-detail" />
           </Stack>
         </ERPLayout>

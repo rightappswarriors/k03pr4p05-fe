@@ -107,6 +107,8 @@ const CAPABILITY_TYPES: Array<{ value: SupplierCapabilityType; label: string; de
 interface Props {
   item: SupplierItem | null
   visible: boolean
+  /** Retailer catalog presentation: commercial details only, never management controls. */
+  buyerMode?: boolean
   startInEditMode?: boolean
   canEdit?: boolean
   canDelete?: boolean
@@ -191,7 +193,7 @@ function SavingOverlay({ visible }: { visible: boolean }) {
   return null
 }
 
-export function ProductDetailsModal({ item, visible, startInEditMode, canEdit = true, canDelete = true, onClose, onUpdated }: Props) {
+export function ProductDetailsModal({ item, visible, buyerMode = false, startInEditMode, canEdit = true, canDelete = true, onClose, onUpdated }: Props) {
   const { colors, theme } = useTheme()
   const { user } = useAuth()
   const confirm = useConfirm()
@@ -243,7 +245,7 @@ export function ProductDetailsModal({ item, visible, startInEditMode, canEdit = 
     const s = snap(item)
     setFields(s)
     setSnapshot(s)
-    setEditing(canEdit && !!startInEditMode)
+    setEditing(!buyerMode && canEdit && !!startInEditMode)
     setTab('overview')
     setReviews(null)
     setPendingImageAsset(null)
@@ -285,7 +287,7 @@ export function ProductDetailsModal({ item, visible, startInEditMode, canEdit = 
     })
     setCapabilities(initialCaps)
     setCapabilitiesSnapshot({ ...initialCaps })
-  }, [canEdit, item?.id, startInEditMode])
+  }, [buyerMode, canEdit, item?.id, startInEditMode])
 
 
   // Dirty = any field differs from the snapshot, OR a new image was picked, OR any sub-resource changed.
@@ -895,7 +897,7 @@ export function ProductDetailsModal({ item, visible, startInEditMode, canEdit = 
               )}
             </View>
             <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-              <ProductStatusBadge item={item} size="sm" />
+              {!buyerMode ? <ProductStatusBadge item={item} size="sm" /> : null}
               <RatingStars rating={item.averageRating} reviewCount={item.reviewCount} size={11} />
             </View>
           </View>
@@ -927,7 +929,7 @@ export function ProductDetailsModal({ item, visible, startInEditMode, canEdit = 
           style={{ borderBottomWidth: 1, borderBottomColor: colors.border, flexGrow: 0, }}
           contentContainerStyle={{ paddingHorizontal: 16, gap: 2 }}
         >
-          {TABS.map(({ key, label, Icon }) => {
+          {TABS.filter(({ key }) => !buyerMode || ['overview', 'variants', 'pricing', 'packaging', 'shipping', 'specifications'].includes(key)).map(({ key, label, Icon }) => {
             const active = tab === key
             return (
               <TouchableOpacity
@@ -946,7 +948,7 @@ export function ProductDetailsModal({ item, visible, startInEditMode, canEdit = 
               </TouchableOpacity>
             )
           })}
-          {canEdit ? <TouchableOpacity
+          {!buyerMode && canEdit ? <TouchableOpacity
             onPress={() => setMarketplaceOpen(true)}
             style={{
               flexDirection: 'row', alignItems: 'center', gap: 6,

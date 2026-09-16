@@ -51,6 +51,7 @@ export function MapPinPicker({
 
     initialLatitude,
     initialLongitude,
+    title = 'Pin Outlet Location',
 }: {
     visible: boolean;
     onClose: () => void;
@@ -58,6 +59,7 @@ export function MapPinPicker({
     initialLatitude?: number;
     initialLongitude?: number;
     colors: any;
+    title?: string;
 }) {
     const [marker, setMarker] = useState<{ lat: number; lng: number } | null>(null);
     const [componentReady, setComponentReady] = useState(false);
@@ -218,7 +220,7 @@ export function MapPinPicker({
                         <X size={18} color={colors.text} strokeWidth={2.5} />
                     </TouchableOpacity>
                     <View style={{ flex: 1 }}>
-                        <Text style={[mpp.title, { color: colors.text }]}>Pin Outlet Location</Text>
+                        <Text style={[mpp.title, { color: colors.text }]}>{title}</Text>
                         <Text style={[mpp.hint, { color: colors.textSecondary }]}>
                             {locationError
                                 ? locationError

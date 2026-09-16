@@ -3,7 +3,6 @@ import { useFinanceBreakpoint } from './supplier/finance/FinanceScreenShell';
 import {
   View,
   Text,
-  ScrollView,
   StyleSheet,
   TouchableOpacity,
 } from 'react-native';
@@ -54,36 +53,110 @@ export function DataTable({
   const breakpoint = useFinanceBreakpoint();
 
   if (breakpoint === 'mobile') {
+    if (rows.length === 0) {
+      return (
+        <View style={styles.emptyWrap}>{emptyState}</View>
+      );
+    }
     return (
-      <View style={{ flex: 1, gap: 8 }}>
+      <View style={{ gap: 8 }}>
+        {rows.map((row) => (
+          <TouchableOpacity
+            key={row.key}
+            disabled={!onRowPress}
+            onPress={() => onRowPress?.(row)}
+            style={[
+              styles.mobileRow,
+              {
+                backgroundColor: colors.background,
+                borderColor: colors.border,
+              },
+            ]}
+          >
+            {row.cells.map((cell, index) => (
+              <View key={`${row.key}-${index}`} style={styles.mobileCell}>
+                {index === 0 ? (
+                  <Text
+                    style={[
+                      styles.mobileLabel,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
+                    {columns[index]?.label}
+                  </Text>
+                ) : null}
+                {cell}
+              </View>
+            ))}
+          </TouchableOpacity>
+        ))}
+      </View>
+    );
+  }
+
+  // Desktop: horizontal scroll only carries the columns.
+  // No flex:1 / vertical scroll here — the table renders its natural
+  // content height and the *page's* outer ScrollView carries it.
+  // Rows are already paginated upstream, so there's nothing to virtualize.
+  return (
+    <View style={[styles.tableShell, { borderColor: colors.border }]}>
+      <View style={{ minWidth: 760 }}>
+        <View
+          style={[styles.tableHeader, { backgroundColor: colors.background }]}
+        >
+          {columns.map((column, index) => (
+            <View
+              key={`${column.label}-${index}`}
+              style={[
+                styles.tableCell,
+                {
+                  flex: column.width ?? 1,
+                  alignItems: alignFor(column.align),
+                },
+              ]}
+            >
+              {column.sortKey && onSort ? (
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel={`Sort by ${column.label}`}
+                  onPress={() => onSort(column.sortKey!)}
+                  style={styles.sortHeader}
+                >
+                  <Text style={[styles.tableHeaderText, { color: colors.textSecondary }]}>
+                    {column.label}{activeSortKey === column.sortKey ? (sortDirection === 'ASC' ? ' ↑' : ' ↓') : ''}
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <Text style={[styles.tableHeaderText, { color: colors.textSecondary }]}>
+                  {column.label}
+                </Text>
+              )}
+            </View>
+          ))}
+        </View>
         {rows.length === 0 ? (
-          <View style={styles.emptyWrap}>{emptyState}</View>
+          <View style={[styles.tableEmpty, { backgroundColor: colors.surface }]}>
+            <View style={styles.emptyWrap}>{emptyState}</View>
+          </View>
         ) : (
           rows.map((row) => (
             <TouchableOpacity
               key={row.key}
               disabled={!onRowPress}
               onPress={() => onRowPress?.(row)}
-              style={[
-                styles.mobileRow,
-                {
-                  backgroundColor: colors.background,
-                  borderColor: colors.border,
-                },
-              ]}
+              style={[styles.tableRow, { borderTopColor: colors.border }]}
             >
               {row.cells.map((cell, index) => (
-                <View key={`${row.key}-${index}`} style={styles.mobileCell}>
-                  {index === 0 ? (
-                    <Text
-                      style={[
-                        styles.mobileLabel,
-                        { color: colors.textSecondary },
-                      ]}
-                    >
-                      {columns[index]?.label}
-                    </Text>
-                  ) : null}
+                <View
+                  key={`${row.key}-${index}`}
+                  style={[
+                    styles.tableCell,
+                    {
+                      flex: columns[index]?.width ?? 1,
+                      alignItems: alignFor(columns[index]?.align),
+                    },
+                  ]}
+                >
                   {cell}
                 </View>
               ))}
@@ -91,84 +164,6 @@ export function DataTable({
           ))
         )}
       </View>
-    );
-  }
-
-  return (
-    <View style={[styles.tableShell, { borderColor: colors.border }]}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ flexGrow: 1 }}
-        style={{ flex: 1 }}
-      >
-        <View style={{ flex: 1, minWidth: 760 }}>
-          <View
-            style={[styles.tableHeader, { backgroundColor: colors.background }]}
-          >
-            {columns.map((column, index) => (
-              <View
-                key={`${column.label}-${index}`}
-                style={[
-                  styles.tableCell,
-                  {
-                    flex: column.width ?? 1,
-                    alignItems: alignFor(column.align),
-                  },
-                ]}
-              >
-                {column.sortKey && onSort ? (
-                  <TouchableOpacity
-                    accessibilityRole="button"
-                    accessibilityLabel={`Sort by ${column.label}`}
-                    onPress={() => onSort(column.sortKey!)}
-                    style={styles.sortHeader}
-                  >
-                    <Text style={[styles.tableHeaderText, { color: colors.textSecondary }]}>
-                      {column.label}{activeSortKey === column.sortKey ? (sortDirection === 'ASC' ? ' ↑' : ' ↓') : ''}
-                    </Text>
-                  </TouchableOpacity>
-                ) : (
-                  <Text style={[styles.tableHeaderText, { color: colors.textSecondary }]}>
-                    {column.label}
-                  </Text>
-                )}
-              </View>
-            ))}
-          </View>
-          {rows.length === 0 ? (
-            <View
-              style={[styles.tableEmpty, { backgroundColor: colors.surface }]}
-            >
-              <View style={styles.emptyWrap}>{emptyState}</View>
-            </View>
-          ) : (
-            rows.map((row) => (
-              <TouchableOpacity
-                key={row.key}
-                disabled={!onRowPress}
-                onPress={() => onRowPress?.(row)}
-                style={[styles.tableRow, { borderTopColor: colors.border }]}
-              >
-                {row.cells.map((cell, index) => (
-                  <View
-                    key={`${row.key}-${index}`}
-                    style={[
-                      styles.tableCell,
-                      {
-                        flex: columns[index]?.width ?? 1,
-                        alignItems: alignFor(columns[index]?.align),
-                      },
-                    ]}
-                  >
-                    {cell}
-                  </View>
-                ))}
-              </TouchableOpacity>
-            ))
-          )}
-        </View>
-      </ScrollView>
     </View>
   );
 }
@@ -197,7 +192,7 @@ export function EmptyState({
 }
 
 const styles = StyleSheet.create({
-  tableShell: { flex: 1, borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
+  tableShell: { borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
   tableHeader: {
     flexDirection: 'row',
     paddingHorizontal: 12,
@@ -218,14 +213,14 @@ const styles = StyleSheet.create({
   tableCell: { paddingHorizontal: 4, justifyContent: 'center' },
   sortHeader: { minHeight: 24, justifyContent: 'center' },
   tableEmpty: {
-    flex: 1,
+    minHeight: 120,
     padding: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
   emptyWrap: {
-    flex: 1,
     width: '100%',
+    minHeight: 120,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -237,9 +232,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
-  formGrid: { gap: 10 },
-  formGridColumn: { flexDirection: 'column' },
-  formGridRow: { flexDirection: 'row', flexWrap: 'wrap' },
   emptyState: {
     maxWidth: 420,
     alignSelf: 'center',

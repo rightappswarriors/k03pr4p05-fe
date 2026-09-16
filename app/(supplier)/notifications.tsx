@@ -1,3 +1,5 @@
-import PlaceholderScreen from '@/components/Placeholder'
+import NotificationsScreen from '@/screens/shared/NotificationsScreen'
 
-export default PlaceholderScreen
+export default function SupplierNotificationsRoute() {
+  return <NotificationsScreen accountContext="SUPPLIER" />
+}

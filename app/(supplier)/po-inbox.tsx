@@ -1,37 +1,44 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { View } from 'react-native'
+import { useLocalSearchParams, useRouter } from 'expo-router'
 import POInboxScreen from '@/screens/supplier/POInboxScreen'
 import { RFQDetailScreen } from '@/screens/supplier/RFQDetailScreen'
-import PODetailScreen from '@/screens/supplier/PODetailScreen'
-import { PermissionDenied } from '@/components/PermissionDenied'
+import PermissionDenied from '@/components/PermissionDenied'
 import { usePermissions } from '@/hooks/usePermissions'
 
 export default function POInboxRoute() {
-  const { can } = usePermissions()
+  const { can, permissionsLoading } = usePermissions()
+  const router = useRouter()
+  const { purchaseOrderId, rfqId } = useLocalSearchParams<{ purchaseOrderId?: string; rfqId?: string }>()
   const canViewRfqs = can('supplierRFQPage', 'canView')
-  const canViewPurchaseOrders = can('supplierPurchaseOrderPage', 'canView')
   const [selectedRfqId, setSelectedRfqId] = useState<string | null>(null)
-  const [selectedPoId, setSelectedPoId] = useState<string | null>(null)
 
-  const handleRfqPress = (rfqId: string) => {
-    setSelectedRfqId(rfqId)
+  useEffect(() => {
+    const exactPoId = Array.isArray(purchaseOrderId) ? purchaseOrderId[0] : purchaseOrderId
+    if (exactPoId?.trim()) router.replace({ pathname: '/(supplier)/po-inbox/[id]', params: { id: exactPoId.trim() } } as never)
+  }, [purchaseOrderId, router])
+
+  useEffect(() => {
+    const exactRfqId = Array.isArray(rfqId) ? rfqId[0] : rfqId
+    if (exactRfqId?.trim()) setSelectedRfqId(exactRfqId.trim())
+  }, [rfqId])
+
+  const handleRfqPress = (nextRfqId: string) => {
+    const exactRfqId = nextRfqId.trim()
+    if (exactRfqId) setSelectedRfqId(exactRfqId)
   }
 
   const handlePoPress = (poId: string) => {
-    setSelectedPoId(poId)
+    const exactPoId = poId.trim()
+    if (exactPoId) router.push({ pathname: '/(supplier)/po-inbox/[id]', params: { id: exactPoId } } as never)
   }
 
   const handlePOCreated = (_poId: string, _poNumber: string) => {
     setSelectedRfqId(null)
+    if (rfqId) router.replace('/(supplier)/po-inbox' as never)
   }
 
-  const handlePoAccepted = () => {
-    // Optionally refresh or show a toast
-  }
-
-  const handlePoRejected = () => {
-    // Optionally refresh or show a toast
-  }
+  if (permissionsLoading) return null
 
   if (selectedRfqId) {
     if (!canViewRfqs) return <PermissionDenied />
@@ -39,22 +46,11 @@ export default function POInboxRoute() {
       <View style={{ flex: 1 }}>
         <RFQDetailScreen
           rfqId={selectedRfqId}
-          onBack={() => setSelectedRfqId(null)}
+          onBack={() => {
+            setSelectedRfqId(null)
+            if (rfqId) router.replace('/(supplier)/po-inbox' as never)
+          }}
           onPOCreated={handlePOCreated}
-        />
-      </View>
-    )
-  }
-
-  if (selectedPoId) {
-    if (!canViewPurchaseOrders) return <PermissionDenied />
-    return (
-      <View style={{ flex: 1 }}>
-        <PODetailScreen
-          poId={selectedPoId}
-          onBack={() => setSelectedPoId(null)}
-          onAccepted={handlePoAccepted}
-          onRejected={handlePoRejected}
         />
       </View>
     )

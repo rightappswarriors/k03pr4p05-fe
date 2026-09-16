@@ -9,6 +9,11 @@ export type { DeliveryStatus, Delivery }
 export interface DeliveryItem {
   poId: string
   poNumber: string
+  poStatus: PurchaseOrder['status']
+  deliveryDateAgreementStatus?: string | null
+  deliveryDateResponseDeadlineAt?: string | null
+  deliveryDateAgreementMethod?: string | null
+  cancellationStatus?: string | null
   buyerName: string
   outletName: string
   outletAddress: string
@@ -36,6 +41,11 @@ export function mapPOToDelivery(po: PurchaseOrder): DeliveryItem | null {
   return {
     poId: po.id,
     poNumber: po.poNumber,
+    poStatus: po.status,
+    deliveryDateAgreementStatus: (po as PurchaseOrder & { deliveryDateAgreementStatus?: string | null }).deliveryDateAgreementStatus,
+    deliveryDateResponseDeadlineAt: po.deliveryDateResponseDeadlineAt,
+    deliveryDateAgreementMethod: po.deliveryDateAgreementMethod,
+    cancellationStatus: po.cancellationStatus,
     buyerName: po.buyerOrg.name,
     outletName: po.outlet?.name ?? '—',
     outletAddress: po.outlet?.address ?? '—',
@@ -55,6 +65,11 @@ export function mapPOToDelivery(po: PurchaseOrder): DeliveryItem | null {
 const DELIVERY_PO_FIELDS = `
   id
   poNumber
+  status
+  deliveryDateAgreementStatus
+  deliveryDateResponseDeadlineAt
+  deliveryDateAgreementMethod
+  cancellationStatus
   totalAmount
   createdAt
   buyerOrg { id name }
